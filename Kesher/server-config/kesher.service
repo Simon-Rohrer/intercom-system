@@ -1,0 +1,16 @@
+[Unit]
+Description=Kesher Intercom Docker Compose
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/master/kesher
+ExecStart=/usr/bin/docker compose -f deploy/compose/docker-compose.yml up -d
+ExecStop=/usr/bin/docker compose -f deploy/compose/docker-compose.yml down
+RemainAfterExit=yes
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

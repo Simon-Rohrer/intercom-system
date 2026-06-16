@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+*.tgz
+*.log
+
+# Datenbanken / Laufzeitdaten
+*.db
+*.sqlite
+*.sqlite3
+data/
+app/data/
+
+# Docker / lokale Umgebung
+.env
+.env.local
+
+# macOS
+.DS_Store
+
+# Companion/Kesher Runtime
+.cache/
+tmp/
