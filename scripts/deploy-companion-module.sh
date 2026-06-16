@@ -17,9 +17,9 @@ echo "▶ Synchronisiere Modul von $REPO_MODULE nach $TARGET ..."
 mkdir -p "$TARGET/companion"
 mkdir -p "$TARGET/dist"
 
-# Manifest kopieren (companion/manifest.json)
-echo "  → companion/manifest.json"
-cp -f "$REPO_MODULE/companion/manifest.json" "$TARGET/companion/manifest.json"
+# Manifest direkt aus Git holen (unabhängig vom Working Tree)
+echo "  → companion/manifest.json (aus Git)"
+git -C "$REPO_ROOT" show HEAD:companion/companion/manifest.json > "$TARGET/companion/manifest.json"
 
 # Kompilierte dist-Dateien kopieren
 echo "  → dist/"
