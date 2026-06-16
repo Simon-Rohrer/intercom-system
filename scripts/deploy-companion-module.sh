@@ -10,26 +10,31 @@
 set -e
 
 REPO_ROOT="/home/master/intercom-system"
-REPO_MODULE="$REPO_ROOT/companion"
 TARGET="/opt/companion-module-dev/companion-module-kesher"
 
-echo "▶ Synchronisiere Modul von $REPO_MODULE nach $TARGET ..."
+# Alle benötigten Dateien aus Git direkt extrahieren (unabhängig vom Working Tree)
+DIST_FILES="actions config feedbacks imageBridge imageRenderer main presets types upgrades variables"
+
+echo "▶ Extrahiere Modul-Dateien direkt aus Git nach $TARGET ..."
 mkdir -p "$TARGET/companion"
 mkdir -p "$TARGET/dist"
 
-# Manifest direkt aus Git holen (unabhängig vom Working Tree)
-echo "  → companion/manifest.json (aus Git)"
+# manifest.json aus Git
+echo "  → companion/manifest.json"
 git -C "$REPO_ROOT" show HEAD:companion/companion/manifest.json > "$TARGET/companion/manifest.json"
 
-# Kompilierte dist-Dateien kopieren
-echo "  → dist/"
-rsync -av "$REPO_MODULE/dist/" "$TARGET/dist/"
+# dist/*.js aus Git
+echo "  → dist/*.js"
+for f in $DIST_FILES; do
+  git -C "$REPO_ROOT" show HEAD:companion/dist/${f}.js > "$TARGET/dist/${f}.js"
+  echo "      ${f}.js"
+done
 
-# package.json kopieren (wird für node_modules benötigt)
+# package.json aus Git
 echo "  → package.json"
-cp -f "$REPO_MODULE/package.json" "$TARGET/package.json"
+git -C "$REPO_ROOT" show HEAD:companion/package.json > "$TARGET/package.json"
 
-# .yarnrc.yml mit node-modules linker (benötigt für Companion-Kompatibilität)
+# .yarnrc.yml mit node-modules linker
 echo "nodeLinker: node-modules" > "$TARGET/.yarnrc.yml"
 
 # node_modules installieren
@@ -52,5 +57,4 @@ echo "✅ Fertig! Das Kesher-Modul ist installiert."
 sleep 2
 echo ""
 echo "--- Companion Status ---"
-systemctl status companion --no-pager | head -20
-
+systemctl status companion --no-pager | head -25
