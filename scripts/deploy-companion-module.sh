@@ -11,6 +11,8 @@ set -e
 
 REPO_ROOT="/home/master/intercom-system"
 TARGET="/opt/companion-module-dev/companion-module-kesher"
+NODE_BIN="/opt/companion/node-runtimes/node22/bin"
+NPM="$NODE_BIN/npm"
 
 # Alle benötigten Dateien aus Git direkt extrahieren (unabhängig vom Working Tree)
 DIST_FILES="actions config feedbacks imageBridge imageRenderer main presets types upgrades variables"
@@ -37,11 +39,11 @@ git -C "$REPO_ROOT" show HEAD:companion/package.json > "$TARGET/package.json"
 # .yarnrc.yml mit node-modules linker
 echo "nodeLinker: node-modules" > "$TARGET/.yarnrc.yml"
 
-# node_modules installieren
+# node_modules installieren (Companion's Node22-Runtime verwenden)
 echo ""
 echo "▶ Installiere node_modules in $TARGET ..."
 cd "$TARGET"
-yarn install --no-immutable 2>/dev/null || npm install --omit=dev
+"$NPM" install --omit=dev --prefix "$TARGET"
 
 # Berechtigungen setzen
 echo ""
