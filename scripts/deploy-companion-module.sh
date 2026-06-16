@@ -11,8 +11,8 @@ set -e
 
 REPO_ROOT="/home/master/intercom-system"
 TARGET="/opt/companion-module-dev/companion-module-kesher"
-NODE_BIN="/opt/companion/node-runtimes/node22/bin"
-NPM="$NODE_BIN/npm"
+# Companion's Node22-Runtime
+NODE="$(find /opt/companion/node-runtimes -name 'node' -type f | head -1)"
 
 # Alle benötigten Dateien aus Git direkt extrahieren (unabhängig vom Working Tree)
 DIST_FILES="actions config feedbacks imageBridge imageRenderer main presets types upgrades variables"
@@ -39,11 +39,22 @@ git -C "$REPO_ROOT" show HEAD:companion/package.json > "$TARGET/package.json"
 # .yarnrc.yml mit node-modules linker
 echo "nodeLinker: node-modules" > "$TARGET/.yarnrc.yml"
 
-# node_modules installieren (Companion's Node22-Runtime verwenden)
+# node_modules installieren – nur wenn noch nicht vorhanden
 echo ""
-echo "▶ Installiere node_modules in $TARGET ..."
-cd "$TARGET"
-"$NPM" install --omit=dev --prefix "$TARGET"
+if [ -d "$TARGET/node_modules/@companion-module" ]; then
+  echo "▶ node_modules bereits vorhanden, überspringe Installation."
+else
+  echo "▶ Installiere node_modules in $TARGET ..."
+  cd "$TARGET"
+  # npm ist in der node-Installation von Companion enthalten
+  NPM_CLI="$(find /opt/companion -name 'npm-cli.js' 2>/dev/null | head -1)"
+  if [ -n "$NPM_CLI" ]; then
+    "$NODE" "$NPM_CLI" install --omit=dev --prefix "$TARGET"
+  else
+    echo "⚠️  npm nicht gefunden – node_modules müssen manuell installiert werden!"
+    echo "   Führe aus: cd $TARGET && npm install --omit=dev"
+  fi
+fi
 
 # Berechtigungen setzen
 echo ""
