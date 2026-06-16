@@ -18,6 +18,11 @@ NODE="$(find /opt/companion/node-runtimes -name 'node' -type f | head -1)"
 DIST_FILES="actions config feedbacks imageBridge imageRenderer main presets types upgrades variables"
 
 echo "▶ Extrahiere Modul-Dateien direkt aus Git nach $TARGET ..."
+# Falls $TARGET/companion ein Symlink ist (von alten Versuchen), muss er weg
+if [ -L "$TARGET/companion" ]; then
+  rm "$TARGET/companion"
+fi
+
 mkdir -p "$TARGET/companion"
 mkdir -p "$TARGET/dist"
 
