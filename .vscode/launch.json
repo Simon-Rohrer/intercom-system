@@ -1,0 +1,74 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Kesher Backend",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}/Kesher/backend/cmd/server",
+      "cwd": "${workspaceFolder}/Kesher/backend",
+      "presentation": {
+        "hidden": true
+      }
+    },
+    {
+      "name": "Kesher Frontend",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--open"
+      ],
+      "cwd": "${workspaceFolder}/Kesher/web",
+      "console": "integratedTerminal",
+      "presentation": {
+        "hidden": true
+      }
+    },
+    {
+      "type": "node-terminal",
+      "name": "Companion Backend",
+      "request": "launch",
+      "command": "yarn dev",
+      "cwd": "/Users/simonrohrer/Webseiten/companion",
+      "presentation": {
+        "hidden": true
+      }
+    },
+    {
+      "type": "node-terminal",
+      "name": "Companion Frontend",
+      "request": "launch",
+      "command": "yarn dev:webui",
+      "cwd": "/Users/simonrohrer/Webseiten/companion",
+      "serverReadyAction": {
+        "pattern": "Local:\\s+(https?://localhost:\\d+/?)",
+        "uriFormat": "%s",
+        "action": "openExternally"
+      },
+      "presentation": {
+        "hidden": true
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Start Kesher",
+      "configurations": [
+        "Kesher Backend",
+        "Kesher Frontend"
+      ]
+    },
+    {
+      "name": "Start Companion",
+      "configurations": [
+        "Companion Backend",
+        "Companion Frontend"
+      ]
+    }
+  ]
+}
