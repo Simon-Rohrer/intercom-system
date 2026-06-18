@@ -43,10 +43,12 @@ export function useAudioDevices({
     }) as MediaDeviceInfo;
 
   const refreshAudioDevices = useCallback(async () => {
-    const devices =
-      isNative && listNativeAudioDevices
-        ? (await listNativeAudioDevices()).map(mapNativeDevice)
-        : await navigator.mediaDevices.enumerateDevices();
+    let devices: MediaDeviceInfo[] = [];
+    if (isNative && listNativeAudioDevices) {
+      devices = (await listNativeAudioDevices()).map(mapNativeDevice);
+    } else if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+      devices = await navigator.mediaDevices.enumerateDevices();
+    }
     const inputs = devices.filter((d) => d.kind === "audioinput");
     const outputs = devices.filter((d) => d.kind === "audiooutput");
     setInputDevices(inputs);
@@ -69,6 +71,7 @@ export function useAudioDevices({
   useEffect(() => {
     void refreshAudioDevices();
     if (isNative) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.addEventListener) return;
     navigator.mediaDevices.addEventListener("devicechange", refreshAudioDevices);
     return () =>
       navigator.mediaDevices.removeEventListener(

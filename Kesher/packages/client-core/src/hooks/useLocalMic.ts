@@ -131,8 +131,12 @@ export function buildLowLatencyMicConstraintCandidates(
 
 export async function requestLowLatencyMicStream(
   deviceId: string,
-  getUserMedia: GetUserMediaFn = (constraints) =>
-    navigator.mediaDevices.getUserMedia(constraints),
+  getUserMedia: GetUserMediaFn = (constraints) => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return Promise.reject(new Error("navigator.mediaDevices.getUserMedia is not available (is this a secure context?)"));
+    }
+    return navigator.mediaDevices.getUserMedia(constraints);
+  }
 ): Promise<MediaStream> {
   const candidates = buildLowLatencyMicConstraintCandidates(deviceId);
   let lastError: unknown = null;
