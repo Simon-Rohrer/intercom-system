@@ -943,6 +943,30 @@ export function useIntercomSession({
     nativeAudio.setAudioGate(audioGateEnabled, audioGateThresholdDb);
   }, [nativeAudio, audioGateEnabled, audioGateThresholdDb]);
 
+  const nativeInputDeviceIdRef = useRef(selectedInputDeviceId);
+  useEffect(() => {
+    const previousDeviceId = nativeInputDeviceIdRef.current;
+    nativeInputDeviceIdRef.current = selectedInputDeviceId;
+    if (!nativeAudio?.isNative || previousDeviceId === selectedInputDeviceId) {
+      return;
+    }
+
+    const activeSocket = wsRef.current;
+    if (!activeSocket || activeSocket.readyState !== WebSocket.OPEN) return;
+
+    // The native capture device is bound when the engine answers the WebRTC
+    // offer. Restart the existing session so a newly selected USB interface
+    // is applied immediately instead of only after the next app launch.
+    void nativeAudio.stopEngine().finally(() => {
+      if (
+        wsRef.current === activeSocket &&
+        activeSocket.readyState === WebSocket.OPEN
+      ) {
+        activeSocket.close(1012, "audio input changed");
+      }
+    });
+  }, [nativeAudio, selectedInputDeviceId]);
+
   useEffect(() => {
     if (!nativeAudio?.isNative) return;
     if (!appDataRef.current) {
@@ -1112,6 +1136,7 @@ export function useIntercomSession({
   }
 
   function cleanupRealtimeResources() {
+    void nativeAudio?.stopEngine();
     mic.micReinitGenerationRef.current += 1;
     restoreAlwaysOnAfterDirectPttRef.current = false;
     if (wsRef.current) {

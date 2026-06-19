@@ -56,6 +56,8 @@ type LowLatencyAudioConstraints = MediaTrackConstraints & {
   latency?: number;
 };
 
+const preferredInterfaceChannelCount = 2;
+
 const lowLatencyAudioConstraintVariants: ReadonlyArray<
   ReadonlyArray<LowLatencyAudioConstraintKey>
 > = [
@@ -97,7 +99,11 @@ function buildLowLatencyAudioConstraints(
         constraints.autoGainControl = false;
         break;
       case "channelCount":
-        constraints.channelCount = 1;
+        // Prefer a stereo capture when the selected device exposes it. USB
+        // interfaces commonly present their first two physical inputs as one
+        // stereo device. The processing graph below mixes those channels to
+        // Kesher's mono send track.
+        constraints.channelCount = { ideal: preferredInterfaceChannelCount };
         break;
       case "latency":
         constraints.latency = 0;
@@ -111,18 +117,29 @@ export function buildLowLatencyMicConstraintCandidates(
   deviceId: string,
 ): MediaStreamConstraints[] {
   const candidates: MediaStreamConstraints[] = [];
-  for (const keys of lowLatencyAudioConstraintVariants) {
-    const audio = buildLowLatencyAudioConstraints(keys);
-    if (deviceId) {
+
+  // Keep trying the selected device while relaxing optional processing and
+  // latency constraints. Falling back to an unconstrained capture too early
+  // can silently reopen the computer's built-in microphone instead of the
+  // USB interface the user selected.
+  if (deviceId) {
+    for (const keys of lowLatencyAudioConstraintVariants) {
+      const audio = buildLowLatencyAudioConstraints(keys);
       candidates.push({
         audio: { ...audio, deviceId: { exact: deviceId } },
         video: false,
       });
+    }
+    for (const keys of lowLatencyAudioConstraintVariants) {
+      const audio = buildLowLatencyAudioConstraints(keys);
       candidates.push({
         audio: { ...audio, deviceId },
         video: false,
       });
     }
+  }
+  for (const keys of lowLatencyAudioConstraintVariants) {
+    const audio = buildLowLatencyAudioConstraints(keys);
     candidates.push({ audio, video: false });
   }
   candidates.push({ audio: true, video: false });
@@ -297,6 +314,32 @@ export function useLocalMic({
       const gain = ctx.createGain();
       gain.gain.value = effectiveInputGain(gainValue);
       const dest = ctx.createMediaStreamDestination();
+
+      // A browser microphone is usually mono, while USB audio interfaces
+      // often expose two discrete input channels. Explicitly sum every
+      // captured interface channel into the mono Kesher input so music on
+      // either physical input reaches the outgoing track.
+      const capturedChannelCount = Math.max(
+        1,
+        Math.min(
+          32,
+          Math.floor(sourceTrack.getSettings().channelCount ?? 1),
+        ),
+      );
+      let processorInput: AudioNode = src;
+      if (capturedChannelCount > 1) {
+        const splitter = ctx.createChannelSplitter(capturedChannelCount);
+        const monoMixer = ctx.createGain();
+        monoMixer.channelCount = 1;
+        monoMixer.channelCountMode = "explicit";
+        monoMixer.channelInterpretation = "discrete";
+        monoMixer.gain.value = 1 / capturedChannelCount;
+        src.connect(splitter);
+        for (let channel = 0; channel < capturedChannelCount; channel += 1) {
+          splitter.connect(monoMixer, channel, 0);
+        }
+        processorInput = monoMixer;
+      }
       
       gate.onaudioprocess = (event) => {
         const input = event.inputBuffer.getChannelData(0);
@@ -326,7 +369,7 @@ export function useLocalMic({
         gateEnvelopeRef.current = gateEnvelope;
       };
       
-      src.connect(gate);
+      processorInput.connect(gate);
       gate.connect(gain);
       gain.connect(dest);
       const processedTrack = dest.stream.getAudioTracks()[0];

@@ -12,6 +12,7 @@
 /// The JS side (WebView) keeps signaling (WebSocket) and PTT state.
 /// This module receives commands via Tauri IPC and emits events back.
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{SampleFormat, SupportedBufferSize};
 use opus::{Application, Channels, Decoder, Encoder};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -606,6 +607,15 @@ mod tests {
         let yaml = "app_addr: \":8080\"\n";
         assert!(parse_audio_profile_from_yaml(yaml).is_none());
     }
+
+    #[test]
+    fn downmixes_all_interface_inputs_to_mono() {
+        let stereo = [1.0, -1.0, 0.5, 0.25];
+        assert_eq!(
+            super::downmix_interface_input(&stereo, 2),
+            vec![0.0, 0.375]
+        );
+    }
 }
 
 // ── Device enumeration ────────────────────────────────────────────────────────
@@ -890,18 +900,22 @@ async fn capture_loop(
             Some(d) => d,
             None => { log::error!("[audio] capture: no input device"); return; }
         };
-        let config = cpal::StreamConfig {
-            channels: 1,
-            sample_rate: cpal::SampleRate(SAMPLE_RATE),
-            buffer_size: cpal::BufferSize::Fixed(OPUS_FRAME_SIZE as u32),
+        let config = match interface_input_stream_config(&device) {
+            Ok(config) => config,
+            Err(error) => {
+                log::error!("[audio] capture: {error}");
+                return;
+            }
         };
+        let input_channels = usize::from(config.channels);
         let (raw_tx, raw_rx) =
             std::sync::mpsc::sync_channel::<(Vec<f32>, Instant)>(CAPTURE_RAW_QUEUE_CAPACITY);
         let mut dropped_capture_frames: u32 = 0;
         let stream = match device.build_input_stream(
             &config,
             move |data: &[f32], _| {
-                if raw_tx.try_send((data.to_vec(), Instant::now())).is_err() {
+                let mono = downmix_interface_input(data, input_channels);
+                if raw_tx.try_send((mono, Instant::now())).is_err() {
                     dropped_capture_frames = dropped_capture_frames.saturating_add(1);
                     if dropped_capture_frames % DROP_LOG_EVERY == 0 {
                         log::warn!(
@@ -1456,6 +1470,48 @@ async fn playback_loop(
 }
 
 // ── Device helpers ────────────────────────────────────────────────────────────
+
+fn interface_input_stream_config(device: &cpal::Device) -> Result<cpal::StreamConfig, String> {
+    let mut supported = device
+        .supported_input_configs()
+        .map_err(|error| format!("could not read input formats: {error}"))?
+        .filter(|range| {
+            range.sample_format() == SampleFormat::F32
+                && range.min_sample_rate().0 <= SAMPLE_RATE
+                && range.max_sample_rate().0 >= SAMPLE_RATE
+        })
+        .collect::<Vec<_>>();
+
+    supported.sort_by_key(|range| range.channels());
+    let range = supported
+        .into_iter()
+        .next()
+        .ok_or_else(|| "no 48 kHz f32 input format supported by selected device".to_string())?;
+
+    let requested_buffer_size = OPUS_FRAME_SIZE as u32;
+    let buffer_size = match range.buffer_size() {
+        SupportedBufferSize::Range { min, max }
+            if requested_buffer_size >= *min && requested_buffer_size <= *max =>
+        {
+            cpal::BufferSize::Fixed(requested_buffer_size)
+        }
+        _ => cpal::BufferSize::Default,
+    };
+    let mut config = range
+        .with_sample_rate(cpal::SampleRate(SAMPLE_RATE))
+        .config();
+    config.buffer_size = buffer_size;
+    Ok(config)
+}
+
+fn downmix_interface_input(data: &[f32], channels: usize) -> Vec<f32> {
+    if channels <= 1 {
+        return data.to_vec();
+    }
+    data.chunks_exact(channels)
+        .map(|frame| frame.iter().copied().sum::<f32>() / channels as f32)
+        .collect()
+}
 
 fn find_input_device(host: &cpal::Host, id: Option<&str>) -> Option<cpal::Device> {
     match id {

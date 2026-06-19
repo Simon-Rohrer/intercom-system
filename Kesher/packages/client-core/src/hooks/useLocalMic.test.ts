@@ -14,18 +14,18 @@ describe("useLocalMic helpers", () => {
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
-        channelCount: 1,
+        channelCount: { ideal: 2 },
         latency: 0,
         deviceId: { exact: "mic-1" },
       },
       video: false,
     });
-    expect(candidates[1]).toEqual({
+    expect(candidates[5]).toEqual({
       audio: {
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
-        channelCount: 1,
+        channelCount: { ideal: 2 },
         latency: 0,
         deviceId: "mic-1",
       },
@@ -37,14 +37,14 @@ describe("useLocalMic helpers", () => {
     });
   });
 
-  it("falls back through less strict constraint candidates until capture succeeds", async () => {
+  it("keeps the selected device while relaxing capture constraints", async () => {
     const stream = { getTracks: () => [] } as unknown as MediaStream;
     const getUserMedia = vi
       .fn<
         (constraints: MediaStreamConstraints) => Promise<MediaStream>
       >()
-      .mockRejectedValueOnce(new Error("exact device unsupported"))
-      .mockRejectedValueOnce(new Error("deviceId ideal unsupported"))
+      .mockRejectedValueOnce(new Error("latency constraint unsupported"))
+      .mockRejectedValueOnce(new Error("channel constraint unsupported"))
       .mockResolvedValue(stream);
 
     const result = await requestLowLatencyMicStream("mic-1", getUserMedia);
@@ -56,7 +56,7 @@ describe("useLocalMic helpers", () => {
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
-        channelCount: 1,
+        channelCount: { ideal: 2 },
         latency: 0,
         deviceId: { exact: "mic-1" },
       },
@@ -67,8 +67,7 @@ describe("useLocalMic helpers", () => {
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
-        channelCount: 1,
-        latency: 0,
+        deviceId: { exact: "mic-1" },
       },
       video: false,
     });
