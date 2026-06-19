@@ -255,6 +255,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   const [streamDeckWebHidSupported] = useState(() => isWebHidSupported());
   const [streamDeckWebHidActive, setStreamDeckWebHidActive] = useState(false);
   const [streamDeckWebHidBusy, setStreamDeckWebHidBusy] = useState(false);
+  const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
   const isUserSettingsOpenRef = useRef(isUserSettingsOpen);
   useEffect(() => {
     isUserSettingsOpenRef.current = isUserSettingsOpen;
@@ -853,6 +854,65 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     localStorage.removeItem(tokenStorageKey);
     void loadPublicBootstrap();
   }, [loadPublicBootstrap]);
+
+  // ── Auto Login via URL ──
+  useEffect(() => {
+    if (autoLoginAttempted || token || !publicData) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const autoLogin =
+      params.get("autoLogin") === "1" || params.get("autoLogin") === "true";
+    if (!autoLogin) {
+      setAutoLoginAttempted(true);
+      return;
+    }
+
+    const paramUsername = params.get("username") || "";
+    const paramRoleName = params.get("roleName") || "";
+
+    let targetRoleId = "";
+    if (paramRoleName) {
+      const role = publicData.roles.find(
+        (r) => r.name.toLowerCase() === paramRoleName.toLowerCase(),
+      );
+      if (role) {
+        targetRoleId = role.id;
+      }
+    }
+
+    if (paramUsername && targetRoleId) {
+      settings.setUsername(paramUsername);
+      settings.setRoleID(targetRoleId);
+
+      login(paramUsername, targetRoleId)
+        .then((res) => {
+          if ("requiresTakeover" in res) {
+            setOperatorLoginError("Auto-login failed: Role is already active.");
+            return;
+          }
+          sessionStorage.setItem(tokenStorageKey, res.token);
+          setShowBirthdayGreeting(Boolean(res.showBirthdayGreeting));
+          setBirthdayGreetingUsername(res.user.username || paramUsername);
+          setToken(res.token);
+        })
+        .catch((e) => {
+          setOperatorLoginError(
+            e instanceof Error ? e.message : "Auto-login failed.",
+          );
+        })
+        .finally(() => {
+          setAutoLoginAttempted(true);
+        });
+    } else {
+      setAutoLoginAttempted(true);
+      if (paramRoleName && !targetRoleId) {
+        setOperatorLoginError(
+          `Auto-login failed: Role "${paramRoleName}" not found.`,
+        );
+      }
+    }
+  }, [publicData, token, autoLoginAttempted, settings]);
+
 
   // ── Bootstrap on login ──
   useEffect(() => {

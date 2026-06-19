@@ -53,11 +53,24 @@ export function useAudioDevices({
     const outputs = devices.filter((d) => d.kind === "audiooutput");
     setInputDevices(inputs);
     setOutputDevices(outputs);
+    
+    const params = new URLSearchParams(window.location.search);
+    const audioInputMatch = params.get("audioInputMatch")?.toLowerCase();
+    const audioOutputMatch = params.get("audioOutputMatch")?.toLowerCase();
+
     setSelectedInputDeviceId((prev) => {
+      if (audioInputMatch) {
+        const match = inputs.find((d) => d.label.toLowerCase().includes(audioInputMatch));
+        if (match) return match.deviceId;
+      }
       if (prev && inputs.some((d) => d.deviceId === prev)) return prev;
       return inputs[0]?.deviceId || "";
     });
     setSelectedOutputDeviceId((prev) => {
+      if (audioOutputMatch) {
+        const match = outputs.find((d) => d.label.toLowerCase().includes(audioOutputMatch));
+        if (match) return match.deviceId;
+      }
       if (prev && outputs.some((d) => d.deviceId === prev)) return prev;
       return "";
     });
