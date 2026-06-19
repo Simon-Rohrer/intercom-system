@@ -13,7 +13,6 @@ backend/bin
 backend/certs/
 backend/app
 backend/logs/
-backend/go.sum
 backend/vendor/
 web/tsconfig.tsbuildinfo
 web/test-results/
