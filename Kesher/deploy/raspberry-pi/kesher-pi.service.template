@@ -1,0 +1,19 @@
+[Unit]
+Description=Kesher Raspberry Pi Intercom Station
+Wants=network-online.target
+After=network-online.target graphical.target sound.target
+
+[Service]
+Type=simple
+User=__KESHER_USER__
+Environment=HOME=__KESHER_HOME__
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=__KESHER_HOME__/.Xauthority
+Environment=XDG_RUNTIME_DIR=/run/user/__KESHER_UID__
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/__KESHER_UID__/bus
+ExecStart=/usr/bin/python3 /opt/kesher-pi/kesher-pi-launcher.py --config /etc/kesher/raspberry-pis.json
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical.target

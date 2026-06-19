@@ -110,6 +110,15 @@ The backend must serve the UI itself (`make run-backend` or the embedded binary)
 Desktop proxy source, run/build instructions, and release artifacts are in:
 `https://github.com/KesherCom/kesher-desktop-proxy`
 
+## Raspberry Pi kiosk stations
+
+Fixed Raspberry Pi intercom stations can be configured from one shared JSON
+file. On boot, each Pi identifies its entry by IP address, waits for the Kesher
+server, opens Chromium in kiosk mode, selects matching USB audio devices, and
+logs in with its configured name and role ID.
+
+Setup files and instructions: [Raspberry Pi Kiosk Stations](docs/RASPBERRY-PI-KIOSK.md)
+
 ### macOS desktop release signing (maintainers)
 
 The GitHub workflow supports two modes:

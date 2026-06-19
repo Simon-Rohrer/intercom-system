@@ -51,6 +51,7 @@ import {
 } from "./lib/streamDeckHardwareFeedback";
 import { withResolvedStreamDeckButtonLabel } from "./lib/streamDeckLabels";
 import { sortDirectUsersByRoleAndUsername } from "./lib/users";
+import { resolveAutoLoginConfiguration } from "./lib/autoLogin";
 import type {
   Bootstrap,
   LoginConflict,
@@ -859,55 +860,51 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   useEffect(() => {
     if (autoLoginAttempted || token || !publicData) return;
 
-    const params = new URLSearchParams(window.location.search);
-    const autoLogin =
-      params.get("autoLogin") === "1" || params.get("autoLogin") === "true";
-    if (!autoLogin) {
+    const autoLoginConfig = resolveAutoLoginConfiguration(
+      window.location.search,
+      publicData.roles,
+    );
+    if (!autoLoginConfig.enabled) {
       setAutoLoginAttempted(true);
       return;
     }
 
-    const paramUsername = params.get("username") || "";
-    const paramRoleName = params.get("roleName") || "";
-
-    let targetRoleId = "";
-    if (paramRoleName) {
-      const role = publicData.roles.find(
-        (r) => r.name.toLowerCase() === paramRoleName.toLowerCase(),
-      );
-      if (role) {
-        targetRoleId = role.id;
-      }
-    }
+    const paramUsername = autoLoginConfig.username;
+    const targetRoleId = autoLoginConfig.roleId;
 
     if (paramUsername && targetRoleId) {
       settings.setUsername(paramUsername);
       settings.setRoleID(targetRoleId);
 
-      login(paramUsername, targetRoleId)
-        .then((res) => {
+      void (async () => {
+        try {
+          let res = await login(paramUsername, targetRoleId);
           if ("requiresTakeover" in res) {
-            setOperatorLoginError("Auto-login failed: Role is already active.");
-            return;
+            if (!autoLoginConfig.allowTakeover) {
+              setOperatorLoginError(
+                "Auto-login failed: Role is already active.",
+              );
+              return;
+            }
+            res = await loginTakeover(paramUsername, targetRoleId);
           }
           sessionStorage.setItem(tokenStorageKey, res.token);
           setShowBirthdayGreeting(Boolean(res.showBirthdayGreeting));
           setBirthdayGreetingUsername(res.user.username || paramUsername);
           setToken(res.token);
-        })
-        .catch((e) => {
+        } catch (e) {
           setOperatorLoginError(
             e instanceof Error ? e.message : "Auto-login failed.",
           );
-        })
-        .finally(() => {
+        } finally {
           setAutoLoginAttempted(true);
-        });
+        }
+      })();
     } else {
       setAutoLoginAttempted(true);
-      if (paramRoleName && !targetRoleId) {
+      if (autoLoginConfig.requestedRole && !targetRoleId) {
         setOperatorLoginError(
-          `Auto-login failed: Role "${paramRoleName}" not found.`,
+          `Auto-login failed: Role "${autoLoginConfig.requestedRole}" not found.`,
         );
       }
     }
