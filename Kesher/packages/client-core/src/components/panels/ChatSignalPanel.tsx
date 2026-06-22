@@ -236,15 +236,10 @@ export function ChatSignalPanel({
         <span>Send message to</span>
         <select
           aria-label="Chat destination"
-          className={
-            selectedTarget === "global:global" ? "chat-target-global" : ""
-          }
           value={selectedTarget}
           onChange={(event) => setSelectedTarget(event.target.value)}
         >
-          <option className="chat-target-global-option" value="global:global">
-            Global Chat
-          </option>
+          <option value="global:global">Global Chat</option>
           {rooms.length > 0 ? (
             <optgroup label="Party Lines">
               {rooms.map((room) => (
@@ -361,6 +356,12 @@ export function ChatSignalPanel({
                     entry.scope === "direct" ? "chat-feed-direct" : "",
                     entry.scope === "global" ? "chat-feed-global" : "",
                     entry.self ? "self" : "",
+                    showAckOption &&
+                    !entry.self &&
+                    entry.ackRequired &&
+                    !entry.acked
+                      ? "chat-feed-ack-required"
+                      : "",
                   ]
                     .filter(Boolean)
                     .join(" ")

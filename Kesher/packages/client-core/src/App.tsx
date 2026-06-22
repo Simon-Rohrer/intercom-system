@@ -263,6 +263,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   const [streamDeckWebHidActive, setStreamDeckWebHidActive] = useState(false);
   const [streamDeckWebHidBusy, setStreamDeckWebHidBusy] = useState(false);
   const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
+  const autoLoginInFlightRef = useRef(false);
   const isUserSettingsOpenRef = useRef(isUserSettingsOpen);
   useEffect(() => {
     isUserSettingsOpenRef.current = isUserSettingsOpen;
@@ -933,7 +934,14 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
   // ── Auto Login via URL ──
   useEffect(() => {
-    if (autoLoginAttempted || token || !publicData) return;
+    if (
+      autoLoginAttempted ||
+      autoLoginInFlightRef.current ||
+      token ||
+      !publicData
+    ) {
+      return;
+    }
 
     const autoLoginConfig = resolveAutoLoginConfiguration(
       window.location.search,
@@ -948,6 +956,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     const targetRoleId = autoLoginConfig.roleId;
 
     if (paramUsername && targetRoleId) {
+      // Mark the attempt before changing settings. Both setters trigger a new
+      // render; without this synchronous guard, multiple concurrent takeover
+      // requests can revoke each other's newly created session.
+      autoLoginInFlightRef.current = true;
+      setAutoLoginAttempted(true);
       settings.setUsername(paramUsername);
       settings.setRoleID(targetRoleId);
 
@@ -972,7 +985,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
             e instanceof Error ? e.message : "Auto-login failed.",
           );
         } finally {
-          setAutoLoginAttempted(true);
+          autoLoginInFlightRef.current = false;
         }
       })();
     } else {
@@ -983,7 +996,13 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         );
       }
     }
-  }, [publicData, token, autoLoginAttempted, settings]);
+  }, [
+    publicData,
+    token,
+    autoLoginAttempted,
+    settings.setUsername,
+    settings.setRoleID,
+  ]);
 
 
   // ── Bootstrap on login ──

@@ -286,16 +286,6 @@ button {
   width: 100%;
   min-height: 42px;
 }
-.chat-target-control select.chat-target-global {
-  border-color: rgba(242, 201, 76, 0.78);
-  background-color: rgba(242, 201, 76, 0.12);
-  color: #ffe58a;
-  box-shadow: 0 0 0 1px rgba(242, 201, 76, 0.12);
-}
-.chat-target-global-option {
-  color: #8a6500;
-  font-weight: 800;
-}
 
 /* ===== Chat Actions Row (ACK + Send) ===== */
 .chat-actions {
@@ -425,8 +415,33 @@ button {
 .chat-feed-list li.chat-feed-global {
   border-left: 3px solid #f2c94c;
   border-radius: 7px;
-  padding-left: 0.55rem;
-  background: linear-gradient(90deg, rgba(242, 201, 76, 0.08), transparent 70%);
+  padding: 0.45rem 0.55rem;
+  background: linear-gradient(90deg, rgba(242, 201, 76, 0.16), rgba(242, 201, 76, 0.05));
+}
+.chat-feed-list li.chat-feed-ack-required {
+  position: relative;
+  z-index: 1;
+  border-radius: 7px;
+  transform-origin: center;
+  animation: chat-feed-important-pulse 1.35s ease-in-out infinite;
+  will-change: transform, box-shadow;
+}
+@keyframes chat-feed-important-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(242, 201, 76, 0.1);
+  }
+  50% {
+    transform: scale(1.025);
+    box-shadow: 0 0 0 4px rgba(242, 201, 76, 0.18);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-feed-list li.chat-feed-ack-required {
+    animation: none;
+    box-shadow: 0 0 0 2px rgba(242, 201, 76, 0.28);
+  }
 }
 /* ===== ACK Status Badges ===== */
 .chat-feed-ack-status {
@@ -4034,7 +4049,9 @@ button.secondary {
   .station-shell {
     display: flex;
     flex-direction: column;
-    padding-bottom: calc(13rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(
+      clamp(70px, 19vw, 110px) + 3rem + env(safe-area-inset-bottom, 0px)
+    );
   }
   .station-header {
     position: static;
@@ -4084,8 +4101,8 @@ button.secondary {
   .station-ptt {
     width: 100%;
     min-width: 0;
-    height: clamp(140px, 38vw, 220px);
-    min-height: 140px;
+    height: clamp(70px, 19vw, 110px);
+    min-height: 70px;
     border-radius: 16px;
   }
   .station-always-on {
@@ -4094,13 +4111,13 @@ button.secondary {
   .station-reply {
     width: 100%;
     min-width: 0;
-    height: clamp(140px, 38vw, 220px);
-    min-height: 140px;
+    height: clamp(70px, 19vw, 110px);
+    min-height: 70px;
     border-radius: 16px;
   }
   .station-controls button {
     min-width: 0;
-    min-height: 140px;
+    min-height: 70px;
   }
   .station-reply small {
     text-align: center;

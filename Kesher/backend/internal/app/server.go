@@ -1977,6 +1977,25 @@ func (s *Server) companionHeldTarget(key string) (string, bool) {
 	return targetID, true
 }
 
+// refreshCompanionIncomingCallState synchronizes the short-lived hub signal into
+// the persistent Companion call latch. The latch remains active until the call
+// is acknowledged, so every Stream Deck slot can keep showing the alert even
+// after the caller releases the call button.
+func (s *Server) refreshCompanionIncomingCallState(username string) bool {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return false
+	}
+	if signalFrom, _, signalScope, signalSourceType, signalSourceID, signalActive := s.companionIncomingSignal(username); signalActive {
+		s.setCompanionPendingIncomingCall(username, true)
+		s.setCompanionPendingIncomingCaller(username, signalFrom)
+		s.setCompanionPendingIncomingCallScope(username, signalScope)
+		s.setCompanionPendingIncomingCallSource(username, signalSourceType, signalSourceID)
+		return true
+	}
+	return s.hasCompanionPendingIncomingCall(username)
+}
+
 func companionIncomingSourceMatchesButton(action *StreamDeckButtonAction, sourceType, sourceID string) bool {
 	if action == nil {
 		return false
@@ -2013,6 +2032,14 @@ func (s *Server) selectListenCompanionHoldDelay() time.Duration {
 
 func (s *Server) companionButtonSnapshotState(ctx context.Context, roleID string, pageNumber int, username string, presence PresenceState, button StreamDeckButtonConfig) ButtonState {
 	state := ButtonState{State: "IDLE"}
+	username = strings.TrimSpace(username)
+	hasPendingCall := s.refreshCompanionIncomingCallState(username)
+	if hasPendingCall {
+		// Effect value 3 maps to the yellow blink overlay in image-effect-map.json.
+		// Apply it before the empty-slot return so all 15 universal Companion slots
+		// flash, including unassigned Stream Deck keys.
+		state.EffectValue = companionIncomingCallEffectValue
+	}
 	if button.Action == nil || button.Action.Type == StreamDeckActionTypeNone {
 		return state
 	}
@@ -2074,16 +2101,8 @@ func (s *Server) companionButtonSnapshotState(ctx context.Context, roleID string
 	}
 
 	if action.Type == StreamDeckActionTypeReplyToCaller {
-		hasPendingDirectCall := s.hasCompanionPendingIncomingCall(strings.TrimSpace(username)) && s.companionPendingIncomingCallScope(strings.TrimSpace(username)) == "direct"
-		if signalFrom, _, signalScope, signalSourceType, signalSourceID, signalActive := s.companionIncomingSignal(strings.TrimSpace(username)); signalActive {
-			s.setCompanionPendingIncomingCall(strings.TrimSpace(username), true)
-			s.setCompanionPendingIncomingCaller(strings.TrimSpace(username), signalFrom)
-			s.setCompanionPendingIncomingCallScope(strings.TrimSpace(username), signalScope)
-			s.setCompanionPendingIncomingCallSource(strings.TrimSpace(username), signalSourceType, signalSourceID)
-			hasPendingDirectCall = signalScope == "direct"
-		}
+		hasPendingDirectCall := hasPendingCall && s.companionPendingIncomingCallScope(username) == "direct"
 		if hasPendingDirectCall {
-			state.EffectValue = companionIncomingCallEffectValue
 			if state.State != "TALK" {
 				blinkOn := (time.Now().UnixMilli()/companionIncomingCallBlinkInterval.Milliseconds())%2 == 0
 				if blinkOn {
@@ -2096,22 +2115,12 @@ func (s *Server) companionButtonSnapshotState(ctx context.Context, roleID string
 	}
 
 	if action.Type == StreamDeckActionTypeIncomingCall {
-		hasPendingCall := s.hasCompanionPendingIncomingCall(strings.TrimSpace(username))
-		if signalFrom, _, signalScope, signalSourceType, signalSourceID, signalActive := s.companionIncomingSignal(strings.TrimSpace(username)); signalActive {
-			hasPendingCall = true
-			s.setCompanionPendingIncomingCall(strings.TrimSpace(username), true)
-			s.setCompanionPendingIncomingCaller(strings.TrimSpace(username), signalFrom)
-			s.setCompanionPendingIncomingCallScope(strings.TrimSpace(username), signalScope)
-			s.setCompanionPendingIncomingCallSource(strings.TrimSpace(username), signalSourceType, signalSourceID)
-			state.Subtitle = strings.TrimSpace(signalFrom)
-		}
 		if strings.TrimSpace(state.Subtitle) == "" {
-			if caller, ok := s.companionPendingIncomingCaller(strings.TrimSpace(username)); ok {
+			if caller, ok := s.companionPendingIncomingCaller(username); ok {
 				state.Subtitle = caller
 			}
 		}
 		if hasPendingCall {
-			state.EffectValue = companionIncomingCallEffectValue
 			blinkOn := (time.Now().UnixMilli()/companionIncomingCallBlinkInterval.Milliseconds())%2 == 0
 			if blinkOn {
 				state.State = "TALK"
@@ -2121,20 +2130,8 @@ func (s *Server) companionButtonSnapshotState(ctx context.Context, roleID string
 		}
 	}
 
-	hasPendingSourceCall := s.hasCompanionPendingIncomingCall(strings.TrimSpace(username))
-	pendingSourceType, pendingSourceID, hasPendingSource := s.companionPendingIncomingCallSource(strings.TrimSpace(username))
-	if signalFrom, _, signalScope, signalSourceType, signalSourceID, signalActive := s.companionIncomingSignal(strings.TrimSpace(username)); signalActive {
-		s.setCompanionPendingIncomingCall(strings.TrimSpace(username), true)
-		s.setCompanionPendingIncomingCaller(strings.TrimSpace(username), signalFrom)
-		s.setCompanionPendingIncomingCallScope(strings.TrimSpace(username), signalScope)
-		s.setCompanionPendingIncomingCallSource(strings.TrimSpace(username), signalSourceType, signalSourceID)
-		hasPendingSourceCall = true
-		pendingSourceType = signalSourceType
-		pendingSourceID = signalSourceID
-		hasPendingSource = signalSourceType != "" && signalSourceID != ""
-	}
-	if hasPendingSourceCall && hasPendingSource && companionIncomingSourceMatchesButton(action, pendingSourceType, pendingSourceID) {
-		state.EffectValue = companionIncomingCallEffectValue
+	pendingSourceType, pendingSourceID, hasPendingSource := s.companionPendingIncomingCallSource(username)
+	if hasPendingCall && hasPendingSource && companionIncomingSourceMatchesButton(action, pendingSourceType, pendingSourceID) {
 		blinkOn := (time.Now().UnixMilli()/companionIncomingCallBlinkInterval.Milliseconds())%2 == 0
 		if blinkOn {
 			state.State = "TALK"

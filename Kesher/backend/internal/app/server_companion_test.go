@@ -146,7 +146,7 @@ func TestCompanionButtonSnapshotStateReplyToCallerSetsBlinkEffectOnIncomingSigna
 	}
 }
 
-func TestCompanionButtonSnapshotStateReplyToCallerDoesNotBlinkOnRoomCall(t *testing.T) {
+func TestCompanionButtonSnapshotStateReplyToCallerGetsGlobalAlertOnRoomCall(t *testing.T) {
 	s := newCompanionTestServer(t)
 	now := time.Now()
 	s.hub.Add(&client{
@@ -171,8 +171,28 @@ func TestCompanionButtonSnapshotStateReplyToCallerDoesNotBlinkOnRoomCall(t *test
 	}
 
 	state := s.companionButtonSnapshotState(context.Background(), "role_a", 0, "operator", PresenceState{}, button)
-	if state.EffectValue != 0 {
-		t.Fatalf("expected reply-to-caller to ignore room call blink, got effectValue=%d", state.EffectValue)
+	if state.EffectValue != companionIncomingCallEffectValue {
+		t.Fatalf("expected global call effect value %d, got %d", companionIncomingCallEffectValue, state.EffectValue)
+	}
+	if state.State != "IDLE" {
+		t.Fatalf("expected room call not to activate direct reply state, got %q", state.State)
+	}
+}
+
+func TestCompanionButtonSnapshotStateAppliesIncomingCallEffectToEverySlot(t *testing.T) {
+	s := newCompanionTestServer(t)
+	s.setCompanionPendingIncomingCall("operator", true)
+
+	buttons := []StreamDeckButtonConfig{
+		{Index: 0},
+		{Index: 1, Action: &StreamDeckButtonAction{Type: StreamDeckActionTypeMuteToggle}},
+		{Index: 2, Action: &StreamDeckButtonAction{Type: StreamDeckActionTypePageUp}},
+	}
+	for _, button := range buttons {
+		state := s.companionButtonSnapshotState(context.Background(), "role_a", 0, "operator", PresenceState{}, button)
+		if state.EffectValue != companionIncomingCallEffectValue {
+			t.Fatalf("expected slot %d to receive call effect value %d, got %d", button.Index, companionIncomingCallEffectValue, state.EffectValue)
+		}
 	}
 }
 

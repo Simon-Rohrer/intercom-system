@@ -66,15 +66,43 @@ describe("ChatSignalPanel", () => {
       name: "Chat destination",
     });
     expect(destination).toHaveValue("global:global");
-    expect(destination).toHaveClass("chat-target-global");
+    expect(destination).not.toHaveClass("chat-target-global");
 
     await user.selectOptions(destination, "room:foh");
-    expect(destination).not.toHaveClass("chat-target-global");
     await user.click(screen.getByRole("button", { name: "Send chat" }));
 
     expect(onSendChat).toHaveBeenCalledWith(
       { scope: "room", targetType: "room", targetId: "foh" },
       false,
+    );
+  });
+
+  it("highlights global messages instead of the destination dropdown", () => {
+    render(
+      <ChatSignalPanel
+        message=""
+        onMessageChange={vi.fn()}
+        onSendChat={vi.fn()}
+        onAcknowledge={vi.fn()}
+        chatMessages={[
+          {
+            from: "Sarah",
+            fromUserId: "u1",
+            body: "Global message",
+            at: "10:00",
+            room: "Global Chat",
+            self: false,
+            scope: "global",
+            targetId: "global",
+            targetType: "global",
+          },
+        ]}
+        {...defaultProps}
+      />,
+    );
+
+    expect(screen.getByText("Global message").closest("li")).toHaveClass(
+      "chat-feed-global",
     );
   });
 
@@ -470,6 +498,9 @@ describe("ChatSignalPanel", () => {
       />,
     );
 
+    expect(screen.getByText("Standby").closest("li")).toHaveClass(
+      "chat-feed-ack-required",
+    );
     await user.click(
       screen.getByRole("button", { name: "Als gelesen markieren" }),
     );
