@@ -7,6 +7,7 @@ import {
   buildAbsoluteApiUrl,
   buildWebSocketUrl,
   createRole,
+  duplicateRole,
   exportConfiguration,
   getPublicBootstrap,
   getStreamDeckSettings,
@@ -84,6 +85,31 @@ const server = setupServer(
       return new HttpResponse("invalid", { status: 400 });
     return new HttpResponse(null, { status: 204 });
   }),
+  http.post(
+    "http://localhost/api/admin/roles/op/duplicate",
+    async ({ request }) => {
+      const auth = request.headers.get("authorization");
+      const adminPin = request.headers.get("x-admin-pin");
+      const body = (await request.json()) as {
+        id?: string;
+        name?: string;
+        defaultVoiceMode?: string;
+      };
+      if (!auth) return new HttpResponse("unauthorized", { status: 401 });
+      if (!adminPin) return new HttpResponse("forbidden", { status: 403 });
+      if (body.id !== "op-2" || body.name !== "Operator 2") {
+        return new HttpResponse("invalid duplicate values", { status: 400 });
+      }
+      return HttpResponse.json(
+        {
+          id: body.id,
+          name: body.name,
+          defaultVoiceMode: body.defaultVoiceMode,
+        },
+        { status: 201 },
+      );
+    },
+  ),
   http.get("http://localhost/api/admin/configuration-export", () => {
     return HttpResponse.json({
       meta: {
@@ -315,6 +341,22 @@ describe("api helpers", () => {
     await expect(
       createRole("token-123", "1234", { id: "op", name: "Operator" }),
     ).rejects.toThrow("role exists");
+  });
+
+  it("duplicates a role", async () => {
+    await expect(
+      duplicateRole("token-123", "1234", "op", {
+        id: "op-2",
+        name: "Operator 2",
+        defaultRoomId: "",
+        defaultVoiceMode: "ptt",
+        defaultSimpleView: false,
+      }),
+    ).resolves.toEqual({
+      id: "op-2",
+      name: "Operator 2",
+      defaultVoiceMode: "ptt",
+    });
   });
 
   it("loads configuration export documents", async () => {

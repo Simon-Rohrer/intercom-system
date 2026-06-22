@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1610,6 +1611,180 @@ func (s *Store) CreateRole(ctx context.Context, id, name, defaultRoomID, default
 	s.resetPolicyCaches()
 	return nil
 }
+
+func splitRoleNameSequence(name string) (string, int) {
+	name = strings.TrimSpace(name)
+	separator := strings.LastIndexAny(name, " \t")
+	if separator > 0 {
+		base := strings.TrimSpace(name[:separator])
+		suffix := strings.TrimSpace(name[separator+1:])
+		if number, err := strconv.Atoi(suffix); err == nil && number > 0 && base != "" {
+			return base, number
+		}
+	}
+	return name, 1
+}
+
+func duplicateRoleIDBase(id string) string {
+	id = strings.TrimSpace(id)
+	end := len(id)
+	for end > 0 && id[end-1] >= '0' && id[end-1] <= '9' {
+		end--
+	}
+	if end < len(id) {
+		if base := strings.TrimRight(strings.TrimSpace(id[:end]), "-_"); base != "" {
+			return base
+		}
+	}
+	return id
+}
+
+func nextDuplicateRoleIdentity(source Role, existing []Role) (string, string) {
+	nameBase, _ := splitRoleNameSequence(source.Name)
+	idBase := duplicateRoleIDBase(source.ID)
+	usedNames := make(map[string]struct{}, len(existing))
+	usedIDs := make(map[string]struct{}, len(existing))
+	nextNumber := 2
+	for _, role := range existing {
+		usedNames[strings.ToLower(strings.TrimSpace(role.Name))] = struct{}{}
+		usedIDs[strings.ToLower(strings.TrimSpace(role.ID))] = struct{}{}
+		base, number := splitRoleNameSequence(role.Name)
+		if strings.EqualFold(base, nameBase) && number >= nextNumber {
+			nextNumber = number + 1
+		}
+	}
+	for {
+		name := fmt.Sprintf("%s %d", nameBase, nextNumber)
+		id := fmt.Sprintf("%s-%d", idBase, nextNumber)
+		_, nameUsed := usedNames[strings.ToLower(name)]
+		_, idUsed := usedIDs[strings.ToLower(id)]
+		if !nameUsed && !idUsed {
+			return id, name
+		}
+		nextNumber++
+	}
+}
+
+// DuplicateRole creates a complete role copy in one transaction. Runtime
+// users and published Companion profiles are intentionally not copied.
+func (s *Store) DuplicateRole(ctx context.Context, sourceRoleID string, requested *Role) (Role, error) {
+	sourceRoleID = strings.TrimSpace(sourceRoleID)
+	if sourceRoleID == "" {
+		return Role{}, ErrInvalidInput
+	}
+	if requested != nil {
+		requested.ID = strings.TrimSpace(requested.ID)
+		requested.Name = strings.TrimSpace(requested.Name)
+		requested.DefaultRoomID = strings.TrimSpace(requested.DefaultRoomID)
+		requested.DefaultVoiceMode = strings.TrimSpace(requested.DefaultVoiceMode)
+		if requested.ID == "" || requested.Name == "" {
+			return Role{}, ErrInvalidInput
+		}
+		if err := s.validateRoleDefaults(ctx, requested.DefaultRoomID, requested.DefaultVoiceMode); err != nil {
+			return Role{}, err
+		}
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Role{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var source Role
+	var defaultRoomID sql.NullString
+	var defaultVoiceMode sql.NullString
+	var defaultSimpleView int
+	err = tx.QueryRowContext(ctx, `SELECT id, name, default_room_id, default_voice_mode, default_simple_view FROM roles WHERE id = ?`, sourceRoleID).
+		Scan(&source.ID, &source.Name, &defaultRoomID, &defaultVoiceMode, &defaultSimpleView)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Role{}, ErrNotFound
+	}
+	if err != nil {
+		return Role{}, err
+	}
+	if defaultRoomID.Valid {
+		source.DefaultRoomID = defaultRoomID.String
+	}
+	if defaultVoiceMode.Valid {
+		source.DefaultVoiceMode = defaultVoiceMode.String
+	}
+	source.DefaultSimpleView = defaultSimpleView != 0
+
+	rows, err := tx.QueryContext(ctx, `SELECT id, name FROM roles ORDER BY name`)
+	if err != nil {
+		return Role{}, err
+	}
+	existing := make([]Role, 0)
+	for rows.Next() {
+		var role Role
+		if err := rows.Scan(&role.ID, &role.Name); err != nil {
+			_ = rows.Close()
+			return Role{}, err
+		}
+		existing = append(existing, role)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return Role{}, err
+	}
+	if err := rows.Close(); err != nil {
+		return Role{}, err
+	}
+
+	duplicateID, duplicateName := nextDuplicateRoleIdentity(source, existing)
+	duplicate := Role{
+		ID:                duplicateID,
+		Name:              duplicateName,
+		DefaultRoomID:     source.DefaultRoomID,
+		DefaultVoiceMode:  source.DefaultVoiceMode,
+		DefaultSimpleView: source.DefaultSimpleView,
+	}
+	if requested != nil {
+		duplicate = *requested
+	}
+	duplicateSimpleView := 0
+	if duplicate.DefaultSimpleView {
+		duplicateSimpleView = 1
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO roles (id, name, default_room_id, default_voice_mode, default_simple_view) VALUES (?, ?, ?, ?, ?)`,
+		duplicate.ID, duplicate.Name, nullableString(duplicate.DefaultRoomID), nullableString(duplicate.DefaultVoiceMode), duplicateSimpleView); err != nil {
+		if isUniqueConstraintErr(err) {
+			return Role{}, ErrConflict
+		}
+		return Role{}, err
+	}
+
+	copyRoleMappings := []string{
+		`INSERT INTO room_sender_roles (room_id, role_id) SELECT room_id, ? FROM room_sender_roles WHERE role_id = ?`,
+		`INSERT INTO room_receiver_roles (room_id, role_id) SELECT room_id, ? FROM room_receiver_roles WHERE role_id = ?`,
+		`INSERT INTO room_forced_listen_roles (room_id, role_id) SELECT room_id, ? FROM room_forced_listen_roles WHERE role_id = ?`,
+		`INSERT INTO broadcast_group_roles (broadcast_group_id, role_id) SELECT broadcast_group_id, ? FROM broadcast_group_roles WHERE role_id = ?`,
+	}
+	for _, statement := range copyRoleMappings {
+		if _, err := tx.ExecContext(ctx, statement, duplicate.ID, source.ID); err != nil {
+			return Role{}, err
+		}
+	}
+
+	nowUnix := time.Now().Unix()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO role_stream_deck_settings (role_id, settings_json, created_at, updated_at)
+		SELECT ?, settings_json, ?, ? FROM role_stream_deck_settings WHERE role_id = ?`, duplicate.ID, nowUnix, nowUnix, source.ID); err != nil {
+		return Role{}, err
+	}
+	nowUnixMilli := time.Now().UnixMilli()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO companion_role_pages (role_id, page_number, updated_at)
+		SELECT ?, page_number, ? FROM companion_role_pages WHERE role_id = ?`, duplicate.ID, nowUnixMilli, source.ID); err != nil {
+		return Role{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Role{}, err
+	}
+	s.resetPolicyCaches()
+	return duplicate, nil
+}
+
 func (s *Store) UpdateRole(ctx context.Context, id, name, defaultRoomID, defaultVoiceMode string, defaultSimpleView bool) error {
 	id = strings.TrimSpace(id)
 	name = strings.TrimSpace(name)

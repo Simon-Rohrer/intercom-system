@@ -1657,6 +1657,186 @@ button {
   min-width: 88px;
 }
 
+.admin-list li.admin-role-list-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.admin-role-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-role-duplicate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.admin-role-duplicate svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.admin-role-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: rgba(2, 6, 12, 0.78);
+  backdrop-filter: blur(6px);
+}
+
+.admin-role-modal {
+  width: min(620px, 100%);
+  max-height: calc(100dvh - 2.5rem);
+  overflow: auto;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 34%),
+    var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, 0.65),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.admin-role-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.25rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.admin-role-modal-header h3 {
+  margin: 0;
+  color: var(--admin-title);
+  font-size: 1.05rem;
+  font-weight: 850;
+  letter-spacing: 0.01em;
+}
+
+.admin-role-modal-header p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.admin-role-modal-close {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 9px;
+}
+
+.admin-role-modal-close:hover:not(:disabled) {
+  color: var(--text);
+  border-color: rgba(0, 209, 255, 0.24);
+  background: rgba(0, 209, 255, 0.07);
+}
+
+.admin-role-modal-close svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.admin-role-modal-form {
+  display: grid;
+}
+
+.admin-role-modal-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.admin-role-modal-fields > label:not(.admin-checkbox) {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.admin-role-modal input:not([type="checkbox"]),
+.admin-role-modal select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.68rem 0.78rem;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+}
+
+.admin-role-modal input:not([type="checkbox"]):focus,
+.admin-role-modal select:focus {
+  outline: none;
+  border-color: rgba(0, 209, 255, 0.34);
+  box-shadow: 0 0 0 3px rgba(0, 209, 255, 0.09);
+}
+
+.admin-role-modal input[readonly] {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.78;
+}
+
+.admin-role-modal-checkbox {
+  grid-column: 1 / -1;
+  width: fit-content;
+  padding: 0.2rem 0;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.admin-role-modal-checkbox input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.admin-role-modal-error {
+  margin: 0 1.25rem 1rem;
+}
+
+.admin-role-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem 1.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.admin-role-modal-actions button {
+  min-width: 120px;
+}
+
 .admin-list button.delete {
   background: var(--delete-bg);
   color: white;
@@ -1939,6 +2119,46 @@ button {
   .admin-list button,
   .admin-list select {
     width: 100%;
+  }
+
+  .admin-list li.admin-role-list-item {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-role-list-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .admin-role-modal-backdrop {
+    align-items: end;
+    padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem
+      max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  .admin-role-modal {
+    max-height: calc(100dvh - 1.5rem);
+    border-radius: 16px;
+  }
+
+  .admin-role-modal-header,
+  .admin-role-modal-fields {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .admin-role-modal-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-role-modal-actions {
+    padding: 1rem;
+  }
+
+  .admin-role-modal-actions button {
+    width: auto;
+    min-width: min(42%, 150px);
   }
 
   .admin-form-actions {

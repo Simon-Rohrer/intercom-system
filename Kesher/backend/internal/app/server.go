@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -4465,7 +4466,41 @@ func (s *Server) handleAdminRoleByID(w http.ResponseWriter, r *http.Request, ses
 	if !s.requireAdmin(w, r, session) {
 		return
 	}
-	roleID := strings.TrimPrefix(r.URL.Path, "/api/admin/roles/")
+	rolePath := strings.TrimPrefix(r.URL.Path, "/api/admin/roles/")
+	if r.Method == http.MethodPost && strings.HasSuffix(rolePath, "/duplicate") {
+		roleID := strings.TrimSuffix(rolePath, "/duplicate")
+		if roleID == "" || strings.Contains(roleID, "/") {
+			http.Error(w, "invalid role id", http.StatusBadRequest)
+			return
+		}
+		var req upsertRoleRequest
+		var requested *Role
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			if !errors.Is(err, io.EOF) {
+				http.Error(w, "invalid json", http.StatusBadRequest)
+				return
+			}
+		} else {
+			requested = &Role{
+				ID:                req.ID,
+				Name:              req.Name,
+				DefaultRoomID:     req.DefaultRoomID,
+				DefaultVoiceMode:  req.DefaultVoiceMode,
+				DefaultSimpleView: req.DefaultSimpleView,
+			}
+		}
+		duplicated, err := s.store.DuplicateRole(r.Context(), roleID, requested)
+		if err != nil {
+			if s.writeStoreErr(w, err) {
+				return
+			}
+			s.internalErr(w, err)
+			return
+		}
+		s.writeJSON(w, http.StatusCreated, duplicated)
+		return
+	}
+	roleID := rolePath
 	if roleID == "" || strings.Contains(roleID, "/") {
 		http.Error(w, "invalid role id", http.StatusBadRequest)
 		return

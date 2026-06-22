@@ -12,6 +12,7 @@ import type {
   LoginSuccess,
   PublicBootstrap,
   RealtimeStatsResponse,
+  Role,
   StatusResponse,
   StreamDeckActionType,
   StreamDeckSettings,
@@ -664,6 +665,36 @@ export async function updateRole(
     adminPin,
     payload,
   );
+}
+
+export async function duplicateRole(
+  token: string,
+  adminPin: string,
+  roleId: string,
+  payload: {
+    id: string;
+    name: string;
+    defaultRoomId: string;
+    defaultVoiceMode: string;
+    defaultSimpleView: boolean;
+  },
+): Promise<Role> {
+  const res = await fetch(
+    apiUrl(`/api/admin/roles/${encodeURIComponent(roleId)}/duplicate`),
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        [adminPinHeaderName]: adminPin,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return res.json() as Promise<Role>;
 }
 
 export async function deleteRole(

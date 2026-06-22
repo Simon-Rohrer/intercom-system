@@ -55,6 +55,121 @@ func TestCreateRoleRejectsInvalidDefaultVoiceMode(t *testing.T) {
 	}
 }
 
+func TestDuplicateRoleCopiesConfigurationAndIncrementsName(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+
+	if err := store.CreateRole(ctx, "light", "Licht", "", "ptt", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateRoom(ctx, "light-room", "Licht intern", []string{"light"}, []string{"light"}, []string{"light"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateRole(ctx, "light", "Licht", "light-room", "ptt", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateBroadcastGroup(ctx, "light-team", "Licht Team", []string{"light-room"}, []string{"light"}); err != nil {
+		t.Fatal(err)
+	}
+	settings := DefaultStreamDeckSettings()
+	settings.Pages[0].Buttons[0].Label = "Licht"
+	settings, err = store.UpsertRoleStreamDeckSettings(ctx, "light", settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveCompanionRolePage(ctx, "light", 7); err != nil {
+		t.Fatal(err)
+	}
+
+	duplicate, err := store.DuplicateRole(ctx, "light", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if duplicate.ID != "light-2" || duplicate.Name != "Licht 2" {
+		t.Fatalf("unexpected duplicate identity: %+v", duplicate)
+	}
+	if duplicate.DefaultRoomID != "light-room" || duplicate.DefaultVoiceMode != "ptt" || !duplicate.DefaultSimpleView {
+		t.Fatalf("role defaults were not copied: %+v", duplicate)
+	}
+
+	rooms, err := store.ListRooms(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var duplicatedRoomAccess bool
+	for _, room := range rooms {
+		if room.ID != "light-room" {
+			continue
+		}
+		duplicatedRoomAccess = slices.Contains(room.SenderRoleIDs, duplicate.ID) &&
+			slices.Contains(room.ReceiverRoleIDs, duplicate.ID) &&
+			slices.Contains(room.ForcedListenRoleIDs, duplicate.ID)
+	}
+	if !duplicatedRoomAccess {
+		t.Fatal("expected talk, listen and forced-listen mappings to be copied")
+	}
+
+	groups, err := store.ListBroadcastGroups(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 2 || !slices.Contains(groups[1].AllowedRoleIDs, duplicate.ID) {
+		t.Fatalf("expected broadcast permission to be copied, got %+v", groups)
+	}
+	copiedSettings, err := store.GetRoleStreamDeckSettings(ctx, duplicate.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(copiedSettings, settings) {
+		t.Fatalf("stream deck settings were not copied: got %+v want %+v", copiedSettings, settings)
+	}
+	page, err := store.GetCompanionRolePage(ctx, duplicate.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page != 7 {
+		t.Fatalf("expected companion page 7, got %d", page)
+	}
+
+	customDuplicate := Role{
+		ID:                "light-custom",
+		Name:              "Licht Sonderplatz",
+		DefaultVoiceMode:  "always_on",
+		DefaultSimpleView: false,
+	}
+	secondDuplicate, err := store.DuplicateRole(ctx, "light", &customDuplicate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secondDuplicate != customDuplicate {
+		t.Fatalf("expected edited duplicate values, got %+v", secondDuplicate)
+	}
+
+	thirdDuplicate, err := store.DuplicateRole(ctx, "light", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if thirdDuplicate.ID != "light-3" || thirdDuplicate.Name != "Licht 3" {
+		t.Fatalf("expected next automatic duplicate number, got %+v", thirdDuplicate)
+	}
+}
+
+func TestDuplicateRoleRejectsUnknownSource(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if _, err := store.DuplicateRole(context.Background(), "missing", nil); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
 func TestSeedRolesDefaultVoiceModeIsPTT(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {

@@ -599,6 +599,36 @@ func TestServerHandleAdminRolesCreateSuccess(t *testing.T) {
 	}
 }
 
+func TestServerHandleAdminRoleDuplicateSuccess(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	s := &Server{store: store, cfg: Config{AdminPIN: "123456"}, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/roles/audio/duplicate", strings.NewReader(`{
+		"id":"audio-backup",
+		"name":"Audio Backup",
+		"defaultVoiceMode":"always_on",
+		"defaultSimpleView":true
+	}`))
+	req.Header.Set("X-Admin-Pin", "123456")
+	rec := httptest.NewRecorder()
+
+	s.handleAdminRoleByID(rec, req, Session{RoleID: "audio"})
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var duplicated Role
+	if err := json.Unmarshal(rec.Body.Bytes(), &duplicated); err != nil {
+		t.Fatalf("failed to decode duplicated role: %v", err)
+	}
+	if duplicated.ID != "audio-backup" || duplicated.Name != "Audio Backup" || duplicated.DefaultVoiceMode != "always_on" || !duplicated.DefaultSimpleView {
+		t.Fatalf("unexpected duplicated role: %+v", duplicated)
+	}
+}
+
 func TestServerIsInboundAllowedRoomScope(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {
