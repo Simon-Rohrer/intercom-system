@@ -52,6 +52,7 @@ import {
 import { withResolvedStreamDeckButtonLabel } from "./lib/streamDeckLabels";
 import { sortDirectUsersByRoleAndUsername } from "./lib/users";
 import { resolveAutoLoginConfiguration } from "./lib/autoLogin";
+import { resolveLowPowerMode } from "./lib/runtimeMode";
 import type {
   Bootstrap,
   LoginConflict,
@@ -67,7 +68,8 @@ import { useNativeAudio } from "./hooks/useNativeAudio";
 
 const adminPathname = "/admin";
 const loginPathname = "/login";
-const statusPollIntervalMs = 3000;
+const normalStatusPollIntervalMs = 3000;
+const lowPowerStatusPollIntervalMs = 15000;
 const streamDeckSelectListenHoldMs = 2000;
 
 function isAdminPathname(pathname: string): boolean {
@@ -267,6 +269,21 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     const v = params.get("debug");
     return v === "1" || v === "true";
   })();
+  const lowPowerMode = useMemo(
+    () => resolveLowPowerMode(window.location.search),
+    [],
+  );
+
+  useEffect(() => {
+    if (lowPowerMode) {
+      document.documentElement.dataset.kesherLowPower = "true";
+    } else {
+      delete document.documentElement.dataset.kesherLowPower;
+    }
+    return () => {
+      delete document.documentElement.dataset.kesherLowPower;
+    };
+  }, [lowPowerMode]);
 
   // ── Settings & preferences ──
   const settings = useSettings();
@@ -331,8 +348,12 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     appData,
     authMode,
     showDebug,
+    lowPowerMode,
     selectedInputDeviceId: settings.selectedInputDeviceId,
     selectedInputDeviceIdRef: settings.selectedInputDeviceIdRef,
+    selectedInputChannel: settings.selectedInputChannelFor(
+      settings.selectedInputDeviceId,
+    ),
     selectedOutputDeviceId: settings.selectedOutputDeviceId,
     selectedOutputDeviceIdRef: settings.selectedOutputDeviceIdRef,
     inputGainByDeviceId: settings.inputGainByDeviceId,
@@ -372,6 +393,12 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     () => settings.selectedInputGainFor(settings.selectedInputDeviceId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [settings.selectedInputDeviceId, settings.inputGainByDeviceId],
+  );
+
+  const selectedInputChannel = useMemo(
+    () => settings.selectedInputChannelFor(settings.selectedInputDeviceId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [settings.selectedInputDeviceId, settings.inputChannelByDeviceId],
   );
 
   const selectedMicLabel = useMemo(
@@ -856,6 +883,48 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     void loadPublicBootstrap();
   }, [loadPublicBootstrap]);
 
+  // Keep the role dropdown in sync while the login page is open. The login
+  // endpoint remains the authoritative guard for simultaneous requests.
+  useEffect(() => {
+    if (token) return;
+
+    let cancelled = false;
+    const refreshRoleAvailability = async () => {
+      try {
+        const data = await getPublicBootstrap();
+        if (!cancelled) {
+          setPublicData(data);
+        }
+      } catch {
+        // Keep the last usable login configuration during a short outage.
+      }
+    };
+    const intervalID = window.setInterval(() => {
+      void refreshRoleAvailability();
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalID);
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (
+      token ||
+      !publicData ||
+      !settings.roleId ||
+      !publicData.activeRoleIds.includes(settings.roleId)
+    ) {
+      return;
+    }
+    settings.setRoleID("");
+    setPendingTakeover(null);
+    setOperatorLoginError(
+      "Die zuvor ausgewaehlte Rolle ist inzwischen belegt. Bitte waehle eine andere Rolle.",
+    );
+  }, [publicData, settings.roleId, settings.setRoleID, token]);
+
   // ── Auto Login via URL ──
   useEffect(() => {
     if (autoLoginAttempted || token || !publicData) return;
@@ -990,13 +1059,15 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     void pollStatus();
     const intervalId = window.setInterval(
       () => void pollStatus(),
-      statusPollIntervalMs,
+      lowPowerMode
+        ? lowPowerStatusPollIntervalMs
+        : normalStatusPollIntervalMs,
     );
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [token, authMode]);
+  }, [token, authMode, lowPowerMode]);
 
   // ── Session persistence (all four fields together) ──
   useEffect(() => {
@@ -1215,6 +1286,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       roles: data.roles,
       rooms: data.rooms,
       broadcastGroups: data.broadcastGroups,
+      activeRoleIds: [],
       ackEnabled: data.ackEnabled,
       appVersion: data.appVersion,
     });
@@ -2010,6 +2082,14 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           selectedInputDeviceId={settings.selectedInputDeviceId}
           onSelectedInputDeviceIdChange={settings.setSelectedInputDeviceId}
           inputDevices={audioDevices.inputDevices}
+          selectedInputChannel={selectedInputChannel}
+          inputChannelCount={session.inputChannelCount}
+          onSelectedInputChannelChange={(channel) =>
+            settings.onInputChannelChange(
+              settings.selectedInputDeviceId,
+              channel,
+            )
+          }
           selectedOutputDeviceId={settings.selectedOutputDeviceId}
           onSelectedOutputDeviceIdChange={(id) => void changeOutputDevice(id)}
           outputDevices={audioDevices.outputDevices}
@@ -2118,6 +2198,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         selectedInputDeviceId={settings.selectedInputDeviceId}
         selectedMicLabel={selectedMicLabel}
         setSelectedInputDeviceId={settings.setSelectedInputDeviceId}
+        selectedInputChannel={selectedInputChannel}
+        inputChannelCount={session.inputChannelCount}
+        onSelectedInputChannelChange={(channel) =>
+          settings.onInputChannelChange(settings.selectedInputDeviceId, channel)
+        }
         inputLevelDbFs={session.inputLevelDbFs}
         inputGain={selectedInputGain}
         inputClipping={session.displayedInputClipping}

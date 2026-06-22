@@ -27,6 +27,7 @@ const server = setupServer(
       roles: [{ id: "op", name: "Operator" }],
       rooms: [],
       broadcastGroups: [],
+      activeRoleIds: ["light-1"],
     });
   }),
   http.post("http://localhost/api/login", async ({ request }) => {
@@ -223,6 +224,7 @@ describe("api helpers", () => {
     const data = await getPublicBootstrap();
     expect(data.roles).toHaveLength(1);
     expect(data.roles[0]?.id).toBe("op");
+    expect(data.activeRoleIds).toEqual(["light-1"]);
   });
 
   it("logs in and returns token + user", async () => {
@@ -257,6 +259,7 @@ describe("api helpers", () => {
           roles: null,
           rooms: null,
           broadcastGroups: null,
+          activeRoleIds: null,
         }),
       ),
       http.get("http://localhost/api/bootstrap", () =>
@@ -288,6 +291,7 @@ describe("api helpers", () => {
     expect(publicData.roles).toEqual([]);
     expect(publicData.rooms).toEqual([]);
     expect(publicData.broadcastGroups).toEqual([]);
+    expect(publicData.activeRoleIds).toEqual([]);
 
     const appData = await bootstrap("token-123");
     expect(appData.users).toEqual([]);
@@ -321,6 +325,34 @@ describe("api helpers", () => {
       "tim_telegram",
     );
     expect(document.ackSettings?.enabled).toBe(true);
+  });
+
+  it("requests only selected configuration export sections", async () => {
+    let requestedSections = "";
+    server.use(
+      http.get("http://localhost/api/admin/configuration-export", ({ request }) => {
+        requestedSections = new URL(request.url).searchParams.get("sections") || "";
+        return HttpResponse.json({
+          meta: {
+            format: "kesher-showfile",
+            schemaVersion: 2,
+            exportedAt: "2026-03-14T12:00:00Z",
+            sourceVersion: { version: "test", buildTimestamp: "test" },
+            sections: ["roles", "rooms"],
+          },
+          roles: [],
+          rooms: [],
+        });
+      }),
+    );
+
+    const document = await exportConfiguration("token-123", "123456", [
+      "roles",
+      "rooms",
+    ]);
+
+    expect(requestedSections).toBe("roles,rooms");
+    expect(document.meta.sections).toEqual(["roles", "rooms"]);
   });
 
   it("posts configuration imports with selected sections", async () => {

@@ -39,8 +39,12 @@ export type ConfigurationSection =
   | "rooms"
   | "broadcastGroups"
   | "telegramAllowlist"
+  | "telegramMappings"
+  | "telegramUsers"
   | "ackSettings"
-  | "streamDeckSettings";
+  | "streamDeckSettings"
+  | "companionProfiles"
+  | "companionRolePages";
 
 export type ConfigurationMetadata = {
   format: string;
@@ -51,13 +55,33 @@ export type ConfigurationMetadata = {
 };
 
 export type ConfigurationUserAssignment = {
+  id?: string;
   username: string;
   roleId: string;
 };
 
 export type ConfigurationUserStreamDeckSettings = {
-  username: string;
+  roleId?: string;
+  username?: string;
   settings: StreamDeckSettings;
+};
+
+export type ConfigurationTelegramUser = {
+  id: string;
+  telegramUserId: string;
+  username: string;
+  privateChatId: string;
+  createdAt: number;
+  roomIds: string[];
+};
+
+export type ConfigurationCompanionProfile = {
+  roleId: string;
+  profileVersion: number;
+  profile: CompanionProfileResponse;
+  publishedByUserId?: string;
+  createdAt: number;
+  updatedAt: number;
 };
 
 export type ConfigurationDocument = {
@@ -67,8 +91,12 @@ export type ConfigurationDocument = {
   rooms: Room[];
   broadcastGroups: BroadcastGroup[];
   telegramAllowlist: TelegramAllowlistEntry[];
+  telegramMappings?: TelegramMapping[];
+  telegramUsers?: ConfigurationTelegramUser[];
   ackSettings: { enabled: boolean } | null;
   streamDeckSettings: ConfigurationUserStreamDeckSettings[];
+  companionProfiles?: ConfigurationCompanionProfile[];
+  companionRolePages?: Record<string, number>;
 };
 
 export type ConfigurationImportResponse = {
@@ -136,6 +164,7 @@ export type PublicBootstrap = {
   roles: Role[];
   rooms: Room[];
   broadcastGroups: BroadcastGroup[];
+  activeRoleIds: string[];
   ackEnabled: boolean;
   appVersion: VersionInfo;
 };

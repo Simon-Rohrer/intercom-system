@@ -45,14 +45,34 @@ const availableSections: Array<{
 		description: "Telegram usernames and mapped Kesher users.",
 	},
 	{
+		key: "telegramMappings",
+		label: "Telegram Room Mappings",
+		description: "Telegram chats mapped to Kesher party lines.",
+	},
+	{
+		key: "telegramUsers",
+		label: "Telegram Users & Subscriptions",
+		description: "Linked Telegram identities, private chats and party-line subscriptions.",
+	},
+	{
 		key: "ackSettings",
 		label: "ACK Settings",
 		description: "Global ACK cue toggle.",
 	},
 	{
 		key: "streamDeckSettings",
-		label: "StreamDeck Profiles",
-		description: "Per-user StreamDeck button and page mappings.",
+		label: "Stream Deck Profiles",
+		description: "Per-role Stream Deck button and page mappings.",
+	},
+	{
+		key: "companionProfiles",
+		label: "Companion Profiles",
+		description: "Published Companion profiles and their versions.",
+	},
+	{
+		key: "companionRolePages",
+		label: "Companion Role Pages",
+		description: "Configured Companion start page for every role.",
 	},
 ];
 
@@ -63,8 +83,12 @@ function createSectionSelection(): Record<ConfigurationSection, boolean> {
 		rooms: true,
 		broadcastGroups: true,
 		telegramAllowlist: true,
+		telegramMappings: true,
+		telegramUsers: true,
 		ackSettings: true,
 		streamDeckSettings: true,
+		companionProfiles: true,
+		companionRolePages: true,
 	};
 }
 
@@ -79,7 +103,10 @@ export function AdminShowfileCard({
 	const [message, setMessage] = useState("");
 	const [error, setError] = useState("");
 	const [backupBeforeImport, setBackupBeforeImport] = useState(true);
-	const [sectionSelection, setSectionSelection] = useState(
+	const [exportSectionSelection, setExportSectionSelection] = useState(
+		createSectionSelection,
+	);
+	const [importSectionSelection, setImportSectionSelection] = useState(
 		createSectionSelection,
 	);
 
@@ -99,19 +126,45 @@ export function AdminShowfileCard({
 		window.URL.revokeObjectURL(url);
 	}
 
-	const selectedSections = useMemo(
+	const selectedExportSections = useMemo(
 		() =>
 			availableSections
-				.filter((section) => sectionSelection[section.key])
+				.filter((section) => exportSectionSelection[section.key])
 				.map((section) => section.key),
-		[sectionSelection],
+		[exportSectionSelection],
 	);
 
-	function updateSectionSelection(section: ConfigurationSection) {
-		setSectionSelection((current) => ({
+	const selectedImportSections = useMemo(
+		() =>
+			availableSections
+				.filter((section) => importSectionSelection[section.key])
+				.map((section) => section.key),
+		[importSectionSelection],
+	);
+
+	function updateExportSectionSelection(section: ConfigurationSection) {
+		setExportSectionSelection((current) => ({
 			...current,
 			[section]: !current[section],
 		}));
+	}
+
+	function updateImportSectionSelection(section: ConfigurationSection) {
+		setImportSectionSelection((current) => ({
+			...current,
+			[section]: !current[section],
+		}));
+	}
+
+	function selectAllSections(
+		setter: typeof setExportSectionSelection,
+		selected: boolean,
+	) {
+		setter(
+			Object.fromEntries(
+				availableSections.map((section) => [section.key, selected]),
+			) as Record<ConfigurationSection, boolean>,
+		);
 	}
 
 	function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
@@ -119,6 +172,20 @@ export function AdminShowfileCard({
 		if (!file) return;
 		void file.text().then((text) => {
 			setImportText(text);
+			try {
+				const parsed = JSON.parse(text) as ConfigurationDocument;
+				const includedSections = new Set(parsed.meta?.sections || []);
+				setImportSectionSelection(
+					Object.fromEntries(
+						availableSections.map((section) => [
+							section.key,
+							includedSections.has(section.key),
+						]),
+					) as Record<ConfigurationSection, boolean>,
+				);
+			} catch {
+				// The import action reports malformed JSON with the existing error UI.
+			}
 			setMessage(`Loaded ${file.name}.`);
 			setError("");
 		});
@@ -130,7 +197,11 @@ export function AdminShowfileCard({
 		setMessage("");
 		setError("");
 		try {
-			const document = await exportConfiguration(token, adminPin);
+			const document = await exportConfiguration(
+				token,
+				adminPin,
+				selectedExportSections,
+			);
 			downloadShowfile(document, "kesher-showfile");
 			setMessage("Configuration exported as showfile JSON.");
 		} catch (err) {
@@ -141,7 +212,7 @@ export function AdminShowfileCard({
 	}
 
 	async function handleImport() {
-		if (!importText.trim() || selectedSections.length === 0) {
+		if (!importText.trim() || selectedImportSections.length === 0) {
 			return;
 		}
 		setBusy(true);
@@ -153,11 +224,18 @@ export function AdminShowfileCard({
 				downloadShowfile(backupDocument, "kesher-showfile-backup-before-import");
 			}
 			const parsed = JSON.parse(importText) as ConfigurationDocument;
+			const documentSections = new Set(parsed.meta?.sections || []);
+			const effectiveImportSections = selectedImportSections.filter((section) =>
+				documentSections.has(section),
+			);
+			if (effectiveImportSections.length === 0) {
+				throw new Error("The showfile does not contain any selected sections.");
+			}
 			const response = await importConfiguration(
 				token,
 				adminPin,
 				parsed,
-				selectedSections,
+				effectiveImportSections,
 			);
 			await refreshBootstrapData();
 			setMessage(
@@ -191,11 +269,59 @@ export function AdminShowfileCard({
 							<h4>Export</h4>
 						</div>
 						<p>
-							Create a versionable JSON showfile with a mandatory metadata
-							header.
+							Choose the configuration areas to include. Everything is selected
+							by default for a complete system copy.
+						</p>
+						<p className="admin-block-subtitle">
+							Runtime history and credentials such as the Admin PIN, Telegram bot
+							token and Companion secret are intentionally not written to showfiles.
 						</p>
 						<div className="admin-form-actions">
-							<button onClick={() => void handleExport()} disabled={busy}>
+							<span className="admin-block-subtitle">
+								{selectedExportSections.length} of {availableSections.length} selected
+							</span>
+							<button
+								type="button"
+								className="secondary"
+								onClick={() => selectAllSections(setExportSectionSelection, true)}
+								disabled={busy}
+							>
+								Select all
+							</button>
+							<button
+								type="button"
+								className="secondary"
+								onClick={() => selectAllSections(setExportSectionSelection, false)}
+								disabled={busy}
+							>
+								Clear selection
+							</button>
+						</div>
+						<div className="admin-grid admin-showfile-sections">
+							{availableSections.map((section) => (
+								<label
+									key={`export-${section.key}`}
+									className="admin-checkbox admin-checkbox-wide"
+								>
+									<input
+										type="checkbox"
+										checked={exportSectionSelection[section.key]}
+										onChange={() => updateExportSectionSelection(section.key)}
+										disabled={busy}
+									/>
+									<span>
+										<strong>{section.label}</strong>
+										<br />
+										<small>{section.description}</small>
+									</span>
+								</label>
+							))}
+						</div>
+						<div className="admin-form-actions">
+							<button
+								onClick={() => void handleExport()}
+								disabled={busy || selectedExportSections.length === 0}
+							>
 								{busy ? "Working..." : "Export showfile"}
 							</button>
 						</div>
@@ -254,8 +380,8 @@ export function AdminShowfileCard({
 								>
 									<input
 										type="checkbox"
-										checked={sectionSelection[section.key]}
-										onChange={() => updateSectionSelection(section.key)}
+									checked={importSectionSelection[section.key]}
+									onChange={() => updateImportSectionSelection(section.key)}
 										disabled={busy}
 									/>
 									<span>
@@ -269,7 +395,7 @@ export function AdminShowfileCard({
 						<div className="admin-form-actions">
 							<button
 								onClick={() => void handleImport()}
-								disabled={busy || !importText.trim() || selectedSections.length === 0}
+								disabled={busy || !importText.trim() || selectedImportSections.length === 0}
 							>
 								{busy ? "Working..." : "Import selected sections"}
 							</button>

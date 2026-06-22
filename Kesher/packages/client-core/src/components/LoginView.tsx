@@ -36,11 +36,18 @@ export function LoginView({
 }: LoginViewProps) {
   const stripWhitespace = (value: string) => value.replace(/\s+/g, "");
   const [showAdmin, setShowAdmin] = useState(false);
+  const activeRoleIds = new Set(publicData.activeRoleIds);
+  const availableRoles = publicData.roles.filter(
+    (role) => !activeRoleIds.has(role.id),
+  );
+  const selectedRoleIsAvailable = availableRoles.some(
+    (role) => role.id === roleId,
+  );
   return (
     <div className="root login">
       <div className="login-card panel">
         <div className="login-card-head">
-          <h1>test - kesher - Live Production Intercom</h1>
+          <h1>Live Production Intercom</h1>
           <p className="variant-subtitle">Station Deck</p>
         </div>
         <div className="login-form">
@@ -59,17 +66,22 @@ export function LoginView({
               onChange={(e) => onRoleChange(e.target.value)}
             >
               <option value="">Select role</option>
-              {publicData.roles.map((r) => (
+              {availableRoles.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}
                 </option>
               ))}
+              {availableRoles.length === 0 ? (
+                <option value="" disabled>
+                  No roles available
+                </option>
+              ) : null}
             </select>
           </label>
           <button
             className="primary"
             onClick={onLogin}
-            disabled={!username.trim() || !roleId}
+            disabled={!username.trim() || !roleId || !selectedRoleIsAvailable}
           >
             Join Intercom
           </button>
@@ -100,22 +112,35 @@ export function LoginView({
           ) : null}
         </div>
 
-        <div>
-          {!showAdmin ? (
-            <button
-              className="login-admin-toggle secondary"
-              onClick={() => setShowAdmin(true)}
+        <div className="login-admin-disclosure">
+          <button
+            type="button"
+            className="login-admin-disclosure-trigger"
+            onClick={() => setShowAdmin((value) => !value)}
+            aria-expanded={showAdmin}
+            aria-controls="login-admin-panel"
+            aria-label="Admin console"
+          >
+            <span className="login-admin-disclosure-label">
+              <span>Admin console</span>
+              <span className="login-admin-pin-hint">PIN required</span>
+            </span>
+            <svg
+              className={`login-admin-chevron${showAdmin ? " is-open" : ""}`}
+              viewBox="0 0 24 24"
+              aria-hidden="true"
             >
-              Show admin
-            </button>
-          ) : null}
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </button>
 
           {showAdmin ? (
-            <div className="login-admin-card">
-              <div className="login-admin-head">
-                <h3>Admin console</h3>
-                <span className="login-admin-pin-hint">PIN required</span>
-              </div>
+            <div
+              id="login-admin-panel"
+              className="login-admin-card login-admin-disclosure-panel"
+              role="region"
+              aria-label="Admin console"
+            >
               <p className="login-admin-note">
                 For role and channel configuration only.
               </p>
@@ -132,17 +157,11 @@ export function LoginView({
               {adminError ? <p className="login-error">{adminError}</p> : null}
               <div className="login-admin-actions">
                 <button
-                  className="secondary"
+                  className="primary"
                   onClick={onAdminLogin}
                   disabled={!adminPin.trim()}
                 >
                   Open admin console
-                </button>
-                <button
-                  className="secondary"
-                  onClick={() => setShowAdmin(false)}
-                >
-                  Hide
                 </button>
               </div>
             </div>

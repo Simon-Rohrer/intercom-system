@@ -505,6 +505,37 @@ func TestServerHandlePublicBootstrapMethodNotAllowed(t *testing.T) {
 	}
 }
 
+func TestServerHandlePublicBootstrapIncludesActiveRoleIDs(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	sessions := NewSessionManager(time.Minute)
+	sessions.Create(User{ID: "u1", Username: "tim", RoleID: "audio"})
+	sessions.Create(User{ID: "admin", Username: "admin", RoleID: ""})
+	s := &Server{
+		store:    store,
+		sessions: sessions,
+		cfg:      Config{AdminPIN: "123456"},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/public-bootstrap", nil)
+	rec := httptest.NewRecorder()
+
+	s.handlePublicBootstrap(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var response PublicBootstrapResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode public bootstrap response: %v", err)
+	}
+	if len(response.ActiveRoleIDs) != 1 || response.ActiveRoleIDs[0] != "audio" {
+		t.Fatalf("unexpected active role ids: %#v", response.ActiveRoleIDs)
+	}
+}
+
 func TestServerHandleAdminRolesMethodNotAllowed(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {
@@ -648,6 +679,66 @@ func TestServerRouteInboundAllowedRoutesToHub(t *testing.T) {
 		}
 	default:
 		t.Fatal("expected routed chat message for receiver")
+	}
+
+	select {
+	case out := <-sender.send:
+		if out.Type != "chat" {
+			t.Fatalf("expected chat echo for sender, got %s", out.Type)
+		}
+		routed, ok := out.Data.(RoutedEvent)
+		if !ok || routed.Body != "hello" || routed.FromUser.ID != sender.user.ID {
+			t.Fatalf("unexpected sender chat echo: %+v", out.Data)
+		}
+	default:
+		t.Fatal("expected sender to receive its own room chat")
+	}
+}
+
+func TestServerRouteInboundChatUsesExplicitRoomWithoutActiveTalkRoom(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.UpdateRoom(context.Background(), "foh", "FOH", []string{"audio"}, []string{"video"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	hub := NewHub(store, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	sender := &client{
+		session: Session{Token: "sender-token", RoleID: "audio"},
+		user:    User{ID: "u1", Username: "sender", RoleID: "audio"},
+		send:    make(chan WSOutbound, 8),
+	}
+	hub.Add(sender)
+	drain(sender.send)
+	s := &Server{store: store, hub: hub}
+
+	s.routeInbound(context.Background(), sender.session, WSInbound{
+		Data: RoutedEvent{
+			Scope:    "room",
+			TargetID: "foh",
+			Body:     "hello without a selected talk room",
+		},
+	}, "chat")
+
+	select {
+	case out := <-sender.send:
+		if out.Type != "chat" {
+			t.Fatalf("expected chat echo, got %s", out.Type)
+		}
+		routed, ok := out.Data.(RoutedEvent)
+		if !ok {
+			t.Fatalf("expected RoutedEvent payload, got %T", out.Data)
+		}
+		if routed.Scope != "room" || routed.TargetType != "room" || routed.TargetID != "foh" {
+			t.Fatalf("unexpected routed target: %+v", routed)
+		}
+		if routed.Body != "hello without a selected talk room" || routed.FromUser.ID != sender.user.ID {
+			t.Fatalf("unexpected sender chat echo: %+v", routed)
+		}
+	default:
+		t.Fatal("expected sender to receive its own explicit-room chat")
 	}
 }
 

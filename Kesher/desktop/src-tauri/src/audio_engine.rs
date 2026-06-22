@@ -240,6 +240,8 @@ pub struct StartEngineParams {
     pub offer_sdp: String,
     pub output_device_id: Option<String>,
     pub input_device_id: Option<String>,
+    /// One-based physical input channel. None mixes all interface inputs.
+    pub input_channel: Option<usize>,
     pub input_gain: Option<f32>,
     pub audio_gate_enabled: Option<bool>,
     pub audio_gate_threshold_db: Option<f32>,
@@ -612,8 +614,17 @@ mod tests {
     fn downmixes_all_interface_inputs_to_mono() {
         let stereo = [1.0, -1.0, 0.5, 0.25];
         assert_eq!(
-            super::downmix_interface_input(&stereo, 2),
+            super::downmix_interface_input(&stereo, 2, None),
             vec![0.0, 0.375]
+        );
+    }
+
+    #[test]
+    fn selects_one_interface_input_channel() {
+        let stereo = [1.0, -1.0, 0.5, 0.25];
+        assert_eq!(
+            super::downmix_interface_input(&stereo, 2, Some(2)),
+            vec![-1.0, 0.25]
         );
     }
 }
@@ -841,6 +852,7 @@ pub async fn start_engine(
         audio_track,
         Arc::clone(&ptt_active),
         params.input_device_id,
+        params.input_channel,
         Arc::clone(&audio_processing),
         Arc::clone(&network_stress_playback),
         Arc::clone(&network_stress_stats),
@@ -877,6 +889,7 @@ async fn capture_loop(
     track: Arc<TrackLocalStaticSample>,
     ptt_active: Arc<AtomicBool>,
     device_id: Option<String>,
+    input_channel: Option<usize>,
     audio_processing: Arc<AudioProcessingState>,
     network_stress_playback: Arc<AtomicU8>,
     network_stress_stats: Arc<AtomicU8>,
@@ -914,7 +927,7 @@ async fn capture_loop(
         let stream = match device.build_input_stream(
             &config,
             move |data: &[f32], _| {
-                let mono = downmix_interface_input(data, input_channels);
+                let mono = downmix_interface_input(data, input_channels, input_channel);
                 if raw_tx.try_send((mono, Instant::now())).is_err() {
                     dropped_capture_frames = dropped_capture_frames.saturating_add(1);
                     if dropped_capture_frames % DROP_LOG_EVERY == 0 {
@@ -1504,9 +1517,22 @@ fn interface_input_stream_config(device: &cpal::Device) -> Result<cpal::StreamCo
     Ok(config)
 }
 
-fn downmix_interface_input(data: &[f32], channels: usize) -> Vec<f32> {
+fn downmix_interface_input(
+    data: &[f32],
+    channels: usize,
+    input_channel: Option<usize>,
+) -> Vec<f32> {
     if channels <= 1 {
         return data.to_vec();
+    }
+    if let Some(channel) =
+        input_channel.filter(|channel| *channel >= 1 && *channel <= channels)
+    {
+        let channel_index = channel - 1;
+        return data
+            .chunks_exact(channels)
+            .map(|frame| frame[channel_index])
+            .collect();
     }
     data.chunks_exact(channels)
         .map(|frame| frame.iter().copied().sum::<f32>() / channels as f32)

@@ -819,7 +819,12 @@ func (h *Hub) RouteEvent(senderToken string, eventType string, e RoutedEvent) {
 		if eventType == "signal" {
 			h.markRoomSignalIncoming(e.TargetID, sender.user, e.Signal)
 		}
-		h.sendToRoom(e.TargetID, out)
+		deliveredTokens := h.sendToRoom(e.TargetID, out)
+		if eventType == "chat" {
+			if _, deliveredToSender := deliveredTokens[senderToken]; !deliveredToSender {
+				h.sendToToken(senderToken, out)
+			}
+		}
 	case "broadcast":
 		allowed, err := h.store.BroadcastGroupAllowsRole(context.Background(), e.TargetID, sender.session.RoleID)
 		if err != nil || !allowed {
@@ -839,7 +844,12 @@ func (h *Hub) RouteEvent(senderToken string, eventType string, e RoutedEvent) {
 			}
 			allowedRooms[roomID] = struct{}{}
 		}
-		h.sendToRooms(allowedRooms, out)
+		deliveredTokens := h.sendToRooms(allowedRooms, out)
+		if eventType == "chat" {
+			if _, deliveredToSender := deliveredTokens[senderToken]; !deliveredToSender {
+				h.sendToToken(senderToken, out)
+			}
+		}
 	default:
 		h.logger.Warn("unsupported routing scope", "scope", e.Scope)
 	}
@@ -973,11 +983,12 @@ func (h *Hub) sendToToken(token string, msg WSOutbound) {
 	h.enqueueOutbound(c, msg)
 }
 
-func (h *Hub) sendToRoom(roomID string, msg WSOutbound) {
+func (h *Hub) sendToRoom(roomID string, msg WSOutbound) map[string]struct{} {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
+	deliveredTokens := make(map[string]struct{})
 	receiverRoleAllowed := make(map[string]bool)
-	for _, c := range h.clients {
+	for token, c := range h.clients {
 		if _, ok := c.listenRooms[roomID]; !ok {
 			continue
 		}
@@ -995,14 +1006,17 @@ func (h *Hub) sendToRoom(roomID string, msg WSOutbound) {
 			continue
 		}
 		h.enqueueOutbound(c, msg)
+		deliveredTokens[token] = struct{}{}
 	}
+	return deliveredTokens
 }
 
-func (h *Hub) sendToRooms(roomSet map[string]struct{}, msg WSOutbound) {
+func (h *Hub) sendToRooms(roomSet map[string]struct{}, msg WSOutbound) map[string]struct{} {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
+	deliveredTokens := make(map[string]struct{})
 	receiverRoleAllowedByRoom := make(map[string]map[string]bool, len(roomSet))
-	for _, c := range h.clients {
+	for token, c := range h.clients {
 		for roomID := range c.listenRooms {
 			if _, ok := roomSet[roomID]; !ok {
 				continue
@@ -1026,9 +1040,11 @@ func (h *Hub) sendToRooms(roomSet map[string]struct{}, msg WSOutbound) {
 				continue
 			}
 			h.enqueueOutbound(c, msg)
+			deliveredTokens[token] = struct{}{}
 			break
 		}
 	}
+	return deliveredTokens
 }
 
 func (h *Hub) LatestTokenForUsername(username string) (string, bool) {

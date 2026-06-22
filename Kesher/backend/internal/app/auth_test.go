@@ -62,6 +62,34 @@ func TestSessionManagerLatestForRole(t *testing.T) {
 	}
 }
 
+func TestSessionManagerActiveRoleIDs(t *testing.T) {
+	m := NewSessionManager(time.Minute)
+	m.Create(User{ID: "u1", Username: "tim", RoleID: "light-2"})
+	m.Create(User{ID: "u2", Username: "sam", RoleID: "light-1"})
+	m.Create(User{ID: "u3", Username: "alex", RoleID: "light-1"})
+	m.Create(User{ID: "admin", Username: "admin", RoleID: ""})
+
+	roleIDs := m.ActiveRoleIDs()
+	if len(roleIDs) != 2 || roleIDs[0] != "light-1" || roleIDs[1] != "light-2" {
+		t.Fatalf("unexpected active role ids: %#v", roleIDs)
+	}
+}
+
+func TestSessionManagerActiveRoleIDsRemovesExpiredSessions(t *testing.T) {
+	m := NewSessionManager(-time.Second)
+	expired := m.Create(User{ID: "u1", Username: "tim", RoleID: "light-1"})
+
+	if roleIDs := m.ActiveRoleIDs(); len(roleIDs) != 0 {
+		t.Fatalf("expected no active roles, got %#v", roleIDs)
+	}
+	m.mu.RLock()
+	_, exists := m.sessions[expired.Token]
+	m.mu.RUnlock()
+	if exists {
+		t.Fatal("expected expired session to be removed")
+	}
+}
+
 func TestSessionManagerDeleteByRole(t *testing.T) {
 	m := NewSessionManager(time.Minute)
 	audio := m.Create(User{ID: "u1", Username: "tim", RoleID: "audio"})

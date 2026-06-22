@@ -3611,10 +3611,15 @@ func (s *Server) handlePublicBootstrap(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, err)
 		return
 	}
+	activeRoleIDs := make([]string, 0)
+	if s.sessions != nil {
+		activeRoleIDs = s.sessions.ActiveRoleIDs()
+	}
 	s.writeJSON(w, http.StatusOK, PublicBootstrapResponse{
 		Roles:           roles,
 		Rooms:           rooms,
 		BroadcastGroups: groups,
+		ActiveRoleIDs:   activeRoleIDs,
 		AckEnabled:      s.isAckEnabled(),
 		AppVersion:      GetVersionInfo(),
 	})
@@ -4951,8 +4956,20 @@ func (s *Server) handleAdminConfigurationExport(w http.ResponseWriter, r *http.R
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	doc, err := s.exportConfigurationDocument(r.Context())
+	var requestedSections []string
+	if rawSections := strings.TrimSpace(r.URL.Query().Get("sections")); rawSections != "" {
+		for _, section := range strings.Split(rawSections, ",") {
+			if trimmed := strings.TrimSpace(section); trimmed != "" {
+				requestedSections = append(requestedSections, trimmed)
+			}
+		}
+	}
+	doc, err := s.exportConfigurationDocument(r.Context(), requestedSections)
 	if err != nil {
+		if errors.Is(err, ErrInvalidInput) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		s.internalErr(w, err)
 		return
 	}
@@ -5588,6 +5605,17 @@ func (s *Server) resolveChatRouting(ctx context.Context, sender Session, e Route
 
 	prefix, targetLabel, messageBody, hasPrefix := parseChatPrefix(body)
 	if !hasPrefix {
+		// The web client resolves a concrete room even when no talk room has
+		// been selected yet (for example, the role's default room directly
+		// after login). Keep the active-talk-room fallback for older clients,
+		// but honor an explicit room target. isInboundAllowed validates the
+		// sender's permission before the event reaches the hub.
+		if e.Scope == "room" && strings.TrimSpace(e.TargetID) != "" {
+			e.TargetType = "room"
+			e.TargetID = strings.TrimSpace(e.TargetID)
+			e.Body = body
+			return e, nil, true
+		}
 		talkRoomID, ok := s.hub.ActiveTalkRoomForToken(sender.Token)
 		if !ok {
 			return RoutedEvent{}, &RoutingStatusEvent{

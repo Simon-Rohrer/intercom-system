@@ -12,6 +12,7 @@ const baseProps = {
     ],
     rooms: [],
     broadcastGroups: [],
+    activeRoleIds: [],
     ackEnabled: true,
     appVersion: { version: "dev", buildTimestamp: "2026-03-10" },
   },
@@ -53,6 +54,21 @@ describe("LoginView", () => {
     expect(
       screen.getByText("Die Rolle Operator ist bereits angemeldet."),
     ).toBeVisible();
+  });
+
+  it("hides roles that already have an active session", () => {
+    render(
+      <LoginView
+        {...baseProps}
+        publicData={{
+          ...baseProps.publicData,
+          activeRoleIds: ["op"],
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("option", { name: "Operator" })).toBeNull();
+    expect(screen.getByRole("option", { name: "Admin" })).toBeVisible();
   });
 
   it("calls callbacks when typing/selecting and joining", async () => {
@@ -121,9 +137,13 @@ describe("LoginView", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Show admin" }));
+    const adminToggle = screen.getByRole("button", { name: "Admin console" });
+    expect(adminToggle).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(adminToggle);
+    expect(adminToggle).toHaveAttribute("aria-expanded", "true");
     expect(
-      screen.getByRole("heading", { name: "Admin console" }),
+      screen.getByRole("region", { name: "Admin console" }),
     ).toBeVisible();
     expect(screen.getByText("Wrong PIN")).toBeVisible();
 
@@ -134,9 +154,10 @@ describe("LoginView", () => {
     expect(onAdminPinChange).toHaveBeenCalled();
     expect(onAdminLogin).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole("button", { name: "Hide" }));
+    await user.click(adminToggle);
+    expect(adminToggle).toHaveAttribute("aria-expanded", "false");
     expect(
-      screen.queryByRole("heading", { name: "Admin console" }),
+      screen.queryByRole("region", { name: "Admin console" }),
     ).not.toBeInTheDocument();
   });
 

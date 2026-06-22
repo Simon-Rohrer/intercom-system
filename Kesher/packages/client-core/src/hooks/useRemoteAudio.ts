@@ -28,6 +28,8 @@ export type UseRemoteAudioOptions = {
   resolveGainRef: React.MutableRefObject<(sourceUserID: string) => number>;
   /** Called when a recoverable audio error occurs. */
   onAudioError: (msg: string) => void;
+  /** Disable continuous per-track RMS analysis on constrained clients. */
+  enableMetering?: boolean;
 };
 
 export type UseRemoteAudioResult = {
@@ -69,6 +71,7 @@ export function useRemoteAudio({
   directGainByUserId,
   resolveGainRef,
   onAudioError,
+  enableMetering = true,
 }: UseRemoteAudioOptions): UseRemoteAudioResult {
   // ── State ──
   const [incomingAudioActive, setIncomingAudioActive] = useState(false);
@@ -182,6 +185,7 @@ export function useRemoteAudio({
   }
 
   function startRemoteAudioMeterLoop() {
+    if (!enableMetering) return;
     if (remoteAudioMeterRafRef.current !== null) return;
     const tick = () => {
       let active = false;

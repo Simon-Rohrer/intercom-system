@@ -12,7 +12,8 @@ import (
 )
 
 const configurationDocumentFormat = "kesher-showfile"
-const configurationDocumentSchemaVersion = 1
+const configurationDocumentSchemaVersion = 2
+const minimumConfigurationDocumentSchemaVersion = 1
 
 const (
 	configurationSectionRoles             = "roles"
@@ -20,8 +21,12 @@ const (
 	configurationSectionRooms             = "rooms"
 	configurationSectionBroadcastGroups   = "broadcastGroups"
 	configurationSectionTelegramAllowlist = "telegramAllowlist"
+	configurationSectionTelegramMappings  = "telegramMappings"
+	configurationSectionTelegramUsers     = "telegramUsers"
 	configurationSectionAckSettings       = "ackSettings"
 	configurationSectionStreamDeck        = "streamDeckSettings"
+	configurationSectionCompanionProfiles = "companionProfiles"
+	configurationSectionCompanionPages    = "companionRolePages"
 )
 
 var allConfigurationSections = []string{
@@ -30,8 +35,12 @@ var allConfigurationSections = []string{
 	configurationSectionRooms,
 	configurationSectionBroadcastGroups,
 	configurationSectionTelegramAllowlist,
+	configurationSectionTelegramMappings,
+	configurationSectionTelegramUsers,
 	configurationSectionAckSettings,
 	configurationSectionStreamDeck,
+	configurationSectionCompanionProfiles,
+	configurationSectionCompanionPages,
 }
 
 type ConfigurationMetadata struct {
@@ -43,24 +52,48 @@ type ConfigurationMetadata struct {
 }
 
 type ConfigurationUserAssignment struct {
+	ID       string `json:"id,omitempty"`
 	Username string `json:"username"`
 	RoleID   string `json:"roleId"`
 }
 
-type ConfigurationUserStreamDeckSettings struct {
-	Username string             `json:"username"`
+type ConfigurationRoleStreamDeckSettings struct {
+	RoleID   string             `json:"roleId,omitempty"`
+	Username string             `json:"username,omitempty"`
 	Settings StreamDeckSettings `json:"settings"`
 }
 
+type ConfigurationTelegramUser struct {
+	ID             string   `json:"id"`
+	TelegramUserID string   `json:"telegramUserId"`
+	Username       string   `json:"username"`
+	PrivateChatID  string   `json:"privateChatId"`
+	CreatedAt      int64    `json:"createdAt"`
+	RoomIDs        []string `json:"roomIds"`
+}
+
+type ConfigurationCompanionProfile struct {
+	RoleID            string                   `json:"roleId"`
+	ProfileVersion    int                      `json:"profileVersion"`
+	Profile           CompanionProfileResponse `json:"profile"`
+	PublishedByUserID string                   `json:"publishedByUserId,omitempty"`
+	CreatedAt         int64                    `json:"createdAt"`
+	UpdatedAt         int64                    `json:"updatedAt"`
+}
+
 type ConfigurationDocument struct {
-	Meta              ConfigurationMetadata                 `json:"meta"`
-	Roles             []Role                                `json:"roles,omitempty"`
-	Users             []ConfigurationUserAssignment         `json:"users,omitempty"`
-	Rooms             []Room                                `json:"rooms,omitempty"`
-	BroadcastGroups   []BroadcastGroup                      `json:"broadcastGroups,omitempty"`
-	TelegramAllowlist []TelegramAllowlistEntry              `json:"telegramAllowlist,omitempty"`
-	AckSettings       *AckSettings                          `json:"ackSettings,omitempty"`
-	StreamDeck        []ConfigurationUserStreamDeckSettings `json:"streamDeckSettings,omitempty"`
+	Meta               ConfigurationMetadata                 `json:"meta"`
+	Roles              []Role                                `json:"roles,omitempty"`
+	Users              []ConfigurationUserAssignment         `json:"users,omitempty"`
+	Rooms              []Room                                `json:"rooms,omitempty"`
+	BroadcastGroups    []BroadcastGroup                      `json:"broadcastGroups,omitempty"`
+	TelegramAllowlist  []TelegramAllowlistEntry              `json:"telegramAllowlist,omitempty"`
+	TelegramMappings   []TelegramMapping                     `json:"telegramMappings,omitempty"`
+	TelegramUsers      []ConfigurationTelegramUser           `json:"telegramUsers,omitempty"`
+	AckSettings        *AckSettings                          `json:"ackSettings,omitempty"`
+	StreamDeck         []ConfigurationRoleStreamDeckSettings `json:"streamDeckSettings,omitempty"`
+	CompanionProfiles  []ConfigurationCompanionProfile       `json:"companionProfiles,omitempty"`
+	CompanionRolePages map[string]int                        `json:"companionRolePages,omitempty"`
 }
 
 type ConfigurationImportRequest struct {
@@ -73,13 +106,17 @@ type ConfigurationImportResponse struct {
 }
 
 type configurationState struct {
-	Roles             []Role
-	Users             []User
-	Rooms             []Room
-	BroadcastGroups   []BroadcastGroup
-	TelegramAllowlist []TelegramAllowlistEntry
-	AckEnabled        bool
-	StreamDeck        []ConfigurationUserStreamDeckSettings
+	Roles              []Role
+	Users              []User
+	Rooms              []Room
+	BroadcastGroups    []BroadcastGroup
+	TelegramAllowlist  []TelegramAllowlistEntry
+	TelegramMappings   []TelegramMapping
+	TelegramUsers      []ConfigurationTelegramUser
+	AckEnabled         bool
+	StreamDeck         []ConfigurationRoleStreamDeckSettings
+	CompanionProfiles  []ConfigurationCompanionProfile
+	CompanionRolePages map[string]int
 }
 
 func invalidInputf(format string, args ...any) error {
@@ -90,34 +127,97 @@ func conflictf(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrConflict, fmt.Sprintf(format, args...))
 }
 
-func (s *Server) exportConfigurationDocument(ctx context.Context) (ConfigurationDocument, error) {
+func (s *Server) exportConfigurationDocument(ctx context.Context, requested ...[]string) (ConfigurationDocument, error) {
 	state, err := s.store.currentConfigurationState(ctx)
+	if err != nil {
+		return ConfigurationDocument{}, err
+	}
+	var selected []string
+	if len(requested) > 0 {
+		selected = requested[0]
+	}
+	sections, err := normalizeExportSections(selected)
 	if err != nil {
 		return ConfigurationDocument{}, err
 	}
 	users := make([]ConfigurationUserAssignment, 0, len(state.Users))
 	for _, user := range state.Users {
 		users = append(users, ConfigurationUserAssignment{
+			ID:       user.ID,
 			Username: user.Username,
 			RoleID:   user.RoleID,
 		})
 	}
-	return ConfigurationDocument{
+	doc := ConfigurationDocument{
 		Meta: ConfigurationMetadata{
 			Format:        configurationDocumentFormat,
 			SchemaVersion: configurationDocumentSchemaVersion,
 			ExportedAt:    time.Now().UTC().Format(time.RFC3339),
 			SourceVersion: GetVersionInfo(),
-			Sections:      append([]string(nil), allConfigurationSections...),
+			Sections:      append([]string(nil), sections...),
 		},
-		Roles:             append([]Role{}, state.Roles...),
-		Users:             users,
-		Rooms:             append([]Room{}, state.Rooms...),
-		BroadcastGroups:   append([]BroadcastGroup{}, state.BroadcastGroups...),
-		TelegramAllowlist: append([]TelegramAllowlistEntry{}, state.TelegramAllowlist...),
-		AckSettings:       &AckSettings{Enabled: s.isAckEnabled()},
-		StreamDeck:        append([]ConfigurationUserStreamDeckSettings{}, state.StreamDeck...),
-	}, nil
+	}
+	for _, section := range sections {
+		switch section {
+		case configurationSectionRoles:
+			doc.Roles = append([]Role{}, state.Roles...)
+		case configurationSectionUsers:
+			doc.Users = users
+		case configurationSectionRooms:
+			doc.Rooms = append([]Room{}, state.Rooms...)
+		case configurationSectionBroadcastGroups:
+			doc.BroadcastGroups = append([]BroadcastGroup{}, state.BroadcastGroups...)
+		case configurationSectionTelegramAllowlist:
+			doc.TelegramAllowlist = append([]TelegramAllowlistEntry{}, state.TelegramAllowlist...)
+		case configurationSectionTelegramMappings:
+			doc.TelegramMappings = append([]TelegramMapping{}, state.TelegramMappings...)
+		case configurationSectionTelegramUsers:
+			doc.TelegramUsers = append([]ConfigurationTelegramUser{}, state.TelegramUsers...)
+		case configurationSectionAckSettings:
+			doc.AckSettings = &AckSettings{Enabled: s.isAckEnabled()}
+		case configurationSectionStreamDeck:
+			doc.StreamDeck = append([]ConfigurationRoleStreamDeckSettings{}, state.StreamDeck...)
+		case configurationSectionCompanionProfiles:
+			doc.CompanionProfiles = append([]ConfigurationCompanionProfile{}, state.CompanionProfiles...)
+		case configurationSectionCompanionPages:
+			doc.CompanionRolePages = cloneStringIntMap(state.CompanionRolePages)
+		}
+	}
+	return doc, nil
+}
+
+func normalizeExportSections(requested []string) ([]string, error) {
+	if len(requested) == 0 {
+		return append([]string(nil), allConfigurationSections...), nil
+	}
+	seen := make(map[string]struct{}, len(requested))
+	selected := make([]string, 0, len(requested))
+	for _, section := range requested {
+		section = strings.TrimSpace(section)
+		if !slices.Contains(allConfigurationSections, section) {
+			return nil, invalidInputf("unknown section %q", section)
+		}
+		if _, exists := seen[section]; exists {
+			continue
+		}
+		seen[section] = struct{}{}
+		selected = append(selected, section)
+	}
+	if len(selected) == 0 {
+		return nil, invalidInputf("no sections selected")
+	}
+	return selected, nil
+}
+
+func cloneStringIntMap(source map[string]int) map[string]int {
+	if source == nil {
+		return map[string]int{}
+	}
+	cloned := make(map[string]int, len(source))
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func (s *Store) currentConfigurationState(ctx context.Context) (configurationState, error) {
@@ -141,34 +241,53 @@ func (s *Store) currentConfigurationState(ctx context.Context) (configurationSta
 	if err != nil {
 		return configurationState{}, err
 	}
-	streamDeck, err := s.ListUserStreamDeckSettingsByUsername(ctx)
+	telegramMappings, err := s.ListTelegramMappings(ctx)
+	if err != nil {
+		return configurationState{}, err
+	}
+	telegramUsers, err := s.ListConfigurationTelegramUsers(ctx)
+	if err != nil {
+		return configurationState{}, err
+	}
+	streamDeck, err := s.ListConfigurationStreamDeckSettings(ctx)
+	if err != nil {
+		return configurationState{}, err
+	}
+	companionProfiles, err := s.ListConfigurationCompanionProfiles(ctx)
+	if err != nil {
+		return configurationState{}, err
+	}
+	companionRolePages, err := s.GetAllCompanionRolePages(ctx)
 	if err != nil {
 		return configurationState{}, err
 	}
 	return configurationState{
-		Roles:             roles,
-		Users:             users,
-		Rooms:             rooms,
-		BroadcastGroups:   groups,
-		TelegramAllowlist: allowlist,
-		StreamDeck:        streamDeck,
+		Roles:              roles,
+		Users:              users,
+		Rooms:              rooms,
+		BroadcastGroups:    groups,
+		TelegramAllowlist:  allowlist,
+		TelegramMappings:   telegramMappings,
+		TelegramUsers:      telegramUsers,
+		StreamDeck:         streamDeck,
+		CompanionProfiles:  companionProfiles,
+		CompanionRolePages: companionRolePages,
 	}, nil
 }
 
-func (s *Store) ListUserStreamDeckSettingsByUsername(ctx context.Context) ([]ConfigurationUserStreamDeckSettings, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT users.username, role_stream_deck_settings.settings_json
+func (s *Store) ListConfigurationStreamDeckSettings(ctx context.Context) ([]ConfigurationRoleStreamDeckSettings, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT role_id, settings_json
 		FROM role_stream_deck_settings
-		JOIN users ON users.role_id = role_stream_deck_settings.role_id
-		ORDER BY users.username`)
+		ORDER BY role_id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	result := make([]ConfigurationUserStreamDeckSettings, 0)
+	result := make([]ConfigurationRoleStreamDeckSettings, 0)
 	for rows.Next() {
-		var username string
+		var roleID string
 		var raw string
-		if err := rows.Scan(&username, &raw); err != nil {
+		if err := rows.Scan(&roleID, &raw); err != nil {
 			return nil, err
 		}
 		var settings StreamDeckSettings
@@ -179,10 +298,76 @@ func (s *Store) ListUserStreamDeckSettingsByUsername(ctx context.Context) ([]Con
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, ConfigurationUserStreamDeckSettings{
-			Username: username,
+		result = append(result, ConfigurationRoleStreamDeckSettings{
+			RoleID:   roleID,
 			Settings: normalized,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (s *Store) ListConfigurationTelegramUsers(ctx context.Context) ([]ConfigurationTelegramUser, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, telegram_user_id, username, private_chat_id, created_at
+		FROM telegram_user_mappings ORDER BY username COLLATE NOCASE`)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]ConfigurationTelegramUser, 0)
+	for rows.Next() {
+		var entry ConfigurationTelegramUser
+		if err := rows.Scan(&entry.ID, &entry.TelegramUserID, &entry.Username, &entry.PrivateChatID, &entry.CreatedAt); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		result = append(result, entry)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	for index := range result {
+		roomIDs, err := s.GetTelegramUserRoomSubscriptions(ctx, result[index].TelegramUserID)
+		if err != nil {
+			return nil, err
+		}
+		slices.Sort(roomIDs)
+		result[index].RoomIDs = roomIDs
+	}
+	return result, nil
+}
+
+func (s *Store) ListConfigurationCompanionProfiles(ctx context.Context) ([]ConfigurationCompanionProfile, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT role_id, profile_version, profile_json,
+		COALESCE(published_by_user_id, ''), created_at, updated_at
+		FROM companion_profiles ORDER BY role_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make([]ConfigurationCompanionProfile, 0)
+	for rows.Next() {
+		var entry ConfigurationCompanionProfile
+		var raw string
+		if err := rows.Scan(
+			&entry.RoleID,
+			&entry.ProfileVersion,
+			&raw,
+			&entry.PublishedByUserID,
+			&entry.CreatedAt,
+			&entry.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(raw), &entry.Profile); err != nil {
+			return nil, ErrInvalidInput
+		}
+		result = append(result, entry)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -196,13 +381,17 @@ func mergeConfigurationImport(current configurationState, doc ConfigurationDocum
 		return configurationState{}, nil, err
 	}
 	merged := configurationState{
-		Roles:             append([]Role(nil), current.Roles...),
-		Users:             append([]User(nil), current.Users...),
-		Rooms:             append([]Room(nil), current.Rooms...),
-		BroadcastGroups:   append([]BroadcastGroup(nil), current.BroadcastGroups...),
-		TelegramAllowlist: append([]TelegramAllowlistEntry(nil), current.TelegramAllowlist...),
-		AckEnabled:        current.AckEnabled,
-		StreamDeck:        append([]ConfigurationUserStreamDeckSettings(nil), current.StreamDeck...),
+		Roles:              append([]Role(nil), current.Roles...),
+		Users:              append([]User(nil), current.Users...),
+		Rooms:              append([]Room(nil), current.Rooms...),
+		BroadcastGroups:    append([]BroadcastGroup(nil), current.BroadcastGroups...),
+		TelegramAllowlist:  append([]TelegramAllowlistEntry(nil), current.TelegramAllowlist...),
+		TelegramMappings:   append([]TelegramMapping(nil), current.TelegramMappings...),
+		TelegramUsers:      append([]ConfigurationTelegramUser(nil), current.TelegramUsers...),
+		AckEnabled:         current.AckEnabled,
+		StreamDeck:         append([]ConfigurationRoleStreamDeckSettings(nil), current.StreamDeck...),
+		CompanionProfiles:  append([]ConfigurationCompanionProfile(nil), current.CompanionProfiles...),
+		CompanionRolePages: cloneStringIntMap(current.CompanionRolePages),
 	}
 	for _, section := range sections {
 		switch section {
@@ -216,14 +405,22 @@ func mergeConfigurationImport(current configurationState, doc ConfigurationDocum
 			merged.BroadcastGroups = append([]BroadcastGroup(nil), doc.BroadcastGroups...)
 		case configurationSectionTelegramAllowlist:
 			merged.TelegramAllowlist = append([]TelegramAllowlistEntry(nil), doc.TelegramAllowlist...)
+		case configurationSectionTelegramMappings:
+			merged.TelegramMappings = append([]TelegramMapping(nil), doc.TelegramMappings...)
+		case configurationSectionTelegramUsers:
+			merged.TelegramUsers = append([]ConfigurationTelegramUser(nil), doc.TelegramUsers...)
 		case configurationSectionAckSettings:
 			merged.AckEnabled = doc.AckSettings.Enabled
 		case configurationSectionStreamDeck:
-			normalizedStreamDeck, err := normalizeImportedStreamDeckAssignments(doc.StreamDeck)
+			normalizedStreamDeck, err := normalizeImportedStreamDeckAssignments(doc.StreamDeck, merged.Users)
 			if err != nil {
 				return configurationState{}, nil, err
 			}
 			merged.StreamDeck = normalizedStreamDeck
+		case configurationSectionCompanionProfiles:
+			merged.CompanionProfiles = append([]ConfigurationCompanionProfile(nil), doc.CompanionProfiles...)
+		case configurationSectionCompanionPages:
+			merged.CompanionRolePages = cloneStringIntMap(doc.CompanionRolePages)
 		}
 	}
 	if err := validateConfigurationState(merged); err != nil {
@@ -269,8 +466,8 @@ func validateConfigurationMetadata(meta ConfigurationMetadata) error {
 	if strings.TrimSpace(meta.Format) != configurationDocumentFormat {
 		return invalidInputf("meta.format must be %q", configurationDocumentFormat)
 	}
-	if meta.SchemaVersion != configurationDocumentSchemaVersion {
-		return invalidInputf("meta.schemaVersion must be %d", configurationDocumentSchemaVersion)
+	if meta.SchemaVersion < minimumConfigurationDocumentSchemaVersion || meta.SchemaVersion > configurationDocumentSchemaVersion {
+		return invalidInputf("meta.schemaVersion must be between %d and %d", minimumConfigurationDocumentSchemaVersion, configurationDocumentSchemaVersion)
 	}
 	if strings.TrimSpace(meta.ExportedAt) == "" {
 		return invalidInputf("meta.exportedAt is required")
@@ -296,6 +493,9 @@ func validateConfigurationMetadata(meta ConfigurationMetadata) error {
 }
 
 func configurationDocumentHasSection(doc ConfigurationDocument, section string) bool {
+	if !slices.Contains(doc.Meta.Sections, section) {
+		return false
+	}
 	switch section {
 	case configurationSectionRoles:
 		return true
@@ -307,36 +507,53 @@ func configurationDocumentHasSection(doc ConfigurationDocument, section string) 
 		return true
 	case configurationSectionTelegramAllowlist:
 		return true
+	case configurationSectionTelegramMappings:
+		return true
+	case configurationSectionTelegramUsers:
+		return true
 	case configurationSectionAckSettings:
 		return doc.AckSettings != nil
 	case configurationSectionStreamDeck:
+		return true
+	case configurationSectionCompanionProfiles:
+		return true
+	case configurationSectionCompanionPages:
 		return true
 	default:
 		return false
 	}
 }
 
-func normalizeImportedStreamDeckAssignments(imported []ConfigurationUserStreamDeckSettings) ([]ConfigurationUserStreamDeckSettings, error) {
-	normalized := make([]ConfigurationUserStreamDeckSettings, 0, len(imported))
-	seenUsernames := make(map[string]struct{}, len(imported))
+func normalizeImportedStreamDeckAssignments(imported []ConfigurationRoleStreamDeckSettings, users []User) ([]ConfigurationRoleStreamDeckSettings, error) {
+	normalized := make([]ConfigurationRoleStreamDeckSettings, 0, len(imported))
+	seenRoleIDs := make(map[string]struct{}, len(imported))
 	for _, assignment := range imported {
+		roleID := strings.TrimSpace(assignment.RoleID)
 		username := strings.TrimSpace(assignment.Username)
-		if username == "" {
-			return nil, invalidInputf("streamDeckSettings username is required")
+		if roleID == "" && username != "" {
+			for _, user := range users {
+				if strings.EqualFold(user.Username, username) {
+					roleID = strings.TrimSpace(user.RoleID)
+					break
+				}
+			}
 		}
-		if _, ok := seenUsernames[username]; ok {
-			return nil, conflictf("duplicate streamDeckSettings username %q", username)
+		if roleID == "" {
+			return nil, invalidInputf("streamDeckSettings roleId is required")
+		}
+		if _, ok := seenRoleIDs[roleID]; ok {
+			return nil, conflictf("duplicate streamDeckSettings roleId %q", roleID)
 		}
 		settings, err := validateStreamDeckSettings(assignment.Settings)
 		if err != nil {
 			if errors.Is(err, ErrInvalidInput) {
-				return nil, invalidInputf("streamDeckSettings for %q is invalid", username)
+				return nil, invalidInputf("streamDeckSettings for role %q is invalid", roleID)
 			}
 			return nil, err
 		}
-		seenUsernames[username] = struct{}{}
-		normalized = append(normalized, ConfigurationUserStreamDeckSettings{
-			Username: username,
+		seenRoleIDs[roleID] = struct{}{}
+		normalized = append(normalized, ConfigurationRoleStreamDeckSettings{
+			RoleID:   roleID,
 			Settings: settings,
 		})
 	}
@@ -347,6 +564,7 @@ func importedAssignmentsToUsers(imported []ConfigurationUserAssignment) []User {
 	users := make([]User, 0, len(imported))
 	for _, assignment := range imported {
 		users = append(users, User{
+			ID:       strings.TrimSpace(assignment.ID),
 			Username: strings.TrimSpace(assignment.Username),
 			RoleID:   strings.TrimSpace(assignment.RoleID),
 		})
@@ -458,7 +676,9 @@ func validateConfigurationState(state configurationState) error {
 
 	usernames := make(map[string]struct{}, len(state.Users))
 	userByUsername := make(map[string]struct{}, len(state.Users))
+	userIDs := make(map[string]struct{}, len(state.Users))
 	for _, user := range state.Users {
+		userID := strings.TrimSpace(user.ID)
 		username := strings.TrimSpace(user.Username)
 		roleID := strings.TrimSpace(user.RoleID)
 		if username == "" || roleID == "" {
@@ -467,6 +687,12 @@ func validateConfigurationState(state configurationState) error {
 		if _, exists := usernames[username]; exists {
 			return conflictf("duplicate username %q", username)
 		}
+		if userID != "" {
+			if _, exists := userIDs[userID]; exists {
+				return conflictf("duplicate user id %q", userID)
+			}
+			userIDs[userID] = struct{}{}
+		}
 		if _, ok := roleByID[roleID]; !ok {
 			return invalidInputf("user %q references unknown roleId %q", username, roleID)
 		}
@@ -474,22 +700,22 @@ func validateConfigurationState(state configurationState) error {
 		userByUsername[strings.ToLower(username)] = struct{}{}
 	}
 
-	streamDeckByUsername := make(map[string]struct{}, len(state.StreamDeck))
+	streamDeckByRoleID := make(map[string]struct{}, len(state.StreamDeck))
 	for _, assignment := range state.StreamDeck {
-		username := strings.TrimSpace(assignment.Username)
-		if username == "" {
-			return invalidInputf("streamDeckSettings username is required")
+		roleID := strings.TrimSpace(assignment.RoleID)
+		if roleID == "" {
+			return invalidInputf("streamDeckSettings roleId is required")
 		}
-		if _, exists := streamDeckByUsername[username]; exists {
-			return conflictf("duplicate streamDeckSettings username %q", username)
+		if _, exists := streamDeckByRoleID[roleID]; exists {
+			return conflictf("duplicate streamDeckSettings roleId %q", roleID)
 		}
-		if _, ok := usernames[username]; !ok {
-			return invalidInputf("streamDeckSettings references unknown username %q", username)
+		if _, ok := roleByID[roleID]; !ok {
+			return invalidInputf("streamDeckSettings references unknown roleId %q", roleID)
 		}
 		if _, err := validateStreamDeckSettings(assignment.Settings); err != nil {
-			return invalidInputf("streamDeckSettings for %q is invalid", username)
+			return invalidInputf("streamDeckSettings for role %q is invalid", roleID)
 		}
-		streamDeckByUsername[username] = struct{}{}
+		streamDeckByRoleID[roleID] = struct{}{}
 	}
 
 	allowlistUsernames := make(map[string]struct{}, len(state.TelegramAllowlist))
@@ -515,6 +741,80 @@ func validateConfigurationState(state configurationState) error {
 			return invalidInputf("telegram username %q references unknown kesherUsername %q", telegramUsername, kesherUsername)
 		}
 	}
+
+	telegramMappingIDs := make(map[string]struct{}, len(state.TelegramMappings))
+	telegramChatIDs := make(map[string]struct{}, len(state.TelegramMappings))
+	for _, mapping := range state.TelegramMappings {
+		mappingID := strings.TrimSpace(mapping.ID)
+		chatID := strings.TrimSpace(mapping.ChatID)
+		label := strings.TrimSpace(mapping.Label)
+		roomID := strings.TrimSpace(mapping.RoomID)
+		if mappingID == "" || chatID == "" || label == "" || roomID == "" {
+			return invalidInputf("telegramMappings entries require id, chatId, label and roomId")
+		}
+		if _, exists := telegramMappingIDs[mappingID]; exists {
+			return conflictf("duplicate telegram mapping id %q", mappingID)
+		}
+		if _, exists := telegramChatIDs[chatID]; exists {
+			return conflictf("duplicate telegram chat id %q", chatID)
+		}
+		if _, exists := roomByID[roomID]; !exists {
+			return invalidInputf("telegram mapping %q references unknown room %q", mappingID, roomID)
+		}
+		telegramMappingIDs[mappingID] = struct{}{}
+		telegramChatIDs[chatID] = struct{}{}
+	}
+
+	telegramUserIDs := make(map[string]struct{}, len(state.TelegramUsers))
+	telegramUserMappingIDs := make(map[string]struct{}, len(state.TelegramUsers))
+	for _, mapping := range state.TelegramUsers {
+		mappingID := strings.TrimSpace(mapping.ID)
+		telegramUserID := strings.TrimSpace(mapping.TelegramUserID)
+		username := strings.TrimSpace(mapping.Username)
+		privateChatID := strings.TrimSpace(mapping.PrivateChatID)
+		if mappingID == "" || telegramUserID == "" || username == "" || privateChatID == "" {
+			return invalidInputf("telegramUsers entries require id, telegramUserId, username and privateChatId")
+		}
+		if _, exists := telegramUserMappingIDs[mappingID]; exists {
+			return conflictf("duplicate telegram user mapping id %q", mappingID)
+		}
+		if _, exists := telegramUserIDs[telegramUserID]; exists {
+			return conflictf("duplicate telegram user id %q", telegramUserID)
+		}
+		if _, exists := userByUsername[strings.ToLower(username)]; !exists {
+			return invalidInputf("telegram user %q references unknown username %q", telegramUserID, username)
+		}
+		for _, roomID := range normalizeIDs(mapping.RoomIDs) {
+			if _, exists := roomByID[roomID]; !exists {
+				return invalidInputf("telegram user %q references unknown room %q", telegramUserID, roomID)
+			}
+		}
+		telegramUserMappingIDs[mappingID] = struct{}{}
+		telegramUserIDs[telegramUserID] = struct{}{}
+	}
+
+	companionProfileRoles := make(map[string]struct{}, len(state.CompanionProfiles))
+	for _, profile := range state.CompanionProfiles {
+		roleID := strings.TrimSpace(profile.RoleID)
+		if roleID == "" || profile.ProfileVersion < 1 {
+			return invalidInputf("companionProfiles entries require roleId and a positive profileVersion")
+		}
+		if _, exists := roleByID[roleID]; !exists {
+			return invalidInputf("companion profile references unknown roleId %q", roleID)
+		}
+		if _, exists := companionProfileRoles[roleID]; exists {
+			return conflictf("duplicate companion profile roleId %q", roleID)
+		}
+		companionProfileRoles[roleID] = struct{}{}
+	}
+	for roleID, pageNumber := range state.CompanionRolePages {
+		if _, exists := roleByID[strings.TrimSpace(roleID)]; !exists {
+			return invalidInputf("companionRolePages references unknown roleId %q", roleID)
+		}
+		if pageNumber < 0 {
+			return invalidInputf("companionRolePages for %q must not be negative", roleID)
+		}
+	}
 	return nil
 }
 
@@ -526,7 +826,12 @@ func (s *Store) ReplaceConfiguration(ctx context.Context, state configurationSta
 	defer tx.Rollback()
 
 	statements := []string{
+		`DELETE FROM telegram_user_room_subscriptions`,
+		`DELETE FROM telegram_user_mappings`,
+		`DELETE FROM telegram_mappings`,
 		`DELETE FROM telegram_allowlist`,
+		`DELETE FROM companion_profiles`,
+		`DELETE FROM companion_role_pages`,
 		`DELETE FROM broadcast_group_rooms`,
 		`DELETE FROM broadcast_group_roles`,
 		`DELETE FROM room_sender_roles`,
@@ -613,6 +918,61 @@ func (s *Store) ReplaceConfiguration(ctx context.Context, state configurationSta
 		}
 	}
 
+	for _, mapping := range state.TelegramMappings {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO telegram_mappings (id, chat_id, label, room_id) VALUES (?, ?, ?, ?)`,
+			strings.TrimSpace(mapping.ID),
+			strings.TrimSpace(mapping.ChatID),
+			strings.TrimSpace(mapping.Label),
+			strings.TrimSpace(mapping.RoomID),
+		); err != nil {
+			return err
+		}
+	}
+
+	for _, mapping := range state.TelegramUsers {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO telegram_user_mappings (id, telegram_user_id, username, private_chat_id, created_at) VALUES (?, ?, ?, ?, ?)`,
+			strings.TrimSpace(mapping.ID),
+			strings.TrimSpace(mapping.TelegramUserID),
+			strings.TrimSpace(mapping.Username),
+			strings.TrimSpace(mapping.PrivateChatID),
+			mapping.CreatedAt,
+		); err != nil {
+			return err
+		}
+		for _, roomID := range normalizeIDs(mapping.RoomIDs) {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO telegram_user_room_subscriptions (telegram_user_id, room_id, created_at) VALUES (?, ?, ?)`,
+				strings.TrimSpace(mapping.TelegramUserID), roomID, mapping.CreatedAt,
+			); err != nil {
+				return err
+			}
+		}
+	}
+
+	for _, profile := range state.CompanionProfiles {
+		body, err := json.Marshal(profile.Profile)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO companion_profiles (role_id, profile_version, profile_json, published_by_user_id, created_at, updated_at) VALUES (?, ?, ?, NULLIF(?, ''), ?, ?)`,
+			strings.TrimSpace(profile.RoleID),
+			profile.ProfileVersion,
+			string(body),
+			strings.TrimSpace(profile.PublishedByUserID),
+			profile.CreatedAt,
+			profile.UpdatedAt,
+		); err != nil {
+			return err
+		}
+	}
+
+	for roleID, pageNumber := range state.CompanionRolePages {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO companion_role_pages (role_id, page_number, updated_at) VALUES (?, ?, ?)`,
+			strings.TrimSpace(roleID), pageNumber, time.Now().UnixMilli(),
+		); err != nil {
+			return err
+		}
+	}
+
 	if updateUsers {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM users`); err != nil {
 			return err
@@ -640,12 +1000,12 @@ func (s *Store) ReplaceConfiguration(ctx context.Context, state configurationSta
 				return err
 			}
 			result, err := tx.ExecContext(ctx, `INSERT INTO role_stream_deck_settings (role_id, settings_json, created_at, updated_at)
-				SELECT users.role_id, ?, ?, ? FROM users WHERE users.username = ?
+				VALUES (?, ?, ?, ?)
 				ON CONFLICT(role_id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = excluded.updated_at`,
+				assignment.RoleID,
 				string(settingsJSON),
 				now,
 				now,
-				assignment.Username,
 			)
 			if err != nil {
 				return err
@@ -655,7 +1015,7 @@ func (s *Store) ReplaceConfiguration(ctx context.Context, state configurationSta
 				return err
 			}
 			if affected == 0 {
-				return invalidInputf("streamDeckSettings references unknown username %q", assignment.Username)
+				return invalidInputf("streamDeckSettings references unknown roleId %q", assignment.RoleID)
 			}
 		}
 	}

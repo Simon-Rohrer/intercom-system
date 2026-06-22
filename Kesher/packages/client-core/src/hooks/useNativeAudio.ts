@@ -78,6 +78,7 @@ export type NativeAudioHook = {
   handleOffer: (params: {
     offerSdp: string;
     inputDeviceId?: string;
+    inputChannel?: number;
     outputDeviceId?: string;
     inputGain?: number;
     audioGateEnabled?: boolean;
@@ -155,6 +156,7 @@ export function useNativeAudio(
     async (params: {
       offerSdp: string;
       inputDeviceId?: string;
+      inputChannel?: number;
       outputDeviceId?: string;
       inputGain?: number;
       audioGateEnabled?: boolean;
@@ -170,6 +172,7 @@ export function useNativeAudio(
           params: {
             offer_sdp: params.offerSdp,
             input_device_id: params.inputDeviceId ?? null,
+            input_channel: params.inputChannel ?? null,
             output_device_id: params.outputDeviceId ?? null,
             input_gain: params.inputGain ?? null,
             audio_gate_enabled: params.audioGateEnabled ?? null,

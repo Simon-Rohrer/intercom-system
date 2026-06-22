@@ -212,6 +212,7 @@ export function normalizePublicBootstrap(data: unknown): PublicBootstrap {
         allowedRoleIds: toStringArray(entry.allowedRoleIds),
       };
     }),
+    activeRoleIds: toStringArray(raw.activeRoleIds),
     ackEnabled:
       typeof raw.ackEnabled === "boolean" ? raw.ackEnabled : true,
     appVersion: {
@@ -254,9 +255,22 @@ function normalizeConfigurationDocument(data: unknown): ConfigurationDocument {
   const telegramAllowlist = Array.isArray(raw.telegramAllowlist)
     ? raw.telegramAllowlist
     : [];
+  const telegramMappings = Array.isArray(raw.telegramMappings)
+    ? raw.telegramMappings
+    : [];
+  const telegramUsers = Array.isArray(raw.telegramUsers)
+    ? raw.telegramUsers
+    : [];
   const streamDeckSettings = Array.isArray(raw.streamDeckSettings)
     ? raw.streamDeckSettings
     : [];
+  const companionProfiles = Array.isArray(raw.companionProfiles)
+    ? raw.companionProfiles
+    : [];
+  const companionRolePagesRaw =
+    raw.companionRolePages && typeof raw.companionRolePages === "object"
+      ? (raw.companionRolePages as Record<string, unknown>)
+      : {};
   const meta = (raw.meta ?? {}) as Record<string, unknown>;
   const ackSettings = (raw.ackSettings ?? null) as Record<string, unknown> | null;
 
@@ -282,6 +296,7 @@ function normalizeConfigurationDocument(data: unknown): ConfigurationDocument {
     users: users.map((user) => {
       const entry = user as Record<string, unknown>;
       return {
+        id: typeof entry.id === "string" ? entry.id : undefined,
         username: typeof entry.username === "string" ? entry.username : "",
         roleId: typeof entry.roleId === "string" ? entry.roleId : "",
       };
@@ -307,6 +322,28 @@ function normalizeConfigurationDocument(data: unknown): ConfigurationDocument {
         isBound: typeof entry.isBound === "boolean" ? entry.isBound : false,
       };
     }),
+    telegramMappings: telegramMappings.map((mapping) => {
+      const entry = mapping as Record<string, unknown>;
+      return {
+        id: typeof entry.id === "string" ? entry.id : "",
+        chatId: typeof entry.chatId === "string" ? entry.chatId : "",
+        label: typeof entry.label === "string" ? entry.label : "",
+        roomId: typeof entry.roomId === "string" ? entry.roomId : "",
+      };
+    }),
+    telegramUsers: telegramUsers.map((mapping) => {
+      const entry = mapping as Record<string, unknown>;
+      return {
+        id: typeof entry.id === "string" ? entry.id : "",
+        telegramUserId:
+          typeof entry.telegramUserId === "string" ? entry.telegramUserId : "",
+        username: typeof entry.username === "string" ? entry.username : "",
+        privateChatId:
+          typeof entry.privateChatId === "string" ? entry.privateChatId : "",
+        createdAt: typeof entry.createdAt === "number" ? entry.createdAt : 0,
+        roomIds: toStringArray(entry.roomIds),
+      };
+    }),
     ackSettings:
       ackSettings && typeof ackSettings.enabled === "boolean"
         ? { enabled: ackSettings.enabled }
@@ -314,10 +351,33 @@ function normalizeConfigurationDocument(data: unknown): ConfigurationDocument {
     streamDeckSettings: streamDeckSettings.map((assignment) => {
       const entry = assignment as Record<string, unknown>;
       return {
-        username: typeof entry.username === "string" ? entry.username : "",
+        roleId: typeof entry.roleId === "string" ? entry.roleId : undefined,
+        username:
+          typeof entry.username === "string" ? entry.username : undefined,
         settings: normalizeStreamDeckSettings(entry.settings),
       };
     }),
+    companionProfiles: companionProfiles.map((profile) => {
+      const entry = profile as Record<string, unknown>;
+      return {
+        roleId: typeof entry.roleId === "string" ? entry.roleId : "",
+        profileVersion:
+          typeof entry.profileVersion === "number" ? entry.profileVersion : 0,
+        profile: entry.profile as any,
+        publishedByUserId:
+          typeof entry.publishedByUserId === "string"
+            ? entry.publishedByUserId
+            : undefined,
+        createdAt: typeof entry.createdAt === "number" ? entry.createdAt : 0,
+        updatedAt: typeof entry.updatedAt === "number" ? entry.updatedAt : 0,
+      };
+    }),
+    companionRolePages: Object.fromEntries(
+      Object.entries(companionRolePagesRaw).filter(
+        (entry): entry is [string, number] =>
+          typeof entry[1] === "number" && Number.isFinite(entry[1]),
+      ),
+    ),
   };
 }
 
@@ -730,8 +790,12 @@ export async function deleteBroadcastGroup(
 export async function exportConfiguration(
   token: string,
   adminPin: string,
+  sections?: ConfigurationSection[],
 ): Promise<ConfigurationDocument> {
-  const res = await fetch(apiUrl("/api/admin/configuration-export"), {
+  const query = sections?.length
+    ? `?sections=${encodeURIComponent(sections.join(","))}`
+    : "";
+  const res = await fetch(apiUrl(`/api/admin/configuration-export${query}`), {
     headers: {
       Authorization: `Bearer ${token}`,
       [adminPinHeaderName]: adminPin,

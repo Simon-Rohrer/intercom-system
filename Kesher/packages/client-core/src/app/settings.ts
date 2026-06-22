@@ -86,10 +86,13 @@ export type GlobalSettings = {
   showVolumeControls: boolean;
   audioGateEnabled: boolean;
   audioGateThresholdDb: number;
+  inputChannelByDeviceId: Record<string, InputChannelSelection>;
   inputGainByDeviceId: Record<string, number>;
   roomGainById: Record<string, number>;
   directGainByUserId: Record<string, number>;
 };
+
+export type InputChannelSelection = "all" | number;
 
 export type FavoriteSettings = {
   pinnedRoomIds: string[];
@@ -131,6 +134,27 @@ function sanitizeGainMap(
   return Object.fromEntries(entries);
 }
 
+function sanitizeInputChannelMap(
+  value: unknown,
+): Record<string, InputChannelSelection> {
+  if (!value || typeof value !== "object") return {};
+  const sanitized: Record<string, InputChannelSelection> = {};
+  for (const [key, raw] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
+    if (!key) continue;
+    if (raw === "all") {
+      sanitized[key] = "all";
+      continue;
+    }
+    if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 1) {
+      continue;
+    }
+    sanitized[key] = Math.min(32, raw);
+  }
+  return sanitized;
+}
+
 export function loadSessionSettings(): SessionSettings {
   try {
     const raw = localStorage.getItem(sessionSettingsStorageKey);
@@ -168,6 +192,7 @@ export function loadGlobalSettings(): GlobalSettings {
         showVolumeControls: true,
         audioGateEnabled: defaultAudioGateEnabled,
         audioGateThresholdDb: defaultAudioGateThresholdDb,
+        inputChannelByDeviceId: {},
         inputGainByDeviceId: {},
         roomGainById: {},
         directGainByUserId: {},
@@ -216,6 +241,9 @@ export function loadGlobalSettings(): GlobalSettings {
           ? parsed.audioGateThresholdDb
           : defaultAudioGateThresholdDb,
       ),
+      inputChannelByDeviceId: sanitizeInputChannelMap(
+        parsed.inputChannelByDeviceId,
+      ),
       inputGainByDeviceId: sanitizeGainMap(
         parsed.inputGainByDeviceId,
         clampInputGainValue,
@@ -238,6 +266,7 @@ export function loadGlobalSettings(): GlobalSettings {
       showVolumeControls: true,
       audioGateEnabled: defaultAudioGateEnabled,
       audioGateThresholdDb: defaultAudioGateThresholdDb,
+      inputChannelByDeviceId: {},
       inputGainByDeviceId: {},
       roomGainById: {},
       directGainByUserId: {},

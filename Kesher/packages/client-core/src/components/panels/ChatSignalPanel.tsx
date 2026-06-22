@@ -89,7 +89,10 @@ export function ChatSignalPanel({
   const visibleMessages = useMemo(
     () =>
       chatMessages.filter(
-        (entry) => entry.scope !== "room" || listenRoomIds.includes(entry.targetId),
+        (entry) =>
+          entry.self ||
+          entry.scope !== "room" ||
+          listenRoomIds.includes(entry.targetId),
       ),
     [chatMessages, listenRoomIds],
   );

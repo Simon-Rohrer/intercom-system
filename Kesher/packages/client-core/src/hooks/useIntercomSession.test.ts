@@ -43,6 +43,24 @@ describe("useIntercomSession low-latency helpers", () => {
     );
   });
 
+  it("uses lower-overhead Opus settings in low-power mode", () => {
+    const sdp = [
+      "v=0",
+      "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+      "a=rtpmap:111 opus/48000/2",
+      "a=fmtp:111 usedtx=0;cbr=1;ptime=2.5;minptime=2.5;maxaveragebitrate=24000",
+      "",
+    ].join("\r\n");
+
+    const tuned = tuneOpusSdpForSpeech(sdp, true);
+    expect(tuned).toContain("usedtx=1");
+    expect(tuned).toContain("cbr=0");
+    expect(tuned).toContain("ptime=20");
+    expect(tuned).toContain("minptime=10");
+    expect(tuned).toContain("maxaveragebitrate=16000");
+    expect(tuned).toContain("a=ptime:20");
+  });
+
   it("sets playoutDelayHint to zero when the receiver supports it", () => {
     const receiver = { playoutDelayHint: 0.25 };
 

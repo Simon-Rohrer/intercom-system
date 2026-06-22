@@ -3,6 +3,7 @@ import {
   buildLowLatencyMicConstraintCandidates,
   requestLowLatencyMicStream,
   computeGateCoefficients,
+  resolveInputChannelIndexes,
 } from "./useLocalMic";
 
 describe("useLocalMic helpers", () => {
@@ -10,6 +11,17 @@ describe("useLocalMic helpers", () => {
     const candidates = buildLowLatencyMicConstraintCandidates("mic-1");
 
     expect(candidates[0]).toEqual({
+      audio: {
+        echoCancellation: { exact: false },
+        noiseSuppression: { exact: false },
+        autoGainControl: { exact: false },
+        channelCount: { exact: 2 },
+        latency: 0,
+        deviceId: { exact: "mic-1" },
+      },
+      video: false,
+    });
+    expect(candidates[6]).toEqual({
       audio: {
         echoCancellation: false,
         noiseSuppression: false,
@@ -20,7 +32,7 @@ describe("useLocalMic helpers", () => {
       },
       video: false,
     });
-    expect(candidates[5]).toEqual({
+    expect(candidates[11]).toEqual({
       audio: {
         echoCancellation: false,
         noiseSuppression: false,
@@ -39,34 +51,44 @@ describe("useLocalMic helpers", () => {
 
   it("keeps the selected device while relaxing capture constraints", async () => {
     const stream = { getTracks: () => [] } as unknown as MediaStream;
-    const getUserMedia = vi
-      .fn<
-        (constraints: MediaStreamConstraints) => Promise<MediaStream>
-      >()
-      .mockRejectedValueOnce(new Error("latency constraint unsupported"))
-      .mockRejectedValueOnce(new Error("channel constraint unsupported"))
-      .mockResolvedValue(stream);
+    const getUserMedia = vi.fn<
+      (constraints: MediaStreamConstraints) => Promise<MediaStream>
+    >(async (constraints) => {
+      const audio = constraints.audio;
+      const channelCount =
+        typeof audio === "object" ? audio.channelCount : undefined;
+      if (
+        typeof channelCount === "object" &&
+        "exact" in channelCount &&
+        channelCount.exact === 2
+      ) {
+        throw new Error("strict stereo unsupported");
+      }
+      return stream;
+    });
 
     const result = await requestLowLatencyMicStream("mic-1", getUserMedia);
 
     expect(result).toBe(stream);
-    expect(getUserMedia).toHaveBeenCalledTimes(3);
+    expect(getUserMedia).toHaveBeenCalledTimes(7);
     expect(getUserMedia).toHaveBeenNthCalledWith(1, {
+      audio: {
+        echoCancellation: { exact: false },
+        noiseSuppression: { exact: false },
+        autoGainControl: { exact: false },
+        channelCount: { exact: 2 },
+        latency: 0,
+        deviceId: { exact: "mic-1" },
+      },
+      video: false,
+    });
+    expect(getUserMedia).toHaveBeenNthCalledWith(7, {
       audio: {
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
         channelCount: { ideal: 2 },
         latency: 0,
-        deviceId: { exact: "mic-1" },
-      },
-      video: false,
-    });
-    expect(getUserMedia).toHaveBeenNthCalledWith(3, {
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
         deviceId: { exact: "mic-1" },
       },
       video: false,
@@ -101,5 +123,12 @@ describe("useLocalMic helpers", () => {
 
     // Attack should be faster (higher coefficient) than release
     expect(attackCoeff).toBeGreaterThan(releaseCoeff);
+  });
+
+  it("resolves individual interface inputs and the combined mix", () => {
+    expect(resolveInputChannelIndexes("all", 2)).toEqual([0, 1]);
+    expect(resolveInputChannelIndexes(1, 2)).toEqual([0]);
+    expect(resolveInputChannelIndexes(2, 2)).toEqual([1]);
+    expect(resolveInputChannelIndexes(3, 2)).toEqual([0]);
   });
 });

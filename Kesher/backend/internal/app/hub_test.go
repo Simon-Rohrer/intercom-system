@@ -92,9 +92,12 @@ func TestHubRoomRoutingRespectsReceiverRoleRestrictions(t *testing.T) {
 	default:
 	}
 	select {
-	case <-sender.send:
-		t.Fatal("did not expect sender to receive room event when sender role is not in receiver allowlist")
+	case out := <-sender.send:
+		if out.Type != "chat" {
+			t.Fatalf("expected sender chat echo, got %s", out.Type)
+		}
 	default:
+		t.Fatal("expected sender to receive its own chat outside the receiver allowlist")
 	}
 }
 

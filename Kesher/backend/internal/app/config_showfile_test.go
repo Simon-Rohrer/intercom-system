@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -63,11 +64,129 @@ func TestExportConfigurationDocumentIncludesStreamDeckSettings(t *testing.T) {
 	if len(doc.StreamDeck) != 1 {
 		t.Fatalf("expected 1 stream deck assignment, got %d", len(doc.StreamDeck))
 	}
-	if doc.StreamDeck[0].Username != "alice" {
-		t.Fatalf("unexpected stream deck username: %q", doc.StreamDeck[0].Username)
+	if doc.StreamDeck[0].RoleID != "audio" {
+		t.Fatalf("unexpected stream deck role id: %q", doc.StreamDeck[0].RoleID)
 	}
 	if doc.StreamDeck[0].Settings.Pages[0].Buttons[0].Action == nil || doc.StreamDeck[0].Settings.Pages[0].Buttons[0].Action.Type != StreamDeckActionTypeReplyToCaller {
 		t.Fatalf("unexpected stream deck action: %+v", doc.StreamDeck[0].Settings.Pages[0].Buttons[0].Action)
+	}
+}
+
+func TestExportConfigurationDocumentSupportsSelectedSections(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	s := &Server{store: store, ackEnabled: true, ackSet: true}
+	doc, err := s.exportConfigurationDocument(context.Background(), []string{
+		configurationSectionRoles,
+		configurationSectionRooms,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slicesEqual(doc.Meta.Sections, []string{configurationSectionRoles, configurationSectionRooms}) {
+		t.Fatalf("unexpected selected sections: %v", doc.Meta.Sections)
+	}
+	if len(doc.Roles) == 0 || len(doc.Rooms) == 0 {
+		t.Fatal("expected selected sections to contain data")
+	}
+	if len(doc.Users) != 0 || doc.AckSettings != nil || len(doc.TelegramMappings) != 0 {
+		t.Fatal("expected unselected sections to be omitted")
+	}
+}
+
+func TestConfigurationShowfileFullRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	sourceStore, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sourceStore.Close()
+
+	user, err := sourceStore.UpsertUser(ctx, "alice", "audio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceStore.CreateTelegramMapping(ctx, "telegram-room-1", "-100123", "FOH Chat", "foh"); err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceStore.CreateTelegramAllowlistEntry(ctx, "allow-1", "alice_tg", "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceStore.CreateTelegramUserMapping(ctx, "telegram-user-1", "42", "alice", "4242"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sourceStore.ToggleTelegramUserRoomSubscription(ctx, "42", "foh"); err != nil {
+		t.Fatal(err)
+	}
+	streamDeck := DefaultStreamDeckSettings()
+	streamDeck.Pages[0].Buttons[0].Action = &StreamDeckButtonAction{Type: StreamDeckActionTypeReplyToCaller}
+	if _, err := sourceStore.UpsertRoleStreamDeckSettings(ctx, "audio", streamDeck); err != nil {
+		t.Fatal(err)
+	}
+	profile := CompanionProfileResponse{
+		RoleID:          "audio",
+		Username:        "alice",
+		StreamDeck:      streamDeck,
+		Rooms:           []CompanionRoomDiscovery{},
+		Users:           []User{},
+		BroadcastGroups: []BroadcastGroup{},
+	}
+	if _, err := sourceStore.PublishCompanionProfile(ctx, "audio", user.ID, profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceStore.SaveCompanionRolePage(ctx, "audio", 3); err != nil {
+		t.Fatal(err)
+	}
+
+	sourceServer := &Server{store: sourceStore, ackEnabled: false, ackSet: true}
+	sourceDocument, err := sourceServer.exportConfigurationDocument(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	destinationStore, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer destinationStore.Close()
+	destinationServer := &Server{store: destinationStore, ackEnabled: true, ackSet: true}
+	if _, sections, _, err := destinationServer.importConfigurationDocument(ctx, ConfigurationImportRequest{
+		Document: sourceDocument,
+		Sections: append([]string(nil), sourceDocument.Meta.Sections...),
+	}); err != nil {
+		t.Fatal(err)
+	} else if !reflect.DeepEqual(sections, sourceDocument.Meta.Sections) {
+		t.Fatalf("unexpected imported sections: %v", sections)
+	}
+
+	destinationDocument, err := destinationServer.exportConfigurationDocument(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertConfigurationPayloadEqual(t, sourceDocument, destinationDocument)
+}
+
+func assertConfigurationPayloadEqual(t *testing.T, expected, actual ConfigurationDocument) {
+	t.Helper()
+	if !reflect.DeepEqual(expected.Meta.Sections, actual.Meta.Sections) ||
+		!reflect.DeepEqual(expected.Roles, actual.Roles) ||
+		!reflect.DeepEqual(expected.Users, actual.Users) ||
+		!reflect.DeepEqual(expected.Rooms, actual.Rooms) ||
+		!reflect.DeepEqual(expected.BroadcastGroups, actual.BroadcastGroups) ||
+		!reflect.DeepEqual(expected.TelegramAllowlist, actual.TelegramAllowlist) ||
+		!reflect.DeepEqual(expected.TelegramMappings, actual.TelegramMappings) ||
+		!reflect.DeepEqual(expected.TelegramUsers, actual.TelegramUsers) ||
+		!reflect.DeepEqual(expected.AckSettings, actual.AckSettings) ||
+		!reflect.DeepEqual(expected.StreamDeck, actual.StreamDeck) ||
+		!reflect.DeepEqual(expected.CompanionProfiles, actual.CompanionProfiles) ||
+		!reflect.DeepEqual(expected.CompanionRolePages, actual.CompanionRolePages) {
+		expectedJSON, _ := json.MarshalIndent(expected, "", "  ")
+		actualJSON, _ := json.MarshalIndent(actual, "", "  ")
+		t.Fatalf("showfile payloads differ after round trip\nexpected: %s\nactual: %s", expectedJSON, actualJSON)
 	}
 }
 
@@ -82,6 +201,12 @@ func TestImportConfigurationReplacesSelectedSectionsAndPreservesOthers(t *testin
 		t.Fatal(err)
 	}
 	if _, err := store.UpsertUser(context.Background(), "alice", "audio"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateTelegramMapping(context.Background(), "mapping-keep", "-100keep", "Keep", "foh"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveCompanionRolePage(context.Background(), "audio", 2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -145,6 +270,14 @@ func TestImportConfigurationReplacesSelectedSectionsAndPreservesOthers(t *testin
 	}
 	if s.isAckEnabled() {
 		t.Fatal("expected server ack flag to be updated")
+	}
+	telegramMappings, err := store.ListTelegramMappings(context.Background())
+	if err != nil || len(telegramMappings) != 1 || telegramMappings[0].ID != "mapping-keep" {
+		t.Fatalf("expected non-selected telegram mappings to be preserved, got %+v (err=%v)", telegramMappings, err)
+	}
+	companionPages, err := store.GetAllCompanionRolePages(context.Background())
+	if err != nil || companionPages["audio"] != 2 {
+		t.Fatalf("expected non-selected companion pages to be preserved, got %+v (err=%v)", companionPages, err)
 	}
 }
 
@@ -352,8 +485,8 @@ func TestImportConfigurationReplacesStreamDeckSettings(t *testing.T) {
 				ExportedAt:    time.Now().UTC().Format(time.RFC3339),
 				Sections:      []string{configurationSectionStreamDeck},
 			},
-			StreamDeck: []ConfigurationUserStreamDeckSettings{
-				{Username: "alice", Settings: updated},
+			StreamDeck: []ConfigurationRoleStreamDeckSettings{
+				{RoleID: "audio", Settings: updated},
 			},
 		},
 	})
@@ -397,6 +530,34 @@ func TestHandleAdminConfigurationExportReturnsJSONDocument(t *testing.T) {
 	}
 	if rec.Header().Get("Content-Disposition") == "" {
 		t.Fatal("expected attachment header to be set")
+	}
+}
+
+func TestHandleAdminConfigurationExportFiltersRequestedSections(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	s := &Server{store: store, sessions: NewSessionManager(time.Minute)}
+	adminSession := s.sessions.Create(User{Username: "admin"})
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/configuration-export?sections=roles,rooms", nil)
+	req.Header.Set("X-Admin-Pin", "123456")
+	rec := httptest.NewRecorder()
+	s.handleAdminConfigurationExport(rec, req, adminSession)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var doc ConfigurationDocument
+	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if !slicesEqual(doc.Meta.Sections, []string{configurationSectionRoles, configurationSectionRooms}) {
+		t.Fatalf("unexpected exported sections: %v", doc.Meta.Sections)
+	}
+	if len(doc.Roles) == 0 || len(doc.Rooms) == 0 || len(doc.Users) != 0 {
+		t.Fatalf("unexpected filtered export payload: %+v", doc)
 	}
 }
 

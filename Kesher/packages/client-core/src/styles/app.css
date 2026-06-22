@@ -1,3 +1,11 @@
+html[data-kesher-low-power="true"] *,
+html[data-kesher-low-power="true"] *::before,
+html[data-kesher-low-power="true"] *::after {
+  animation: none !important;
+  scroll-behavior: auto !important;
+  transition-duration: 0.01ms !important;
+}
+
 .root {
   max-width: 1520px;
   margin: 0 auto;
@@ -142,12 +150,61 @@
   align-items: center;
 }
 
-.login-admin-toggle {
-  display: inline-block;
+.login-admin-disclosure {
   margin-top: 0.6rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.015);
 }
-.login-admin-toggle.secondary {
-  padding: 0.5rem 0.7rem;
+.login-admin-disclosure-trigger {
+  width: 100%;
+  min-height: 48px;
+  padding: 0.7rem 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.login-admin-disclosure-trigger:hover,
+.login-admin-disclosure-trigger:focus-visible {
+  background: rgba(255, 255, 255, 0.03);
+}
+.login-admin-disclosure-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.login-admin-disclosure-label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  font-weight: 800;
+}
+.login-admin-chevron {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--text-secondary);
+  transition: transform 160ms ease;
+}
+.login-admin-chevron.is-open {
+  transform: rotate(90deg);
+}
+.login-admin-disclosure-panel.login-admin-card {
+  margin-top: 0;
+  padding: 0.85rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 @media (max-width: 640px) {
@@ -157,6 +214,15 @@
   .login-form input,
   .login-admin-card input {
     padding: 0.5rem;
+  }
+  .login-admin-disclosure-label {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .login-admin-disclosure-panel .login-admin-actions,
+  .login-admin-disclosure-panel .login-admin-actions button {
+    width: 100%;
   }
 }
 .variant-subtitle {
@@ -1382,6 +1448,19 @@ button {
 }
 .admin-grid-roles {
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+.admin-showfile-sections .admin-checkbox-wide {
+  grid-column: auto;
+  min-height: 76px;
+  padding: 0.75rem;
+  align-items: flex-start;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.admin-showfile-sections .admin-checkbox-wide:hover {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
 }
 .admin-list {
   list-style: none;
@@ -3204,6 +3283,28 @@ button.secondary {
 }
 .station-modal-body .audio-row.audio-row-mic .mic-dropdown {
   flex: 1 1 auto;
+}
+.station-modal-body .input-channel-control {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+}
+.station-modal-body .input-channel-control > span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.station-modal-body .input-channel-control select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+}
+.station-modal-body .input-channel-control small {
+  color: rgba(255, 255, 255, 0.45);
 }
 .station-modal-body .input-level-row {
   margin-top: 0.4rem;

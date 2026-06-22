@@ -14,12 +14,14 @@ class LauncherTests(unittest.TestCase):
     def setUp(self):
         self.config = {
             "server_url": "http://192.168.1.10:8080",
+            "browser_binary": "python3",
             "clients": [
                 {
                     "ip_address": "192.168.1.51",
                     "name": "FOH",
                     "role_id": "audio",
                     "audio_input_match": "USB Audio",
+                    "low_power_mode": True,
                 }
             ],
         }
@@ -36,6 +38,20 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("autoTakeover=1", url)
         self.assertIn("roleId=audio", url)
         self.assertIn("audioInputMatch=USB+Audio", url)
+        self.assertIn("lowPower=1", url)
+
+    def test_adds_low_power_chromium_flags(self):
+        client = launcher.resolve_client(self.config, ["192.168.1.51"])
+        url = launcher.build_kesher_url(self.config["server_url"], client)
+        command = launcher.browser_command(self.config, url, True)
+        self.assertIn("--force-prefers-reduced-motion", command)
+        self.assertIn("--process-per-site", command)
+        self.assertIn("--renderer-process-limit=2", command)
+
+    def test_rejects_non_boolean_low_power_setting(self):
+        self.config["clients"][0]["low_power_mode"] = "yes"
+        with self.assertRaisesRegex(ValueError, "low_power_mode must be a boolean"):
+            launcher.resolve_client(self.config, ["192.168.1.51"])
 
     def test_rejects_unknown_pi(self):
         with self.assertRaisesRegex(ValueError, "no client entry matches"):

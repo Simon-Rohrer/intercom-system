@@ -11,6 +11,7 @@ import {
   clampAudioGateThresholdDb,
   clampInputGainValue,
   micInputBaseBoost,
+  type InputChannelSelection,
 } from "../app/settings";
 import { meterDbFsFloor, peakAmplitudeToDbFs } from "../lib/presence";
 
@@ -40,6 +41,23 @@ function computeGateCoefficients(sampleRate: number): {
 }
 
 export { computeGateCoefficients };
+
+export function resolveInputChannelIndexes(
+  selection: InputChannelSelection,
+  capturedChannelCount: number,
+): number[] {
+  const channelCount = Math.max(
+    1,
+    Math.min(32, Math.floor(capturedChannelCount) || 1),
+  );
+  if (selection === "all") {
+    return Array.from({ length: channelCount }, (_, index) => index);
+  }
+  const selectedIndex = Math.floor(selection) - 1;
+  return selectedIndex >= 0 && selectedIndex < channelCount
+    ? [selectedIndex]
+    : [0];
+}
 
 type GetUserMediaFn = (
   constraints: MediaStreamConstraints,
@@ -85,25 +103,36 @@ const lowLatencyAudioConstraintVariants: ReadonlyArray<
 
 function buildLowLatencyAudioConstraints(
   keys: ReadonlyArray<LowLatencyAudioConstraintKey>,
+  requireStereo = false,
+  requireAudioProcessingOff = requireStereo,
 ): LowLatencyAudioConstraints {
   const constraints: LowLatencyAudioConstraints = {};
   for (const key of keys) {
     switch (key) {
       case "echoCancellation":
-        constraints.echoCancellation = false;
+        constraints.echoCancellation = requireAudioProcessingOff
+          ? { exact: false }
+          : false;
         break;
       case "noiseSuppression":
-        constraints.noiseSuppression = false;
+        constraints.noiseSuppression = requireAudioProcessingOff
+          ? { exact: false }
+          : false;
         break;
       case "autoGainControl":
-        constraints.autoGainControl = false;
+        constraints.autoGainControl = requireAudioProcessingOff
+          ? { exact: false }
+          : false;
         break;
       case "channelCount":
-        // Prefer a stereo capture when the selected device exposes it. USB
-        // interfaces commonly present their first two physical inputs as one
-        // stereo device. The processing graph below mixes those channels to
-        // Kesher's mono send track.
-        constraints.channelCount = { ideal: preferredInterfaceChannelCount };
+        // First require a real two-channel stream for USB interfaces. Merely
+        // marking stereo as ideal lets Chromium silently open the device as
+        // mono, which makes the second physical input unavailable. Later
+        // candidates retain the ideal/mono-compatible fallback for regular
+        // microphones.
+        constraints.channelCount = requireStereo
+          ? { exact: preferredInterfaceChannelCount }
+          : { ideal: preferredInterfaceChannelCount };
         break;
       case "latency":
         constraints.latency = 0;
@@ -123,6 +152,31 @@ export function buildLowLatencyMicConstraintCandidates(
   // can silently reopen the computer's built-in microphone instead of the
   // USB interface the user selected.
   if (deviceId) {
+    // First request both stereo and disabled browser voice processing as hard
+    // requirements. Some browser/device combinations do not expose every DSP
+    // constraint, so continue requiring stereo while relaxing only the DSP
+    // flags before allowing any mono-compatible candidate.
+    for (const keys of lowLatencyAudioConstraintVariants.slice(0, 2)) {
+      const audio = buildLowLatencyAudioConstraints(keys, true, true);
+      candidates.push({
+        audio: { ...audio, deviceId: { exact: deviceId } },
+        video: false,
+      });
+    }
+    for (const keys of lowLatencyAudioConstraintVariants.slice(0, 2)) {
+      const audio = buildLowLatencyAudioConstraints(keys, true, false);
+      candidates.push({
+        audio: { ...audio, deviceId: { exact: deviceId } },
+        video: false,
+      });
+    }
+    for (const keys of lowLatencyAudioConstraintVariants.slice(-2)) {
+      const audio = buildLowLatencyAudioConstraints(keys, true, false);
+      candidates.push({
+        audio: { ...audio, deviceId: { exact: deviceId } },
+        video: false,
+      });
+    }
     for (const keys of lowLatencyAudioConstraintVariants) {
       const audio = buildLowLatencyAudioConstraints(keys);
       candidates.push({
@@ -182,6 +236,8 @@ export type UseLocalMicOptions = {
   selectedInputGainFor: (deviceId: string) => number;
   /** Raw gain map – used only as effect dependency to detect gain changes. */
   inputGainByDeviceId: Record<string, number>;
+  /** Physical input channel selected for the current capture device. */
+  selectedInputChannel: InputChannelSelection;
   /** User-configurable microphone gate toggle. */
   audioGateEnabled: boolean;
   /** User-configurable microphone gate threshold in dBFS. */
@@ -222,11 +278,14 @@ export type UseLocalMicResult = {
   displayedInputClipping: boolean;
   /** True while the local audio monitor (mic loopback) is active. */
   isLocalMonitorActive: boolean;
+  /** Number of channels actually exposed by the active browser capture. */
+  inputChannelCount: number;
 
   getMicStream: (deviceId: string) => Promise<MediaStream>;
   buildOutgoingMicStream: (
     sourceStream: MediaStream,
     gainValue: number,
+    inputChannel: InputChannelSelection,
   ) => MediaStream;
   stopInputProcessing: () => void;
   startLevelMeter: (stream: MediaStream) => void;
@@ -242,6 +301,7 @@ export function useLocalMic({
   selectedInputDeviceId,
   selectedInputGainFor,
   inputGainByDeviceId,
+  selectedInputChannel,
   audioGateEnabled,
   audioGateThresholdDb,
   isUserSettingsOpen,
@@ -261,6 +321,7 @@ export function useLocalMic({
   const [inputSamplePeakClipping, setInputSamplePeakClipping] = useState(false);
   const [displayedInputClipping, setDisplayedInputClipping] = useState(false);
   const [isLocalMonitorActive, setIsLocalMonitorActive] = useState(false);
+  const [inputChannelCount, setInputChannelCount] = useState(1);
 
   // ── Refs ──
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -276,14 +337,9 @@ export function useLocalMic({
   const micReinitGenerationRef = useRef(0);
   const localMonitorCtxRef = useRef<AudioContext | null>(null);
   const localMonitorAudioElRef = useRef<HTMLAudioElement | null>(null);
-  const audioGateEnabledRef = useRef(audioGateEnabled);
   const audioGateThresholdDbRef = useRef(audioGateThresholdDb);
   const gateEnvelopeRef = useRef(0.0); // Current gate envelope (0.0 = fully muted, 1.0 = fully open)
   const gateCoefficientsRef = useRef({ attackCoeff: 0.1, releaseCoeff: 0.01 });
-
-  useEffect(() => {
-    audioGateEnabledRef.current = audioGateEnabled;
-  }, [audioGateEnabled]);
 
   useEffect(() => {
     audioGateThresholdDbRef.current = audioGateThresholdDb;
@@ -298,6 +354,7 @@ export function useLocalMic({
   function buildOutgoingMicStream(
     sourceStream: MediaStream,
     gainValue: number,
+    inputChannel: InputChannelSelection,
   ): MediaStream {
     const sourceTrack = sourceStream.getAudioTracks()[0];
     if (!sourceTrack) return sourceStream;
@@ -310,15 +367,14 @@ export function useLocalMic({
       gateEnvelopeRef.current = 0.0;
       
       const src = ctx.createMediaStreamSource(sourceStream);
-      const gate = ctx.createScriptProcessor(webAudioGateBufferSize, 1, 1);
       const gain = ctx.createGain();
       gain.gain.value = effectiveInputGain(gainValue);
       const dest = ctx.createMediaStreamDestination();
 
       // A browser microphone is usually mono, while USB audio interfaces
-      // often expose two discrete input channels. Explicitly sum every
-      // captured interface channel into the mono Kesher input so music on
-      // either physical input reaches the outgoing track.
+      // often expose multiple discrete input channels. Route the selected
+      // physical channel, or average all selected channels, into Kesher's
+      // mono send track.
       const capturedChannelCount = Math.max(
         1,
         Math.min(
@@ -326,6 +382,7 @@ export function useLocalMic({
           Math.floor(sourceTrack.getSettings().channelCount ?? 1),
         ),
       );
+      setInputChannelCount(capturedChannelCount);
       let processorInput: AudioNode = src;
       if (capturedChannelCount > 1) {
         const splitter = ctx.createChannelSplitter(capturedChannelCount);
@@ -333,44 +390,46 @@ export function useLocalMic({
         monoMixer.channelCount = 1;
         monoMixer.channelCountMode = "explicit";
         monoMixer.channelInterpretation = "discrete";
-        monoMixer.gain.value = 1 / capturedChannelCount;
+        const selectedIndexes = resolveInputChannelIndexes(
+          inputChannel,
+          capturedChannelCount,
+        );
+        monoMixer.gain.value = 1 / selectedIndexes.length;
         src.connect(splitter);
-        for (let channel = 0; channel < capturedChannelCount; channel += 1) {
+        for (const channel of selectedIndexes) {
           splitter.connect(monoMixer, channel, 0);
         }
         processorInput = monoMixer;
       }
       
-      gate.onaudioprocess = (event) => {
-        const input = event.inputBuffer.getChannelData(0);
-        const output = event.outputBuffer.getChannelData(0);
-        if (!audioGateEnabledRef.current) {
-          output.set(input);
-          return;
-        }
-        
-        const threshold = dbFsToAmplitude(audioGateThresholdDbRef.current);
-        const { attackCoeff, releaseCoeff } = gateCoefficientsRef.current;
-        let gateEnvelope = gateEnvelopeRef.current;
-        
-        for (let index = 0; index < input.length; index += 1) {
-          const sample = input[index] ?? 0;
-          const isAboveThreshold = Math.abs(sample) >= threshold;
-          
-          // Smooth envelope: attack on signal, release when no signal
-          const targetEnvelope = isAboveThreshold ? 1.0 : 0.0;
-          const coeff = isAboveThreshold ? attackCoeff : releaseCoeff;
-          gateEnvelope = targetEnvelope * coeff + gateEnvelope * (1.0 - coeff);
-          
-          // Apply soft gate (multiply by envelope instead of hard mute)
-          output[index] = sample * gateEnvelope;
-        }
-        
-        gateEnvelopeRef.current = gateEnvelope;
-      };
-      
-      processorInput.connect(gate);
-      gate.connect(gain);
+      let processedInput: AudioNode = processorInput;
+      let gate: ScriptProcessorNode | null = null;
+      if (audioGateEnabled) {
+        gate = ctx.createScriptProcessor(webAudioGateBufferSize, 1, 1);
+        gate.onaudioprocess = (event) => {
+          const input = event.inputBuffer.getChannelData(0);
+          const output = event.outputBuffer.getChannelData(0);
+          const threshold = dbFsToAmplitude(audioGateThresholdDbRef.current);
+          const { attackCoeff, releaseCoeff } = gateCoefficientsRef.current;
+          let gateEnvelope = gateEnvelopeRef.current;
+
+          for (let index = 0; index < input.length; index += 1) {
+            const sample = input[index] ?? 0;
+            const isAboveThreshold = Math.abs(sample) >= threshold;
+            const targetEnvelope = isAboveThreshold ? 1.0 : 0.0;
+            const coeff = isAboveThreshold ? attackCoeff : releaseCoeff;
+            gateEnvelope =
+              targetEnvelope * coeff + gateEnvelope * (1.0 - coeff);
+            output[index] = sample * gateEnvelope;
+          }
+
+          gateEnvelopeRef.current = gateEnvelope;
+        };
+        processorInput.connect(gate);
+        processedInput = gate;
+      }
+
+      processedInput.connect(gain);
       gain.connect(dest);
       const processedTrack = dest.stream.getAudioTracks()[0];
       if (!processedTrack) {
@@ -427,20 +486,18 @@ export function useLocalMic({
     const sourceTrack = stream.getAudioTracks()[0];
     if (!sourceTrack) return;
     const monitorTrack = sourceTrack.clone();
+    monitorTrack.enabled = true;
     const monitorStream = new MediaStream([monitorTrack]);
     meterMonitorStreamRef.current = monitorStream;
     const ctx = new AudioCtx({ latencyHint: "interactive" });
     audioCtxRef.current = ctx;
     const src = ctx.createMediaStreamSource(monitorStream);
-    const meterGain = ctx.createGain();
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
-    src.connect(meterGain);
-    meterGain.connect(analyser);
+    src.connect(analyser);
     analyserRef.current = analyser;
     const buf = new Float32Array(analyser.fftSize);
     const tick = () => {
-      meterGain.gain.value = clampInputGainValue(inputGainNodeRef.current?.gain.value ?? 1);
       analyser.getFloatTimeDomainData(buf);
       let peak = 0;
       for (const v of buf) {
@@ -459,6 +516,9 @@ export function useLocalMic({
     const el = localMonitorAudioElRef.current;
     if (el) {
       el.pause();
+      if (el.srcObject instanceof MediaStream) {
+        for (const track of el.srcObject.getTracks()) track.stop();
+      }
       el.srcObject = null;
       localMonitorAudioElRef.current = null;
     }
@@ -470,22 +530,24 @@ export function useLocalMic({
   }
 
   async function startLocalMonitor(outputDeviceId: string): Promise<void> {
-    const captureStream = inputCaptureStreamRef.current;
-    if (!captureStream) return;
+    const processedStream = localStreamRef.current;
+    if (!processedStream) return;
     const AudioCtx = window.AudioContext;
     if (!AudioCtx) return;
     stopLocalMonitor();
     try {
       const ctx = new AudioCtx({ latencyHint: "interactive" });
       localMonitorCtxRef.current = ctx;
-      const src = ctx.createMediaStreamSource(captureStream);
-      const gain = ctx.createGain();
-      gain.gain.value = clampInputGainValue(
-        inputGainNodeRef.current?.gain.value ?? 1,
-      );
+      const monitorTrack = processedStream.getAudioTracks()[0]?.clone();
+      if (!monitorTrack) {
+        void ctx.close();
+        localMonitorCtxRef.current = null;
+        return;
+      }
+      monitorTrack.enabled = true;
+      const src = ctx.createMediaStreamSource(new MediaStream([monitorTrack]));
       const dest = ctx.createMediaStreamDestination();
-      src.connect(gain);
-      gain.connect(dest);
+      src.connect(dest);
       const el = new Audio();
       el.srcObject = dest.stream;
       const elWithSink = el as HTMLAudioElement & {
@@ -534,6 +596,7 @@ export function useLocalMic({
         const newStream = buildOutgoingMicStream(
           newCaptureStream,
           selectedInputGainFor(selectedInputDeviceId),
+          selectedInputChannel,
         );
         const newTrack = newStream.getAudioTracks()[0];
         if (!newTrack) return;
@@ -553,7 +616,7 @@ export function useLocalMic({
         }
         localStreamRef.current = newStream;
         if (isUserSettingsOpenRef.current) {
-          startLevelMeter(newCaptureStream);
+          startLevelMeter(newStream);
         } else {
           stopLevelMeter();
         }
@@ -572,7 +635,12 @@ export function useLocalMic({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedInputDeviceId, enableReinit]);
+  }, [
+    selectedInputDeviceId,
+    selectedInputChannel,
+    audioGateEnabled,
+    enableReinit,
+  ]);
 
   // ── Input gain node live update ──
   useEffect(() => {
@@ -590,8 +658,8 @@ export function useLocalMic({
       stopLocalMonitor();
       return;
     }
-    const captureStream = inputCaptureStreamRef.current;
-    if (captureStream) startLevelMeter(captureStream);
+    const processedStream = localStreamRef.current;
+    if (processedStream) startLevelMeter(processedStream);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isUserSettingsOpen]);
 
@@ -644,6 +712,7 @@ export function useLocalMic({
     inputLevelDbFs,
     displayedInputClipping,
     isLocalMonitorActive,
+    inputChannelCount,
     getMicStream,
     buildOutgoingMicStream,
     stopInputProcessing,

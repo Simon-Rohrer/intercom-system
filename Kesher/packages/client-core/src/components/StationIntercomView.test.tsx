@@ -92,6 +92,9 @@ const baseProps: ComponentProps<typeof StationIntercomView> = {
   selectedInputDeviceId: "",
   selectedMicLabel: "Default input",
   setSelectedInputDeviceId: vi.fn(),
+  selectedInputChannel: "all" as const,
+  inputChannelCount: 2,
+  onSelectedInputChannelChange: vi.fn(),
   inputLevelDbFs: -60,
   inputGain: 1,
   inputClipping: false,
@@ -730,5 +733,27 @@ describe("StationIntercomView", () => {
 
     expect(onAudioGateEnabledChange).toHaveBeenCalledWith(false);
     expect(onAudioGateThresholdDbChange).toHaveBeenCalledWith(-40);
+  });
+
+  it("selects a physical USB interface input", async () => {
+    const user = userEvent.setup();
+    const onSelectedInputChannelChange = vi.fn();
+
+    render(
+      <StationIntercomView
+        {...baseProps}
+        isUserSettingsOpen
+        inputChannelCount={2}
+        onSelectedInputChannelChange={onSelectedInputChannelChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Sound settings/ }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Interface input" }),
+      "2",
+    );
+
+    expect(onSelectedInputChannelChange).toHaveBeenCalledWith(2);
   });
 });

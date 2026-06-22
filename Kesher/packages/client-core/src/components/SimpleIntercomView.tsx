@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createHoldButtonProps } from "../lib/holdButton";
+import type { InputChannelSelection } from "../app/settings";
 
 type DirectReplyTarget = {
   userId: string;
@@ -15,6 +16,9 @@ type SimpleIntercomViewProps = {
   selectedInputDeviceId: string;
   onSelectedInputDeviceIdChange: (deviceId: string) => void;
   inputDevices: MediaDeviceInfo[];
+  selectedInputChannel: InputChannelSelection;
+  inputChannelCount: number;
+  onSelectedInputChannelChange: (channel: InputChannelSelection) => void;
   selectedOutputDeviceId: string;
   onSelectedOutputDeviceIdChange: (deviceId: string) => void;
   outputDevices: MediaDeviceInfo[];
@@ -40,6 +44,9 @@ export function SimpleIntercomView({
   selectedInputDeviceId,
   onSelectedInputDeviceIdChange,
   inputDevices,
+  selectedInputChannel,
+  inputChannelCount,
+  onSelectedInputChannelChange,
   selectedOutputDeviceId,
   onSelectedOutputDeviceIdChange,
   outputDevices,
@@ -137,6 +144,35 @@ export function SimpleIntercomView({
                 {d.label || `Mic ${d.deviceId.slice(0, 6)}`}
               </option>
             ))}
+          </select>
+        </label>
+        <label className="simple-mic">
+          <span>Interface input</span>
+          <select
+            value={
+              inputChannelCount > 1 ? String(selectedInputChannel) : "all"
+            }
+            onChange={(event) =>
+              onSelectedInputChannelChange(
+                event.target.value === "all"
+                  ? "all"
+                  : Number(event.target.value),
+              )
+            }
+          >
+            <option value="all">
+              {inputChannelCount === 1 ? "Input 1" : "All inputs"}
+            </option>
+            {inputChannelCount > 1
+              ? Array.from({ length: inputChannelCount }, (_, index) => (
+                  <option
+                    key={`simple-input-channel-${index + 1}`}
+                    value={index + 1}
+                  >
+                    Input {index + 1}
+                  </option>
+                ))
+              : null}
           </select>
         </label>
         <label className="simple-mic">

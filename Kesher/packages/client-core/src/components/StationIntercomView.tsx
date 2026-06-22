@@ -9,7 +9,10 @@ import type {
   StreamDeckPageType,
   StreamDeckSettings,
 } from "../types";
-import type { KeyboardShortcutSettings } from "../app/settings";
+import type {
+  InputChannelSelection,
+  KeyboardShortcutSettings,
+} from "../app/settings";
 import { renderStreamDeckPreviewImages } from "../api";
 import { createHoldButtonProps } from "../lib/holdButton";
 import { withResolvedStreamDeckButtonLabel } from "../lib/streamDeckLabels";
@@ -375,6 +378,9 @@ type StationIntercomViewProps = {
   selectedInputDeviceId: string;
   selectedMicLabel: string;
   setSelectedInputDeviceId: (value: string) => void;
+  selectedInputChannel: InputChannelSelection;
+  inputChannelCount: number;
+  onSelectedInputChannelChange: (channel: InputChannelSelection) => void;
   inputLevelDbFs: number;
   inputGain: number;
   inputClipping: boolean;
@@ -489,6 +495,9 @@ export function StationIntercomView({
   selectedInputDeviceId,
   selectedMicLabel,
   setSelectedInputDeviceId,
+  selectedInputChannel,
+  inputChannelCount,
+  onSelectedInputChannelChange,
   inputLevelDbFs,
   inputGain,
   inputClipping,
@@ -2836,6 +2845,49 @@ export function StationIntercomView({
                             ) : null}
                           </div>
                         </div>
+                        <label className="input-channel-control">
+                          <span>Interface input</span>
+                          <select
+                            aria-label="Interface input"
+                            value={
+                              inputChannelCount > 1
+                                ? String(selectedInputChannel)
+                                : "all"
+                            }
+                            onChange={(event) =>
+                              onSelectedInputChannelChange(
+                                event.currentTarget.value === "all"
+                                  ? "all"
+                                  : Number(event.currentTarget.value),
+                              )
+                            }
+                          >
+                            <option value="all">
+                              {inputChannelCount === 1
+                                ? "Input 1"
+                                : inputChannelCount === 2
+                                  ? "Input 1 + Input 2"
+                                  : "All inputs"}
+                            </option>
+                            {inputChannelCount > 1
+                              ? Array.from(
+                                  { length: inputChannelCount },
+                                  (_, index) => (
+                                    <option
+                                      key={`input-channel-${index + 1}`}
+                                      value={index + 1}
+                                    >
+                                      Input {index + 1}
+                                    </option>
+                                  ),
+                                )
+                              : null}
+                          </select>
+                          <small>
+                            Choose the physical input on the selected USB
+                            interface.
+                          </small>
+                        </label>
                         <div className="input-level-row" aria-live="polite">
                           <div className="input-level-head">
                             <small>Input level</small>
@@ -3023,4 +3075,3 @@ export function StationIntercomView({
     </div>
   );
 }
-

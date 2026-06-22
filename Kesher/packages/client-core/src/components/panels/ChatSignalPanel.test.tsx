@@ -127,7 +127,7 @@ describe("ChatSignalPanel", () => {
     expect(onMessageChange).toHaveBeenCalledWith("@Sarah ");
   });
 
-  it("filters room messages by current listen rooms but keeps directs", () => {
+  it("filters received room messages but always keeps directs and own sends", () => {
     render(
       <ChatSignalPanel
         message=""
@@ -166,6 +166,17 @@ describe("ChatSignalPanel", () => {
             targetId: "u4",
             targetType: "user",
           },
+          {
+            from: "Me",
+            fromUserId: "self",
+            body: "own room keep",
+            at: "10:03",
+            room: "Stage",
+            self: true,
+            scope: "room",
+            targetId: "stage",
+            targetType: "room",
+          },
         ]}
         {...defaultProps}
       />,
@@ -174,6 +185,7 @@ describe("ChatSignalPanel", () => {
     expect(screen.getByText("room keep")).toBeVisible();
     expect(screen.queryByText("room hide")).not.toBeInTheDocument();
     expect(screen.getByText("direct keep")).toBeVisible();
+    expect(screen.getByText("own room keep")).toBeVisible();
   });
 
   it("shows @-autocomplete for online users with role in brackets", async () => {

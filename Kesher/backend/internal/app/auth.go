@@ -1,6 +1,7 @@
 package app
 
 import (
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -118,6 +119,31 @@ func (m *SessionManager) LatestForRole(roleID string) (Session, bool) {
 		return Session{}, false
 	}
 	return selected, true
+}
+
+func (m *SessionManager) ActiveRoleIDs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := time.Now()
+	roleIDs := make(map[string]struct{})
+	for token, session := range m.sessions {
+		if now.After(session.ExpiresAt) {
+			delete(m.sessions, token)
+			continue
+		}
+		roleID := strings.TrimSpace(session.RoleID)
+		if roleID != "" {
+			roleIDs[roleID] = struct{}{}
+		}
+	}
+
+	result := make([]string, 0, len(roleIDs))
+	for roleID := range roleIDs {
+		result = append(result, roleID)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func (m *SessionManager) DeleteByRole(roleID string) []Session {

@@ -137,9 +137,9 @@ const (
 )
 
 const (
-	StreamDeckPageTypeManual         StreamDeckPageType = "manual"
-	StreamDeckPageTypeAllRoles       StreamDeckPageType = "all_roles"
-	StreamDeckPageTypeAllPartyLines  StreamDeckPageType = "all_party_lines"
+	StreamDeckPageTypeManual        StreamDeckPageType = "manual"
+	StreamDeckPageTypeAllRoles      StreamDeckPageType = "all_roles"
+	StreamDeckPageTypeAllPartyLines StreamDeckPageType = "all_party_lines"
 )
 
 const (
@@ -211,6 +211,7 @@ type PublicBootstrapResponse struct {
 	Roles           []Role           `json:"roles"`
 	Rooms           []Room           `json:"rooms"`
 	BroadcastGroups []BroadcastGroup `json:"broadcastGroups"`
+	ActiveRoleIDs   []string         `json:"activeRoleIds"`
 	AckEnabled      bool             `json:"ackEnabled"`
 	AppVersion      VersionInfo      `json:"appVersion"`
 }

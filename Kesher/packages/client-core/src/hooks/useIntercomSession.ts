@@ -12,6 +12,7 @@ import {
   clampGainValue,
   clampInputGainValue,
   micInputBaseBoost,
+  type InputChannelSelection,
 } from "../app/settings";
 import { gainWithDbDelta } from "../lib/streamDeckBridge";
 import {
@@ -87,6 +88,7 @@ type WsMessage =
   | { type: "session_revoked"; data: SessionRevokedEvent }
   | { type: "config_updated"; data: unknown };
 const opusMaxBitrateBps = 24000;
+const lowPowerOpusMaxBitrateBps = 16000;
 
 // Opus ptime/minptime can be overridden at runtime via localStorage for A/B
 // latency testing.  Set `localStorage.setItem('opus_ptime', '2.5')` and reload.
@@ -110,16 +112,25 @@ function getOpusMinPtime(): string {
   return "2.5";
 }
 
-const opusSpeechFmtpParams: ReadonlyArray<readonly [string, string]> = [
-  ["stereo", "0"],
-  ["sprop-stereo", "0"],
-  ["useinbandfec", "1"],
-  ["usedtx", "0"],
-  ["cbr", "1"],
-  ["ptime", getOpusPtime()],
-  ["minptime", getOpusMinPtime()],
-  ["maxaveragebitrate", `${opusMaxBitrateBps}`],
-];
+function opusSpeechFmtpParams(
+  lowPowerMode: boolean,
+): ReadonlyArray<readonly [string, string]> {
+  return [
+    ["stereo", "0"],
+    ["sprop-stereo", "0"],
+    ["useinbandfec", "1"],
+    ["usedtx", lowPowerMode ? "1" : "0"],
+    ["cbr", lowPowerMode ? "0" : "1"],
+    ["ptime", lowPowerMode ? "20" : getOpusPtime()],
+    ["minptime", lowPowerMode ? "10" : getOpusMinPtime()],
+    [
+      "maxaveragebitrate",
+      lowPowerMode
+        ? `${lowPowerOpusMaxBitrateBps}`
+        : `${opusMaxBitrateBps}`,
+    ],
+  ];
+}
 
 const directRoutePriorityLevel = 3;
 const defaultRoutePriorityLevel = 1;
@@ -240,11 +251,13 @@ export function resolveUnknownSourceGain({
   return 1;
 }
 
-export function upsertFmtpParams(existing: string): string {
-  const desired = Object.fromEntries(opusSpeechFmtpParams) as Record<
-    string,
-    string
-  >;
+export function upsertFmtpParams(
+  existing: string,
+  lowPowerMode = false,
+): string {
+  const desired = Object.fromEntries(
+    opusSpeechFmtpParams(lowPowerMode),
+  ) as Record<string, string>;
   const parts = existing
     .split(";")
     .map((part) => part.trim())
@@ -263,7 +276,10 @@ export function upsertFmtpParams(existing: string): string {
   return next.join(";");
 }
 
-export function tuneOpusSdpForSpeech(sdp: string): string {
+export function tuneOpusSdpForSpeech(
+  sdp: string,
+  lowPowerMode = false,
+): string {
   if (!sdp) return sdp;
   const lines = sdp.split("\r\n");
   const opusPayloadTypes = lines.flatMap((line) => {
@@ -278,17 +294,31 @@ export function tuneOpusSdpForSpeech(sdp: string): string {
     );
     if (fmtpIndex >= 0) {
       const currentParams = lines[fmtpIndex].slice(fmtpPrefix.length).trim();
-      lines[fmtpIndex] = `${fmtpPrefix} ${upsertFmtpParams(currentParams)}`;
+      lines[fmtpIndex] = `${fmtpPrefix} ${upsertFmtpParams(
+        currentParams,
+        lowPowerMode,
+      )}`;
       continue;
     }
     const rtpmapIndex = lines.findIndex((line) =>
       new RegExp(`^a=rtpmap:${payloadType}\\s+`, "i").test(line),
     );
-    const nextFmtpLine = `${fmtpPrefix} ${upsertFmtpParams("")}`;
+    const nextFmtpLine = `${fmtpPrefix} ${upsertFmtpParams(
+      "",
+      lowPowerMode,
+    )}`;
     if (rtpmapIndex >= 0) {
       lines.splice(rtpmapIndex + 1, 0, nextFmtpLine);
     } else {
       lines.push(nextFmtpLine);
+    }
+  }
+  if (lowPowerMode) {
+    const ptimeIndex = lines.findIndex((line) => line.startsWith("a=ptime:"));
+    if (ptimeIndex >= 0) {
+      lines[ptimeIndex] = "a=ptime:20";
+    } else {
+      lines.push("a=ptime:20");
     }
   }
   return lines.join("\r\n");
@@ -363,7 +393,10 @@ function isMobileClient(): boolean {
   return isMobileUserAgent || isCoarsePointer;
 }
 
-async function applyOutgoingAudioSenderBitrate(pc: RTCPeerConnection) {
+async function applyOutgoingAudioSenderBitrate(
+  pc: RTCPeerConnection,
+  maxBitrateBps = opusMaxBitrateBps,
+) {
   const audioSender = pc
     .getSenders()
     .find((sender) => sender.track?.kind === "audio");
@@ -374,7 +407,7 @@ async function applyOutgoingAudioSenderBitrate(pc: RTCPeerConnection) {
   params.encodings = [
     {
       ...firstEncoding,
-      maxBitrate: opusMaxBitrateBps,
+      maxBitrate: maxBitrateBps,
     },
     ...encodings.slice(1),
   ];
@@ -399,10 +432,13 @@ export type UseIntercomSessionOptions = {
   appData: Bootstrap | null;
   authMode: "operator" | "admin";
   showDebug: boolean;
+  /** Reduce browser rendering, metering, polling and Opus packet overhead. */
+  lowPowerMode: boolean;
 
   // Settings refs (stable across renders)
   selectedInputDeviceId: string;
   selectedInputDeviceIdRef: React.MutableRefObject<string>;
+  selectedInputChannel: InputChannelSelection;
   selectedOutputDeviceId: string;
   selectedOutputDeviceIdRef: React.MutableRefObject<string>;
   inputGainByDeviceId: Record<string, number>;
@@ -493,6 +529,7 @@ export type UseIntercomSessionResult = {
   message: string;
   setMessage: (v: string) => void;
   inputLevelDbFs: number;
+  inputChannelCount: number;
   displayedInputClipping: boolean;
   isLocalMonitorActive: boolean;
   toggleLocalMonitor: () => Promise<void>;
@@ -531,8 +568,10 @@ export function useIntercomSession({
   appData,
   authMode,
   showDebug,
+  lowPowerMode,
   selectedInputDeviceId,
   selectedInputDeviceIdRef,
+  selectedInputChannel,
   selectedOutputDeviceId,
   selectedOutputDeviceIdRef,
   inputGainByDeviceId,
@@ -902,6 +941,7 @@ export function useIntercomSession({
     selectedInputDeviceIdRef,
     selectedInputGainFor,
     inputGainByDeviceId,
+    selectedInputChannel,
     audioGateEnabled,
     audioGateThresholdDb,
     isUserSettingsOpen,
@@ -910,7 +950,11 @@ export function useIntercomSession({
     pcRef,
     onAudioError: setAudioError,
     onRefreshAudioDevices,
-    onAfterAudioSenderUpdated: applyOutgoingAudioSenderBitrate,
+    onAfterAudioSenderUpdated: (pc) =>
+      applyOutgoingAudioSenderBitrate(
+        pc,
+        lowPowerMode ? lowPowerOpusMaxBitrateBps : opusMaxBitrateBps,
+      ),
     enableReinit: !!(token && appData),
   });
 
@@ -943,11 +987,14 @@ export function useIntercomSession({
     nativeAudio.setAudioGate(audioGateEnabled, audioGateThresholdDb);
   }, [nativeAudio, audioGateEnabled, audioGateThresholdDb]);
 
-  const nativeInputDeviceIdRef = useRef(selectedInputDeviceId);
+  const nativeInputSelectionRef = useRef(
+    `${selectedInputDeviceId}:${selectedInputChannel}`,
+  );
   useEffect(() => {
-    const previousDeviceId = nativeInputDeviceIdRef.current;
-    nativeInputDeviceIdRef.current = selectedInputDeviceId;
-    if (!nativeAudio?.isNative || previousDeviceId === selectedInputDeviceId) {
+    const nextSelection = `${selectedInputDeviceId}:${selectedInputChannel}`;
+    const previousSelection = nativeInputSelectionRef.current;
+    nativeInputSelectionRef.current = nextSelection;
+    if (!nativeAudio?.isNative || previousSelection === nextSelection) {
       return;
     }
 
@@ -965,7 +1012,7 @@ export function useIntercomSession({
         activeSocket.close(1012, "audio input changed");
       }
     });
-  }, [nativeAudio, selectedInputDeviceId]);
+  }, [nativeAudio, selectedInputDeviceId, selectedInputChannel]);
 
   useEffect(() => {
     if (!nativeAudio?.isNative) return;
@@ -999,7 +1046,11 @@ export function useIntercomSession({
     directGainByUserId,
     resolveGainRef,
     onAudioError: setAudioError,
+    enableMetering: !lowPowerMode,
   });
+  const incomingAudioActive = lowPowerMode
+    ? activeVoiceRoutes.length > 0
+    : remote.incomingAudioActive;
   const {
     pauseAllRemoteAudio,
     retryPlayAllRemoteAudio,
@@ -1723,6 +1774,15 @@ export function useIntercomSession({
         setConnectionState("connected");
         setAudioError("");
         pendingICERef.current = [];
+        // Synchronize routing before microphone/WebRTC setup. Audio capture can
+        // wait for permissions, while chat is already usable as soon as the
+        // socket opens. WebSocket ordering guarantees a following chat message
+        // reaches the server after this matrix update.
+        sendRoomMatrix(
+          listenRoomIdsRef.current,
+          talkRoomIdsRef.current,
+          true,
+        );
         const pc = new RTCPeerConnection({ iceServers: [] });
         pcRef.current = pc;
         pc.onconnectionstatechange = () => setWebrtcState(pc.connectionState);
@@ -1770,7 +1830,10 @@ export function useIntercomSession({
             remote.remoteAudioRef.current.set(key, audio);
           }
           const stream = event.streams[0] ?? new MediaStream([event.track]);
-          if (!remote.remoteAnalyserNodesRef.current.has(key)) {
+          if (
+            !lowPowerMode &&
+            !remote.remoteAnalyserNodesRef.current.has(key)
+          ) {
             const AudioCtx = window.AudioContext;
             if (AudioCtx) {
               const ctx = new AudioCtx({ latencyHint: "interactive" });
@@ -1824,10 +1887,11 @@ export function useIntercomSession({
           const stream = mic.buildOutgoingMicStream(
             captureStream,
             selectedInputGainFor(selectedInputDeviceIdRef.current),
+            selectedInputChannel,
           );
           mic.localStreamRef.current = stream;
           if (isUserSettingsOpenRef.current) {
-            mic.startLevelMeter(captureStream);
+            mic.startLevelMeter(stream);
           } else {
             mic.stopLevelMeter();
           }
@@ -1837,7 +1901,10 @@ export function useIntercomSession({
             track.enabled = initialEnabled;
             pc.addTrack(track, stream);
           }
-          await applyOutgoingAudioSenderBitrate(pc);
+          await applyOutgoingAudioSenderBitrate(
+            pc,
+            lowPowerMode ? lowPowerOpusMaxBitrateBps : opusMaxBitrateBps,
+          );
           mic.applyVoiceModeToLocalTracks(voiceModeRef.current);
         } catch (e) {
           setAudioError(
@@ -2087,6 +2154,10 @@ export function useIntercomSession({
                   micInputBaseBoost *
                     selectedInputGainFor(selectedInputDeviceIdRef.current),
                 ),
+                inputChannel:
+                  selectedInputChannel === "all"
+                    ? undefined
+                    : selectedInputChannel,
                 audioGateEnabled,
                 audioGateThresholdDb,
               });
@@ -2150,12 +2221,18 @@ export function useIntercomSession({
             }
             pendingICERef.current = [];
             const answer = await pc.createAnswer();
-            const tunedAnswerSdp = tuneOpusSdpForSpeech(answer.sdp || "");
+            const tunedAnswerSdp = tuneOpusSdpForSpeech(
+              answer.sdp || "",
+              lowPowerMode,
+            );
             await pc.setLocalDescription({
               type: "answer",
               sdp: tunedAnswerSdp,
             });
-            await applyOutgoingAudioSenderBitrate(pc);
+            await applyOutgoingAudioSenderBitrate(
+              pc,
+              lowPowerMode ? lowPowerOpusMaxBitrateBps : opusMaxBitrateBps,
+            );
             wsRef.current?.send(
               JSON.stringify({
                 type: "webrtc_answer",
@@ -2440,14 +2517,14 @@ export function useIntercomSession({
     const mediaSession = navigator.mediaSession;
     const playbackState =
       connectionState === "connected"
-        ? remote.incomingAudioActive
+        ? incomingAudioActive
           ? "playing"
           : "paused"
         : "none";
     try {
       if (typeof MediaMetadata === "function") {
         mediaSession.metadata = new MediaMetadata({
-          title: remote.incomingAudioActive
+          title: incomingAudioActive
             ? "Live audio active"
             : "Intercom ready",
           artist: appData?.self.username || "Operator",
@@ -2485,7 +2562,7 @@ export function useIntercomSession({
     mediaSessionSupported,
     pauseAllRemoteAudio,
     recoverPlaybackAfterResume,
-    remote.incomingAudioActive,
+    incomingAudioActive,
   ]);
 
   // ── Presence sync → local state ──
@@ -2561,7 +2638,7 @@ export function useIntercomSession({
     chatMessages,
     events,
     rtpStats,
-    incomingAudioActive: remote.incomingAudioActive,
+    incomingAudioActive,
     activeVoiceRoutes,
     incomingAttention,
     lastCompanionCommand,
@@ -2581,6 +2658,7 @@ export function useIntercomSession({
     message,
     setMessage,
     inputLevelDbFs: mic.inputLevelDbFs,
+    inputChannelCount: mic.inputChannelCount,
     displayedInputClipping: mic.displayedInputClipping,
     isLocalMonitorActive: mic.isLocalMonitorActive,
     toggleLocalMonitor: async () => {

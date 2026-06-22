@@ -1,12 +1,13 @@
 {
-  "server_url": "http://192.168.1.10:8080",
+  "server_url": "http://192.168.178.58:8080",
   "browser_binary": "chromium",
   "allow_insecure_tls": false,
   "clients": [
     {
       "ip_address": "192.168.178.190",
       "name": "Kamera-1",
-      "role_id": "camera"
+      "role_id": "camera",
+      "low_power_mode": true
     }
   ]
 }

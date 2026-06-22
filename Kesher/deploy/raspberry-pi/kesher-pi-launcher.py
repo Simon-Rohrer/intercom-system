@@ -73,9 +73,9 @@ def detect_ipv4_addresses() -> list[str]:
     return addresses
 
 
-def resolve_client(config: dict[str, Any], addresses: list[str]) -> dict[str, str]:
+def resolve_client(config: dict[str, Any], addresses: list[str]) -> dict[str, Any]:
     local_addresses = set(addresses)
-    matches: list[dict[str, str]] = []
+    matches: list[dict[str, Any]] = []
     seen_config_ips: set[str] = set()
     for index, raw_client in enumerate(config["clients"]):
         if not isinstance(raw_client, dict):
@@ -96,7 +96,10 @@ def resolve_client(config: dict[str, Any], addresses: list[str]) -> dict[str, st
             "ip_address": configured_ip,
             "name": name,
             "role_id": role_id,
+            "low_power_mode": raw_client.get("low_power_mode", False),
         }
+        if not isinstance(client["low_power_mode"], bool):
+            raise ValueError(f"clients[{index}].low_power_mode must be a boolean")
         for optional_field in ("audio_input_match", "audio_output_match"):
             value = raw_client.get(optional_field)
             if isinstance(value, str) and value.strip():
@@ -112,7 +115,7 @@ def resolve_client(config: dict[str, Any], addresses: list[str]) -> dict[str, st
     return matches[0]
 
 
-def build_kesher_url(server_url: str, client: dict[str, str]) -> str:
+def build_kesher_url(server_url: str, client: dict[str, Any]) -> str:
     params = {
         "autoLogin": "1",
         "autoTakeover": "1",
@@ -123,6 +126,8 @@ def build_kesher_url(server_url: str, client: dict[str, str]) -> str:
         params["audioInputMatch"] = client["audio_input_match"]
     if client.get("audio_output_match"):
         params["audioOutputMatch"] = client["audio_output_match"]
+    if client.get("low_power_mode") is True:
+        params["lowPower"] = "1"
     return f"{server_url}/?{urlencode(params)}"
 
 
@@ -155,7 +160,9 @@ def resolve_browser(configured_binary: Any) -> str:
     raise ValueError("Chromium not found; install chromium or set browser_binary")
 
 
-def browser_command(config: dict[str, Any], kesher_url: str) -> list[str]:
+def browser_command(
+    config: dict[str, Any], kesher_url: str, low_power_mode: bool = False
+) -> list[str]:
     server_url = config["server_url"]
     parsed = urlsplit(server_url)
     origin = urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
@@ -174,6 +181,15 @@ def browser_command(config: dict[str, Any], kesher_url: str) -> list[str]:
         command.append(f"--unsafely-treat-insecure-origin-as-secure={origin}")
     if config.get("allow_insecure_tls") is True:
         command.append("--ignore-certificate-errors")
+    if low_power_mode:
+        command.extend(
+            [
+                "--force-prefers-reduced-motion",
+                "--disable-smooth-scrolling",
+                "--process-per-site",
+                "--renderer-process-limit=2",
+            ]
+        )
     command.append(kesher_url)
     return command
 
@@ -204,7 +220,14 @@ def main() -> int:
             config["server_url"],
             config.get("allow_insecure_tls") is True,
         )
-        return subprocess.run(browser_command(config, kesher_url), check=False).returncode
+        return subprocess.run(
+            browser_command(
+                config,
+                kesher_url,
+                client.get("low_power_mode") is True,
+            ),
+            check=False,
+        ).returncode
     except (ValueError, subprocess.SubprocessError) as error:
         print(f"Kesher Pi configuration error: {error}", file=sys.stderr, flush=True)
         return 1

@@ -8,6 +8,7 @@ import {
   type FavoriteSettings,
   globalSettingsStorageKey,
   type GlobalSettings,
+  type InputChannelSelection,
   hasStoredSessionSettings,
   keyboardShortcutsStorageKey,
   type KeyboardShortcutSettings,
@@ -19,7 +20,7 @@ import {
 
 const defaultInputGainDeviceKey = "__default__";
 
-function inputGainDeviceKey(deviceId: string): string {
+function inputDeviceKey(deviceId: string): string {
   return deviceId || defaultInputGainDeviceKey;
 }
 
@@ -54,6 +55,12 @@ export type UseSettingsResult = {
   setAudioGateEnabled: (v: boolean) => void;
   audioGateThresholdDb: number;
   setAudioGateThresholdDb: (v: number) => void;
+  inputChannelByDeviceId: Record<string, InputChannelSelection>;
+  onInputChannelChange: (
+    deviceId: string,
+    channel: InputChannelSelection,
+  ) => void;
+  selectedInputChannelFor: (deviceId: string) => InputChannelSelection;
   inputGainByDeviceId: Record<string, number>;
   setInputGainByDeviceId: React.Dispatch<
     React.SetStateAction<Record<string, number>>
@@ -136,6 +143,9 @@ export function useSettings(): UseSettingsResult {
   const [audioGateThresholdDb, setAudioGateThresholdDb] = useState(
     initialGlobalSettings.audioGateThresholdDb,
   );
+  const [inputChannelByDeviceId, setInputChannelByDeviceId] = useState<
+    Record<string, InputChannelSelection>
+  >(initialGlobalSettings.inputChannelByDeviceId ?? {});
   const [inputGainByDeviceId, setInputGainByDeviceId] = useState<
     Record<string, number>
   >(initialGlobalSettings.inputGainByDeviceId ?? {});
@@ -211,6 +221,7 @@ export function useSettings(): UseSettingsResult {
         showVolumeControls,
         audioGateEnabled,
         audioGateThresholdDb,
+        inputChannelByDeviceId,
         inputGainByDeviceId,
         roomGainById,
         directGainByUserId,
@@ -227,6 +238,7 @@ export function useSettings(): UseSettingsResult {
     showVolumeControls,
     audioGateEnabled,
     audioGateThresholdDb,
+    inputChannelByDeviceId,
     inputGainByDeviceId,
     roomGainById,
     directGainByUserId,
@@ -268,17 +280,39 @@ export function useSettings(): UseSettingsResult {
   }, []);
 
   const onInputGainChange = useCallback((deviceId: string, gain: number) => {
-    const key = inputGainDeviceKey(deviceId);
+    const key = inputDeviceKey(deviceId);
     setInputGainByDeviceId((prev) => ({
       ...prev,
       [key]: clampInputGainValue(gain),
     }));
   }, []);
 
+  const onInputChannelChange = useCallback(
+    (deviceId: string, channel: InputChannelSelection) => {
+      const key = inputDeviceKey(deviceId);
+      const normalized =
+        channel === "all"
+          ? "all"
+          : Math.max(1, Math.min(32, Math.floor(channel)));
+      setInputChannelByDeviceId((prev) => ({
+        ...prev,
+        [key]: normalized,
+      }));
+    },
+    [],
+  );
+
+  const selectedInputChannelFor = useCallback(
+    (deviceId: string): InputChannelSelection => {
+      return inputChannelByDeviceId[inputDeviceKey(deviceId)] ?? "all";
+    },
+    [inputChannelByDeviceId],
+  );
+
   const selectedInputGainFor = useCallback(
     (deviceId: string): number => {
       return clampInputGainValue(
-        inputGainByDeviceIdRef.current[inputGainDeviceKey(deviceId)] ?? 1,
+        inputGainByDeviceIdRef.current[inputDeviceKey(deviceId)] ?? 1,
       );
     },
     // inputGainByDeviceIdRef is stable; effect keeps it fresh
@@ -316,6 +350,9 @@ export function useSettings(): UseSettingsResult {
     audioGateThresholdDb,
     setAudioGateThresholdDb: (value: number) =>
       setAudioGateThresholdDb(clampAudioGateThresholdDb(value)),
+    inputChannelByDeviceId,
+    onInputChannelChange,
+    selectedInputChannelFor,
     inputGainByDeviceId,
     setInputGainByDeviceId,
     inputGainByDeviceIdRef,

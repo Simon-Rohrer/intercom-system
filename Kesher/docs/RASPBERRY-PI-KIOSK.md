@@ -28,6 +28,7 @@ Edit `deploy/raspberry-pi/raspberry-pis.json` before installation, or edit
       "ip_address": "192.168.1.51",
       "name": "FOH",
       "role_id": "audio",
+      "low_power_mode": true,
       "audio_input_match": "USB",
       "audio_output_match": "USB"
     }
@@ -38,6 +39,12 @@ Edit `deploy/raspberry-pi/raspberry-pis.json` before installation, or edit
 `name` must not contain spaces. `role_id` is the stable role ID, not the
 visible role name. The optional audio match values are case-insensitive label
 substrings and automatically select matching USB devices.
+
+Set `low_power_mode` to `true` on constrained stations such as a Raspberry Pi
+3. Kesher then disables continuous audio metering and UI animations, reduces
+status polling, enables Opus DTX with 20 ms packets, and starts Chromium with a
+smaller renderer footprint. Audio reception, PTT, USB input selection and
+server-side routing remain active.
 
 The same file can contain all Raspberry Pis and can be copied unchanged to
 every station. A Pi refuses to start if its IP is missing, duplicated, or if
