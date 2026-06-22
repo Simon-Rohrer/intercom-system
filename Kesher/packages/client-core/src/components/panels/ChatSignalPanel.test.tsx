@@ -66,8 +66,10 @@ describe("ChatSignalPanel", () => {
       name: "Chat destination",
     });
     expect(destination).toHaveValue("global:global");
+    expect(destination).toHaveClass("chat-target-global");
 
     await user.selectOptions(destination, "room:foh");
+    expect(destination).not.toHaveClass("chat-target-global");
     await user.click(screen.getByRole("button", { name: "Send chat" }));
 
     expect(onSendChat).toHaveBeenCalledWith(
@@ -93,7 +95,9 @@ describe("ChatSignalPanel", () => {
     );
 
     await user.type(screen.getByPlaceholderText("Type chat message…"), "!");
-    await user.click(screen.getByLabelText("Requires ACK"));
+    await user.click(
+      screen.getByLabelText("Gelesen-Bestätigung anfordern"),
+    );
     await user.click(screen.getByPlaceholderText("Type chat message…"));
     await user.keyboard("{Enter}");
     await user.click(screen.getByRole("button", { name: "Send chat" }));
@@ -128,7 +132,9 @@ describe("ChatSignalPanel", () => {
       />,
     );
 
-    expect(screen.queryByLabelText("Requires ACK")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Gelesen-Bestätigung anfordern"),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Send chat" }));
     expect(onSendChat).toHaveBeenCalledWith(
       { scope: "global", targetType: "global", targetId: "global" },
@@ -464,7 +470,9 @@ describe("ChatSignalPanel", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Acknowledge" }));
+    await user.click(
+      screen.getByRole("button", { name: "Als gelesen markieren" }),
+    );
     expect(onAcknowledge).toHaveBeenCalledWith("m-1", "u9");
   });
 
@@ -495,7 +503,7 @@ describe("ChatSignalPanel", () => {
       />,
     );
 
-    expect(screen.getByText("ACK by Sarah")).toBeVisible();
+    expect(screen.getByText("Gelesen von Sarah")).toBeVisible();
   });
 
   it("hides ack status and acknowledge action when ack option is disabled", () => {
@@ -540,9 +548,9 @@ describe("ChatSignalPanel", () => {
       />,
     );
 
-    expect(screen.queryByText("ACK by Sarah")).not.toBeInTheDocument();
+    expect(screen.queryByText("Gelesen von Sarah")).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Acknowledge" }),
+      screen.queryByRole("button", { name: "Als gelesen markieren" }),
     ).not.toBeInTheDocument();
   });
 

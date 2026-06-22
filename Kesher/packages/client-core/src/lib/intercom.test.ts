@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  defaultRoomMatrixForRole,
   matrixAnchorRoomId,
   resolveChatTargetRoomId,
   roleAllowed,
@@ -15,6 +16,49 @@ describe("intercom utility helpers", () => {
 
   it("falls back to first listen room for matrix anchor", () => {
     expect(matrixAnchorRoomId(["listen-1", "listen-2"], [])).toBe("listen-1");
+  });
+
+  it("uses one configured default talk room and forced listen rooms on login", () => {
+    expect(
+      defaultRoomMatrixForRole(
+        [{ id: "audio", name: "Audio", defaultRoomId: "foh" }],
+        [
+          {
+            id: "foh",
+            name: "FOH",
+            senderRoleIds: ["audio"],
+            receiverRoleIds: ["audio"],
+            forcedListenRoleIds: [],
+          },
+          {
+            id: "producer",
+            name: "Producer",
+            senderRoleIds: [],
+            receiverRoleIds: ["audio"],
+            forcedListenRoleIds: ["audio"],
+          },
+        ],
+        "audio",
+      ),
+    ).toEqual({ listenRoomIds: ["producer"], talkRoomIds: ["foh"] });
+  });
+
+  it("does not select a talk room without an explicit allowed default", () => {
+    expect(
+      defaultRoomMatrixForRole(
+        [{ id: "audio", name: "Audio", defaultRoomId: "stage" }],
+        [
+          {
+            id: "stage",
+            name: "Stage",
+            senderRoleIds: [],
+            receiverRoleIds: ["audio"],
+            forcedListenRoleIds: [],
+          },
+        ],
+        "audio",
+      ),
+    ).toEqual({ listenRoomIds: [], talkRoomIds: [] });
   });
 
   it("falls back to the role default room for chat when no anchor room is selected", () => {

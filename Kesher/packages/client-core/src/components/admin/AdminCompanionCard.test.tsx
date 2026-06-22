@@ -9,6 +9,7 @@ import {
 } from "../../api";
 
 vi.mock("../../api", () => ({
+  buildAbsoluteApiUrl: (path: string) => `http://localhost${path}`,
   getCompanionAdminSummary: vi.fn(),
   publishCompanionProfile: vi.fn(),
 }));

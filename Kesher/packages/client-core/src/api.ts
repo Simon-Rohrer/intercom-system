@@ -1065,6 +1065,7 @@ export async function exportAdminLogsText(
 export type RoutingMatrixEntry = {
   roomId: string;
   senderRoleIds: string[];
+  defaultTalkRoleIds: string[];
   receiverRoleIds: string[];
   forcedListenRoleIds: string[];
 };

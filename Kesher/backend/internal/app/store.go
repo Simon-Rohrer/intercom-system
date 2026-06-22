@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1834,21 +1835,25 @@ func (s *Store) SetRoomPriorityLevel(ctx context.Context, id string, priorityLev
 	return nil
 }
 
-// RoomPermissionEntry describes the sender/receiver/forced-listen role mapping for one room.
+// RoomPermissionEntry describes talk, default-talk, listen and forced-listen role mappings for one room.
 type RoomPermissionEntry struct {
 	RoomID              string   `json:"roomId"`
 	SenderRoleIDs       []string `json:"senderRoleIds"`
+	DefaultTalkRoleIDs  []string `json:"defaultTalkRoleIds,omitempty"`
 	ReceiverRoleIDs     []string `json:"receiverRoleIds"`
 	ForcedListenRoleIDs []string `json:"forcedListenRoleIds"`
 }
 
-// BulkUpdateRoomPermissions updates sender/receiver role mappings for multiple rooms
-// in a single transaction. It only touches role mappings — room names are left unchanged.
+// BulkUpdateRoomPermissions updates routing mappings for multiple rooms in one transaction.
+// Room names are left unchanged.
 func (s *Store) BulkUpdateRoomPermissions(ctx context.Context, entries []RoomPermissionEntry) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
+	defaultTalkRoomByRole := make(map[string]string)
+	hasDefaultTalkConfiguration := false
 	for _, entry := range entries {
 		roomID := strings.TrimSpace(entry.RoomID)
 		if roomID == "" {
@@ -1866,6 +1871,7 @@ func (s *Store) BulkUpdateRoomPermissions(ctx context.Context, entries []RoomPer
 			return ErrNotFound
 		}
 		senderIDs := normalizeIDs(entry.SenderRoleIDs)
+		defaultTalkRoleIDs := normalizeIDs(entry.DefaultTalkRoleIDs)
 		receiverIDs := normalizeIDs(entry.ReceiverRoleIDs)
 		forcedListenIDs := normalizeIDs(entry.ForcedListenRoleIDs)
 		// Forced listen implies listen — merge forced into receivers.
@@ -1873,6 +1879,18 @@ func (s *Store) BulkUpdateRoomPermissions(ctx context.Context, entries []RoomPer
 		if err := s.validateRolesExistWithTx(ctx, tx, senderIDs); err != nil {
 			_ = tx.Rollback()
 			return err
+		}
+		if entry.DefaultTalkRoleIDs != nil {
+			hasDefaultTalkConfiguration = true
+		}
+		for _, roleID := range defaultTalkRoleIDs {
+			if !slices.Contains(senderIDs, roleID) {
+				return ErrInvalidInput
+			}
+			if _, exists := defaultTalkRoomByRole[roleID]; exists {
+				return ErrInvalidInput
+			}
+			defaultTalkRoomByRole[roleID] = roomID
 		}
 		if err := s.validateRolesExistWithTx(ctx, tx, receiverIDs); err != nil {
 			_ = tx.Rollback()
@@ -1893,6 +1911,24 @@ func (s *Store) BulkUpdateRoomPermissions(ctx context.Context, entries []RoomPer
 		if err := s.replaceRoomRoleMappingsWithTx(ctx, tx, "room_forced_listen_roles", roomID, forcedListenIDs); err != nil {
 			_ = tx.Rollback()
 			return err
+		}
+	}
+	if hasDefaultTalkConfiguration {
+		if _, err := tx.ExecContext(ctx, `UPDATE roles SET default_room_id = NULL`); err != nil {
+			return err
+		}
+		for roleID, roomID := range defaultTalkRoomByRole {
+			result, err := tx.ExecContext(ctx, `UPDATE roles SET default_room_id = ? WHERE id = ?`, roomID, roleID)
+			if err != nil {
+				return err
+			}
+			updated, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if updated == 0 {
+				return ErrInvalidInput
+			}
 		}
 	}
 	if err := tx.Commit(); err != nil {

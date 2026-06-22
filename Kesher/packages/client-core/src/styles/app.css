@@ -286,6 +286,16 @@ button {
   width: 100%;
   min-height: 42px;
 }
+.chat-target-control select.chat-target-global {
+  border-color: rgba(242, 201, 76, 0.78);
+  background-color: rgba(242, 201, 76, 0.12);
+  color: #ffe58a;
+  box-shadow: 0 0 0 1px rgba(242, 201, 76, 0.12);
+}
+.chat-target-global-option {
+  color: #8a6500;
+  font-weight: 800;
+}
 
 /* ===== Chat Actions Row (ACK + Send) ===== */
 .chat-actions {
@@ -406,6 +416,18 @@ button {
   padding: 0.05rem 0.42rem;
   line-height: 1.2;
 }
+.chat-feed-room.global {
+  color: #ffe58a;
+  border-color: rgba(242, 201, 76, 0.62);
+  background: rgba(242, 201, 76, 0.12);
+  font-weight: 800;
+}
+.chat-feed-list li.chat-feed-global {
+  border-left: 3px solid #f2c94c;
+  border-radius: 7px;
+  padding-left: 0.55rem;
+  background: linear-gradient(90deg, rgba(242, 201, 76, 0.08), transparent 70%);
+}
 /* ===== ACK Status Badges ===== */
 .chat-feed-ack-status {
   border-radius: 12px;
@@ -428,10 +450,6 @@ button {
     rgba(217, 119, 6, 0.08) 100%);
   box-shadow: 0 2px 8px rgba(251, 191, 36, 0.1);
 }
-.chat-feed-ack-status.pending::before {
-  content: '⏱';
-  font-size: 0.9em;
-}
 .chat-feed-ack-status.acked {
   color: #10b981;
   border-color: rgba(16, 185, 129, 0.5);
@@ -440,19 +458,30 @@ button {
     rgba(5, 150, 105, 0.12) 100%);
   box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
 }
-.chat-feed-ack-status.acked::before {
-  content: '✓';
-  font-size: 1em;
-  font-weight: 700;
-}
 .chat-feed-list li p {
   margin: 0.16rem 0 0;
   color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-word;
 }
-/* ===== ACK Acknowledge Button ===== */
+.chat-feed-message-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.7rem;
+}
+.chat-feed-message-row p {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* ===== Gelesen Button ===== */
 .chat-feed-ack-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  margin-left: auto;
+  flex: 0 0 auto;
   margin-top: 0.45rem;
   font-size: 0.8rem;
   font-weight: 600;
@@ -467,6 +496,28 @@ button {
   transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 2px 6px rgba(16, 185, 129, 0.1);
   letter-spacing: 0.01em;
+}
+.chat-feed-ack-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.chat-feed-list li .chat-feed-ack-btn span {
+  display: inline;
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
+}
+.chat-feed-ack-btn small {
+  font-size: 0.62rem;
+  font-weight: 700;
+  opacity: 0.72;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 .chat-feed-ack-btn:hover {
   background: linear-gradient(135deg, 
@@ -1175,6 +1226,12 @@ button {
   border-color: var(--talk);
   box-shadow: 0 0 6px rgba(255, 59, 48, 0.35);
 }
+.routing-matrix-default-talk.active {
+  background: #f2c94c;
+  color: #2b2100;
+  border-color: #f2c94c;
+  box-shadow: 0 0 7px rgba(242, 201, 76, 0.42);
+}
 .routing-matrix-listen.active {
   background: var(--listen);
   color: #fff;
@@ -1210,6 +1267,9 @@ button {
 }
 .routing-matrix-swatch-talk {
   background: var(--talk);
+}
+.routing-matrix-swatch-default-talk {
+  background: #f2c94c;
 }
 .routing-matrix-swatch-listen {
   background: var(--listen);

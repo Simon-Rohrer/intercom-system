@@ -236,10 +236,15 @@ export function ChatSignalPanel({
         <span>Send message to</span>
         <select
           aria-label="Chat destination"
+          className={
+            selectedTarget === "global:global" ? "chat-target-global" : ""
+          }
           value={selectedTarget}
           onChange={(event) => setSelectedTarget(event.target.value)}
         >
-          <option value="global:global">Global Chat</option>
+          <option className="chat-target-global-option" value="global:global">
+            Global Chat
+          </option>
           {rooms.length > 0 ? (
             <optgroup label="Party Lines">
               {rooms.map((room) => (
@@ -319,8 +324,8 @@ export function ChatSignalPanel({
               type="button"
               className={`chat-ack-btn ${requiresAck ? "active" : ""}`}
               onClick={() => setRequiresAck(!requiresAck)}
-              title={requiresAck ? "ACK required (click to disable)" : "Click to require acknowledgement"}
-              aria-label="Requires ACK"
+              title={requiresAck ? "Gelesen-Bestätigung aktiv" : "Gelesen-Bestätigung anfordern"}
+              aria-label="Gelesen-Bestätigung anfordern"
             >
               <span className="chat-ack-indicator" />
             </button>
@@ -352,11 +357,13 @@ export function ChatSignalPanel({
               <li
                 key={`${entry.at}-${entry.from}-${index}`}
                 className={
-                  entry.scope === "direct"
-                    ? `chat-feed-direct ${entry.self ? "self" : ""}`.trim()
-                    : entry.self
-                      ? "self"
-                      : ""
+                  [
+                    entry.scope === "direct" ? "chat-feed-direct" : "",
+                    entry.scope === "global" ? "chat-feed-global" : "",
+                    entry.self ? "self" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")
                 }
               >
                 <div className="chat-feed-meta">
@@ -373,31 +380,45 @@ export function ChatSignalPanel({
                       📱
                     </span>
                   ) : null}
-                  <span className="chat-feed-room">{entry.room}</span>
+                  <span
+                    className={`chat-feed-room${entry.scope === "global" ? " global" : ""}`}
+                  >
+                    {entry.room}
+                  </span>
                   {showAckOption && entry.self && entry.ackRequired ? (
                     <span
                       className={`chat-feed-ack-status ${entry.acked ? "acked" : "pending"}`}
                     >
                       {entry.acked
-                        ? `ACK by ${entry.ackedBy || "receiver"}`
-                        : "ACK pending"}
+                        ? `Gelesen von ${entry.ackedBy || "Empfänger"}`
+                        : "Gelesen ausstehend"}
                     </span>
                   ) : null}
                 </div>
-                <p>{entry.body}</p>
-                {showAckOption &&
-                !entry.self &&
-                entry.ackRequired &&
-                !entry.acked &&
-                entry.messageId ? (
-                  <button
-                    type="button"
-                    className="chat-feed-ack-btn"
-                    onClick={() => onAcknowledge(entry.messageId || "", entry.fromUserId)}
-                  >
-                    Acknowledge
-                  </button>
-                ) : null}
+                <div className="chat-feed-message-row">
+                  <p>{entry.body}</p>
+                  {showAckOption &&
+                  !entry.self &&
+                  entry.ackRequired &&
+                  !entry.acked &&
+                  entry.messageId ? (
+                    <button
+                      type="button"
+                      className="chat-feed-ack-btn"
+                      aria-label="Als gelesen markieren"
+                      title="Klicken, um die Nachricht als gelesen zu bestätigen"
+                      onClick={() =>
+                        onAcknowledge(entry.messageId || "", entry.fromUserId)
+                      }
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m5 12 4 4L19 6" />
+                      </svg>
+                      <span>Gelesen</span>
+                      <small>Klicken</small>
+                    </button>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>

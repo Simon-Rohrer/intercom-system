@@ -35,7 +35,11 @@ import {
   useKeyboardShortcuts,
   type ShortcutCallbacks,
 } from "./app/useKeyboardShortcuts";
-import { roleAllowed, matrixAnchorRoomId } from "./lib/intercom";
+import {
+  defaultRoomMatrixForRole,
+  roleAllowed,
+  matrixAnchorRoomId,
+} from "./lib/intercom";
 import {
   gainWithDbDelta,
   parseStreamDeckBridgeEvent,
@@ -217,6 +221,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     console.debug("[App] Initial token from session storage:", t ? "exists" : "empty");
     return t;
   });
+  const restoreStoredMatrixOnInitialBootstrap = useRef(token !== null).current;
   const [appData, setAppData] = useState<Bootstrap | null>(null);
   const [publicData, setPublicData] = useState<PublicBootstrap | null>(null);
   const [isPublicBootstrapLoading, setIsPublicBootstrapLoading] = useState(true);
@@ -372,7 +377,9 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     onInputGainChange: settings.onInputGainChange,
     initialListenRoomIds: storedSession.listenRoomIds ?? [],
     initialTalkRoomIds: storedSession.talkRoomIds ?? [],
-    hadStoredSessionSettings: settings.hadStoredSessionSettings,
+    hadStoredSessionSettings:
+      settings.hadStoredSessionSettings &&
+      restoreStoredMatrixOnInitialBootstrap,
     initialVoiceMode: settings.enableDirectPpt ? "ptt" : "always_on",
     onUpdateAppData: setAppData,
     onUpdatePublicData: setPublicData,
@@ -1867,20 +1874,19 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         onUsernameChange={settings.setUsername}
         onRoleChange={(nextRoleId) => {
           settings.setRoleID(nextRoleId);
-          const selectedRole = publicData.roles.find(
-            (r) => r.id === nextRoleId,
+          const defaults = defaultRoomMatrixForRole(
+            publicData.roles,
+            publicData.rooms,
+            nextRoleId,
           );
-          if (selectedRole?.defaultRoomId) {
-            localStorage.setItem(
-              sessionSettingsStorageKey,
-              JSON.stringify({
-                username: settings.username,
-                roleId: nextRoleId,
-                listenRoomIds: [selectedRole.defaultRoomId],
-                talkRoomIds: [selectedRole.defaultRoomId],
-              } satisfies SessionSettings),
-            );
-          }
+          localStorage.setItem(
+            sessionSettingsStorageKey,
+            JSON.stringify({
+              username: settings.username,
+              roleId: nextRoleId,
+              ...defaults,
+            } satisfies SessionSettings),
+          );
         }}
         onLogin={() => void handleOperatorLogin()}
         adminPin={adminPinInput}

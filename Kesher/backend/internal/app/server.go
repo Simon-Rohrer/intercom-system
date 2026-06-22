@@ -5365,11 +5365,10 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		}
 		break
 	}
-	defaultRoomID := defaultRoomForSession(session, roles, rooms)
-	listenRooms := []string{}
+	defaultRoomID := defaultTalkRoomForSession(session, roles, rooms)
+	listenRooms := s.mergeForcedListenRooms(r.Context(), session.RoleID, nil)
 	talkRooms := []string{}
 	if defaultRoomID != "" {
-		listenRooms = []string{defaultRoomID}
 		talkRooms = []string{defaultRoomID}
 	}
 	listenRooms = s.filterAllowedRoomsForRole(r.Context(), session.RoleID, listenRooms, false)
@@ -5903,14 +5902,16 @@ func (s *Server) internalErr(w http.ResponseWriter, err error) {
 	http.Error(w, "internal error", http.StatusInternalServerError)
 }
 
-func defaultRoomForSession(session Session, roles []Role, rooms []Room) string {
+func defaultTalkRoomForSession(session Session, roles []Role, rooms []Room) string {
 	for _, role := range roles {
-		if role.ID == session.RoleID && role.DefaultRoomID != "" {
-			return role.DefaultRoomID
+		if role.ID != session.RoleID || role.DefaultRoomID == "" {
+			continue
 		}
-	}
-	if len(rooms) > 0 {
-		return rooms[0].ID
+		for _, room := range rooms {
+			if room.ID == role.DefaultRoomID {
+				return role.DefaultRoomID
+			}
+		}
 	}
 	return ""
 }

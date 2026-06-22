@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { bootstrap, buildWebSocketUrl, normalizePublicBootstrap } from "../api";
 import {
+  defaultRoomMatrixForRole,
   matrixAnchorRoomId,
   mergeForcedListenRooms,
   roleAllowed,
@@ -1682,40 +1683,13 @@ export function useIntercomSession({
           }),
         );
       } else {
-        let initialRoom = "";
-        if (roleDefaults?.defaultRoomId) {
-          initialRoom = roleDefaults.defaultRoomId;
-        } else {
-          const firstAllowedTalkRoom = data.rooms.find((room) =>
-            roleAllowed(room.senderRoleIds, data.self.roleId),
-          );
-          const firstAllowedListenRoom = data.rooms.find((room) =>
-            roleAllowed(room.receiverRoleIds, data.self.roleId),
-          );
-          initialRoom =
-            firstAllowedTalkRoom?.id || firstAllowedListenRoom?.id || "";
-        }
-        if (initialRoom) {
-          const initialRoomConfig = data.rooms.find(
-            (room) => room.id === initialRoom,
-          );
-          const initialCanListen = roleAllowed(
-            initialRoomConfig?.receiverRoleIds,
-            data.self.roleId,
-          );
-          const initialCanTalk = roleAllowed(
-            initialRoomConfig?.senderRoleIds,
-            data.self.roleId,
-          );
-          setListenRoomIds(
-            mergeForcedListenRooms(
-              initialCanListen ? [initialRoom] : [],
-              data.rooms,
-              data.self.roleId,
-            ),
-          );
-          setTalkRoomIds(initialCanTalk ? [initialRoom] : []);
-        }
+        const defaults = defaultRoomMatrixForRole(
+          data.roles,
+          data.rooms,
+          data.self.roleId,
+        );
+        setListenRoomIds(defaults.listenRoomIds);
+        setTalkRoomIds(defaults.talkRoomIds);
       }
     },
     [hadStoredSessionSettings, forcePttOnMobile],

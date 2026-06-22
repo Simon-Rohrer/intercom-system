@@ -13,7 +13,7 @@ const appData: Bootstrap = {
   self: { id: "u1", username: "admin", roleId: "op" },
   users: [{ id: "u1", username: "admin", roleId: "op" }],
   roles: [
-    { id: "audio", name: "Audio" },
+    { id: "audio", name: "Audio", defaultRoomId: "foh" },
     { id: "video", name: "Video" },
   ],
   rooms: [
@@ -70,6 +70,14 @@ describe("AdminRoutingMatrixCard", () => {
     // Audio can talk on FOH (active)
     const audioFohTalk = screen.getByLabelText("Talk Audio → FOH: on");
     expect(audioFohTalk).toHaveClass("active");
+
+    const audioFohDefaultTalk = screen.getByLabelText(
+      "Default Talk Audio → FOH: on",
+    );
+    expect(audioFohDefaultTalk).toHaveClass("active");
+    expect(
+      screen.getByLabelText("Default Talk Audio → Stage: off"),
+    ).toBeDisabled();
 
     // Audio can listen on FOH (active)
     const audioFohListen = screen.getByLabelText("Listen Audio → FOH: on");
@@ -128,6 +136,7 @@ describe("AdminRoutingMatrixCard", () => {
           expect.objectContaining({
             roomId: "foh",
             senderRoleIds: expect.arrayContaining(["audio", "video"]),
+            defaultTalkRoleIds: ["audio"],
           }),
         ]),
       );
@@ -158,6 +167,33 @@ describe("AdminRoutingMatrixCard", () => {
       screen.getByLabelText("Talk Audio → Stage: off"),
     ).toBeInTheDocument();
     expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
+  });
+
+  it("allows only one Default Talk party line per role", async () => {
+    const user = userEvent.setup();
+    render(
+      <AdminRoutingMatrixCard
+        token="tok"
+        adminPin="1234"
+        appData={appData}
+        refreshBootstrapData={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      screen.getByLabelText("Default Talk Audio → FOH: on"),
+    );
+    await user.click(screen.getByLabelText("Talk Audio → Stage: off"));
+    await user.click(
+      screen.getByLabelText("Default Talk Audio → Stage: off"),
+    );
+
+    expect(
+      screen.getByLabelText("Default Talk Audio → Stage: on"),
+    ).toHaveClass("active");
+    expect(
+      screen.getByLabelText("Default Talk Audio → FOH: off"),
+    ).toBeDisabled();
   });
 
   it("renders nothing if no roles or rooms", () => {

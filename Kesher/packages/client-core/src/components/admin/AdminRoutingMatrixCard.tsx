@@ -9,9 +9,14 @@ type AdminRoutingMatrixCardProps = {
   refreshBootstrapData: () => Promise<void>;
 };
 
-type CellState = { talk: boolean; listen: boolean; forced: boolean };
+type CellState = {
+  talk: boolean;
+  defaultTalk: boolean;
+  listen: boolean;
+  forced: boolean;
+};
 
-/** Build a map of roleId → roomId → { talk, listen, forced } from the current bootstrap data. */
+/** Build a map of roleId → roomId → { talk, defaultTalk, listen, forced } from bootstrap data. */
 function buildMatrix(
   roles: Role[],
   rooms: Room[],
@@ -22,6 +27,9 @@ function buildMatrix(
     for (const room of rooms) {
       matrix[role.id][room.id] = {
         talk: (room.senderRoleIds ?? []).includes(role.id),
+        defaultTalk:
+          role.defaultRoomId === room.id &&
+          (room.senderRoleIds ?? []).includes(role.id),
         listen: (room.receiverRoleIds ?? []).includes(role.id),
         forced: (room.forcedListenRoleIds ?? []).includes(role.id),
       };
@@ -38,17 +46,20 @@ function matrixToEntries(
 ): RoutingMatrixEntry[] {
   return rooms.map((room) => {
     const senderRoleIds: string[] = [];
+    const defaultTalkRoleIds: string[] = [];
     const receiverRoleIds: string[] = [];
     const forcedListenRoleIds: string[] = [];
     for (const role of roles) {
       const cell = matrix[role.id]?.[room.id];
       if (cell?.talk) senderRoleIds.push(role.id);
+      if (cell?.defaultTalk) defaultTalkRoleIds.push(role.id);
       if (cell?.listen) receiverRoleIds.push(role.id);
       if (cell?.forced) forcedListenRoleIds.push(role.id);
     }
     return {
       roomId: room.id,
       senderRoleIds,
+      defaultTalkRoleIds,
       receiverRoleIds,
       forcedListenRoleIds,
     };
@@ -91,6 +102,7 @@ export function AdminRoutingMatrixCard({
         if (!local || !server) continue;
         if (
           local.talk !== server.talk ||
+          local.defaultTalk !== server.defaultTalk ||
           local.listen !== server.listen ||
           local.forced !== server.forced
         )
@@ -101,14 +113,28 @@ export function AdminRoutingMatrixCard({
   }, [localMatrix, serverMatrix, appData.roles, appData.rooms]);
 
   const toggleCell = useCallback(
-    (roleId: string, roomId: string, field: "talk" | "listen" | "forced") => {
+    (
+      roleId: string,
+      roomId: string,
+      field: "talk" | "defaultTalk" | "listen" | "forced",
+    ) => {
       setLocalMatrix((prev) => {
         const next = { ...prev };
         next[roleId] = { ...next[roleId] };
         const cur = next[roleId][roomId];
         const updated = { ...cur };
 
-        if (field === "forced") {
+        if (field === "defaultTalk") {
+          const hasOtherDefault = Object.entries(next[roleId]).some(
+            ([candidateRoomId, candidate]) =>
+              candidateRoomId !== roomId && candidate.defaultTalk,
+          );
+          if (cur.defaultTalk) {
+            updated.defaultTalk = false;
+          } else if (cur.talk && !hasOtherDefault) {
+            updated.defaultTalk = true;
+          }
+        } else if (field === "forced") {
           updated.forced = !cur.forced;
           // Turning on forced → also enable listen
           if (updated.forced) updated.listen = true;
@@ -118,6 +144,7 @@ export function AdminRoutingMatrixCard({
           if (!updated.listen) updated.forced = false;
         } else {
           updated.talk = !cur.talk;
+          if (!updated.talk) updated.defaultTalk = false;
         }
 
         next[roleId][roomId] = updated;
@@ -174,9 +201,10 @@ export function AdminRoutingMatrixCard({
           {adminError ? <p className="admin-error">{adminError}</p> : null}
 
           <p className="routing-matrix-hint">
-            Click <strong>T</strong>&thinsp;(Talk), <strong>L</strong>
-            &thinsp;(Listen), or <strong>F</strong>&thinsp;(Forced listen) to
-            toggle permissions for each role/party‑line combination.
+            Click <strong>T</strong>&thinsp;(Talk), <strong>D</strong>
+            &thinsp;(Default Talk), <strong>L</strong>&thinsp;(Listen), or{" "}
+            <strong>F</strong>&thinsp;(Forced listen). Each role can have only
+            one Default Talk party line.
           </p>
 
           <div className="routing-matrix-wrapper">
@@ -198,8 +226,17 @@ export function AdminRoutingMatrixCard({
                     {appData.rooms.map((room) => {
                       const cell = localMatrix[role.id]?.[room.id] ?? {
                         talk: false,
+                        defaultTalk: false,
                         listen: false,
+                        forced: false,
                       };
+                      const roleHasDefaultTalk = appData.rooms.some(
+                        (candidateRoom) =>
+                          localMatrix[role.id]?.[candidateRoom.id]?.defaultTalk,
+                      );
+                      const defaultTalkUnavailable =
+                        !cell.talk ||
+                        (roleHasDefaultTalk && !cell.defaultTalk);
                       return (
                         <td key={room.id} className="routing-matrix-cell">
                           <button
@@ -211,6 +248,24 @@ export function AdminRoutingMatrixCard({
                             title={`Talk: ${cell.talk ? "ON" : "off"}`}
                           >
                             T
+                          </button>
+                          <button
+                            type="button"
+                            className={`routing-matrix-toggle routing-matrix-default-talk${cell.defaultTalk ? " active" : ""}${defaultTalkUnavailable ? " unavailable" : ""}`}
+                            onClick={() =>
+                              toggleCell(role.id, room.id, "defaultTalk")
+                            }
+                            disabled={adminBusy || defaultTalkUnavailable}
+                            aria-label={`Default Talk ${role.name} → ${room.name}: ${cell.defaultTalk ? "on" : "off"}`}
+                            title={
+                              !cell.talk
+                                ? "Enable Talk first"
+                                : roleHasDefaultTalk && !cell.defaultTalk
+                                  ? "This role already has a Default Talk party line"
+                                  : `Default Talk: ${cell.defaultTalk ? "ON" : "off"}`
+                            }
+                          >
+                            D
                           </button>
                           <button
                             type="button"
@@ -253,6 +308,10 @@ export function AdminRoutingMatrixCard({
             <span className="routing-matrix-legend-item">
               <span className="routing-matrix-swatch routing-matrix-swatch-talk" />{" "}
               Talk
+            </span>
+            <span className="routing-matrix-legend-item">
+              <span className="routing-matrix-swatch routing-matrix-swatch-default-talk" />{" "}
+              Default Talk
             </span>
             <span className="routing-matrix-legend-item">
               <span className="routing-matrix-swatch routing-matrix-swatch-listen" />{" "}

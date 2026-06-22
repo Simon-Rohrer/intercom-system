@@ -50,6 +50,23 @@ export function roleAllowed(
   return roleIDs.includes(currentRoleId);
 }
 
+export function defaultRoomMatrixForRole(
+  roles: Role[],
+  rooms: Room[],
+  roleId: string,
+): { listenRoomIds: string[]; talkRoomIds: string[] } {
+  const role = roles.find((entry) => entry.id === roleId);
+  const defaultTalkRoom = rooms.find(
+    (room) =>
+      room.id === role?.defaultRoomId &&
+      roleAllowed(room.senderRoleIds, roleId),
+  );
+  return {
+    listenRoomIds: mergeForcedListenRooms([], rooms, roleId),
+    talkRoomIds: defaultTalkRoom ? [defaultTalkRoom.id] : [],
+  };
+}
+
 export function toggleRoomSelectionState(
   prev: string[],
   roomId: string,

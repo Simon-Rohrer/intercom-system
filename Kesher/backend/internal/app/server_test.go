@@ -1259,19 +1259,19 @@ func TestServerRouteInboundChatAtRoleWithoutActiveUsersReturnsStatus(t *testing.
 	}
 }
 
-func TestDefaultRoomForSessionPrefersRoleDefaultThenFirstRoom(t *testing.T) {
+func TestDefaultTalkRoomForSessionUsesOnlyConfiguredExistingRoom(t *testing.T) {
 	session := Session{RoleID: "audio"}
 	roles := []Role{
 		{ID: "audio", DefaultRoomID: "foh"},
 		{ID: "video", DefaultRoomID: "video-control"},
 	}
 	rooms := []Room{{ID: "stage"}, {ID: "foh"}}
-	if got := defaultRoomForSession(session, roles, rooms); got != "foh" {
+	if got := defaultTalkRoomForSession(session, roles, rooms); got != "foh" {
 		t.Fatalf("expected role default room, got %q", got)
 	}
 	session = Session{RoleID: "unknown"}
-	if got := defaultRoomForSession(session, roles, rooms); got != "stage" {
-		t.Fatalf("expected first room fallback, got %q", got)
+	if got := defaultTalkRoomForSession(session, roles, rooms); got != "" {
+		t.Fatalf("expected no room without configured default talk, got %q", got)
 	}
 }
 

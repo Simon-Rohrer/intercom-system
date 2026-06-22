@@ -168,8 +168,8 @@ func TestBulkUpdateRoomPermissions(t *testing.T) {
 	// Seed data provides roles: audio, video, lighting, ... and rooms: foh, stage, ...
 	// Update permissions in bulk for foh and stage
 	entries := []RoomPermissionEntry{
-		{RoomID: "foh", SenderRoleIDs: []string{"audio", "video"}, ReceiverRoleIDs: []string{"audio", "lighting"}},
-		{RoomID: "stage", SenderRoleIDs: []string{"lighting"}, ReceiverRoleIDs: []string{"video", "lighting"}},
+		{RoomID: "foh", SenderRoleIDs: []string{"audio", "video"}, DefaultTalkRoleIDs: []string{"audio"}, ReceiverRoleIDs: []string{"audio", "lighting"}},
+		{RoomID: "stage", SenderRoleIDs: []string{"lighting"}, DefaultTalkRoleIDs: []string{"lighting"}, ReceiverRoleIDs: []string{"video", "lighting"}},
 	}
 	if err := store.BulkUpdateRoomPermissions(ctx, entries); err != nil {
 		t.Fatalf("BulkUpdateRoomPermissions failed: %v", err)
@@ -210,6 +210,71 @@ func TestBulkUpdateRoomPermissions(t *testing.T) {
 	}
 	if allowed, err := store.RoomAllowsReceiverRole(ctx, "stage", "audio"); err != nil || allowed {
 		t.Fatal("stage should not have audio as receiver")
+	}
+	roles, err := store.ListRoles(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaults := make(map[string]string, len(roles))
+	for _, role := range roles {
+		defaults[role.ID] = role.DefaultRoomID
+	}
+	if defaults["audio"] != "foh" || defaults["lighting"] != "stage" {
+		t.Fatalf("unexpected default talk assignments: %v", defaults)
+	}
+}
+
+func TestBulkUpdateRoomPermissionsRejectsMultipleDefaultTalkRoomsPerRole(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	err = store.BulkUpdateRoomPermissions(context.Background(), []RoomPermissionEntry{
+		{RoomID: "foh", SenderRoleIDs: []string{"audio"}, DefaultTalkRoleIDs: []string{"audio"}},
+		{RoomID: "stage", SenderRoleIDs: []string{"audio"}, DefaultTalkRoleIDs: []string{"audio"}},
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestBulkUpdateRoomPermissionsRequiresTalkForDefaultTalk(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	err = store.BulkUpdateRoomPermissions(context.Background(), []RoomPermissionEntry{
+		{RoomID: "foh", SenderRoleIDs: []string{}, DefaultTalkRoleIDs: []string{"audio"}},
+	})
+	if !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestBulkUpdateRoomPermissionsLegacyPayloadPreservesDefaultTalk(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if err := store.BulkUpdateRoomPermissions(context.Background(), []RoomPermissionEntry{
+		{RoomID: "foh", SenderRoleIDs: []string{"audio"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	roles, err := store.ListRoles(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, role := range roles {
+		if role.ID == "audio" && role.DefaultRoomID != "foh" {
+			t.Fatalf("expected legacy payload to preserve audio default talk, got %q", role.DefaultRoomID)
+		}
 	}
 }
 
