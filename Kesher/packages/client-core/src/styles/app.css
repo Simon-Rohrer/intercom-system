@@ -1999,6 +1999,44 @@ button.secondary {
   user-select: none;
   -webkit-touch-callout: none;
 }
+.simple-runtime-header {
+  position: absolute;
+  top: max(18px, env(safe-area-inset-top, 0px));
+  left: 18px;
+  right: 18px;
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.low-power-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 30px;
+  padding: 0.32rem 0.72rem;
+  border: 1px solid rgba(78, 195, 255, 0.42);
+  border-radius: 999px;
+  background: rgba(9, 23, 38, 0.94);
+  color: #9bdcff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.low-power-mode-badge svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .simple-controls {
   width: min(480px, 100%);
   display: grid;
@@ -2261,10 +2299,17 @@ button.secondary {
   );
 }
 .station-topbar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 0;
+}
+.station-low-power-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }
 .station-live {
   display: inline-flex;
@@ -3921,6 +3966,18 @@ button.secondary {
     margin-bottom: 0;
     padding-bottom: 0;
     background: none;
+  }
+  .station-topbar.has-low-power {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 0.65rem;
+    display: grid;
+  }
+  .station-topbar.has-low-power .station-low-power-badge {
+    position: static;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: center;
+    transform: none;
   }
   .station-talk-grid,
   .station-direct-grid {

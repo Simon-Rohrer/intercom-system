@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createHoldButtonProps } from "../lib/holdButton";
 import type { InputChannelSelection } from "../app/settings";
+import { LowPowerModeBadge } from "./LowPowerModeBadge";
 
 type DirectReplyTarget = {
   userId: string;
@@ -9,6 +10,7 @@ type DirectReplyTarget = {
 
 type SimpleIntercomViewProps = {
   connectionState: "connecting" | "connected" | "reconnecting" | "offline";
+  lowPowerMode: boolean;
   pttPressed: boolean;
   onStartPpt: () => void;
   onStopPpt: () => void;
@@ -37,6 +39,7 @@ type SimpleIntercomViewProps = {
 
 export function SimpleIntercomView({
   connectionState,
+  lowPowerMode,
   pttPressed,
   onStartPpt,
   onStopPpt,
@@ -95,6 +98,11 @@ export function SimpleIntercomView({
 
   return (
     <div className="root app simple-shell">
+      {lowPowerMode ? (
+        <header className="simple-runtime-header">
+          <LowPowerModeBadge />
+        </header>
+      ) : null}
       {connectionState !== "connected" && (
         <div className="connection-offline-banner">
           <span className="connection-offline-icon" />

@@ -2071,6 +2071,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       <>
         <SimpleIntercomView
           connectionState={session.connectionState}
+          lowPowerMode={lowPowerMode}
           pttPressed={session.pttPressed}
           onStartPpt={session.startPtt}
           onStopPpt={session.stopPtt}
@@ -2117,6 +2118,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       <StationIntercomView
         token={token}
         connectionState={session.connectionState}
+        lowPowerMode={lowPowerMode}
         appData={appData}
         doLogout={() => void doLogout()}
         listenRoomIds={session.listenRoomIds}

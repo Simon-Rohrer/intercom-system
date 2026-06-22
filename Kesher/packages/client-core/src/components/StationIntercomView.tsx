@@ -18,6 +18,7 @@ import { createHoldButtonProps } from "../lib/holdButton";
 import { withResolvedStreamDeckButtonLabel } from "../lib/streamDeckLabels";
 import { sortDirectUsersByRoleAndUsername } from "../lib/users";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
+import { LowPowerModeBadge } from "./LowPowerModeBadge";
 
 const DB_MIN = -60;
 const OUTPUT_DB_MAX = 6; // +6 dB ~ gain 2.0
@@ -303,6 +304,7 @@ function formatGateThresholdDb(dbFs: number): string {
 type StationIntercomViewProps = {
   token: string;
   connectionState: "connecting" | "connected" | "reconnecting" | "offline";
+  lowPowerMode: boolean;
   appData: Bootstrap;
   doLogout: () => void;
   listenRoomIds: string[];
@@ -426,6 +428,7 @@ type StationIntercomViewProps = {
 export function StationIntercomView({
   token,
   connectionState,
+  lowPowerMode,
   appData,
   doLogout,
   listenRoomIds,
@@ -1481,7 +1484,9 @@ export function StationIntercomView({
         </div>
       )}
       <div className="station-header">
-        <div className="station-topbar">
+        <div
+          className={`station-topbar ${lowPowerMode ? "has-low-power" : ""}`.trim()}
+        >
           <div className="station-live">
             <div className="station-live-name">
               <span
@@ -1495,6 +1500,9 @@ export function StationIntercomView({
               {roleNameById.get(appData.self.roleId) || appData.self.roleId}
             </div>
           </div>
+          {lowPowerMode ? (
+            <LowPowerModeBadge className="station-low-power-badge" />
+          ) : null}
           <div className="station-top-actions">
             <button
               className="station-top-admin"

@@ -7,6 +7,7 @@ import type { StreamDeckSettings } from "../types";
 const baseProps: ComponentProps<typeof StationIntercomView> = {
   token: "test-token",
   connectionState: "connected",
+  lowPowerMode: false,
   appData: {
     self: { id: "u1", username: "tim", roleId: "op" },
     users: [{ id: "u1", username: "tim", roleId: "op" }],
@@ -140,6 +141,18 @@ const baseProps: ComponentProps<typeof StationIntercomView> = {
 };
 
 describe("StationIntercomView", () => {
+  it("shows the low-power indicator only when the mode is active", () => {
+    const { rerender } = render(<StationIntercomView {...baseProps} />);
+    expect(
+      screen.queryByRole("status", { name: "Low power mode active" }),
+    ).not.toBeInTheDocument();
+
+    rerender(<StationIntercomView {...baseProps} lowPowerMode />);
+    expect(
+      screen.getByRole("status", { name: "Low power mode active" }),
+    ).toBeVisible();
+  });
+
   it("toggles always-on from the switch control", async () => {
     const user = userEvent.setup();
     const setAlwaysOn = vi.fn();
