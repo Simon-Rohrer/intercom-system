@@ -1983,7 +1983,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       showAckOption={appData.ackEnabled}
       chatMessages={session.chatMessages}
       listenRoomIds={session.listenRoomIds}
-      rooms={appData.rooms.map((room) => ({ id: room.id, name: room.name }))}
+      rooms={appData.rooms
+        .filter((room) =>
+          roleAllowed(room.senderRoleIds, appData.self.roleId),
+        )
+        .map((room) => ({ id: room.id, name: room.name }))}
       roles={appData.roles.map((role) => ({ id: role.id, name: role.name }))}
       activeUsers={activeUsersForChat}
     />

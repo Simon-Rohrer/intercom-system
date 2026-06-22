@@ -101,6 +101,35 @@ func TestHubRoomRoutingRespectsReceiverRoleRestrictions(t *testing.T) {
 	}
 }
 
+func TestHubGlobalChatRoutesToEveryConnectedClient(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	hub := NewHub(store, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	sender := &client{session: Session{Token: "sender"}, user: User{ID: "u1", Username: "sender", RoleID: "audio"}, send: make(chan WSOutbound, 4)}
+	receiver := &client{session: Session{Token: "receiver"}, user: User{ID: "u2", Username: "receiver", RoleID: "video"}, send: make(chan WSOutbound, 4)}
+	hub.Add(sender)
+	hub.Add(receiver)
+	drain(sender.send)
+	drain(receiver.send)
+
+	hub.RouteEvent("sender", "chat", RoutedEvent{Scope: "global", TargetType: "global", TargetID: "global", Body: "hello everyone"})
+
+	for name, ch := range map[string]chan WSOutbound{"sender": sender.send, "receiver": receiver.send} {
+		select {
+		case out := <-ch:
+			routed, ok := out.Data.(RoutedEvent)
+			if out.Type != "chat" || !ok || routed.Scope != "global" || routed.Body != "hello everyone" {
+				t.Fatalf("unexpected global chat for %s: %+v", name, out)
+			}
+		case <-time.After(200 * time.Millisecond):
+			t.Fatalf("expected global chat for %s", name)
+		}
+	}
+}
+
 func TestHubBroadcastRoutingFiltersRoomsBySenderRole(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {
@@ -350,7 +379,7 @@ func TestHubSetVoiceStateTransitions(t *testing.T) {
 	}
 }
 
-func TestHubChatHistorySnapshotIncludesRoomAndDirect(t *testing.T) {
+func TestHubChatHistorySnapshotIncludesGlobalRoomAndDirect(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -367,6 +396,8 @@ func TestHubChatHistorySnapshotIncludesRoomAndDirect(t *testing.T) {
 	hub.Add(sender)
 	drain(sender.send)
 
+	hub.RouteEvent("sender", "chat", RoutedEvent{Scope: "global", TargetType: "global", TargetID: "global", Body: "global hello"})
+	time.Sleep(2 * time.Millisecond)
 	hub.RouteEvent("sender", "chat", RoutedEvent{Scope: "room", TargetID: "foh", Body: "room hello"})
 	time.Sleep(2 * time.Millisecond)
 	hub.RouteEvent("sender", "chat", RoutedEvent{Scope: "direct", TargetType: "user", TargetID: "u2", Body: "direct hello"})
@@ -381,11 +412,11 @@ func TestHubChatHistorySnapshotIncludesRoomAndDirect(t *testing.T) {
 	drain(receiver.send)
 
 	count := hub.SendChatHistorySnapshot("receiver")
-	if count != 2 {
-		t.Fatalf("expected 2 chat history events, got %d", count)
+	if count != 3 {
+		t.Fatalf("expected 3 chat history events, got %d", count)
 	}
 
-	var first, second RoutedEvent
+	var first, second, third RoutedEvent
 	select {
 	case msg := <-receiver.send:
 		first = msg.Data.(RoutedEvent)
@@ -398,11 +429,20 @@ func TestHubChatHistorySnapshotIncludesRoomAndDirect(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("timed out waiting for second chat history event")
 	}
-	if first.Body != "room hello" {
-		t.Fatalf("expected first history message to be room message, got %q", first.Body)
+	select {
+	case msg := <-receiver.send:
+		third = msg.Data.(RoutedEvent)
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("timed out waiting for third chat history event")
 	}
-	if second.Body != "direct hello" {
-		t.Fatalf("expected second history message to be direct message, got %q", second.Body)
+	if first.Body != "global hello" {
+		t.Fatalf("expected first history message to be global message, got %q", first.Body)
+	}
+	if second.Body != "room hello" {
+		t.Fatalf("expected second history message to be room message, got %q", second.Body)
+	}
+	if third.Body != "direct hello" {
+		t.Fatalf("expected third history message to be direct message, got %q", third.Body)
 	}
 }
 
@@ -415,11 +455,16 @@ func TestHubClearChatHistoryRemovesBufferedMessages(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	hub := NewHub(store, logger)
 	hub.chatHistory.AppendForRoom("foh", RoutedEvent{Scope: "room", TargetID: "foh", Body: "hello", Timestamp: 1})
+	hub.chatHistory.AppendGlobal(RoutedEvent{Scope: "global", TargetID: "global", Body: "global", Timestamp: 2})
 
 	hub.ClearChatHistory()
 	remaining := hub.chatHistory.HistoryForRooms([]string{"foh"})
 	if len(remaining) != 0 {
 		t.Fatalf("expected cleared history, got %d entries", len(remaining))
+	}
+	remaining = hub.chatHistory.HistoryForUserAndRooms("u1", nil)
+	if len(remaining) != 0 {
+		t.Fatalf("expected cleared global history, got %d entries", len(remaining))
 	}
 }
 

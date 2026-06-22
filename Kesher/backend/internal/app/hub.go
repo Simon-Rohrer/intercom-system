@@ -275,6 +275,8 @@ func (h *Hub) recordChatHistory(sender *client, e RoutedEvent) {
 		return
 	}
 	switch e.Scope {
+	case "global":
+		h.chatHistory.AppendGlobal(e)
 	case "room":
 		h.chatHistory.AppendForRoom(e.TargetID, e)
 	case "broadcast":
@@ -783,6 +785,12 @@ func (h *Hub) RouteEvent(senderToken string, eventType string, e RoutedEvent) {
 	out := WSOutbound{Type: eventType, Data: e}
 
 	switch e.Scope {
+	case "global":
+		if eventType != "chat" {
+			h.logger.Warn("global routing is only supported for chat", "eventType", eventType)
+			return
+		}
+		h.sendToAll(out)
 	case "direct":
 		if eventType == "signal" {
 			h.markDirectSignalIncoming(e.TargetID, sender.user, e.Signal)
@@ -941,6 +949,14 @@ func (h *Hub) sendToUser(userID string, msg WSOutbound) {
 		if c.user.ID == userID {
 			h.enqueueOutbound(c, msg)
 		}
+	}
+}
+
+func (h *Hub) sendToAll(msg WSOutbound) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, c := range h.clients {
+		h.enqueueOutbound(c, msg)
 	}
 }
 

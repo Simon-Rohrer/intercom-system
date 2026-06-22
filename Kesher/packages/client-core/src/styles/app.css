@@ -271,6 +271,21 @@ button {
   flex: 1;
   min-width: 220px;
 }
+.chat-target-control {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+}
+.chat-target-control span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.chat-target-control select {
+  width: 100%;
+  min-height: 42px;
+}
 
 /* ===== Chat Actions Row (ACK + Send) ===== */
 .chat-actions {

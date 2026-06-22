@@ -3,7 +3,6 @@ import { bootstrap, buildWebSocketUrl, normalizePublicBootstrap } from "../api";
 import {
   matrixAnchorRoomId,
   mergeForcedListenRooms,
-  resolveChatTargetRoomId,
   roleAllowed,
   toggleRoomSelectionState,
 } from "../lib/intercom";
@@ -24,6 +23,7 @@ import {
 import type {
   Bootstrap,
   ChatAckUpdate,
+  ChatTarget,
   Presence,
   PublicBootstrap,
   RoutedEvent,
@@ -492,9 +492,9 @@ export type UseIntercomSessionResult = {
     at: string;
     room: string;
     self: boolean;
-    scope: "direct" | "room" | "broadcast";
+    scope: "direct" | "room" | "broadcast" | "global";
     targetId: string;
-    targetType?: "room" | "user" | "role";
+    targetType?: "room" | "user" | "role" | "global";
     messageId?: string;
     ackRequired?: boolean;
     acked?: boolean;
@@ -552,7 +552,7 @@ export type UseIntercomSessionResult = {
     targetId: string,
     signal: string,
   ) => void;
-  sendChat: (ackRequired?: boolean) => void;
+  sendChat: (target: ChatTarget, ackRequired?: boolean) => void;
   acknowledgeChatMessage: (messageId: string, senderUserId: string) => void;
   handleChannelPttStart: (channelId: string) => void;
   handleChannelPttStop: (channelId: string) => void;
@@ -620,9 +620,9 @@ export function useIntercomSession({
       at: string;
       room: string;
       self: boolean;
-      scope: "direct" | "room" | "broadcast";
+      scope: "direct" | "room" | "broadcast" | "global";
       targetId: string;
-      targetType?: "room" | "user" | "role";
+      targetType?: "room" | "user" | "role" | "global";
       messageId?: string;
       ackRequired?: boolean;
       acked?: boolean;
@@ -1591,31 +1591,20 @@ export function useIntercomSession({
   }
 
   // ── Chat ──
-  const chatScope: "direct" | "room" | "broadcast" = "room";
-
-  function sendChat(ackRequired = false) {
+  function sendChat(target: ChatTarget, ackRequired = false) {
     if (
       !wsRef.current ||
       wsRef.current.readyState !== WebSocket.OPEN ||
       !message.trim()
     )
       return;
-    const resolvedTargetId = resolveChatTargetRoomId(
-      listenRoomIdsRef.current,
-      talkRoomIdsRef.current,
-      appDataRef.current?.rooms || [],
-      appDataRef.current?.roles.find(
-        (role) => role.id === appDataRef.current?.self.roleId,
-      ),
-      appDataRef.current?.self.roleId || "",
-    );
-    if (!resolvedTargetId) return;
     wsRef.current.send(
       JSON.stringify({
         type: "chat",
         data: {
-          scope: chatScope,
-          targetId: resolvedTargetId,
+          scope: target.scope,
+          targetType: target.targetType,
+          targetId: target.targetId,
           body: message.trim(),
           ackRequired: ackRequired && (appDataRef.current?.ackEnabled ?? true),
         },
@@ -2265,6 +2254,7 @@ export function useIntercomSession({
         if (
           msg.type === "voice_state" &&
           msg.data.fromUser.id !== ad?.self.id &&
+          msg.data.scope !== "global" &&
           msg.data.scope &&
           msg.data.targetId
         ) {
@@ -2303,7 +2293,9 @@ export function useIntercomSession({
             const chatScope = msg.data.scope;
             const chatTargetId = msg.data.targetId;
             const roomLabel =
-              chatScope === "room"
+              chatScope === "global"
+                ? "Global Chat"
+                : chatScope === "room"
                 ? ad?.rooms.find((room) => room.id === chatTargetId)?.name ||
                   chatTargetId
                 : chatScope === "broadcast"

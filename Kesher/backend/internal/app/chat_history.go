@@ -47,10 +47,11 @@ func (r *chatRing) snapshot() []RoutedEvent {
 }
 
 type ChatHistory struct {
-	mu         sync.RWMutex
-	limit      int
-	roomEvents map[string]*chatRing
-	userEvents map[string]*chatRing
+	mu           sync.RWMutex
+	limit        int
+	globalEvents *chatRing
+	roomEvents   map[string]*chatRing
+	userEvents   map[string]*chatRing
 }
 
 func NewChatHistory(limit int) *ChatHistory {
@@ -58,10 +59,17 @@ func NewChatHistory(limit int) *ChatHistory {
 		limit = 1
 	}
 	return &ChatHistory{
-		limit:      limit,
-		roomEvents: make(map[string]*chatRing),
-		userEvents: make(map[string]*chatRing),
+		limit:        limit,
+		globalEvents: newChatRing(limit),
+		roomEvents:   make(map[string]*chatRing),
+		userEvents:   make(map[string]*chatRing),
 	}
+}
+
+func (h *ChatHistory) AppendGlobal(e RoutedEvent) {
+	h.mu.Lock()
+	h.globalEvents.append(e)
+	h.mu.Unlock()
 }
 
 func (h *ChatHistory) AppendForRoom(roomID string, e RoutedEvent) {
@@ -119,6 +127,14 @@ func (h *ChatHistory) HistoryForUserAndRooms(userID string, roomIDs []string) []
 	h.mu.RLock()
 	merged := make([]RoutedEvent, 0)
 	seen := make(map[string]struct{})
+	for _, event := range h.globalEvents.snapshot() {
+		key := historyEventKey(event)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		merged = append(merged, event)
+	}
 	for _, roomID := range uniqueNonEmpty(roomIDs) {
 		ring, ok := h.roomEvents[roomID]
 		if !ok {
@@ -152,6 +168,7 @@ func (h *ChatHistory) HistoryForUserAndRooms(userID string, roomIDs []string) []
 
 func (h *ChatHistory) Clear() {
 	h.mu.Lock()
+	h.globalEvents = newChatRing(h.limit)
 	h.roomEvents = make(map[string]*chatRing)
 	h.userEvents = make(map[string]*chatRing)
 	h.mu.Unlock()

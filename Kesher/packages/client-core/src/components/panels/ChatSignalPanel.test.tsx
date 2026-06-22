@@ -47,6 +47,35 @@ describe("ChatSignalPanel", () => {
     expect(screen.getByText("No chat messages yet.")).toBeVisible();
   });
 
+  it("selects Global Chat by default and can target a party line", async () => {
+    const user = userEvent.setup();
+    const onSendChat = vi.fn();
+
+    render(
+      <ChatSignalPanel
+        message="hello"
+        onMessageChange={vi.fn()}
+        onSendChat={onSendChat}
+        onAcknowledge={vi.fn()}
+        chatMessages={[]}
+        {...defaultProps}
+      />,
+    );
+
+    const destination = screen.getByRole("combobox", {
+      name: "Chat destination",
+    });
+    expect(destination).toHaveValue("global:global");
+
+    await user.selectOptions(destination, "room:foh");
+    await user.click(screen.getByRole("button", { name: "Send chat" }));
+
+    expect(onSendChat).toHaveBeenCalledWith(
+      { scope: "room", targetType: "room", targetId: "foh" },
+      false,
+    );
+  });
+
   it("updates message and sends via button and enter", async () => {
     const user = userEvent.setup();
     const onMessageChange = vi.fn();
@@ -71,8 +100,16 @@ describe("ChatSignalPanel", () => {
 
     expect(onMessageChange).toHaveBeenCalled();
     expect(onSendChat).toHaveBeenCalledTimes(2);
-    expect(onSendChat).toHaveBeenNthCalledWith(1, true);
-    expect(onSendChat).toHaveBeenNthCalledWith(2, false);
+    expect(onSendChat).toHaveBeenNthCalledWith(
+      1,
+      { scope: "global", targetType: "global", targetId: "global" },
+      true,
+    );
+    expect(onSendChat).toHaveBeenNthCalledWith(
+      2,
+      { scope: "global", targetType: "global", targetId: "global" },
+      false,
+    );
   });
 
   it("hides ack toggle and sends without ack when ack option is disabled", async () => {
@@ -93,7 +130,10 @@ describe("ChatSignalPanel", () => {
 
     expect(screen.queryByLabelText("Requires ACK")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Send chat" }));
-    expect(onSendChat).toHaveBeenCalledWith(false);
+    expect(onSendChat).toHaveBeenCalledWith(
+      { scope: "global", targetType: "global", targetId: "global" },
+      false,
+    );
   });
 
   it("prefills @username when sender is clicked", async () => {

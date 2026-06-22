@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { ChatTarget } from "../../types";
 
 type ChatEntry = {
   from: string;
@@ -7,9 +8,9 @@ type ChatEntry = {
   at: string;
   room: string;
   self: boolean;
-  scope: "direct" | "room" | "broadcast";
+  scope: "direct" | "room" | "broadcast" | "global";
   targetId: string;
-  targetType?: "room" | "user" | "role";
+  targetType?: "room" | "user" | "role" | "global";
   messageId?: string;
   ackRequired?: boolean;
   acked?: boolean;
@@ -29,7 +30,7 @@ type AutocompleteItem = {
 type ChatSignalPanelProps = {
   message: string;
   onMessageChange: (value: string) => void;
-  onSendChat: (ackRequired?: boolean) => void;
+  onSendChat: (target: ChatTarget, ackRequired?: boolean) => void;
   onAcknowledge: (messageId: string, senderUserId: string) => void;
   showAckOption?: boolean;
   chatMessages: ChatEntry[];
@@ -78,9 +79,41 @@ export function ChatSignalPanel({
   const [selectedSuggestion, setSelectedSuggestion] = useState(0);
   const [caret, setCaret] = useState(message.length);
   const [requiresAck, setRequiresAck] = useState(false);
+  const [selectedTarget, setSelectedTarget] = useState("global:global");
+
+  const availableTargetValues = useMemo(
+    () =>
+      new Set([
+        "global:global",
+        ...rooms.map((room) => `room:${room.id}`),
+        ...activeUsers
+          .filter((user) => user.isWebOnline !== false)
+          .map((user) => `direct:${user.userId}`),
+      ]),
+    [activeUsers, rooms],
+  );
+
+  useEffect(() => {
+    if (!availableTargetValues.has(selectedTarget)) {
+      setSelectedTarget("global:global");
+    }
+  }, [availableTargetValues, selectedTarget]);
+
+  function currentChatTarget(): ChatTarget {
+    const separatorIndex = selectedTarget.indexOf(":");
+    const scope = selectedTarget.slice(0, separatorIndex);
+    const targetId = selectedTarget.slice(separatorIndex + 1);
+    if (scope === "room" && targetId) {
+      return { scope: "room", targetType: "room", targetId };
+    }
+    if (scope === "direct" && targetId) {
+      return { scope: "direct", targetType: "user", targetId };
+    }
+    return { scope: "global", targetType: "global", targetId: "global" };
+  }
 
   function submitChat() {
-    onSendChat(showAckOption ? requiresAck : false);
+    onSendChat(currentChatTarget(), showAckOption ? requiresAck : false);
     if (message.trim()) {
       setRequiresAck(false);
     }
@@ -199,6 +232,36 @@ export function ChatSignalPanel({
 
   return (
     <>
+      <label className="chat-target-control">
+        <span>Send message to</span>
+        <select
+          aria-label="Chat destination"
+          value={selectedTarget}
+          onChange={(event) => setSelectedTarget(event.target.value)}
+        >
+          <option value="global:global">Global Chat</option>
+          {rooms.length > 0 ? (
+            <optgroup label="Party Lines">
+              {rooms.map((room) => (
+                <option key={room.id} value={`room:${room.id}`}>
+                  {room.name}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
+          {activeUsers.some((user) => user.isWebOnline !== false) ? (
+            <optgroup label="Direct Messages">
+              {activeUsers
+                .filter((user) => user.isWebOnline !== false)
+                .map((user) => (
+                  <option key={user.userId} value={`direct:${user.userId}`}>
+                    {user.username} ({user.roleName})
+                  </option>
+                ))}
+            </optgroup>
+          ) : null}
+        </select>
+      </label>
       <div className="chat">
         <input
           value={message}

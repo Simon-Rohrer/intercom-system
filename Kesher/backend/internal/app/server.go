@@ -5497,6 +5497,9 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			raw, _ := json.Marshal(in.Data)
 			var e RoutedEvent
 			_ = json.Unmarshal(raw, &e)
+			if e.Scope == "global" {
+				continue
+			}
 			if !s.isInboundAllowed(r.Context(), session, e) {
 				continue
 			}
@@ -5591,7 +5594,10 @@ func (s *Server) routeInbound(ctx context.Context, sender Session, in WSInbound,
 	if e.Source == "" {
 		e.Source = "web"
 	}
-	if !s.isInboundAllowed(ctx, sender, e) {
+	if e.Scope == "global" && outType != "chat" {
+		return
+	}
+	if e.Scope != "global" && !s.isInboundAllowed(ctx, sender, e) {
 		return
 	}
 	s.hub.RouteEvent(sender.Token, outType, e)
@@ -5605,6 +5611,24 @@ func (s *Server) resolveChatRouting(ctx context.Context, sender Session, e Route
 
 	prefix, targetLabel, messageBody, hasPrefix := parseChatPrefix(body)
 	if !hasPrefix {
+		if e.Scope == "global" {
+			e.TargetType = "global"
+			e.TargetID = "global"
+			e.Body = body
+			return e, nil, true
+		}
+		if e.Scope == "direct" && e.TargetType == "user" && strings.TrimSpace(e.TargetID) != "" {
+			e.TargetID = strings.TrimSpace(e.TargetID)
+			if e.TargetID == sender.UserID {
+				return RoutedEvent{}, &RoutingStatusEvent{
+					Code:       "unzustellbar",
+					TargetType: "user",
+					Message:    "Unzustellbar: Du kannst dir selbst keine Nachricht schicken.",
+				}, false
+			}
+			e.Body = body
+			return e, nil, true
+		}
 		// The web client resolves a concrete room even when no talk room has
 		// been selected yet (for example, the role's default room directly
 		// after login). Keep the active-talk-room fallback for older clients,
@@ -5785,6 +5809,8 @@ func (s *Server) sendRoutingStatus(token string, status RoutingStatusEvent) {
 
 func (s *Server) isInboundAllowed(ctx context.Context, sender Session, e RoutedEvent) bool {
 	switch e.Scope {
+	case "global":
+		return false
 	case "room":
 		allowed, err := s.store.RoomAllowsSenderRole(ctx, e.TargetID, sender.RoleID)
 		return err == nil && allowed

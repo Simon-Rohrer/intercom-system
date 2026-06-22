@@ -331,8 +331,8 @@ export type StreamDeckSettings = {
 };
 
 export type RoutedEvent = {
-  scope: "direct" | "room" | "broadcast";
-  targetType?: "room" | "user" | "role";
+  scope: "direct" | "room" | "broadcast" | "global";
+  targetType?: "room" | "user" | "role" | "global";
   targetId: string;
   body: string;
   source?: string;
@@ -345,6 +345,11 @@ export type RoutedEvent = {
   fromUser: User;
   timestamp: number;
 };
+
+export type ChatTarget =
+  | { scope: "global"; targetType: "global"; targetId: "global" }
+  | { scope: "room"; targetType: "room"; targetId: string }
+  | { scope: "direct"; targetType: "user"; targetId: string };
 
 export type ChatAckUpdate = {
   messageId: string;
