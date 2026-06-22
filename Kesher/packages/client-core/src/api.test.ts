@@ -10,6 +10,7 @@ import {
   duplicateRole,
   exportConfiguration,
   getPublicBootstrap,
+  getRaspberryPiStations,
   getStreamDeckSettings,
   importConfiguration,
   isUnauthorizedError,
@@ -204,6 +205,34 @@ const server = setupServer(
       })),
     });
   }),
+  http.get("http://localhost/api/admin/raspberry-pis", ({ request }) => {
+    const auth = request.headers.get("authorization");
+    const adminPin = request.headers.get("x-admin-pin");
+    if (!auth) return new HttpResponse("unauthorized", { status: 401 });
+    if (!adminPin) return new HttpResponse("forbidden", { status: 403 });
+    return HttpResponse.json({
+      stations: [
+        {
+          deviceId: "pi-1",
+          name: "Kamera-1",
+          ipAddress: "192.168.1.51",
+          roleId: "camera",
+          lowPowerMode: true,
+          launcherVersion: "2",
+          browserStatus: "running",
+          loginStatus: "waiting_for_intercom",
+          lastSeenUnixMs: 1,
+          updatedAtUnixMs: 1,
+          online: true,
+          intercomConnected: false,
+          effectiveStatus: "waiting_for_intercom",
+          secondsSinceSeen: 2,
+        },
+      ],
+      timestampUnixMs: 3,
+      offlineAfterMs: 30000,
+    });
+  }),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -252,6 +281,12 @@ describe("api helpers", () => {
     expect(data.roles).toHaveLength(1);
     expect(data.roles[0]?.id).toBe("op");
     expect(data.activeRoleIds).toEqual(["light-1"]);
+  });
+
+  it("loads Raspberry Pi stations with admin pin", async () => {
+    const data = await getRaspberryPiStations("token-123", "123456");
+    expect(data.stations[0]?.deviceId).toBe("pi-1");
+    expect(data.stations[0]?.online).toBe(true);
   });
 
   it("logs in and returns token + user", async () => {

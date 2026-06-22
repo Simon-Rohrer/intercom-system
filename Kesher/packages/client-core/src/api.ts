@@ -11,6 +11,7 @@ import type {
   LoginConflict,
   LoginSuccess,
   PublicBootstrap,
+  RaspberryPiStationsResponse,
   RealtimeStatsResponse,
   Role,
   StatusResponse,
@@ -621,6 +622,20 @@ export async function getRealtimeStats(
   });
   if (!res.ok) throw new Error("failed to load realtime stats");
   return res.json() as Promise<RealtimeStatsResponse>;
+}
+
+export async function getRaspberryPiStations(
+  token: string,
+  adminPin: string,
+): Promise<RaspberryPiStationsResponse> {
+  const res = await fetch(apiUrl("/api/admin/raspberry-pis"), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      [adminPinHeaderName]: adminPin,
+    },
+  });
+  if (!res.ok) throw new Error("failed to load Raspberry Pi stations");
+  return res.json() as Promise<RaspberryPiStationsResponse>;
 }
 
 export async function getStatus(token: string): Promise<StatusResponse> {

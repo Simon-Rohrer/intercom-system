@@ -23,8 +23,10 @@ Edit `deploy/raspberry-pi/raspberry-pis.json` before installation, or edit
   "server_url": "http://192.168.1.10:8080",
   "browser_binary": "chromium",
   "allow_insecure_tls": false,
+  "heartbeat_secret": "",
   "clients": [
     {
+      "device_id": "foh-pi",
       "ip_address": "192.168.1.51",
       "name": "FOH",
       "role_id": "audio",
@@ -39,6 +41,16 @@ Edit `deploy/raspberry-pi/raspberry-pis.json` before installation, or edit
 `name` must not contain spaces. `role_id` is the stable role ID, not the
 visible role name. The optional audio match values are case-insensitive label
 substrings and automatically select matching USB devices.
+
+`device_id` is optional but recommended for dashboard tracking. If it is
+omitted, the launcher uses the configured `ip_address` as the device ID.
+
+The launcher sends a heartbeat to `/api/raspberry-pi/heartbeat` every 10
+seconds. The admin dashboard shows whether the Raspberry Pi launcher is online,
+whether Chromium is running, and whether the station is currently connected to
+the intercom. Set `heartbeat_secret` and the server environment variable
+`RASPBERRY_PI_HEARTBEAT_SECRET` to the same value if the heartbeat endpoint
+should reject unauthenticated station reports.
 
 Set `low_power_mode` to `true` on constrained stations such as a Raspberry Pi
 3. Kesher then disables continuous audio metering and UI animations, reduces

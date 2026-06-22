@@ -244,6 +244,32 @@ export type RealtimeStatsResponse = {
   timestampUnixMs: number;
 };
 
+export type RaspberryPiStationStatus = {
+  deviceId: string;
+  name: string;
+  ipAddress: string;
+  roleId: string;
+  lowPowerMode: boolean;
+  launcherVersion: string;
+  browserStatus: string;
+  loginStatus: string;
+  loginError?: string;
+  lastSeenUnixMs: number;
+  updatedAtUnixMs: number;
+  online: boolean;
+  intercomConnected: boolean;
+  effectiveStatus: string;
+  intercomUsername?: string;
+  intercomRoleId?: string;
+  secondsSinceSeen: number;
+};
+
+export type RaspberryPiStationsResponse = {
+  stations: RaspberryPiStationStatus[];
+  timestampUnixMs: number;
+  offlineAfterMs: number;
+};
+
 export type AdminLogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
 
 export type AdminLogEntry = {

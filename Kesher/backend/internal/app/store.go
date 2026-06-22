@@ -708,6 +708,36 @@ func (s *Store) migrate(ctx context.Context) error {
 	)`); err != nil {
 		return err
 	}
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS raspberry_pi_heartbeats (
+		device_id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		ip_address TEXT NOT NULL,
+		role_id TEXT NOT NULL,
+		low_power_mode INTEGER NOT NULL DEFAULT 0,
+		launcher_version TEXT NOT NULL DEFAULT '',
+		browser_status TEXT NOT NULL DEFAULT '',
+		login_status TEXT NOT NULL DEFAULT '',
+		login_error TEXT NOT NULL DEFAULT '',
+		last_seen INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	)`); err != nil {
+		return err
+	}
+	for _, column := range []struct {
+		name       string
+		columnType string
+	}{
+		{"low_power_mode", "INTEGER NOT NULL DEFAULT 0"},
+		{"launcher_version", "TEXT NOT NULL DEFAULT ''"},
+		{"browser_status", "TEXT NOT NULL DEFAULT ''"},
+		{"login_status", "TEXT NOT NULL DEFAULT ''"},
+		{"login_error", "TEXT NOT NULL DEFAULT ''"},
+		{"updated_at", "INTEGER NOT NULL DEFAULT 0"},
+	} {
+		if err := s.ensureColumn(ctx, "raspberry_pi_heartbeats", column.name, column.columnType); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -893,6 +923,140 @@ func (s *Store) DeleteUser(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func trimBounded(value string, maxLen int) string {
+	value = strings.TrimSpace(value)
+	if maxLen <= 0 || len(value) <= maxLen {
+		return value
+	}
+	return value[:maxLen]
+}
+
+func normalizeRaspberryPiHeartbeat(req RaspberryPiHeartbeatRequest) (RaspberryPiHeartbeatRequest, error) {
+	req.DeviceID = trimBounded(req.DeviceID, 128)
+	req.Name = trimBounded(req.Name, 128)
+	req.IPAddress = trimBounded(req.IPAddress, 64)
+	req.RoleID = trimBounded(req.RoleID, 128)
+	req.LauncherVersion = trimBounded(req.LauncherVersion, 64)
+	req.BrowserStatus = trimBounded(req.BrowserStatus, 64)
+	req.LoginStatus = trimBounded(req.LoginStatus, 64)
+	req.LoginError = trimBounded(req.LoginError, 512)
+	if req.DeviceID == "" {
+		req.DeviceID = req.IPAddress
+	}
+	if req.DeviceID == "" || req.Name == "" || req.RoleID == "" {
+		return RaspberryPiHeartbeatRequest{}, ErrInvalidInput
+	}
+	if req.BrowserStatus == "" {
+		req.BrowserStatus = "unknown"
+	}
+	if req.LoginStatus == "" {
+		req.LoginStatus = "unknown"
+	}
+	return req, nil
+}
+
+func (s *Store) UpsertRaspberryPiHeartbeat(ctx context.Context, req RaspberryPiHeartbeatRequest) (RaspberryPiHeartbeatRecord, error) {
+	req, err := normalizeRaspberryPiHeartbeat(req)
+	if err != nil {
+		return RaspberryPiHeartbeatRecord{}, err
+	}
+	now := time.Now().UnixMilli()
+	lowPowerMode := 0
+	if req.LowPowerMode {
+		lowPowerMode = 1
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO raspberry_pi_heartbeats (
+		device_id, name, ip_address, role_id, low_power_mode, launcher_version,
+		browser_status, login_status, login_error, last_seen, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT(device_id) DO UPDATE SET
+		name = excluded.name,
+		ip_address = excluded.ip_address,
+		role_id = excluded.role_id,
+		low_power_mode = excluded.low_power_mode,
+		launcher_version = excluded.launcher_version,
+		browser_status = excluded.browser_status,
+		login_status = excluded.login_status,
+		login_error = excluded.login_error,
+		last_seen = excluded.last_seen,
+		updated_at = excluded.updated_at`,
+		req.DeviceID, req.Name, req.IPAddress, req.RoleID, lowPowerMode,
+		req.LauncherVersion, req.BrowserStatus, req.LoginStatus, req.LoginError,
+		now, now,
+	)
+	if err != nil {
+		return RaspberryPiHeartbeatRecord{}, err
+	}
+	return s.FindRaspberryPiHeartbeat(ctx, req.DeviceID)
+}
+
+func (s *Store) FindRaspberryPiHeartbeat(ctx context.Context, deviceID string) (RaspberryPiHeartbeatRecord, error) {
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" {
+		return RaspberryPiHeartbeatRecord{}, ErrInvalidInput
+	}
+	var record RaspberryPiHeartbeatRecord
+	var lowPowerMode int
+	err := s.db.QueryRowContext(ctx, `SELECT
+		device_id, name, ip_address, role_id, low_power_mode, launcher_version,
+		browser_status, login_status, login_error, last_seen, updated_at
+		FROM raspberry_pi_heartbeats WHERE device_id = ?`, deviceID).Scan(
+		&record.DeviceID,
+		&record.Name,
+		&record.IPAddress,
+		&record.RoleID,
+		&lowPowerMode,
+		&record.LauncherVersion,
+		&record.BrowserStatus,
+		&record.LoginStatus,
+		&record.LoginError,
+		&record.LastSeenUnixMs,
+		&record.UpdatedAtUnixMs,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return RaspberryPiHeartbeatRecord{}, ErrNotFound
+		}
+		return RaspberryPiHeartbeatRecord{}, err
+	}
+	record.LowPowerMode = lowPowerMode != 0
+	return record, nil
+}
+
+func (s *Store) ListRaspberryPiHeartbeats(ctx context.Context) ([]RaspberryPiHeartbeatRecord, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT
+		device_id, name, ip_address, role_id, low_power_mode, launcher_version,
+		browser_status, login_status, login_error, last_seen, updated_at
+		FROM raspberry_pi_heartbeats ORDER BY name COLLATE NOCASE, device_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var records []RaspberryPiHeartbeatRecord
+	for rows.Next() {
+		var record RaspberryPiHeartbeatRecord
+		var lowPowerMode int
+		if err := rows.Scan(
+			&record.DeviceID,
+			&record.Name,
+			&record.IPAddress,
+			&record.RoleID,
+			&lowPowerMode,
+			&record.LauncherVersion,
+			&record.BrowserStatus,
+			&record.LoginStatus,
+			&record.LoginError,
+			&record.LastSeenUnixMs,
+			&record.UpdatedAtUnixMs,
+		); err != nil {
+			return nil, err
+		}
+		record.LowPowerMode = lowPowerMode != 0
+		records = append(records, record)
+	}
+	return records, rows.Err()
 }
 
 func validateStreamDeckSettings(in StreamDeckSettings) (StreamDeckSettings, error) {

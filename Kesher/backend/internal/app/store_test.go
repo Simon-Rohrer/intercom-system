@@ -158,6 +158,55 @@ func TestDuplicateRoleCopiesConfigurationAndIncrementsName(t *testing.T) {
 	}
 }
 
+func TestStoreUpsertRaspberryPiHeartbeatPersistsLatestStatus(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	ctx := context.Background()
+	first, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
+		DeviceID:        "pi-cam-1",
+		Name:            "Kamera-1",
+		IPAddress:       "192.168.1.51",
+		RoleID:          "camera",
+		LowPowerMode:    true,
+		LauncherVersion: "2",
+		BrowserStatus:   "starting",
+		LoginStatus:     "waiting_for_intercom",
+	})
+	if err != nil {
+		t.Fatalf("UpsertRaspberryPiHeartbeat failed: %v", err)
+	}
+	if first.DeviceID != "pi-cam-1" || !first.LowPowerMode {
+		t.Fatalf("unexpected first heartbeat: %#v", first)
+	}
+
+	second, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
+		DeviceID:      "pi-cam-1",
+		Name:          "Kamera-1",
+		IPAddress:     "192.168.1.52",
+		RoleID:        "camera",
+		BrowserStatus: "running",
+		LoginStatus:   "waiting_for_intercom",
+	})
+	if err != nil {
+		t.Fatalf("second UpsertRaspberryPiHeartbeat failed: %v", err)
+	}
+	if second.IPAddress != "192.168.1.52" || second.BrowserStatus != "running" {
+		t.Fatalf("heartbeat was not updated: %#v", second)
+	}
+
+	records, err := store.ListRaspberryPiHeartbeats(ctx)
+	if err != nil {
+		t.Fatalf("ListRaspberryPiHeartbeats failed: %v", err)
+	}
+	if len(records) != 1 || records[0].DeviceID != "pi-cam-1" {
+		t.Fatalf("unexpected records: %#v", records)
+	}
+}
+
 func TestDuplicateRoleRejectsUnknownSource(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {

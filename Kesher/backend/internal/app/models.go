@@ -102,6 +102,48 @@ type AdminUserView struct {
 	Online   bool   `json:"online"`
 }
 
+type RaspberryPiHeartbeatRequest struct {
+	DeviceID        string `json:"deviceId"`
+	Name            string `json:"name"`
+	IPAddress       string `json:"ipAddress"`
+	RoleID          string `json:"roleId"`
+	LowPowerMode    bool   `json:"lowPowerMode"`
+	LauncherVersion string `json:"launcherVersion"`
+	BrowserStatus   string `json:"browserStatus"`
+	LoginStatus     string `json:"loginStatus"`
+	LoginError      string `json:"loginError"`
+}
+
+type RaspberryPiHeartbeatRecord struct {
+	DeviceID        string `json:"deviceId"`
+	Name            string `json:"name"`
+	IPAddress       string `json:"ipAddress"`
+	RoleID          string `json:"roleId"`
+	LowPowerMode    bool   `json:"lowPowerMode"`
+	LauncherVersion string `json:"launcherVersion"`
+	BrowserStatus   string `json:"browserStatus"`
+	LoginStatus     string `json:"loginStatus"`
+	LoginError      string `json:"loginError,omitempty"`
+	LastSeenUnixMs  int64  `json:"lastSeenUnixMs"`
+	UpdatedAtUnixMs int64  `json:"updatedAtUnixMs"`
+}
+
+type RaspberryPiStationStatus struct {
+	RaspberryPiHeartbeatRecord
+	Online            bool   `json:"online"`
+	IntercomConnected bool   `json:"intercomConnected"`
+	EffectiveStatus   string `json:"effectiveStatus"`
+	IntercomUsername  string `json:"intercomUsername,omitempty"`
+	IntercomRoleID    string `json:"intercomRoleId,omitempty"`
+	SecondsSinceSeen  int64  `json:"secondsSinceSeen"`
+}
+
+type RaspberryPiStationsResponse struct {
+	Stations        []RaspberryPiStationStatus `json:"stations"`
+	TimestampUnixMs int64                      `json:"timestampUnixMs"`
+	OfflineAfterMs  int64                      `json:"offlineAfterMs"`
+}
+
 type Session struct {
 	Token     string
 	UserID    string

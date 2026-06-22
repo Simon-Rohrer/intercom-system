@@ -2035,6 +2035,7 @@ button {
 }
 
 .admin-status-ok,
+.admin-status-wait,
 .admin-status-warn {
   display: inline-flex;
   align-items: center;
@@ -2051,10 +2052,106 @@ button {
   border: 1px solid rgba(52, 199, 89, 0.22);
 }
 
+.admin-status-wait {
+  color: #d5f3ff;
+  background: rgba(0, 209, 255, 0.12);
+  border: 1px solid rgba(0, 209, 255, 0.22);
+}
+
 .admin-status-warn {
   color: #ffd1d1;
   background: rgba(193, 18, 31, 0.12);
   border: 1px solid rgba(193, 18, 31, 0.22);
+}
+
+.admin-pi-stations {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.1rem;
+}
+
+.admin-pi-stations-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--admin-title);
+  font-weight: 800;
+}
+
+.admin-pi-stations-header small,
+.admin-pi-station-main small,
+.admin-pi-station-state small {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.admin-pi-station {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.admin-pi-station-main,
+.admin-pi-station-state {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.admin-pi-station-main {
+  min-width: 0;
+}
+
+.admin-pi-station-main strong,
+.admin-pi-station-main span,
+.admin-pi-station-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-pi-station-main span {
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.admin-pi-station-state {
+  justify-items: end;
+  text-align: right;
+}
+
+.admin-pi-station-error {
+  grid-column: 1 / -1;
+  color: #ffd1d1;
+  font-size: 0.86rem;
+  line-height: 1.35;
+  padding-top: 0.3rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.admin-pi-empty {
+  padding: 0.75rem;
+  border-radius: 10px;
+  color: var(--muted);
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+@media (max-width: 640px) {
+  .admin-pi-station {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-pi-station-state {
+    justify-items: start;
+    text-align: left;
+  }
 }
 
 .admin-code {

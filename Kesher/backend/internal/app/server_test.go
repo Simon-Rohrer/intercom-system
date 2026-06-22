@@ -536,6 +536,115 @@ func TestServerHandlePublicBootstrapIncludesActiveRoleIDs(t *testing.T) {
 	}
 }
 
+func TestServerHandleRaspberryPiHeartbeatRequiresConfiguredSecret(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	s := &Server{
+		cfg:   Config{RaspberryPiHeartbeatSecret: "station-secret"},
+		store: store,
+	}
+	body := bytes.NewBufferString(`{"deviceId":"pi-1","name":"Kamera-1","roleId":"camera"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/raspberry-pi/heartbeat", body)
+	rec := httptest.NewRecorder()
+
+	s.handleRaspberryPiHeartbeat(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected forbidden without secret, got %d", rec.Code)
+	}
+}
+
+func TestServerHandleRaspberryPiHeartbeatStoresStation(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	s := &Server{
+		cfg:   Config{RaspberryPiHeartbeatSecret: "station-secret"},
+		store: store,
+	}
+	body := bytes.NewBufferString(`{
+		"deviceId":"pi-1",
+		"name":"Kamera-1",
+		"ipAddress":"192.168.1.51",
+		"roleId":"camera",
+		"lowPowerMode":true,
+		"browserStatus":"running",
+		"loginStatus":"waiting_for_intercom"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/raspberry-pi/heartbeat", body)
+	req.Header.Set("X-Kesher-Pi-Secret", "station-secret")
+	rec := httptest.NewRecorder()
+
+	s.handleRaspberryPiHeartbeat(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected ok, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	record, err := store.FindRaspberryPiHeartbeat(context.Background(), "pi-1")
+	if err != nil {
+		t.Fatalf("FindRaspberryPiHeartbeat failed: %v", err)
+	}
+	if record.Name != "Kamera-1" || record.RoleID != "camera" || !record.LowPowerMode {
+		t.Fatalf("unexpected heartbeat record: %#v", record)
+	}
+}
+
+func TestServerHandleAdminRaspberryPisCorrelatesIntercomConnection(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if _, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
+		DeviceID:      "pi-1",
+		Name:          "Kamera-1",
+		IPAddress:     "192.168.1.51",
+		RoleID:        "camera",
+		BrowserStatus: "running",
+		LoginStatus:   "waiting_for_intercom",
+	}); err != nil {
+		t.Fatalf("UpsertRaspberryPiHeartbeat failed: %v", err)
+	}
+	hub := NewHub(store, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	hub.Add(&client{
+		session: Session{Token: "station-token", UserID: "u1", Username: "Kamera-1", RoleID: "camera"},
+		user:    User{ID: "u1", Username: "Kamera-1", RoleID: "camera"},
+		send:    make(chan WSOutbound, 4),
+	})
+	s := &Server{
+		store:    store,
+		hub:      hub,
+		sessions: NewSessionManager(time.Minute),
+	}
+	adminSession := s.sessions.Create(User{ID: "admin", Username: "admin"})
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/raspberry-pis", nil)
+	req.Header.Set("X-Admin-Pin", "123456")
+	rec := httptest.NewRecorder()
+
+	s.handleAdminRaspberryPis(rec, req, adminSession)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected ok, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response RaspberryPiStationsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if len(response.Stations) != 1 {
+		t.Fatalf("expected one station, got %#v", response.Stations)
+	}
+	station := response.Stations[0]
+	if !station.Online || !station.IntercomConnected || station.EffectiveStatus != "intercom_connected" {
+		t.Fatalf("unexpected station status: %#v", station)
+	}
+}
+
 func TestServerHandleAdminRolesMethodNotAllowed(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {

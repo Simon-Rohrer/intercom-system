@@ -42,6 +42,7 @@ type Config struct {
 	CompanionAllowedUsernames   []string
 	CompanionImageEffectMapFile string
 	CompanionDynamicPaging      bool
+	RaspberryPiHeartbeatSecret  string
 	// Native low-latency UDP audio relay (performance mode). Empty UDPAudioAddr
 	// disables the relay; native clients then fall back to the WebRTC pipeline.
 	UDPAudioAddr        string
@@ -78,6 +79,7 @@ type fileConfig struct {
 	CompanionAllowedUsernames          []string `yaml:"companion_allowed_usernames"`
 	CompanionImageEffectMapFile        string   `yaml:"companion_image_effect_map_file"`
 	CompanionDynamicPaging             *bool    `yaml:"companion_dynamic_paging"`
+	RaspberryPiHeartbeatSecret         string   `yaml:"raspberry_pi_heartbeat_secret"`
 	UDPAudioAddr                       string   `yaml:"udp_audio_addr"`
 	UDPAudioAdvertiseIP                string   `yaml:"udp_audio_advertise_ip"`
 }
@@ -122,6 +124,7 @@ func defaultConfig() Config {
 		CompanionAllowedUsernames:   nil,
 		CompanionImageEffectMapFile: "image-effect-map.json",
 		CompanionDynamicPaging:      false,
+		RaspberryPiHeartbeatSecret:  "",
 		UDPAudioAddr:                ":8081",
 		UDPAudioAdvertiseIP:         "",
 	}
@@ -263,6 +266,9 @@ func loadConfigFromFile(path string) (Config, error) {
 	if fileCfg.CompanionDynamicPaging != nil {
 		cfg.CompanionDynamicPaging = *fileCfg.CompanionDynamicPaging
 	}
+	if strings.TrimSpace(fileCfg.RaspberryPiHeartbeatSecret) != "" {
+		cfg.RaspberryPiHeartbeatSecret = strings.TrimSpace(fileCfg.RaspberryPiHeartbeatSecret)
+	}
 	if strings.TrimSpace(fileCfg.UDPAudioAddr) != "" {
 		cfg.UDPAudioAddr = strings.TrimSpace(fileCfg.UDPAudioAddr)
 	}
@@ -310,9 +316,10 @@ func loadConfigFromEnv() Config {
 			"COMPANION_IMAGE_EFFECT_MAP_FILE",
 			"image-effect-map.json",
 		),
-		CompanionDynamicPaging: getEnv("COMPANION_DYNAMIC_PAGING", "false") == "true",
-		UDPAudioAddr:           getEnv("UDP_AUDIO_ADDR", ":8081"),
-		UDPAudioAdvertiseIP:    getEnv("UDP_AUDIO_ADVERTISE_IP", ""),
+		CompanionDynamicPaging:     getEnv("COMPANION_DYNAMIC_PAGING", "false") == "true",
+		RaspberryPiHeartbeatSecret: getEnv("RASPBERRY_PI_HEARTBEAT_SECRET", ""),
+		UDPAudioAddr:               getEnv("UDP_AUDIO_ADDR", ":8081"),
+		UDPAudioAdvertiseIP:        getEnv("UDP_AUDIO_ADVERTISE_IP", ""),
 	}
 }
 

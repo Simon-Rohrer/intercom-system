@@ -1,6 +1,9 @@
 import React from "react";
-import { getRealtimeStats } from "../../api";
-import type { RealtimeStatsResponse } from "../../types";
+import { getRaspberryPiStations, getRealtimeStats } from "../../api";
+import type {
+  RaspberryPiStationStatus,
+  RealtimeStatsResponse,
+} from "../../types";
 
 type AdminMonitoringCardProps = {
   token: string;
@@ -22,6 +25,33 @@ function formatHitRate(hits: number, misses: number): string {
   return `${Math.round((hits / total) * 100)}%`;
 }
 
+function formatSecondsSinceSeen(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "n/a";
+  if (seconds < 5) return "now";
+  if (seconds < 60) return `${Math.round(seconds)}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
+}
+
+function stationStatusLabel(station: RaspberryPiStationStatus): string {
+  if (station.intercomConnected) return "Intercom connected";
+  if (!station.online) return "Offline";
+  if (station.effectiveStatus === "login_error") return "Login error";
+  if (station.effectiveStatus === "waiting_for_intercom") {
+    return "Waiting for intercom";
+  }
+  if (station.browserStatus === "running") return "Browser running";
+  return station.effectiveStatus || "Launcher online";
+}
+
+function stationStatusClass(station: RaspberryPiStationStatus): string {
+  if (station.intercomConnected) return "admin-status-ok";
+  if (station.online) return "admin-status-wait";
+  return "admin-status-warn";
+}
+
 export function AdminMonitoringCard({
   token,
   adminPin,
@@ -30,6 +60,9 @@ export function AdminMonitoringCard({
 }: AdminMonitoringCardProps) {
   const [isOpen, setIsOpen] = React.useState(false);
   const [stats, setStats] = React.useState<RealtimeStatsResponse | null>(null);
+  const [raspberryStations, setRaspberryStations] = React.useState<
+    RaspberryPiStationStatus[] | null
+  >(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
 
@@ -42,9 +75,13 @@ export function AdminMonitoringCard({
       if (inFlight) return;
       inFlight = true;
       try {
-        const next = await getRealtimeStats(token, adminPin);
+        const [next, nextRaspberryStations] = await Promise.all([
+          getRealtimeStats(token, adminPin),
+          getRaspberryPiStations(token, adminPin),
+        ]);
         if (cancelled) return;
         setStats(next);
+        setRaspberryStations(nextRaspberryStations.stations);
         setError("");
       } catch (pollError) {
         if (cancelled) return;
@@ -75,6 +112,11 @@ export function AdminMonitoringCard({
         (a, b) => b[1] - a[1],
       )
     : [];
+  const raspberryOnlineCount =
+    raspberryStations?.filter((station) => station.online).length ?? 0;
+  const raspberryIntercomCount =
+    raspberryStations?.filter((station) => station.intercomConnected).length ??
+    0;
 
   return (
     <div className="admin-card">
@@ -120,6 +162,22 @@ export function AdminMonitoringCard({
             <div className="admin-metric-label">Connected clients</div>
             <div className="admin-metric-value">
               {stats ? stats.hub.connectedClients : "—"}
+            </div>
+          </div>
+          <div className="admin-metric">
+            <div className="admin-metric-label">Raspberry Pis online</div>
+            <div className="admin-metric-value">
+              {raspberryStations
+                ? `${raspberryOnlineCount} / ${raspberryStations.length}`
+                : "—"}
+            </div>
+          </div>
+          <div className="admin-metric">
+            <div className="admin-metric-label">Pi intercom connected</div>
+            <div className="admin-metric-value">
+              {raspberryStations
+                ? `${raspberryIntercomCount} / ${raspberryStations.length}`
+                : "—"}
             </div>
           </div>
           <div className="admin-metric">
@@ -276,6 +334,42 @@ export function AdminMonitoringCard({
                     .join(", ")
                 : "none"}
             </div>
+          </div>
+          <div className="admin-pi-stations" aria-label="Raspberry Pi stations">
+            <div className="admin-pi-stations-header">
+              <span>Raspberry stations</span>
+              <small>
+                {raspberryStations ? `${raspberryStations.length} known` : "Loading"}
+              </small>
+            </div>
+            {raspberryStations && raspberryStations.length > 0 ? (
+              raspberryStations.map((station) => (
+                <div className="admin-pi-station" key={station.deviceId}>
+                  <div className="admin-pi-station-main">
+                    <strong>{station.name}</strong>
+                    <span>{station.roleId}</span>
+                    <small>{station.ipAddress || station.deviceId}</small>
+                  </div>
+                  <div className="admin-pi-station-state">
+                    <span className={stationStatusClass(station)}>
+                      {stationStatusLabel(station)}
+                    </span>
+                    <small>
+                      seen {formatSecondsSinceSeen(station.secondsSinceSeen)}
+                    </small>
+                  </div>
+                  {station.loginError ? (
+                    <div className="admin-pi-station-error">
+                      {station.loginError}
+                    </div>
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <div className="admin-pi-empty">
+                No Raspberry heartbeat received.
+              </div>
+            )}
           </div>
           {error ? (
             <div className="admin-metric">

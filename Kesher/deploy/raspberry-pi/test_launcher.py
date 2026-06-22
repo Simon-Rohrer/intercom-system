@@ -18,6 +18,7 @@ class LauncherTests(unittest.TestCase):
             "clients": [
                 {
                     "ip_address": "192.168.1.51",
+                    "device_id": "foh-pi",
                     "name": "FOH",
                     "role_id": "audio",
                     "audio_input_match": "USB Audio",
@@ -30,6 +31,7 @@ class LauncherTests(unittest.TestCase):
         client = launcher.resolve_client(self.config, ["192.168.1.51"])
         self.assertEqual(client["name"], "FOH")
         self.assertEqual(client["role_id"], "audio")
+        self.assertEqual(client["device_id"], "foh-pi")
 
     def test_builds_encoded_auto_login_url(self):
         client = launcher.resolve_client(self.config, ["192.168.1.51"])
@@ -52,6 +54,24 @@ class LauncherTests(unittest.TestCase):
         self.config["clients"][0]["low_power_mode"] = "yes"
         with self.assertRaisesRegex(ValueError, "low_power_mode must be a boolean"):
             launcher.resolve_client(self.config, ["192.168.1.51"])
+
+    def test_uses_ip_address_as_default_device_id(self):
+        del self.config["clients"][0]["device_id"]
+        client = launcher.resolve_client(self.config, ["192.168.1.51"])
+        self.assertEqual(client["device_id"], "192.168.1.51")
+
+    def test_builds_heartbeat_payload(self):
+        client = launcher.resolve_client(self.config, ["192.168.1.51"])
+        payload = launcher.heartbeat_payload(
+            client,
+            "running",
+            "waiting_for_intercom",
+        )
+        self.assertEqual(payload["deviceId"], "foh-pi")
+        self.assertEqual(payload["name"], "FOH")
+        self.assertEqual(payload["roleId"], "audio")
+        self.assertTrue(payload["lowPowerMode"])
+        self.assertEqual(payload["browserStatus"], "running")
 
     def test_rejects_unknown_pi(self):
         with self.assertRaisesRegex(ValueError, "no client entry matches"):

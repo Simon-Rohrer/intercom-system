@@ -12,11 +12,16 @@ import shutil
 import ssl
 import subprocess
 import sys
+import threading
 import time
-from typing import Any
+from typing import Any, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
+
+
+LAUNCHER_VERSION = "2"
+HEARTBEAT_INTERVAL_SECONDS = 10
 
 
 def require_text(value: Any, field: str) -> str:
@@ -49,6 +54,11 @@ def load_config(path: Path) -> dict[str, Any]:
     clients = raw.get("clients")
     if not isinstance(clients, list) or not clients:
         raise ValueError("clients must be a non-empty array")
+    heartbeat_secret = raw.get("heartbeat_secret")
+    if heartbeat_secret is not None and not isinstance(heartbeat_secret, str):
+        raise ValueError("heartbeat_secret must be a string when set")
+    if isinstance(heartbeat_secret, str):
+        raw["heartbeat_secret"] = heartbeat_secret.strip()
     return raw
 
 
@@ -92,7 +102,15 @@ def resolve_client(config: dict[str, Any], addresses: list[str]) -> dict[str, An
         if any(character.isspace() for character in name):
             raise ValueError(f"clients[{index}].name must not contain whitespace")
         role_id = require_text(raw_client.get("role_id"), f"clients[{index}].role_id")
+        device_id = raw_client.get("device_id")
+        if isinstance(device_id, str) and device_id.strip():
+            device_id = device_id.strip()
+        else:
+            device_id = configured_ip
+        if any(character.isspace() for character in device_id):
+            raise ValueError(f"clients[{index}].device_id must not contain whitespace")
         client = {
+            "device_id": device_id,
             "ip_address": configured_ip,
             "name": name,
             "role_id": role_id,
@@ -131,14 +149,113 @@ def build_kesher_url(server_url: str, client: dict[str, Any]) -> str:
     return f"{server_url}/?{urlencode(params)}"
 
 
+def ssl_context_for_url(url: str, allow_insecure_tls: bool) -> Optional[ssl.SSLContext]:
+    if allow_insecure_tls and url.startswith("https://"):
+        return ssl._create_unverified_context()
+    return None
+
+
+def heartbeat_payload(
+    client: dict[str, Any],
+    browser_status: str,
+    login_status: str,
+    login_error: str = "",
+) -> dict[str, Any]:
+    return {
+        "deviceId": client["device_id"],
+        "name": client["name"],
+        "ipAddress": client["ip_address"],
+        "roleId": client["role_id"],
+        "lowPowerMode": client.get("low_power_mode") is True,
+        "launcherVersion": LAUNCHER_VERSION,
+        "browserStatus": browser_status,
+        "loginStatus": login_status,
+        "loginError": login_error,
+    }
+
+
+def send_heartbeat(
+    config: dict[str, Any],
+    client: dict[str, Any],
+    browser_status: str,
+    login_status: str,
+    login_error: str = "",
+) -> bool:
+    heartbeat_url = f'{config["server_url"]}/api/raspberry-pi/heartbeat'
+    payload = json.dumps(
+        heartbeat_payload(client, browser_status, login_status, login_error),
+        separators=(",", ":"),
+    ).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": f"Kesher-Pi-Launcher/{LAUNCHER_VERSION}",
+    }
+    heartbeat_secret = config.get("heartbeat_secret")
+    if isinstance(heartbeat_secret, str) and heartbeat_secret:
+        headers["X-Kesher-Pi-Secret"] = heartbeat_secret
+    request = Request(heartbeat_url, data=payload, headers=headers, method="POST")
+    try:
+        with urlopen(
+            request,
+            timeout=3,
+            context=ssl_context_for_url(
+                heartbeat_url,
+                config.get("allow_insecure_tls") is True,
+            ),
+        ) as response:
+            return 200 <= response.status < 300
+    except (HTTPError, URLError, TimeoutError, OSError):
+        return False
+
+
+def start_heartbeat_loop(
+    config: dict[str, Any],
+    client: dict[str, Any],
+    state: dict[str, str],
+    state_lock: threading.Lock,
+    stop_event: threading.Event,
+) -> threading.Thread:
+    def run() -> None:
+        while True:
+            with state_lock:
+                browser_status = state.get("browser_status", "unknown")
+                login_status = state.get("login_status", "unknown")
+                login_error = state.get("login_error", "")
+            send_heartbeat(config, client, browser_status, login_status, login_error)
+            if stop_event.wait(HEARTBEAT_INTERVAL_SECONDS):
+                return
+
+    thread = threading.Thread(target=run, name="kesher-pi-heartbeat", daemon=True)
+    thread.start()
+    return thread
+
+
+def update_heartbeat_state(
+    state: dict[str, str],
+    state_lock: threading.Lock,
+    *,
+    browser_status: Optional[str] = None,
+    login_status: Optional[str] = None,
+    login_error: Optional[str] = None,
+) -> None:
+    with state_lock:
+        if browser_status is not None:
+            state["browser_status"] = browser_status
+        if login_status is not None:
+            state["login_status"] = login_status
+        if login_error is not None:
+            state["login_error"] = login_error
+
+
 def wait_for_server(server_url: str, allow_insecure_tls: bool) -> None:
     health_url = f"{server_url}/api/healthz"
-    ssl_context = None
-    if allow_insecure_tls and health_url.startswith("https://"):
-        ssl_context = ssl._create_unverified_context()
+    ssl_context = ssl_context_for_url(health_url, allow_insecure_tls)
     while True:
         try:
-            request = Request(health_url, headers={"User-Agent": "Kesher-Pi-Launcher/1"})
+            request = Request(
+                health_url,
+                headers={"User-Agent": f"Kesher-Pi-Launcher/{LAUNCHER_VERSION}"},
+            )
             with urlopen(request, timeout=3, context=ssl_context) as response:
                 if 200 <= response.status < 300:
                     return
@@ -211,24 +328,69 @@ def main() -> int:
         if args.print_url:
             print(kesher_url)
             return 0
+        heartbeat_state = {
+            "browser_status": "not_started",
+            "login_status": "waiting_for_server",
+            "login_error": "",
+        }
+        heartbeat_state_lock = threading.Lock()
+        heartbeat_stop = threading.Event()
+        heartbeat_thread = start_heartbeat_loop(
+            config,
+            client,
+            heartbeat_state,
+            heartbeat_state_lock,
+            heartbeat_stop,
+        )
         print(
             f'Starting Kesher station {client["name"]} '
             f'with role {client["role_id"]} for {client["ip_address"]}',
             flush=True,
         )
-        wait_for_server(
-            config["server_url"],
-            config.get("allow_insecure_tls") is True,
-        )
-        return subprocess.run(
-            browser_command(
+        try:
+            wait_for_server(
+                config["server_url"],
+                config.get("allow_insecure_tls") is True,
+            )
+            update_heartbeat_state(
+                heartbeat_state,
+                heartbeat_state_lock,
+                browser_status="starting",
+                login_status="starting_browser",
+            )
+            process = subprocess.Popen(
+                browser_command(
+                    config,
+                    kesher_url,
+                    client.get("low_power_mode") is True,
+                )
+            )
+            update_heartbeat_state(
+                heartbeat_state,
+                heartbeat_state_lock,
+                browser_status="running",
+                login_status="waiting_for_intercom",
+            )
+            return_code = process.wait()
+            update_heartbeat_state(
+                heartbeat_state,
+                heartbeat_state_lock,
+                browser_status="exited",
+                login_status="browser_exited",
+                login_error=f"browser exited with code {return_code}",
+            )
+            send_heartbeat(
                 config,
-                kesher_url,
-                client.get("low_power_mode") is True,
-            ),
-            check=False,
-        ).returncode
-    except (ValueError, subprocess.SubprocessError) as error:
+                client,
+                "exited",
+                "browser_exited",
+                f"browser exited with code {return_code}",
+            )
+            return return_code
+        finally:
+            heartbeat_stop.set()
+            heartbeat_thread.join(timeout=1)
+    except (ValueError, subprocess.SubprocessError, OSError) as error:
         print(f"Kesher Pi configuration error: {error}", file=sys.stderr, flush=True)
         return 1
 

@@ -120,6 +120,7 @@ const (
 	companionSelectListenHoldDelayDefault = 2 * time.Second
 	companionIncomingCallBlinkInterval    = 300 * time.Millisecond
 	companionIncomingCallEffectValue      = 3
+	raspberryPiHeartbeatOfflineAfter      = 30 * time.Second
 )
 
 func refreshWebSocketReadDeadline(conn *websocket.Conn) {
@@ -3414,6 +3415,7 @@ func NewServer(cfg Config) (*Server, error) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/healthz", s.handleHealth)
+	mux.HandleFunc("/api/raspberry-pi/heartbeat", s.handleRaspberryPiHeartbeat)
 	mux.HandleFunc("/api/public-bootstrap", s.handlePublicBootstrap)
 	mux.HandleFunc("/api/login", s.handleLogin)
 	mux.HandleFunc("/api/admin/login", s.handleAdminLogin)
@@ -3449,6 +3451,7 @@ func NewServer(cfg Config) (*Server, error) {
 	mux.HandleFunc("/api/admin/configuration-export", s.withAuth(s.handleAdminConfigurationExport))
 	mux.HandleFunc("/api/admin/configuration-import", s.withAuth(s.handleAdminConfigurationImport))
 	mux.HandleFunc("/api/admin/routing-matrix", s.withAuth(s.handleAdminRoutingMatrix))
+	mux.HandleFunc("/api/admin/raspberry-pis", s.withAuth(s.handleAdminRaspberryPis))
 	mux.HandleFunc("/api/companion/discovery", s.handleCompanionDiscovery)
 	mux.HandleFunc("/api/companion/ws", s.handleCompanionWS)
 	mux.HandleFunc("/api/image-stream", s.HandleImageStreamWebSocket)
@@ -3552,6 +3555,134 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) requireRaspberryPiHeartbeatSecret(w http.ResponseWriter, r *http.Request) bool {
+	configuredSecret := strings.TrimSpace(s.cfg.RaspberryPiHeartbeatSecret)
+	if configuredSecret == "" {
+		return true
+	}
+	presentedSecret := strings.TrimSpace(r.Header.Get("X-Kesher-Pi-Secret"))
+	if subtle.ConstantTimeCompare([]byte(presentedSecret), []byte(configuredSecret)) != 1 {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+func remoteHostFromRequest(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil && strings.TrimSpace(host) != "" {
+		return host
+	}
+	return strings.TrimSpace(r.RemoteAddr)
+}
+
+func (s *Server) handleRaspberryPiHeartbeat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.requireRaspberryPiHeartbeatSecret(w, r) {
+		return
+	}
+	var req RaspberryPiHeartbeatRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 32*1024)).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.IPAddress) == "" {
+		req.IPAddress = remoteHostFromRequest(r)
+	}
+	record, err := s.store.UpsertRaspberryPiHeartbeat(r.Context(), req)
+	if err != nil {
+		if errors.Is(err, ErrInvalidInput) {
+			http.Error(w, "deviceId, name and roleId required", http.StatusBadRequest)
+			return
+		}
+		s.internalErr(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"ok":              true,
+		"deviceId":        record.DeviceID,
+		"timestampUnixMs": time.Now().UnixMilli(),
+	})
+}
+
+func raspberryPiActiveClientKey(username, roleID string) string {
+	return strings.ToLower(strings.TrimSpace(username)) + "\x00" + strings.ToLower(strings.TrimSpace(roleID))
+}
+
+func raspberryPiEffectiveStatus(record RaspberryPiHeartbeatRecord, online, intercomConnected bool) string {
+	if intercomConnected {
+		return "intercom_connected"
+	}
+	if !online {
+		return "offline"
+	}
+	if strings.TrimSpace(record.LoginError) != "" {
+		return "login_error"
+	}
+	loginStatus := strings.TrimSpace(record.LoginStatus)
+	if loginStatus != "" && !strings.EqualFold(loginStatus, "unknown") {
+		return loginStatus
+	}
+	browserStatus := strings.TrimSpace(record.BrowserStatus)
+	if strings.EqualFold(browserStatus, "running") {
+		return "waiting_for_intercom"
+	}
+	if browserStatus != "" && !strings.EqualFold(browserStatus, "unknown") {
+		return browserStatus
+	}
+	return "launcher_online"
+}
+
+func (s *Server) handleAdminRaspberryPis(w http.ResponseWriter, r *http.Request, session Session) {
+	if !s.requireAdmin(w, r, session) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	records, err := s.store.ListRaspberryPiHeartbeats(r.Context())
+	if err != nil {
+		s.internalErr(w, err)
+		return
+	}
+	activeClients := map[string]ActiveClient{}
+	if s.hub != nil {
+		for _, client := range s.hub.GetActiveClients(r.Context()) {
+			activeClients[raspberryPiActiveClientKey(client.Username, client.RoleID)] = client
+		}
+	}
+	now := time.Now()
+	nowMs := now.UnixMilli()
+	offlineAfterMs := raspberryPiHeartbeatOfflineAfter.Milliseconds()
+	stations := make([]RaspberryPiStationStatus, 0, len(records))
+	for _, record := range records {
+		ageMs := nowMs - record.LastSeenUnixMs
+		if ageMs < 0 {
+			ageMs = 0
+		}
+		online := ageMs <= offlineAfterMs
+		activeClient, intercomConnected := activeClients[raspberryPiActiveClientKey(record.Name, record.RoleID)]
+		stations = append(stations, RaspberryPiStationStatus{
+			RaspberryPiHeartbeatRecord: record,
+			Online:                     online,
+			IntercomConnected:          intercomConnected,
+			EffectiveStatus:            raspberryPiEffectiveStatus(record, online, intercomConnected),
+			IntercomUsername:           activeClient.Username,
+			IntercomRoleID:             activeClient.RoleID,
+			SecondsSinceSeen:           ageMs / 1000,
+		})
+	}
+	s.writeJSON(w, http.StatusOK, RaspberryPiStationsResponse{
+		Stations:        stations,
+		TimestampUnixMs: nowMs,
+		OfflineAfterMs:  offlineAfterMs,
+	})
 }
 
 type RealtimeStatsResponse struct {
