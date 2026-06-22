@@ -82,6 +82,20 @@ This uses `companion-module-build` and produces a package artifact in this modul
 4. In Kesher Admin, configure the role Stream Deck layout and publish the Companion profile for that role.
 5. In Companion, open the Kesher connection presets and drag the 15 presets from `Universal Synced Layout` onto the desired page once.
 
+For a Linux Companion server checked out from the monorepo, the deployment
+script builds a self-contained package and installs it into the developer-module
+directory:
+
+```sh
+sudo bash scripts/deploy-companion-module.sh
+```
+
+You can also provide an already-built package explicitly:
+
+```sh
+sudo bash scripts/deploy-companion-module.sh /tmp/kesher-0.2.4.tgz
+```
+
 ## Notes
 
 - The module controls an existing browser session; it does not capture microphone audio itself.

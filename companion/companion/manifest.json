@@ -3,7 +3,7 @@
   "name": "kesher",
   "shortname": "kesher",
   "description": "Control Kesher intercom browser sessions via Companion",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "license": "MIT",
   "repository": "git+https://github.com/KesherCom/kesher.git",
   "bugs": "https://github.com/KesherCom/kesher/issues",
@@ -15,7 +15,7 @@
   "runtime": {
     "type": "node22",
     "api": "nodejs-ipc",
-    "apiVersion": "1.12.0",
+    "apiVersion": "1.12.1",
     "entrypoint": "../dist/main.js"
   },
   "legacyIds": [],

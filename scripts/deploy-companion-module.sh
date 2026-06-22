@@ -1,78 +1,105 @@
-#!/bin/bash
-# =============================================================
-# deploy-companion-module.sh
-# Kopiert das Kesher-Companion-Modul aus dem Repo nach
-# /opt/companion-module-dev und startet Companion neu.
+#!/usr/bin/env bash
+# Installs a packaged Kesher Companion module into Companion's developer-module
+# directory. Packaged modules are self-contained and do not need node_modules on
+# the Companion server.
 #
-# Ausführen: cd ~/intercom-system && sudo bash scripts/deploy-companion-module.sh
-# =============================================================
+# Usage:
+#   sudo bash scripts/deploy-companion-module.sh
+#   sudo bash scripts/deploy-companion-module.sh /tmp/kesher-0.2.4.tgz
 
-set -e
+set -euo pipefail
 
-REPO_ROOT="/home/master/intercom-system"
-TARGET="/opt/companion-module-dev/companion-module-kesher"
-# Companion's Node22-Runtime
-NODE="$(find /opt/companion/node-runtimes -name 'node' -type f | head -1)"
+TARGET="${COMPANION_MODULE_TARGET:-/opt/companion-module-dev/companion-module-kesher}"
+PACKAGE_PATH="${1:-}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+MODULE_ROOT="$REPO_ROOT/companion"
 
-# Alle benötigten Dateien aus Git direkt extrahieren (unabhängig vom Working Tree)
-DIST_FILES="actions config feedbacks imageBridge imageRenderer main presets types upgrades variables"
-
-echo "▶ Extrahiere Modul-Dateien direkt aus Git nach $TARGET ..."
-# Falls $TARGET/companion ein Symlink ist (von alten Versuchen), muss er weg
-if [ -L "$TARGET/companion" ]; then
-  rm "$TARGET/companion"
+if [[ $EUID -ne 0 ]]; then
+  echo "Run this installer with sudo." >&2
+  exit 1
 fi
 
-mkdir -p "$TARGET/companion"
-mkdir -p "$TARGET/dist"
-
-# manifest.json aus Git
-echo "  → companion/manifest.json"
-git -C "$REPO_ROOT" show HEAD:companion/companion/manifest.json > "$TARGET/companion/manifest.json"
-
-# dist/*.js aus Git
-echo "  → dist/*.js"
-for f in $DIST_FILES; do
-  git -C "$REPO_ROOT" show HEAD:companion/dist/${f}.js > "$TARGET/dist/${f}.js"
-  echo "      ${f}.js"
-done
-
-# package.json aus Git
-echo "  → package.json"
-git -C "$REPO_ROOT" show HEAD:companion/package.json > "$TARGET/package.json"
-
-# .yarnrc.yml mit node-modules linker
-echo "nodeLinker: node-modules" > "$TARGET/.yarnrc.yml"
-
-# node_modules installieren – nur wenn noch nicht vorhanden
-echo ""
-if [ -d "$TARGET/node_modules/@companion-module" ]; then
-  echo "▶ node_modules bereits vorhanden, überspringe Installation."
-else
-  echo "▶ Installiere node_modules in $TARGET ..."
-  cd "$TARGET"
-  # npm ist in der node-Installation von Companion enthalten
-  NPM_CLI="$(find /opt/companion -name 'npm-cli.js' 2>/dev/null | head -1)"
-  if [ -n "$NPM_CLI" ]; then
-    "$NODE" "$NPM_CLI" install --omit=dev --prefix "$TARGET"
+run_as_repo_owner() {
+  if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+    sudo -u "$SUDO_USER" -- "$@"
   else
-    echo "⚠️  npm nicht gefunden – node_modules müssen manuell installiert werden!"
-    echo "   Führe aus: cd $TARGET && npm install --omit=dev"
+    "$@"
   fi
+}
+
+if [[ -z "$PACKAGE_PATH" ]]; then
+  echo "No package supplied; building the Companion package from $MODULE_ROOT"
+  if command -v yarn >/dev/null 2>&1; then
+    pushd "$MODULE_ROOT" >/dev/null
+    YARN_MAJOR="$(yarn --version | cut -d. -f1)"
+    if [[ "$YARN_MAJOR" -ge 2 ]]; then
+      run_as_repo_owner yarn install --immutable
+    else
+      run_as_repo_owner yarn install --frozen-lockfile
+    fi
+    run_as_repo_owner yarn package
+    popd >/dev/null
+  else
+    NODE="$(find /opt/companion/node-runtimes -name node -type f -print -quit 2>/dev/null || true)"
+    NPM_CLI="$(find /opt/companion -name npm-cli.js -type f -print -quit 2>/dev/null || true)"
+    if [[ -n "$NODE" && -n "$NPM_CLI" ]]; then
+      NODE_DIR="$(dirname "$NODE")"
+      run_as_repo_owner env PATH="$NODE_DIR:$PATH" "$NODE" "$NPM_CLI" --prefix "$MODULE_ROOT" install --include=dev
+      run_as_repo_owner env PATH="$NODE_DIR:$PATH" "$NODE" "$NPM_CLI" --prefix "$MODULE_ROOT" run package
+    elif command -v npm >/dev/null 2>&1; then
+      run_as_repo_owner npm --prefix "$MODULE_ROOT" install --include=dev
+      run_as_repo_owner npm --prefix "$MODULE_ROOT" run package
+    else
+      echo "Neither yarn/npm nor Companion's bundled Node/npm runtime was found." >&2
+      exit 1
+    fi
+  fi
+
+  mapfile -t BUILT_PACKAGES < <(find "$MODULE_ROOT" -maxdepth 1 -type f -name 'kesher-*.tgz' -print | sort)
+  if [[ ${#BUILT_PACKAGES[@]} -eq 0 ]]; then
+    echo "Companion package build completed without producing kesher-*.tgz." >&2
+    exit 1
+  fi
+  PACKAGE_PATH="${BUILT_PACKAGES[${#BUILT_PACKAGES[@]}-1]}"
 fi
 
-# Berechtigungen setzen
-echo ""
-echo "▶ Setze Berechtigungen ..."
+if [[ ! -f "$PACKAGE_PATH" ]]; then
+  echo "Package not found: $PACKAGE_PATH" >&2
+  exit 1
+fi
+
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+tar -xzf "$PACKAGE_PATH" -C "$WORK_DIR"
+PACKAGE_ROOT="$WORK_DIR/pkg"
+if [[ ! -f "$PACKAGE_ROOT/companion/manifest.json" || ! -f "$PACKAGE_ROOT/main.js" || ! -f "$PACKAGE_ROOT/package.json" ]]; then
+  echo "Invalid Companion package: manifest.json, main.js or package.json is missing." >&2
+  exit 1
+fi
+
+mkdir -p "$(dirname "$TARGET")"
+BACKUP=""
+if [[ -e "$TARGET" ]]; then
+  BACKUP="${TARGET}.backup.$(date +%Y%m%d-%H%M%S)"
+  mv "$TARGET" "$BACKUP"
+  echo "Previous module saved as $BACKUP"
+fi
+
+mv "$PACKAGE_ROOT" "$TARGET"
 chown -R companion:companion "$TARGET"
 
-echo ""
-echo "▶ Starte Companion neu ..."
-systemctl restart companion
+if ! systemctl restart companion; then
+  echo "Companion restart failed. Restoring the previous module." >&2
+  mv "$TARGET" "${TARGET}.failed.$(date +%Y%m%d-%H%M%S)"
+  if [[ -n "$BACKUP" ]]; then
+    mv "$BACKUP" "$TARGET"
+    systemctl restart companion || true
+  fi
+  exit 1
+fi
 
-echo ""
-echo "✅ Fertig! Das Kesher-Modul ist installiert."
 sleep 2
-echo ""
-echo "--- Companion Status ---"
-systemctl status companion --no-pager | head -25
+echo "Kesher Companion module installed from $PACKAGE_PATH"
+systemctl status companion --no-pager --lines=25
