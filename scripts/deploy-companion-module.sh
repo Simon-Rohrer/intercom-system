@@ -89,6 +89,18 @@ if [[ ! -f "$PACKAGE_ROOT/companion/manifest.json" || ! -f "$PACKAGE_ROOT/main.j
   exit 1
 fi
 
+# Companion 5 treats every module below the developer-module path as an
+# unpackaged Dev module. Its process manager therefore resolves this package
+# metadata even though main.js is already a self-contained bundle.
+MODULE_API_VERSION="$(grep -o '"apiVersion":"[^"]*"' "$PACKAGE_ROOT/companion/manifest.json" | cut -d'"' -f4)"
+if [[ -z "$MODULE_API_VERSION" ]]; then
+  echo "Invalid Companion package: runtime.apiVersion is missing." >&2
+  exit 1
+fi
+mkdir -p "$PACKAGE_ROOT/node_modules/@companion-module/base"
+printf '{"name":"@companion-module/base","version":"%s"}\n' "$MODULE_API_VERSION" \
+  > "$PACKAGE_ROOT/node_modules/@companion-module/base/package.json"
+
 mkdir -p "$(dirname "$TARGET")" "$BACKUP_ROOT"
 
 # Companion scans every direct child of the developer-module directory. Move
