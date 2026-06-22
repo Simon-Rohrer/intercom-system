@@ -29,7 +29,16 @@ run_as_repo_owner() {
 }
 
 if [[ -z "$PACKAGE_PATH" ]]; then
-  echo "No package supplied; building the Companion package from $MODULE_ROOT"
+  mapfile -t PREBUILT_PACKAGES < <(find "$MODULE_ROOT" -maxdepth 1 -type f -name 'kesher-*.tgz' -print | sort)
+  if [[ ${#PREBUILT_PACKAGES[@]} -gt 0 ]]; then
+    PACKAGE_PATH="${PREBUILT_PACKAGES[${#PREBUILT_PACKAGES[@]}-1]}"
+    echo "No package supplied; using repository package $PACKAGE_PATH"
+  else
+    echo "No package supplied; building the Companion package from $MODULE_ROOT"
+  fi
+fi
+
+if [[ -z "$PACKAGE_PATH" ]]; then
   if command -v yarn >/dev/null 2>&1; then
     pushd "$MODULE_ROOT" >/dev/null
     YARN_MAJOR="$(yarn --version | cut -d. -f1)"
