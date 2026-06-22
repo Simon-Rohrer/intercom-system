@@ -6,7 +6,7 @@
     {
       "ip_address": "192.168.178.190",
       "name": "Kamera-1",
-      "role_id": "camera",
+      "role_id": "cam 1",
       "low_power_mode": true
     }
   ]
