@@ -10,6 +10,7 @@
 set -euo pipefail
 
 TARGET="${COMPANION_MODULE_TARGET:-/opt/companion-module-dev/companion-module-kesher}"
+BACKUP_ROOT="${COMPANION_MODULE_BACKUP_ROOT:-/opt/companion-module-backups}"
 PACKAGE_PATH="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -88,10 +89,21 @@ if [[ ! -f "$PACKAGE_ROOT/companion/manifest.json" || ! -f "$PACKAGE_ROOT/main.j
   exit 1
 fi
 
-mkdir -p "$(dirname "$TARGET")"
+mkdir -p "$(dirname "$TARGET")" "$BACKUP_ROOT"
+
+# Companion scans every direct child of the developer-module directory. Move
+# backups created by older installer versions out of that directory before the
+# service restarts, otherwise Companion tries to launch them as duplicate modules.
+for STALE_MODULE in "${TARGET}.backup."* "${TARGET}.failed."*; do
+  if [[ -e "$STALE_MODULE" ]]; then
+    mv "$STALE_MODULE" "$BACKUP_ROOT/$(basename "$STALE_MODULE")"
+    echo "Moved stale module backup out of the developer directory: $STALE_MODULE"
+  fi
+done
+
 BACKUP=""
 if [[ -e "$TARGET" ]]; then
-  BACKUP="${TARGET}.backup.$(date +%Y%m%d-%H%M%S)"
+  BACKUP="$BACKUP_ROOT/companion-module-kesher.backup.$(date +%Y%m%d-%H%M%S)"
   mv "$TARGET" "$BACKUP"
   echo "Previous module saved as $BACKUP"
 fi
@@ -101,7 +113,7 @@ chown -R companion:companion "$TARGET"
 
 if ! systemctl restart companion; then
   echo "Companion restart failed. Restoring the previous module." >&2
-  mv "$TARGET" "${TARGET}.failed.$(date +%Y%m%d-%H%M%S)"
+  mv "$TARGET" "$BACKUP_ROOT/companion-module-kesher.failed.$(date +%Y%m%d-%H%M%S)"
   if [[ -n "$BACKUP" ]]; then
     mv "$BACKUP" "$TARGET"
     systemctl restart companion || true
