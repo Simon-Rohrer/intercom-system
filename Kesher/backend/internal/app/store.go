@@ -515,7 +515,55 @@ func NewStore(dbPath string) (*Store, error) {
 			return nil, err
 		}
 	}
+	if err := s.repairDanglingRoomReferences(context.Background()); err != nil {
+		return nil, err
+	}
 	return s, nil
+}
+
+func (s *Store) repairDanglingRoomReferences(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	statements := []string{
+		`UPDATE roles SET default_room_id = NULL
+		 WHERE NULLIF(TRIM(default_room_id), '') IS NOT NULL
+		 AND NOT EXISTS (SELECT 1 FROM rooms WHERE rooms.id = roles.default_room_id)`,
+		`DELETE FROM telegram_mappings
+		 WHERE NOT EXISTS (SELECT 1 FROM rooms WHERE rooms.id = telegram_mappings.room_id)`,
+		`DELETE FROM telegram_user_room_subscriptions
+		 WHERE NOT EXISTS (SELECT 1 FROM rooms WHERE rooms.id = telegram_user_room_subscriptions.room_id)`,
+		`DELETE FROM broadcast_group_rooms
+		 WHERE NOT EXISTS (SELECT 1 FROM rooms WHERE rooms.id = broadcast_group_rooms.room_id)`,
+		`DELETE FROM room_sender_roles
+		 WHERE NOT EXISTS (SELECT 1 FROM rooms WHERE rooms.id = room_sender_roles.room_id)`,
+		`DELETE FROM room_receiver_roles
+		 WHERE NOT EXISTS (SELECT 1 FROM rooms WHERE rooms.id = room_receiver_roles.room_id)`,
+		`DELETE FROM room_forced_listen_roles
+		 WHERE NOT EXISTS (SELECT 1 FROM rooms WHERE rooms.id = room_forced_listen_roles.room_id)`,
+		`DELETE FROM broadcast_groups WHERE id IN (
+			SELECT bg.id
+			FROM broadcast_groups bg
+			LEFT JOIN broadcast_group_rooms bgr ON bgr.broadcast_group_id = bg.id
+			GROUP BY bg.id
+			HAVING COUNT(bgr.room_id) = 0
+		)`,
+		`DELETE FROM broadcast_group_roles
+		 WHERE NOT EXISTS (SELECT 1 FROM broadcast_groups WHERE broadcast_groups.id = broadcast_group_roles.broadcast_group_id)`,
+	}
+	for _, statement := range statements {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.resetPolicyCaches()
+	return nil
 }
 
 func (s *Store) ensureBootstrapSettings(ctx context.Context) error {
@@ -1864,6 +1912,18 @@ func (s *Store) DeleteRoom(ctx context.Context, id string) error {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM broadcast_group_rooms WHERE room_id = ?`, id); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE roles SET default_room_id = NULL WHERE default_room_id = ?`, id); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM telegram_mappings WHERE room_id = ?`, id); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM telegram_user_room_subscriptions WHERE room_id = ?`, id); err != nil {
 		_ = tx.Rollback()
 		return err
 	}

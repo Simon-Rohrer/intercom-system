@@ -101,6 +101,7 @@ export type ConfigurationDocument = {
 
 export type ConfigurationImportResponse = {
   importedSections: ConfigurationSection[];
+  warnings?: string[];
 };
 
 export type CompanionPublishedProfileSummary = {

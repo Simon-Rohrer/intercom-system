@@ -238,8 +238,11 @@ export function AdminShowfileCard({
 				effectiveImportSections,
 			);
 			await refreshBootstrapData();
+			const warningText = response.warnings?.length
+				? ` Warnings: ${response.warnings.join(" ")}`
+				: "";
 			setMessage(
-				`Imported sections: ${response.importedSections.join(", ")}.`,
+				`Imported sections: ${response.importedSections.join(", ")}.${warningText}`,
 			);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "import failed");

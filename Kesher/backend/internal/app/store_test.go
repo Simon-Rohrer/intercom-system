@@ -380,6 +380,85 @@ func TestNewStoreDoesNotReseedDeletedDefaultsOnReopen(t *testing.T) {
 	}
 }
 
+func TestDeleteRoomClearsDependentReferences(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+
+	if err := store.CreateTelegramMapping(ctx, "stage-chat", "-100-stage", "Stage Chat", "stage"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateTelegramUserMapping(ctx, "telegram-stage-user", "42", "stage-user", "4242"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ToggleTelegramUserRoomSubscription(ctx, "42", "stage"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.DeleteRoom(ctx, "stage"); err != nil {
+		t.Fatal(err)
+	}
+
+	roles, err := store.ListRoles(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, role := range roles {
+		if role.DefaultRoomID == "stage" {
+			t.Fatalf("expected deleted room to be cleared from role %q", role.ID)
+		}
+	}
+	mappings, err := store.ListTelegramMappings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mapping := range mappings {
+		if mapping.RoomID == "stage" {
+			t.Fatalf("expected telegram mapping for deleted room to be removed: %+v", mapping)
+		}
+	}
+	subscriptions, err := store.GetTelegramUserRoomSubscriptions(ctx, "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(subscriptions, "stage") {
+		t.Fatalf("expected deleted room subscription to be removed: %v", subscriptions)
+	}
+}
+
+func TestNewStoreRepairsLegacyDanglingDefaultRoom(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy-dangling-room.sqlite")
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(context.Background(), `DELETE FROM rooms WHERE id = 'stage'`); err != nil {
+		store.Close()
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	roles, err := reopened.ListRoles(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, role := range roles {
+		if role.DefaultRoomID == "stage" {
+			t.Fatalf("expected legacy dangling default room to be repaired for role %q", role.ID)
+		}
+	}
+}
+
 func TestBirthdayUsersTodayRoundTripAndNormalization(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {

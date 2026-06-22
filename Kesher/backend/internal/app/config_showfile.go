@@ -103,6 +103,7 @@ type ConfigurationImportRequest struct {
 
 type ConfigurationImportResponse struct {
 	ImportedSections []string `json:"importedSections"`
+	Warnings         []string `json:"warnings,omitempty"`
 }
 
 type configurationState struct {
@@ -423,10 +424,58 @@ func mergeConfigurationImport(current configurationState, doc ConfigurationDocum
 			merged.CompanionRolePages = cloneStringIntMap(doc.CompanionRolePages)
 		}
 	}
+	normalizeImportedRoleDefaultRooms(&merged, sections)
 	if err := validateConfigurationState(merged); err != nil {
 		return configurationState{}, nil, err
 	}
 	return merged, sections, nil
+}
+
+func normalizeImportedRoleDefaultRooms(state *configurationState, sections []string) {
+	if state == nil ||
+		!slices.Contains(sections, configurationSectionRoles) ||
+		!slices.Contains(sections, configurationSectionRooms) {
+		return
+	}
+	roomIDs := make(map[string]struct{}, len(state.Rooms))
+	for _, room := range state.Rooms {
+		roomIDs[strings.TrimSpace(room.ID)] = struct{}{}
+	}
+	for index := range state.Roles {
+		defaultRoomID := strings.TrimSpace(state.Roles[index].DefaultRoomID)
+		if defaultRoomID == "" {
+			continue
+		}
+		if _, exists := roomIDs[defaultRoomID]; !exists {
+			state.Roles[index].DefaultRoomID = ""
+		}
+	}
+}
+
+func configurationImportWarnings(doc ConfigurationDocument, sections []string) []string {
+	if !slices.Contains(sections, configurationSectionRoles) ||
+		!slices.Contains(sections, configurationSectionRooms) {
+		return nil
+	}
+	roomIDs := make(map[string]struct{}, len(doc.Rooms))
+	for _, room := range doc.Rooms {
+		roomIDs[strings.TrimSpace(room.ID)] = struct{}{}
+	}
+	warnings := make([]string, 0)
+	for _, role := range doc.Roles {
+		defaultRoomID := strings.TrimSpace(role.DefaultRoomID)
+		if defaultRoomID == "" {
+			continue
+		}
+		if _, exists := roomIDs[defaultRoomID]; !exists {
+			warnings = append(warnings, fmt.Sprintf(
+				"Role %q referenced missing party line %q; its default party line was cleared.",
+				role.Name,
+				defaultRoomID,
+			))
+		}
+	}
+	return warnings
 }
 
 func normalizeConfigurationSections(doc ConfigurationDocument, requestedSections []string) ([]string, error) {

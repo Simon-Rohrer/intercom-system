@@ -5015,7 +5015,10 @@ func (s *Server) handleAdminConfigurationImport(w http.ResponseWriter, r *http.R
 	s.revokeSessionsForUsernames(revokedUsernames)
 	s.broadcastImportedConfiguration(state)
 	s.logAdminAction(session, r.Method, r.URL.Path, "configuration imported", http.StatusOK)
-	s.writeJSON(w, http.StatusOK, ConfigurationImportResponse{ImportedSections: sections})
+	s.writeJSON(w, http.StatusOK, ConfigurationImportResponse{
+		ImportedSections: sections,
+		Warnings:         configurationImportWarnings(req.Document, sections),
+	})
 }
 
 func (s *Server) isAckEnabled() bool {

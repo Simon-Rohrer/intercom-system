@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -168,6 +169,64 @@ func TestConfigurationShowfileFullRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertConfigurationPayloadEqual(t, sourceDocument, destinationDocument)
+}
+
+func TestImportConfigurationClearsMissingDefaultRoomFromLegacyShowfile(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	sections := []string{
+		configurationSectionRoles,
+		configurationSectionRooms,
+		configurationSectionBroadcastGroups,
+	}
+	doc := ConfigurationDocument{
+		Meta: ConfigurationMetadata{
+			Format:        configurationDocumentFormat,
+			SchemaVersion: configurationDocumentSchemaVersion,
+			ExportedAt:    time.Now().UTC().Format(time.RFC3339),
+			Sections:      sections,
+		},
+		Roles: []Role{{
+			ID:               "pastor",
+			Name:             "Pastor",
+			DefaultRoomID:    "stage",
+			DefaultVoiceMode: "ptt",
+		}},
+		Rooms: []Room{{
+			ID:              "foh",
+			Name:            "FOH",
+			SenderRoleIDs:   []string{"pastor"},
+			ReceiverRoleIDs: []string{"pastor"},
+		}},
+		BroadcastGroups: []BroadcastGroup{{
+			ID:             "all",
+			Name:           "All",
+			RoomIDs:        []string{"foh"},
+			AllowedRoleIDs: []string{"pastor"},
+		}},
+	}
+
+	s := &Server{store: store}
+	state, importedSections, _, err := s.importConfigurationDocument(context.Background(), ConfigurationImportRequest{
+		Document: doc,
+		Sections: sections,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slicesEqual(importedSections, sections) {
+		t.Fatalf("unexpected imported sections: %v", importedSections)
+	}
+	if len(state.Roles) != 1 || state.Roles[0].DefaultRoomID != "" {
+		t.Fatalf("expected missing default room to be cleared, got %+v", state.Roles)
+	}
+	warnings := configurationImportWarnings(doc, importedSections)
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "stage") {
+		t.Fatalf("expected warning for missing stage room, got %v", warnings)
+	}
 }
 
 func assertConfigurationPayloadEqual(t *testing.T, expected, actual ConfigurationDocument) {

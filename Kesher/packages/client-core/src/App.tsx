@@ -211,7 +211,6 @@ type AppProps = {
 };
 
 export function App({ onRequestNetworkSettings }: AppProps = {}) {
-  console.debug("[App] Component mounted, initializing...");
   // ── Core auth state ──
   const [token, setToken] = useState<string | null>(() => {
     const t = sessionStorage.getItem(tokenStorageKey);
