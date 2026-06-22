@@ -228,10 +228,13 @@ impl AtomicLatencyStats {
 
 /// One audio device entry returned to JavaScript.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AudioDeviceInfo {
     pub id: String,
     pub name: String,
     pub kind: String, // "audioinput" | "audiooutput"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_channels: Option<usize>,
 }
 
 /// sdpOffer + gathered ICE candidates from the server, passed to start_audio_engine.
@@ -617,6 +620,11 @@ mod tests {
             super::downmix_interface_input(&stereo, 2, None),
             vec![0.0, 0.375]
         );
+        let four_channel = [1.0, -1.0, 0.5, 0.25, 0.0, 0.25, 0.5, 1.0];
+        assert_eq!(
+            super::downmix_interface_input(&four_channel, 4, None),
+            vec![0.1875, 0.4375]
+        );
     }
 
     #[test]
@@ -625,6 +633,11 @@ mod tests {
         assert_eq!(
             super::downmix_interface_input(&stereo, 2, Some(2)),
             vec![-1.0, 0.25]
+        );
+        let four_channel = [1.0, -1.0, 0.5, 0.25, 0.0, 0.25, 0.5, 1.0];
+        assert_eq!(
+            super::downmix_interface_input(&four_channel, 4, Some(4)),
+            vec![0.25, 1.0]
         );
     }
 }
@@ -643,6 +656,7 @@ pub fn enumerate_devices() -> Vec<AudioDeviceInfo> {
                 id: name.clone(),
                 name,
                 kind: "audioinput".to_string(),
+                input_channels: supported_input_channel_count(&device),
             });
         }
     }
@@ -654,6 +668,7 @@ pub fn enumerate_devices() -> Vec<AudioDeviceInfo> {
                 id: name.clone(),
                 name,
                 kind: "audiooutput".to_string(),
+                input_channels: None,
             });
         }
     }
@@ -1495,7 +1510,7 @@ fn interface_input_stream_config(device: &cpal::Device) -> Result<cpal::StreamCo
         })
         .collect::<Vec<_>>();
 
-    supported.sort_by_key(|range| range.channels());
+    supported.sort_by_key(|range| std::cmp::Reverse(range.channels()));
     let range = supported
         .into_iter()
         .next()
@@ -1515,6 +1530,15 @@ fn interface_input_stream_config(device: &cpal::Device) -> Result<cpal::StreamCo
         .config();
     config.buffer_size = buffer_size;
     Ok(config)
+}
+
+fn supported_input_channel_count(device: &cpal::Device) -> Option<usize> {
+    device
+        .supported_input_configs()
+        .ok()?
+        .map(|range| usize::from(range.channels()))
+        .max()
+        .filter(|channels| *channels > 0)
 }
 
 fn downmix_interface_input(

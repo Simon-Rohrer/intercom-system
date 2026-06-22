@@ -18,6 +18,25 @@ type LoginViewProps = {
   onCancelTakeover: () => void;
 };
 
+function RequiredFieldHint({
+  id,
+  children,
+}: {
+  id: string;
+  children: string;
+}) {
+  return (
+    <p id={id} className="login-required-hint">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 8v5" />
+        <path d="M12 16h.01" />
+      </svg>
+      <span>{children}</span>
+    </p>
+  );
+}
+
 export function LoginView({
   publicData,
   username,
@@ -43,6 +62,15 @@ export function LoginView({
   const selectedRoleIsAvailable = availableRoles.some(
     (role) => role.id === roleId,
   );
+  const usernameMissing = !username.trim();
+  const roleMissing = !roleId || !selectedRoleIsAvailable;
+  const roleHintText =
+    availableRoles.length === 0
+      ? "No roles are available right now."
+      : roleId && !selectedRoleIsAvailable
+        ? "The selected role is no longer available."
+        : "Select a role to continue.";
+  const joinDisabled = usernameMissing || roleMissing;
   return (
     <div className="root login">
       <div className="login-card panel">
@@ -51,19 +79,42 @@ export function LoginView({
           <p className="variant-subtitle">Station Deck</p>
         </div>
         <div className="login-form">
-          <label>
-            <span className="login-label-text">Display name</span>
+          <div
+            className={`login-field${usernameMissing ? " is-required-missing" : ""}`}
+          >
+            <label htmlFor="login-username">
+              <span className="login-label-text">Display name</span>
+            </label>
             <input
+              id="login-username"
               value={username}
               onChange={(e) => onUsernameChange(stripWhitespace(e.target.value))}
               placeholder="e.g. Tim FOH"
+              required
+              aria-invalid={usernameMissing ? "true" : undefined}
+              aria-describedby={
+                usernameMissing ? "login-username-required" : undefined
+              }
             />
-          </label>
-          <label>
-            <span className="login-label-text">Role</span>
+            {usernameMissing ? (
+              <RequiredFieldHint id="login-username-required">
+                Enter a display name to continue.
+              </RequiredFieldHint>
+            ) : null}
+          </div>
+          <div
+            className={`login-field${roleMissing ? " is-required-missing" : ""}`}
+          >
+            <label htmlFor="login-role">
+              <span className="login-label-text">Role</span>
+            </label>
             <select
+              id="login-role"
               value={roleId}
               onChange={(e) => onRoleChange(e.target.value)}
+              required
+              aria-invalid={roleMissing ? "true" : undefined}
+              aria-describedby={roleMissing ? "login-role-required" : undefined}
             >
               <option value="">Select role</option>
               {availableRoles.map((r) => (
@@ -77,11 +128,16 @@ export function LoginView({
                 </option>
               ) : null}
             </select>
-          </label>
+            {roleMissing ? (
+              <RequiredFieldHint id="login-role-required">
+                {roleHintText}
+              </RequiredFieldHint>
+            ) : null}
+          </div>
           <button
             className="primary"
             onClick={onLogin}
-            disabled={!username.trim() || !roleId || !selectedRoleIsAvailable}
+            disabled={joinDisabled}
           >
             Join Intercom
           </button>

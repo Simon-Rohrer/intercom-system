@@ -46,6 +46,7 @@ html[data-kesher-low-power="true"] *::after {
   gap: 0.6rem;
   grid-template-columns: 1fr;
 }
+.login-field,
 .login-form label,
 .login-admin-card label {
   display: grid;
@@ -57,6 +58,9 @@ html[data-kesher-low-power="true"] *::after {
   color: var(--text-secondary);
   letter-spacing: 0.01em;
 }
+.login-field.is-required-missing .login-label-text {
+  color: var(--admin-error);
+}
 .login-form input,
 .login-form select {
   width: 100%;
@@ -64,6 +68,31 @@ html[data-kesher-low-power="true"] *::after {
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.03);
   background: rgba(255, 255, 255, 0.02);
+}
+.login-field.is-required-missing input,
+.login-field.is-required-missing select {
+  border-color: rgba(255, 179, 179, 0.5);
+  background: rgba(193, 18, 31, 0.08);
+  box-shadow: 0 0 0 1px rgba(193, 18, 31, 0.1);
+}
+.login-required-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--admin-error);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+.login-required-hint svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* Start-screen role dropdown: custom appearance */
@@ -103,6 +132,12 @@ html[data-kesher-low-power="true"] *::after {
   padding: 0.7rem 0.95rem;
   border-radius: 10px;
   font-weight: 800;
+}
+.login-card .primary:disabled {
+  cursor: not-allowed;
+  background: var(--btn-disabled-bg);
+  color: var(--btn-disabled-text);
+  opacity: 0.9;
 }
 .login-admin-card {
   display: grid;

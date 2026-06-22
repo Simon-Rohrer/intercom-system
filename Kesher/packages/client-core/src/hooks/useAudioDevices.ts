@@ -4,6 +4,7 @@ type NativeAudioDevice = {
   id: string;
   name: string;
   kind: "audioinput" | "audiooutput";
+  inputChannels?: number;
 };
 
 type UseAudioDevicesOptions = {
@@ -34,11 +35,13 @@ export function useAudioDevices({
       groupId: "",
       kind: d.kind,
       label: d.name,
+      inputChannels: d.inputChannels,
       toJSON: () => ({
         deviceId: d.id,
         groupId: "",
         kind: d.kind,
         label: d.name,
+        inputChannels: d.inputChannels,
       }),
     }) as MediaDeviceInfo;
 

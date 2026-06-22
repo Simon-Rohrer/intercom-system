@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { bootstrap, buildWebSocketUrl, normalizePublicBootstrap } from "../api";
+import {
+  bootstrap,
+  buildWebSocketUrl,
+  isUnauthorizedError,
+  normalizePublicBootstrap,
+} from "../api";
 import {
   defaultRoomMatrixForRole,
   matrixAnchorRoomId,
@@ -440,6 +445,7 @@ export type UseIntercomSessionOptions = {
   selectedInputDeviceId: string;
   selectedInputDeviceIdRef: React.MutableRefObject<string>;
   selectedInputChannel: InputChannelSelection;
+  inputChannelCountHint?: number | null;
   selectedOutputDeviceId: string;
   selectedOutputDeviceIdRef: React.MutableRefObject<string>;
   inputGainByDeviceId: Record<string, number>;
@@ -470,6 +476,7 @@ export type UseIntercomSessionOptions = {
     React.SetStateAction<PublicBootstrap | null>
   >;
   onRefreshAudioDevices: () => Promise<void>;
+  onSessionTokenRejected: () => void;
   onSessionRevoked: () => void;
   onStreamDeckHardwareCommand?: (cmd: {
     command: string;
@@ -573,6 +580,7 @@ export function useIntercomSession({
   selectedInputDeviceId,
   selectedInputDeviceIdRef,
   selectedInputChannel,
+  inputChannelCountHint,
   selectedOutputDeviceId,
   selectedOutputDeviceIdRef,
   inputGainByDeviceId,
@@ -597,6 +605,7 @@ export function useIntercomSession({
   onUpdateAppData,
   onUpdatePublicData,
   onRefreshAudioDevices,
+  onSessionTokenRejected,
   onSessionRevoked,
   onStreamDeckHardwareCommand,
   nativeAudio,
@@ -943,6 +952,7 @@ export function useIntercomSession({
     selectedInputGainFor,
     inputGainByDeviceId,
     selectedInputChannel,
+    inputChannelCountHint,
     audioGateEnabled,
     audioGateThresholdDb,
     isUserSettingsOpen,
@@ -2407,6 +2417,19 @@ export function useIntercomSession({
         reconnectTimeoutRef.current = window.setTimeout(() => {
           void connect();
         }, reconnectDelay);
+        void bootstrap(token).catch((error) => {
+          if (
+            cancelled ||
+            !shouldReconnectRef.current ||
+            !isUnauthorizedError(error)
+          ) {
+            return;
+          }
+          shouldReconnectRef.current = false;
+          clearReconnectTimer();
+          pushDebugEvent("system · session token rejected · recovering login");
+          onSessionTokenRejected();
+        });
       };
 
       ws.onerror = (event) => {

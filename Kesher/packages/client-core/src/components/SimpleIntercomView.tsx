@@ -72,6 +72,14 @@ export function SimpleIntercomView({
   const mainActive =
     pressedButton === "main" || (pttPressed && pressedButton == null);
   const replyActive = pressedButton === "reply";
+  const selectedInputChannelValue =
+    inputChannelCount > 1 &&
+    selectedInputChannel !== "all" &&
+    selectedInputChannel <= inputChannelCount
+      ? String(selectedInputChannel)
+      : "all";
+  const allInputsLabel =
+    inputChannelCount === 1 ? "Input 1" : `All ${inputChannelCount} inputs`;
   const mainPttButtonProps = createHoldButtonProps<HTMLButtonElement>({
     onStart: () => {
       setPressedButton("main");
@@ -157,9 +165,7 @@ export function SimpleIntercomView({
         <label className="simple-mic">
           <span>Interface input</span>
           <select
-            value={
-              inputChannelCount > 1 ? String(selectedInputChannel) : "all"
-            }
+            value={selectedInputChannelValue}
             onChange={(event) =>
               onSelectedInputChannelChange(
                 event.target.value === "all"
@@ -168,9 +174,7 @@ export function SimpleIntercomView({
               )
             }
           >
-            <option value="all">
-              {inputChannelCount === 1 ? "Input 1" : "All inputs"}
-            </option>
+            <option value="all">{allInputsLabel}</option>
             {inputChannelCount > 1
               ? Array.from({ length: inputChannelCount }, (_, index) => (
                   <option

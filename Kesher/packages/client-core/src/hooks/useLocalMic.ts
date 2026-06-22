@@ -13,6 +13,7 @@ import {
   micInputBaseBoost,
   type InputChannelSelection,
 } from "../app/settings";
+import { resolveTrackInputChannelCount } from "../lib/audioDeviceChannels";
 import { meterDbFsFloor, peakAmplitudeToDbFs } from "../lib/presence";
 
 const webAudioGateBufferSize = 256;
@@ -74,7 +75,8 @@ type LowLatencyAudioConstraints = MediaTrackConstraints & {
   latency?: number;
 };
 
-const preferredInterfaceChannelCount = 2;
+const preferredInterfaceChannelCounts = [4, 2] as const;
+const preferredIdealInterfaceChannelCount = preferredInterfaceChannelCounts[0];
 
 const lowLatencyAudioConstraintVariants: ReadonlyArray<
   ReadonlyArray<LowLatencyAudioConstraintKey>
@@ -103,8 +105,8 @@ const lowLatencyAudioConstraintVariants: ReadonlyArray<
 
 function buildLowLatencyAudioConstraints(
   keys: ReadonlyArray<LowLatencyAudioConstraintKey>,
-  requireStereo = false,
-  requireAudioProcessingOff = requireStereo,
+  exactChannelCount?: number,
+  requireAudioProcessingOff = exactChannelCount !== undefined,
 ): LowLatencyAudioConstraints {
   const constraints: LowLatencyAudioConstraints = {};
   for (const key of keys) {
@@ -125,14 +127,15 @@ function buildLowLatencyAudioConstraints(
           : false;
         break;
       case "channelCount":
-        // First require a real two-channel stream for USB interfaces. Merely
-        // marking stereo as ideal lets Chromium silently open the device as
-        // mono, which makes the second physical input unavailable. Later
+        // First require real multichannel streams for USB interfaces. Merely
+        // marking the channel count as ideal lets Chromium silently open the
+        // device as mono, which hides physical interface inputs. Later
         // candidates retain the ideal/mono-compatible fallback for regular
         // microphones.
-        constraints.channelCount = requireStereo
-          ? { exact: preferredInterfaceChannelCount }
-          : { ideal: preferredInterfaceChannelCount };
+        constraints.channelCount =
+          exactChannelCount !== undefined
+            ? { exact: exactChannelCount }
+            : { ideal: preferredIdealInterfaceChannelCount };
         break;
       case "latency":
         constraints.latency = 0;
@@ -152,30 +155,33 @@ export function buildLowLatencyMicConstraintCandidates(
   // can silently reopen the computer's built-in microphone instead of the
   // USB interface the user selected.
   if (deviceId) {
-    // First request both stereo and disabled browser voice processing as hard
-    // requirements. Some browser/device combinations do not expose every DSP
-    // constraint, so continue requiring stereo while relaxing only the DSP
-    // flags before allowing any mono-compatible candidate.
-    for (const keys of lowLatencyAudioConstraintVariants.slice(0, 2)) {
-      const audio = buildLowLatencyAudioConstraints(keys, true, true);
-      candidates.push({
-        audio: { ...audio, deviceId: { exact: deviceId } },
-        video: false,
-      });
-    }
-    for (const keys of lowLatencyAudioConstraintVariants.slice(0, 2)) {
-      const audio = buildLowLatencyAudioConstraints(keys, true, false);
-      candidates.push({
-        audio: { ...audio, deviceId: { exact: deviceId } },
-        video: false,
-      });
-    }
-    for (const keys of lowLatencyAudioConstraintVariants.slice(-2)) {
-      const audio = buildLowLatencyAudioConstraints(keys, true, false);
-      candidates.push({
-        audio: { ...audio, deviceId: { exact: deviceId } },
-        video: false,
-      });
+    // First request 4-channel and 2-channel streams with disabled browser
+    // voice processing as hard requirements. Some browser/device combinations
+    // do not expose every DSP constraint, so continue requiring the physical
+    // channel count while relaxing only the DSP flags before allowing any
+    // mono-compatible candidate.
+    for (const channelCount of preferredInterfaceChannelCounts) {
+      for (const keys of lowLatencyAudioConstraintVariants.slice(0, 2)) {
+        const audio = buildLowLatencyAudioConstraints(keys, channelCount, true);
+        candidates.push({
+          audio: { ...audio, deviceId: { exact: deviceId } },
+          video: false,
+        });
+      }
+      for (const keys of lowLatencyAudioConstraintVariants.slice(0, 2)) {
+        const audio = buildLowLatencyAudioConstraints(keys, channelCount, false);
+        candidates.push({
+          audio: { ...audio, deviceId: { exact: deviceId } },
+          video: false,
+        });
+      }
+      for (const keys of lowLatencyAudioConstraintVariants.slice(-2)) {
+        const audio = buildLowLatencyAudioConstraints(keys, channelCount, false);
+        candidates.push({
+          audio: { ...audio, deviceId: { exact: deviceId } },
+          video: false,
+        });
+      }
     }
     for (const keys of lowLatencyAudioConstraintVariants) {
       const audio = buildLowLatencyAudioConstraints(keys);
@@ -238,6 +244,8 @@ export type UseLocalMicOptions = {
   inputGainByDeviceId: Record<string, number>;
   /** Physical input channel selected for the current capture device. */
   selectedInputChannel: InputChannelSelection;
+  /** Optional channel count hint from native metadata or known USB labels. */
+  inputChannelCountHint?: number | null;
   /** User-configurable microphone gate toggle. */
   audioGateEnabled: boolean;
   /** User-configurable microphone gate threshold in dBFS. */
@@ -302,6 +310,7 @@ export function useLocalMic({
   selectedInputGainFor,
   inputGainByDeviceId,
   selectedInputChannel,
+  inputChannelCountHint,
   audioGateEnabled,
   audioGateThresholdDb,
   isUserSettingsOpen,
@@ -379,7 +388,7 @@ export function useLocalMic({
         1,
         Math.min(
           32,
-          Math.floor(sourceTrack.getSettings().channelCount ?? 1),
+          resolveTrackInputChannelCount(sourceTrack, inputChannelCountHint),
         ),
       );
       setInputChannelCount(capturedChannelCount);
@@ -638,6 +647,7 @@ export function useLocalMic({
   }, [
     selectedInputDeviceId,
     selectedInputChannel,
+    inputChannelCountHint,
     audioGateEnabled,
     enableReinit,
   ]);

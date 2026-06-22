@@ -26,6 +26,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{SampleFormat, SupportedBufferSize};
 use opus::{Application, Channels, Decoder, Encoder};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -77,8 +78,21 @@ pub struct StartNativeParams {
     pub token_hash: u32,
     /// Optional CPAL input device name; default if None.
     pub input_device_id: Option<String>,
+    /// One-based physical input channel. None mixes all interface inputs.
+    pub input_channel: Option<usize>,
     /// Optional CPAL output device name; default if None.
     pub output_device_id: Option<String>,
+}
+
+/// One audio device entry returned to JavaScript.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioDeviceInfo {
+    pub id: String,
+    pub name: String,
+    pub kind: String, // "audioinput" | "audiooutput"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_channels: Option<usize>,
 }
 
 /// Tauri-managed runtime state.
@@ -144,8 +158,106 @@ struct EncodedFrame {
     captured_at: Instant,
 }
 
+// ── Device enumeration / helpers ─────────────────────────────────────────
+
+/// List all available audio input and output devices.
+pub fn enumerate_devices() -> Vec<AudioDeviceInfo> {
+    let host = cpal::default_host();
+    let mut devices = Vec::new();
+
+    if let Ok(inputs) = host.input_devices() {
+        for device in inputs {
+            let name = device.name().unwrap_or_default();
+            devices.push(AudioDeviceInfo {
+                id: name.clone(),
+                name,
+                kind: "audioinput".to_string(),
+                input_channels: supported_input_channel_count(&device),
+            });
+        }
+    }
+
+    if let Ok(outputs) = host.output_devices() {
+        for device in outputs {
+            let name = device.name().unwrap_or_default();
+            devices.push(AudioDeviceInfo {
+                id: name.clone(),
+                name,
+                kind: "audiooutput".to_string(),
+                input_channels: None,
+            });
+        }
+    }
+
+    devices
+}
+
+fn interface_input_stream_config(device: &cpal::Device) -> Result<cpal::StreamConfig, String> {
+    let mut supported = device
+        .supported_input_configs()
+        .map_err(|error| format!("could not read input formats: {error}"))?
+        .filter(|range| {
+            range.sample_format() == SampleFormat::F32
+                && range.min_sample_rate().0 <= NATIVE_SAMPLE_RATE
+                && range.max_sample_rate().0 >= NATIVE_SAMPLE_RATE
+        })
+        .collect::<Vec<_>>();
+
+    supported.sort_by_key(|range| std::cmp::Reverse(range.channels()));
+    let range = supported
+        .into_iter()
+        .next()
+        .ok_or_else(|| "no 48 kHz f32 input format supported by selected device".to_string())?;
+
+    let buffer_size = match range.buffer_size() {
+        SupportedBufferSize::Range { min, max }
+            if NATIVE_HW_BUFFER_SAMPLES >= *min && NATIVE_HW_BUFFER_SAMPLES <= *max =>
+        {
+            cpal::BufferSize::Fixed(NATIVE_HW_BUFFER_SAMPLES)
+        }
+        _ => cpal::BufferSize::Default,
+    };
+    let mut config = range
+        .with_sample_rate(cpal::SampleRate(NATIVE_SAMPLE_RATE))
+        .config();
+    config.buffer_size = buffer_size;
+    Ok(config)
+}
+
+fn supported_input_channel_count(device: &cpal::Device) -> Option<usize> {
+    device
+        .supported_input_configs()
+        .ok()?
+        .map(|range| usize::from(range.channels()))
+        .max()
+        .filter(|channels| *channels > 0)
+}
+
+fn downmix_interface_input(
+    data: &[f32],
+    channels: usize,
+    input_channel: Option<usize>,
+) -> Vec<f32> {
+    if channels <= 1 {
+        return data.to_vec();
+    }
+    if let Some(channel) =
+        input_channel.filter(|channel| *channel >= 1 && *channel <= channels)
+    {
+        let channel_index = channel - 1;
+        return data
+            .chunks_exact(channels)
+            .map(|frame| frame[channel_index])
+            .collect();
+    }
+    data.chunks_exact(channels)
+        .map(|frame| frame.iter().copied().sum::<f32>() / channels as f32)
+        .collect()
+}
+
 fn build_input_stream(
     device_name: Option<&str>,
+    input_channel: Option<usize>,
     sample_tx: std::sync::mpsc::SyncSender<Vec<f32>>,
 ) -> Result<cpal::Stream, String> {
     let host = cpal::default_host();
@@ -159,17 +271,15 @@ fn build_input_stream(
             .default_input_device()
             .ok_or_else(|| "no default input device".to_string())?,
     };
-    let config = cpal::StreamConfig {
-        channels: 1,
-        sample_rate: cpal::SampleRate(NATIVE_SAMPLE_RATE),
-        buffer_size: cpal::BufferSize::Fixed(NATIVE_HW_BUFFER_SAMPLES),
-    };
+    let config = interface_input_stream_config(&device)?;
+    let input_channels = usize::from(config.channels);
     let stream = device
         .build_input_stream(
             &config,
             move |data: &[f32], _| {
+                let mono = downmix_interface_input(data, input_channels, input_channel);
                 // Best-effort send; drop on backpressure to preserve latency.
-                let _ = sample_tx.try_send(data.to_vec());
+                let _ = sample_tx.try_send(mono);
             },
             |err| log::warn!("[native][capture] stream error: {err}"),
             None,
@@ -183,6 +293,7 @@ fn build_input_stream(
 /// Opus encoder. Encoded 5 ms frames flow back over `encoded_tx`.
 fn spawn_capture_thread(
     device_name: Option<String>,
+    input_channel: Option<usize>,
     mic_active: Arc<AtomicBool>,
     stop_flag: Arc<AtomicBool>,
     encoded_tx: mpsc::Sender<EncodedFrame>,
@@ -190,7 +301,11 @@ fn spawn_capture_thread(
     std::thread::spawn(move || {
         let (raw_tx, raw_rx) =
             std::sync::mpsc::sync_channel::<Vec<f32>>(CAPTURE_QUEUE_DEPTH);
-        let stream = match build_input_stream(device_name.as_deref(), raw_tx) {
+        let stream = match build_input_stream(
+            device_name.as_deref(),
+            input_channel,
+            raw_tx,
+        ) {
             Ok(s) => s,
             Err(e) => {
                 log::error!("[native][capture] init failed: {e}");
@@ -471,6 +586,7 @@ pub async fn start_engine(
 
     spawn_capture_thread(
         params.input_device_id.clone(),
+        params.input_channel,
         Arc::clone(&mic_active),
         Arc::clone(&stop_flag),
         encoded_tx,
@@ -552,5 +668,23 @@ mod tests {
         buf[0..4].copy_from_slice(b"XXXX");
         buf[4] = UDP_VERSION;
         assert!(parse_header(&buf).is_none());
+    }
+
+    #[test]
+    fn downmixes_all_interface_inputs_to_mono() {
+        let four_channel = [1.0, -1.0, 0.5, 0.25, 0.0, 0.25, 0.5, 1.0];
+        assert_eq!(
+            downmix_interface_input(&four_channel, 4, None),
+            vec![0.1875, 0.4375]
+        );
+    }
+
+    #[test]
+    fn selects_one_interface_input_channel() {
+        let four_channel = [1.0, -1.0, 0.5, 0.25, 0.0, 0.25, 0.5, 1.0];
+        assert_eq!(
+            downmix_interface_input(&four_channel, 4, Some(4)),
+            vec![0.25, 1.0]
+        );
     }
 }

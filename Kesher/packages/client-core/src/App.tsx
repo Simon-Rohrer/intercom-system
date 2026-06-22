@@ -10,6 +10,7 @@ import {
   getStreamDeckSettings,
   getPublicBootstrap,
   getStatus,
+  isUnauthorizedError,
   login,
   loginTakeover,
   publishUserCompanionProfile,
@@ -57,6 +58,7 @@ import { withResolvedStreamDeckButtonLabel } from "./lib/streamDeckLabels";
 import { sortDirectUsersByRoleAndUsername } from "./lib/users";
 import { resolveAutoLoginConfiguration } from "./lib/autoLogin";
 import { resolveLowPowerMode } from "./lib/runtimeMode";
+import { resolveInputDeviceChannelCount } from "./lib/audioDeviceChannels";
 import type {
   Bootstrap,
   LoginConflict,
@@ -264,6 +266,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   const [streamDeckWebHidBusy, setStreamDeckWebHidBusy] = useState(false);
   const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
   const autoLoginInFlightRef = useRef(false);
+  const sessionRecoveryInFlightRef = useRef(false);
+  const sessionRecoveryRetryRef = useRef<number | null>(null);
   const isUserSettingsOpenRef = useRef(isUserSettingsOpen);
   useEffect(() => {
     isUserSettingsOpenRef.current = isUserSettingsOpen;
@@ -316,6 +320,104 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     }
   }, []);
 
+  const clearSessionRecoveryRetry = useCallback(() => {
+    if (sessionRecoveryRetryRef.current !== null) {
+      window.clearTimeout(sessionRecoveryRetryRef.current);
+      sessionRecoveryRetryRef.current = null;
+    }
+  }, []);
+
+  const recoverOperatorSession = useCallback(() => {
+    if (sessionRecoveryInFlightRef.current) return;
+    clearSessionRecoveryRetry();
+    sessionRecoveryInFlightRef.current = true;
+    setOperatorLoginError("");
+
+    void (async () => {
+      try {
+        const latestPublicData = await getPublicBootstrap();
+        setPublicData(latestPublicData);
+        setPublicBootstrapError("");
+
+        const autoLoginConfig = resolveAutoLoginConfiguration(
+          window.location.search,
+          latestPublicData.roles,
+        );
+        const useUsername =
+          (autoLoginConfig.enabled && autoLoginConfig.username
+            ? autoLoginConfig.username
+            : settings.username
+          ).trim();
+        const useRoleId =
+          autoLoginConfig.enabled && autoLoginConfig.roleId
+            ? autoLoginConfig.roleId
+            : settings.roleId;
+
+        if (!useUsername || !useRoleId) {
+          sessionStorage.removeItem(tokenStorageKey);
+          setToken(null);
+          setAppData(null);
+          setOperatorLoginError(
+            "Verbindung verloren. Bitte Namen und Rolle erneut auswaehlen.",
+          );
+          return;
+        }
+
+        let res = await login(useUsername, useRoleId);
+        if ("requiresTakeover" in res) {
+          if (autoLoginConfig.enabled && autoLoginConfig.allowTakeover) {
+            res = await loginTakeover(useUsername, useRoleId);
+          } else {
+            setPendingTakeover({
+              username: useUsername,
+              roleId: useRoleId,
+              conflict: res,
+              targetAuthMode: "operator",
+              adminOverrideActive: false,
+            });
+            sessionStorage.removeItem(tokenStorageKey);
+            setToken(null);
+            setAppData(null);
+            return;
+          }
+        }
+
+        settings.setUsername(useUsername);
+        settings.setRoleID(useRoleId);
+        setAuthMode("operator");
+        setAdminLoginError("");
+        setOperatorLoginError("");
+        setPendingTakeover(null);
+        setShowBirthdayGreeting(Boolean(res.showBirthdayGreeting));
+        setBirthdayGreetingUsername(res.user.username || useUsername);
+        sessionStorage.setItem(tokenStorageKey, res.token);
+        setToken(res.token);
+      } catch (error) {
+        setOperatorLoginError(
+          error instanceof Error
+            ? `Wiederverbindung fehlgeschlagen: ${error.message}`
+            : "Wiederverbindung fehlgeschlagen.",
+        );
+        sessionRecoveryRetryRef.current = window.setTimeout(() => {
+          sessionRecoveryRetryRef.current = null;
+          recoverOperatorSession();
+        }, 2500);
+      } finally {
+        sessionRecoveryInFlightRef.current = false;
+      }
+    })();
+  }, [
+    clearSessionRecoveryRetry,
+    settings,
+  ]);
+
+  useEffect(
+    () => () => {
+      clearSessionRecoveryRetry();
+    },
+    [clearSessionRecoveryRetry],
+  );
+
   // ── Intercom session (WS + WebRTC + audio + voice) ──
   const streamDeckHidSessionRef = useRef<{
     deck: StreamDeckWeb;
@@ -348,6 +450,17 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     },
     [],
   );
+  const selectedInputDeviceChannelHint = useMemo(() => {
+    const selectedDevice = audioDevices.inputDevices.find(
+      (d) => d.deviceId === settings.selectedInputDeviceId,
+    );
+    return resolveInputDeviceChannelCount(
+      selectedDevice as
+        | (MediaDeviceInfo & { inputChannels?: unknown })
+        | undefined,
+    );
+  }, [audioDevices.inputDevices, settings.selectedInputDeviceId]);
+
   const session = useIntercomSession({
     token,
     appData,
@@ -359,6 +472,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     selectedInputChannel: settings.selectedInputChannelFor(
       settings.selectedInputDeviceId,
     ),
+    inputChannelCountHint: selectedInputDeviceChannelHint,
     selectedOutputDeviceId: settings.selectedOutputDeviceId,
     selectedOutputDeviceIdRef: settings.selectedOutputDeviceIdRef,
     inputGainByDeviceId: settings.inputGainByDeviceId,
@@ -385,6 +499,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     onUpdateAppData: setAppData,
     onUpdatePublicData: setPublicData,
     onRefreshAudioDevices: audioDevices.refreshAudioDevices,
+    onSessionTokenRejected: recoverOperatorSession,
     onSessionRevoked: () => {
       sessionStorage.removeItem(tokenStorageKey);
       localStorage.removeItem(tokenStorageKey);
@@ -415,6 +530,14 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       )?.label || "Select microphone",
     [audioDevices.inputDevices, settings.selectedInputDeviceId],
   );
+
+  const selectedInputChannelCount = useMemo(() => {
+    return Math.max(
+      1,
+      selectedInputDeviceChannelHint ?? 1,
+      session.inputChannelCount,
+    );
+  }, [selectedInputDeviceChannelHint, session.inputChannelCount]);
 
   const outputSelectionSupported = useMemo(() => {
     type AudioWithSinkId = HTMLAudioElement & {
@@ -1016,7 +1139,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         }
         session.applyBootstrapData(data, true);
       })
-      .catch(() => {
+      .catch((error) => {
+        if (authMode === "operator" && isUnauthorizedError(error)) {
+          recoverOperatorSession();
+          return;
+        }
         sessionStorage.removeItem(tokenStorageKey);
         setToken(null);
       });
@@ -2112,7 +2239,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           onSelectedInputDeviceIdChange={settings.setSelectedInputDeviceId}
           inputDevices={audioDevices.inputDevices}
           selectedInputChannel={selectedInputChannel}
-          inputChannelCount={session.inputChannelCount}
+          inputChannelCount={selectedInputChannelCount}
           onSelectedInputChannelChange={(channel) =>
             settings.onInputChannelChange(
               settings.selectedInputDeviceId,
@@ -2229,7 +2356,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         selectedMicLabel={selectedMicLabel}
         setSelectedInputDeviceId={settings.setSelectedInputDeviceId}
         selectedInputChannel={selectedInputChannel}
-        inputChannelCount={session.inputChannelCount}
+        inputChannelCount={selectedInputChannelCount}
         onSelectedInputChannelChange={(channel) =>
           settings.onInputChannelChange(settings.selectedInputDeviceId, channel)
         }

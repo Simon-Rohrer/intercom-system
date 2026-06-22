@@ -12,6 +12,7 @@ import {
   getPublicBootstrap,
   getStreamDeckSettings,
   importConfiguration,
+  isUnauthorizedError,
   login,
   loginTakeover,
   logout,
@@ -276,6 +277,22 @@ describe("api helpers", () => {
   it("loads authenticated bootstrap", async () => {
     const data = await bootstrap("token-123");
     expect(data.self.id).toBe("u1");
+  });
+
+  it("marks unauthorized bootstrap failures for session recovery", async () => {
+    server.use(
+      http.get("http://localhost/api/bootstrap", () => {
+        return new HttpResponse("invalid token", { status: 401 });
+      }),
+    );
+
+    let caught: unknown = null;
+    try {
+      await bootstrap("expired-token");
+    } catch (error) {
+      caught = error;
+    }
+    expect(isUnauthorizedError(caught)).toBe(true);
   });
 
   it("normalizes nullable list fields from bootstrap payloads", async () => {

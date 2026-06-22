@@ -564,6 +564,18 @@ export function StationIntercomView({
   const streamDeckPreviewCacheRef = useRef<
     Map<number, { signature: string; dataUrl: string }>
   >(new Map());
+  const selectedInputChannelValue =
+    inputChannelCount > 1 &&
+    selectedInputChannel !== "all" &&
+    selectedInputChannel <= inputChannelCount
+      ? String(selectedInputChannel)
+      : "all";
+  const allInputsLabel =
+    inputChannelCount === 1
+      ? "Input 1"
+      : inputChannelCount === 2
+        ? "Input 1 + Input 2"
+        : `All ${inputChannelCount} inputs`;
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -2857,11 +2869,7 @@ export function StationIntercomView({
                           <span>Interface input</span>
                           <select
                             aria-label="Interface input"
-                            value={
-                              inputChannelCount > 1
-                                ? String(selectedInputChannel)
-                                : "all"
-                            }
+                            value={selectedInputChannelValue}
                             onChange={(event) =>
                               onSelectedInputChannelChange(
                                 event.currentTarget.value === "all"
@@ -2871,11 +2879,7 @@ export function StationIntercomView({
                             }
                           >
                             <option value="all">
-                              {inputChannelCount === 1
-                                ? "Input 1"
-                                : inputChannelCount === 2
-                                  ? "Input 1 + Input 2"
-                                  : "All inputs"}
+                              {allInputsLabel}
                             </option>
                             {inputChannelCount > 1
                               ? Array.from(

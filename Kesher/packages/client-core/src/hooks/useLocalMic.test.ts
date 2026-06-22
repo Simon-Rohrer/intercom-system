@@ -15,7 +15,7 @@ describe("useLocalMic helpers", () => {
         echoCancellation: { exact: false },
         noiseSuppression: { exact: false },
         autoGainControl: { exact: false },
-        channelCount: { exact: 2 },
+        channelCount: { exact: 4 },
         latency: 0,
         deviceId: { exact: "mic-1" },
       },
@@ -23,21 +23,32 @@ describe("useLocalMic helpers", () => {
     });
     expect(candidates[6]).toEqual({
       audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-        channelCount: { ideal: 2 },
+        echoCancellation: { exact: false },
+        noiseSuppression: { exact: false },
+        autoGainControl: { exact: false },
+        channelCount: { exact: 2 },
         latency: 0,
         deviceId: { exact: "mic-1" },
       },
       video: false,
     });
-    expect(candidates[11]).toEqual({
+    expect(candidates[12]).toEqual({
       audio: {
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
-        channelCount: { ideal: 2 },
+        channelCount: { ideal: 4 },
+        latency: 0,
+        deviceId: { exact: "mic-1" },
+      },
+      video: false,
+    });
+    expect(candidates[17]).toEqual({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: { ideal: 4 },
         latency: 0,
         deviceId: "mic-1",
       },
@@ -60,9 +71,9 @@ describe("useLocalMic helpers", () => {
       if (
         typeof channelCount === "object" &&
         "exact" in channelCount &&
-        channelCount.exact === 2
+        (channelCount.exact === 4 || channelCount.exact === 2)
       ) {
-        throw new Error("strict stereo unsupported");
+        throw new Error("strict multichannel unsupported");
       }
       return stream;
     });
@@ -70,8 +81,19 @@ describe("useLocalMic helpers", () => {
     const result = await requestLowLatencyMicStream("mic-1", getUserMedia);
 
     expect(result).toBe(stream);
-    expect(getUserMedia).toHaveBeenCalledTimes(7);
+    expect(getUserMedia).toHaveBeenCalledTimes(13);
     expect(getUserMedia).toHaveBeenNthCalledWith(1, {
+      audio: {
+        echoCancellation: { exact: false },
+        noiseSuppression: { exact: false },
+        autoGainControl: { exact: false },
+        channelCount: { exact: 4 },
+        latency: 0,
+        deviceId: { exact: "mic-1" },
+      },
+      video: false,
+    });
+    expect(getUserMedia).toHaveBeenNthCalledWith(7, {
       audio: {
         echoCancellation: { exact: false },
         noiseSuppression: { exact: false },
@@ -82,12 +104,12 @@ describe("useLocalMic helpers", () => {
       },
       video: false,
     });
-    expect(getUserMedia).toHaveBeenNthCalledWith(7, {
+    expect(getUserMedia).toHaveBeenNthCalledWith(13, {
       audio: {
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
-        channelCount: { ideal: 2 },
+        channelCount: { ideal: 4 },
         latency: 0,
         deviceId: { exact: "mic-1" },
       },
@@ -130,5 +152,7 @@ describe("useLocalMic helpers", () => {
     expect(resolveInputChannelIndexes(1, 2)).toEqual([0]);
     expect(resolveInputChannelIndexes(2, 2)).toEqual([1]);
     expect(resolveInputChannelIndexes(3, 2)).toEqual([0]);
+    expect(resolveInputChannelIndexes("all", 4)).toEqual([0, 1, 2, 3]);
+    expect(resolveInputChannelIndexes(4, 4)).toEqual([3]);
   });
 });

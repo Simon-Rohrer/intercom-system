@@ -45,6 +45,7 @@ export type NativeAudioDevice = {
   id: string;
   name: string;
   kind: "audioinput" | "audiooutput";
+  inputChannels?: number;
 };
 
 export type NativeAudioLevelEvent = {
@@ -100,7 +101,11 @@ export type NativeAudioHook = {
    */
   startPerformanceEngine: (
     endpoint: NativeAudioEndpoint,
-    devices?: { inputDeviceId?: string; outputDeviceId?: string },
+    devices?: {
+      inputDeviceId?: string;
+      inputChannel?: number;
+      outputDeviceId?: string;
+    },
   ) => Promise<void>;
   /** Tear down the performance engine. */
   stopPerformanceEngine: () => Promise<void>;
@@ -264,7 +269,11 @@ export function useNativeAudio(
   const startPerformanceEngine = useCallback(
     async (
       endpoint: NativeAudioEndpoint,
-      devices?: { inputDeviceId?: string; outputDeviceId?: string },
+      devices?: {
+        inputDeviceId?: string;
+        inputChannel?: number;
+        outputDeviceId?: string;
+      },
     ): Promise<void> => {
       if (!isNative) return;
       try {
@@ -275,6 +284,7 @@ export function useNativeAudio(
             session_token: endpoint.token,
             token_hash: endpoint.tokenHash,
             input_device_id: devices?.inputDeviceId ?? null,
+            input_channel: devices?.inputChannel ?? null,
             output_device_id: devices?.outputDeviceId ?? null,
           },
         });

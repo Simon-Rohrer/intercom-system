@@ -8,20 +8,20 @@ mod config;
 
 #[cfg(target_os = "windows")]
 use audio_engine::{
-    AudioDeviceInfo, AudioEngineState, EngineAnswerPayload, StartEngineParams,
+    AudioEngineState, EngineAnswerPayload, StartEngineParams,
 };
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-use audio_native::{NativeAudioState, StartNativeParams};
+use audio_native::{AudioDeviceInfo, NativeAudioState, StartNativeParams};
 use config::{get_server_url, set_server_url};
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use tauri::State;
 
 // ── IPC: device enumeration ───────────────────────────────────────────────────
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 #[tauri::command]
 fn list_audio_devices() -> Vec<AudioDeviceInfo> {
-    audio_engine::enumerate_devices()
+    audio_native::enumerate_devices()
 }
 
 // ── IPC: engine lifecycle ─────────────────────────────────────────────────────
@@ -147,6 +147,7 @@ pub fn run() {
             .invoke_handler(tauri::generate_handler![
                 get_server_url,
                 set_server_url,
+                list_audio_devices,
                 start_native_audio,
                 stop_native_audio,
                 set_native_mic,
@@ -170,4 +171,3 @@ pub fn run() {
 fn main() {
     run();
 }
-

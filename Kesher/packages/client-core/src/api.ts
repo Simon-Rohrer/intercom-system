@@ -25,6 +25,22 @@ import { toStringArray } from "./lib/normalize";
 
 const adminPinHeaderName = "X-Admin-Pin";
 
+export class ApiError extends Error {
+  readonly status: number;
+  readonly body: string;
+
+  constructor(status: number, body: string, fallbackMessage: string) {
+    super(body || fallbackMessage);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+export function isUnauthorizedError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401;
+}
+
 // Global base URL state for runtime configuration (desktop Tauri + web)
 let globalApiBaseUrl: string | null = null;
 
@@ -579,7 +595,9 @@ export async function bootstrap(token: string): Promise<Bootstrap> {
   const res = await fetch(apiUrl("/api/bootstrap"), {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error("failed to load bootstrap");
+  if (!res.ok) {
+    throw new ApiError(res.status, await res.text(), "failed to load bootstrap");
+  }
   const raw = (await res.json()) as unknown;
   return normalizeBootstrap(raw);
 }

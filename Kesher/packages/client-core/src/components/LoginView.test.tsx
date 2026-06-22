@@ -41,6 +41,51 @@ describe("LoginView", () => {
     expect(screen.getByRole("button", { name: "Join Intercom" })).toBeEnabled();
   });
 
+  it("marks missing display name and role as required", () => {
+    const { rerender } = render(<LoginView {...baseProps} />);
+
+    expect(screen.getByText("Enter a display name to continue.")).toBeVisible();
+    expect(screen.getByText("Select a role to continue.")).toBeVisible();
+    expect(screen.getByLabelText("Display name")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(screen.getByLabelText("Role")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+
+    rerender(<LoginView {...baseProps} username="Tim" roleId="op" />);
+
+    expect(
+      screen.queryByText("Enter a display name to continue."),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Select a role to continue."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Display name")).not.toHaveAttribute(
+      "aria-invalid",
+    );
+    expect(screen.getByLabelText("Role")).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("explains when all roles are already active", () => {
+    render(
+      <LoginView
+        {...baseProps}
+        publicData={{
+          ...baseProps.publicData,
+          activeRoleIds: ["op", "admin"],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("No roles are available right now.")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Join Intercom" }),
+    ).toBeDisabled();
+  });
+
   it("shows operator login error in the main login form", () => {
     render(
       <LoginView
