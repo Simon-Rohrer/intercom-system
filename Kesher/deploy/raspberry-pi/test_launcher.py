@@ -73,6 +73,12 @@ class LauncherTests(unittest.TestCase):
         self.assertTrue(payload["lowPowerMode"])
         self.assertEqual(payload["browserStatus"], "running")
 
+    def test_heartbeat_targets_configured_server_url(self):
+        self.assertEqual(
+            launcher.heartbeat_endpoint_url(self.config),
+            "http://192.168.1.10:8080/api/raspberry-pi/heartbeat",
+        )
+
     def test_rejects_unknown_pi(self):
         with self.assertRaisesRegex(ValueError, "no client entry matches"):
             launcher.resolve_client(self.config, ["192.168.1.99"])

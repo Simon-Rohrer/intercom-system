@@ -97,6 +97,7 @@ export type InputChannelSelection = "all" | number;
 
 export type ChannelAudioFeedSettings = {
   id: string;
+  ownerRoleId?: string;
   name: string;
   roomId: string;
   inputDeviceId: string;
@@ -185,11 +186,14 @@ function sanitizeChannelAudioFeeds(value: unknown): ChannelAudioFeedSettings[] {
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const name = typeof entry.name === "string" ? entry.name.trim() : "";
+    const ownerRoleId =
+      typeof entry.ownerRoleId === "string" ? entry.ownerRoleId.trim() : "";
     const roomId = typeof entry.roomId === "string" ? entry.roomId.trim() : "";
     const inputDeviceId =
       typeof entry.inputDeviceId === "string" ? entry.inputDeviceId : "";
     result.push({
       id,
+      ...(ownerRoleId ? { ownerRoleId } : {}),
       name: name || "Channel audio feed",
       roomId,
       inputDeviceId,

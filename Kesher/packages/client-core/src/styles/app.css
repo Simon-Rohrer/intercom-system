@@ -4013,6 +4013,56 @@ button.secondary {
   border-radius: 8px;
   background: rgba(12, 27, 46, 0.58);
 }
+.channel-audio-feed-summary-card {
+  grid-template-columns: minmax(0, 1.15fr) minmax(220px, 1fr) auto;
+  align-items: center;
+}
+.channel-audio-feed-summary-main {
+  min-width: 0;
+  display: grid;
+  gap: 0.18rem;
+}
+.channel-audio-feed-summary-main strong,
+.channel-audio-feed-summary-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.channel-audio-feed-summary-main strong {
+  color: #fff;
+  font-weight: 900;
+}
+.channel-audio-feed-summary-main small {
+  color: rgba(255, 255, 255, 0.48);
+  font-weight: 750;
+}
+.channel-audio-feed-summary-meta,
+.channel-audio-feed-summary-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.channel-audio-feed-summary-meta {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.channel-audio-feed-summary-meta span {
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.18rem 0.45rem;
+  border: 1px solid rgba(117, 198, 255, 0.13);
+  border-radius: 999px;
+  color: rgba(214, 237, 255, 0.76);
+  background: rgba(117, 198, 255, 0.06);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+.channel-audio-feed-summary-actions {
+  justify-content: flex-end;
+}
 .channel-audio-feed-head {
   justify-content: space-between;
   align-items: flex-end;
@@ -4101,6 +4151,17 @@ button.secondary {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.65rem;
 }
+.channel-audio-feed-editor-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  align-items: end;
+}
+.channel-audio-feed-editor-enabled {
+  min-height: 44px;
+  justify-content: center;
+  align-self: end;
+}
 .channel-audio-room-role-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4142,6 +4203,8 @@ button.secondary {
 @media (max-width: 760px) {
   .audio-personal-grid,
   .channel-audio-feed-grid,
+  .channel-audio-feed-summary-card,
+  .channel-audio-feed-editor-fields,
   .channel-audio-room-editor-fields,
   .channel-audio-room-role-grid {
     grid-template-columns: 1fr;
@@ -4157,6 +4220,12 @@ button.secondary {
   .channel-audio-feed-room-create input,
   .channel-audio-feed-room-create .shortcut-btn {
     width: 100%;
+  }
+  .channel-audio-feed-summary-actions {
+    justify-content: stretch;
+  }
+  .channel-audio-feed-summary-actions .shortcut-btn {
+    flex: 1 1 0;
   }
   .channel-audio-room-editor {
     max-height: calc(100vh - 1rem);
@@ -4567,6 +4636,17 @@ button.secondary {
 
 .shortcut-btn:hover {
   background: rgba(255, 255, 255, 0.14);
+}
+
+.shortcut-btn-primary {
+  border-color: rgba(80, 190, 255, 0.42);
+  background: linear-gradient(180deg, rgba(31, 155, 230, 0.95), rgba(16, 100, 180, 0.95));
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(24, 137, 220, 0.26);
+}
+
+.shortcut-btn-primary:hover {
+  background: linear-gradient(180deg, rgba(48, 176, 248, 0.98), rgba(22, 117, 198, 0.98));
 }
 
 .shortcut-btn-clear {

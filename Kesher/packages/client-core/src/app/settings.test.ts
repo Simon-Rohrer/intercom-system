@@ -98,6 +98,7 @@ describe("settings helpers", () => {
             inputChannel: 99,
             gain: 99,
             enabled: true,
+            ownerRoleId: " op ",
           },
           { id: "", name: "broken" },
         ],
@@ -128,6 +129,7 @@ describe("settings helpers", () => {
           inputChannel: 32,
           gain: 16,
           enabled: true,
+          ownerRoleId: "op",
         },
       ],
     });

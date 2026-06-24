@@ -174,6 +174,10 @@ def heartbeat_payload(
     }
 
 
+def heartbeat_endpoint_url(config: dict[str, Any]) -> str:
+    return f'{config["server_url"]}/api/raspberry-pi/heartbeat'
+
+
 def send_heartbeat(
     config: dict[str, Any],
     client: dict[str, Any],
@@ -181,7 +185,7 @@ def send_heartbeat(
     login_status: str,
     login_error: str = "",
 ) -> bool:
-    heartbeat_url = f'{config["server_url"]}/api/raspberry-pi/heartbeat'
+    heartbeat_url = heartbeat_endpoint_url(config)
     payload = json.dumps(
         heartbeat_payload(client, browser_status, login_status, login_error),
         separators=(",", ":"),

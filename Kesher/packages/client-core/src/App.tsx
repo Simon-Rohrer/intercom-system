@@ -479,6 +479,13 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     );
   }, [audioDevices.inputDevices, settings.selectedInputDeviceId]);
 
+  const visibleChannelAudioFeeds = useMemo(() => {
+    const currentRoleId = appData?.self.roleId || "";
+    return settings.channelAudioFeeds.filter(
+      (feed) => currentRoleId !== "" && feed.ownerRoleId === currentRoleId,
+    );
+  }, [appData?.self.roleId, settings.channelAudioFeeds]);
+
   const session = useIntercomSession({
     token,
     appData,
@@ -508,7 +515,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     audioGateThresholdDb: settings.audioGateThresholdDb,
     selectedInputGainFor: settings.selectedInputGainFor,
     onInputGainChange: settings.onInputGainChange,
-    channelAudioFeeds: settings.channelAudioFeeds,
+    channelAudioFeeds: visibleChannelAudioFeeds,
     inputDevices: audioDevices.inputDevices as Array<
       MediaDeviceInfo & { inputChannels?: unknown }
     >,
@@ -578,28 +585,20 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     );
   }, [audioDevices.outputDevices, settings.selectedOutputDeviceId]);
 
-  const createLocalChannelAudioFeed = useCallback(() => {
-    const now = Date.now().toString(36);
-    const id = `feed-${now}`;
-    const fallbackRoomId =
-      appData?.rooms.find((room) =>
-        roleAllowed(room.senderRoleIds, appData.self.roleId),
-      )?.id || "";
-    const nextFeed: ChannelAudioFeedSettings = {
-      id,
-      name: "Music feed",
-      roomId: fallbackRoomId,
-      inputDeviceId: settings.selectedInputDeviceId,
-      inputChannel: selectedInputChannel,
-      gain: 1,
-      enabled: false,
-    };
-    settings.setChannelAudioFeeds((prev) => [...prev, nextFeed]);
-  }, [
-    appData,
-    selectedInputChannel,
-    settings,
-  ]);
+  const createLocalChannelAudioFeed = useCallback(
+    (draft: Omit<ChannelAudioFeedSettings, "id">) => {
+      const now = Date.now().toString(36);
+      const id = `feed-${now}`;
+      const nextFeed: ChannelAudioFeedSettings = {
+        id,
+        ...draft,
+        ownerRoleId: draft.ownerRoleId || appData?.self.roleId || "",
+      };
+      settings.setChannelAudioFeeds((prev) => [...prev, nextFeed]);
+      return id;
+    },
+    [appData?.self.roleId, settings],
+  );
 
   const updateChannelAudioFeed = useCallback(
     (
@@ -2509,7 +2508,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         isLocalMonitorActive={session.isLocalMonitorActive}
         onToggleLocalMonitor={() => void session.toggleLocalMonitor()}
         onInputGainChange={settings.onInputGainChange}
-        channelAudioFeeds={settings.channelAudioFeeds}
+        channelAudioFeeds={visibleChannelAudioFeeds}
         channelAudioFeedStatuses={session.channelAudioFeedStatuses}
         onCreateChannelAudioFeed={createLocalChannelAudioFeed}
         onUpdateChannelAudioFeed={updateChannelAudioFeed}

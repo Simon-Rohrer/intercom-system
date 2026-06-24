@@ -1,5 +1,11 @@
 import type { ComponentProps } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { StationIntercomView } from "./StationIntercomView";
@@ -106,7 +112,7 @@ const baseProps: ComponentProps<typeof StationIntercomView> = {
   onInputGainChange: vi.fn(),
   channelAudioFeeds: [],
   channelAudioFeedStatuses: [],
-  onCreateChannelAudioFeed: vi.fn(),
+  onCreateChannelAudioFeed: vi.fn().mockReturnValue("feed-new"),
   onUpdateChannelAudioFeed: vi.fn(),
   onRemoveChannelAudioFeed: vi.fn(),
   onCreateChannelAudioFeedRoom: vi.fn().mockResolvedValue("audio-feed-room"),
@@ -793,8 +799,9 @@ describe("StationIntercomView", () => {
             groupId: "g1",
             kind: "audioinput",
             label: "Scarlett 2i2 USB",
+            inputChannels: 2,
             toJSON: () => ({}),
-          } as MediaDeviceInfo,
+          } as MediaDeviceInfo & { inputChannels: number },
         ]}
         channelAudioFeeds={[
           {
@@ -805,6 +812,7 @@ describe("StationIntercomView", () => {
             inputChannel: "all",
             gain: 1,
             enabled: false,
+            ownerRoleId: "op",
           },
         ]}
         channelAudioFeedStatuses={[
@@ -820,31 +828,41 @@ describe("StationIntercomView", () => {
     await user.click(
       screen.getByRole("button", { name: /Channel audio feeds/ }),
     );
-    await user.click(screen.getByRole("checkbox", { name: "Send" }));
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog", { name: "Feed bearbeiten" });
+    await user.click(within(dialog).getByRole("checkbox", { name: "Send" }));
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "Interface input for Music" }),
+      within(dialog).getByRole("combobox", { name: "Interface input" }),
       "2",
     );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
-    expect(onUpdateChannelAudioFeed).toHaveBeenCalledWith("feed-1", {
-      enabled: true,
-    });
-    expect(onUpdateChannelAudioFeed).toHaveBeenCalledWith("feed-1", {
-      inputChannel: 2,
+    await waitFor(() => {
+      expect(onUpdateChannelAudioFeed).toHaveBeenCalledWith("feed-1", {
+        name: "Music",
+        roomId: "room-1",
+        inputDeviceId: "scarlett",
+        inputChannel: 2,
+        gain: 1,
+        enabled: true,
+        ownerRoleId: "op",
+      });
     });
   });
 
-  it("creates a talk channel from the channel audio feed settings", async () => {
+  it("creates an audio feed from the channel audio feed settings", async () => {
     const user = userEvent.setup();
     const onCreateChannelAudioFeedRoom = vi
       .fn()
       .mockResolvedValue("music-feed");
+    const onCreateChannelAudioFeed = vi.fn().mockReturnValue("feed-new");
 
     render(
       <StationIntercomView
         {...baseProps}
         isUserSettingsOpen
         onCreateChannelAudioFeedRoom={onCreateChannelAudioFeedRoom}
+        onCreateChannelAudioFeed={onCreateChannelAudioFeed}
       />,
     );
 
@@ -853,19 +871,28 @@ describe("StationIntercomView", () => {
       screen.getByRole("button", { name: /Channel audio feeds/ }),
     );
     await user.click(
-      screen.getByRole("button", { name: "Add talk channel" }),
+      screen.getByRole("button", { name: "Neuer Feed" }),
     );
-    await user.type(screen.getByLabelText(/Channel name/), "Music feed");
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    const dialog = screen.getByRole("dialog", { name: "Neuer Feed" });
+    await user.type(within(dialog).getByLabelText(/Feed name/), "Music feed");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
       expect(onCreateChannelAudioFeedRoom).toHaveBeenCalledWith({
-        id: "",
         name: "Music feed",
         priorityLevel: 1,
         senderRoleIds: ["op"],
         receiverRoleIds: ["op"],
         forcedListenRoleIds: [],
+      });
+      expect(onCreateChannelAudioFeed).toHaveBeenCalledWith({
+        ownerRoleId: "op",
+        name: "Music feed",
+        roomId: "music-feed",
+        inputDeviceId: "",
+        inputChannel: "all",
+        gain: 1,
+        enabled: true,
       });
     });
   });
