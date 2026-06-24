@@ -683,6 +683,75 @@ func TestServerHandleRaspberryPisReturnsStationsForAuthenticatedSession(t *testi
 	}
 }
 
+func TestServerHandleRaspberryPisDedupesSameStationAliases(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if _, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
+		DeviceID:      "kamera-1-pi",
+		Name:          "Kamera-1",
+		IPAddress:     "192.168.178.190",
+		RoleID:        "cam 1",
+		BrowserStatus: "test",
+		LoginStatus:   "test",
+	}); err != nil {
+		t.Fatalf("first UpsertRaspberryPiHeartbeat failed: %v", err)
+	}
+	if _, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
+		DeviceID:      "192.168.178.190",
+		Name:          "Kamera-1",
+		IPAddress:     "192.168.178.190",
+		RoleID:        "cam 1",
+		BrowserStatus: "running",
+		LoginStatus:   "waiting_for_intercom",
+	}); err != nil {
+		t.Fatalf("second UpsertRaspberryPiHeartbeat failed: %v", err)
+	}
+	if _, err := store.db.ExecContext(
+		ctx,
+		`UPDATE raspberry_pi_heartbeats SET last_seen = ?, updated_at = ? WHERE device_id = ?`,
+		int64(1000),
+		int64(1000),
+		"kamera-1-pi",
+	); err != nil {
+		t.Fatalf("failed to age stale heartbeat: %v", err)
+	}
+	if _, err := store.db.ExecContext(
+		ctx,
+		`UPDATE raspberry_pi_heartbeats SET last_seen = ?, updated_at = ? WHERE device_id = ?`,
+		time.Now().UnixMilli(),
+		time.Now().UnixMilli(),
+		"192.168.178.190",
+	); err != nil {
+		t.Fatalf("failed to refresh latest heartbeat: %v", err)
+	}
+	s := &Server{
+		store: store,
+		hub:   NewHub(store, slog.New(slog.NewTextHandler(io.Discard, nil))),
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/raspberry-pis", nil)
+	rec := httptest.NewRecorder()
+
+	s.handleRaspberryPis(rec, req, Session{UserID: "u2", Username: "Tim", RoleID: "light"})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected ok, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response RaspberryPiStationsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if len(response.Stations) != 1 {
+		t.Fatalf("expected duplicate station aliases to be collapsed, got %#v", response.Stations)
+	}
+	if response.Stations[0].DeviceID != "192.168.178.190" || response.Stations[0].BrowserStatus != "running" {
+		t.Fatalf("expected latest alias to win, got %#v", response.Stations[0])
+	}
+}
+
 func TestServerHandleAdminRolesMethodNotAllowed(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {

@@ -3615,6 +3615,36 @@ func raspberryPiActiveClientKey(username, roleID string) string {
 	return strings.ToLower(strings.TrimSpace(username)) + "\x00" + strings.ToLower(strings.TrimSpace(roleID))
 }
 
+func raspberryPiHeartbeatIdentityKey(record RaspberryPiHeartbeatRecord) string {
+	name := strings.ToLower(strings.TrimSpace(record.Name))
+	roleID := strings.ToLower(strings.TrimSpace(record.RoleID))
+	ipAddress := strings.TrimSpace(record.IPAddress)
+	if ipAddress != "" {
+		return "station\x00" + name + "\x00" + roleID + "\x00" + ipAddress
+	}
+	return "device\x00" + strings.TrimSpace(record.DeviceID)
+}
+
+func dedupeRaspberryPiHeartbeatRecords(records []RaspberryPiHeartbeatRecord) []RaspberryPiHeartbeatRecord {
+	if len(records) < 2 {
+		return records
+	}
+	indexByKey := map[string]int{}
+	result := make([]RaspberryPiHeartbeatRecord, 0, len(records))
+	for _, record := range records {
+		key := raspberryPiHeartbeatIdentityKey(record)
+		if index, exists := indexByKey[key]; exists {
+			if record.LastSeenUnixMs >= result[index].LastSeenUnixMs {
+				result[index] = record
+			}
+			continue
+		}
+		indexByKey[key] = len(result)
+		result = append(result, record)
+	}
+	return result
+}
+
 func raspberryPiEffectiveStatus(record RaspberryPiHeartbeatRecord, online, intercomConnected bool) string {
 	if intercomConnected {
 		return "intercom_connected"
@@ -3644,6 +3674,7 @@ func (s *Server) buildRaspberryPiStationsResponse(ctx context.Context) (Raspberr
 	if err != nil {
 		return RaspberryPiStationsResponse{}, err
 	}
+	records = dedupeRaspberryPiHeartbeatRecords(records)
 	activeClients := map[string]ActiveClient{}
 	if s.hub != nil {
 		for _, client := range s.hub.GetActiveClients(ctx) {
