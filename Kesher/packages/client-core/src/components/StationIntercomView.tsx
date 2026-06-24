@@ -4,21 +4,27 @@ import type {
   BroadcastGroup,
   CompanionProfileResponse,
   Presence,
+  RaspberryPiStationStatus,
+  Room,
   StreamDeckActionType,
   StreamDeckButtonConfig,
   StreamDeckPageType,
   StreamDeckSettings,
 } from "../types";
 import type {
+  ChannelAudioFeedSettings,
   InputChannelSelection,
   KeyboardShortcutSettings,
 } from "../app/settings";
+import type { ChannelAudioFeedStatus } from "../hooks/useIntercomSession";
 import { renderStreamDeckPreviewImages } from "../api";
 import { createHoldButtonProps } from "../lib/holdButton";
+import { resolveInputDeviceChannelCount } from "../lib/audioDeviceChannels";
 import { withResolvedStreamDeckButtonLabel } from "../lib/streamDeckLabels";
 import { sortDirectUsersByRoleAndUsername } from "../lib/users";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { LowPowerModeBadge } from "./LowPowerModeBadge";
+import { RaspberryPiStationsPanel } from "./RaspberryPiStationsPanel";
 
 const DB_MIN = -60;
 const OUTPUT_DB_MAX = 6; // +6 dB ~ gain 2.0
@@ -301,6 +307,20 @@ function formatGateThresholdDb(dbFs: number): string {
   return `${Math.round(dbFs)} dBFS`;
 }
 
+type ChannelAudioFeedRoomForm = {
+  id?: string;
+  name: string;
+  priorityLevel: number;
+  senderRoleIds: string[];
+  receiverRoleIds: string[];
+  forcedListenRoleIds: string[];
+};
+
+type ChannelAudioFeedRoomEditor = ChannelAudioFeedRoomForm & {
+  mode: "create" | "edit";
+  sourceRoomId?: string;
+};
+
 type StationIntercomViewProps = {
   token: string;
   connectionState: "connecting" | "connected" | "reconnecting" | "offline";
@@ -338,6 +358,8 @@ type StationIntercomViewProps = {
   voiceMode: "always_on" | "ptt";
   setAlwaysOn: (enabled: boolean) => void;
   chatAndSignalPanel: React.ReactNode;
+  raspberryPiStations: RaspberryPiStationStatus[] | null;
+  raspberryPiStationsError: string;
   showDebug: boolean;
   realtimeDebugBlock: React.ReactNode;
   enableDirectPpt: boolean;
@@ -389,6 +411,21 @@ type StationIntercomViewProps = {
   isLocalMonitorActive: boolean;
   onToggleLocalMonitor: () => void;
   onInputGainChange: (deviceId: string, gain: number) => void;
+  channelAudioFeeds: ChannelAudioFeedSettings[];
+  channelAudioFeedStatuses: ChannelAudioFeedStatus[];
+  onCreateChannelAudioFeed: () => void;
+  onUpdateChannelAudioFeed: (
+    feedId: string,
+    patch: Partial<Omit<ChannelAudioFeedSettings, "id">>,
+  ) => void;
+  onRemoveChannelAudioFeed: (feedId: string) => void;
+  onCreateChannelAudioFeedRoom: (
+    payload: ChannelAudioFeedRoomForm,
+  ) => Promise<string>;
+  onUpdateChannelAudioFeedRoom: (
+    roomId: string,
+    payload: ChannelAudioFeedRoomForm,
+  ) => Promise<void>;
   audioGateEnabled: boolean;
   onAudioGateEnabledChange: (enabled: boolean) => void;
   audioGateThresholdDb: number;
@@ -458,6 +495,8 @@ export function StationIntercomView({
   voiceMode,
   setAlwaysOn,
   chatAndSignalPanel,
+  raspberryPiStations,
+  raspberryPiStationsError,
   showDebug,
   realtimeDebugBlock,
   enableDirectPpt,
@@ -507,6 +546,13 @@ export function StationIntercomView({
   isLocalMonitorActive,
   onToggleLocalMonitor,
   onInputGainChange,
+  channelAudioFeeds,
+  channelAudioFeedStatuses,
+  onCreateChannelAudioFeed,
+  onUpdateChannelAudioFeed,
+  onRemoveChannelAudioFeed,
+  onCreateChannelAudioFeedRoom,
+  onUpdateChannelAudioFeedRoom,
   audioGateEnabled,
   onAudioGateEnabledChange,
   audioGateThresholdDb,
@@ -538,6 +584,14 @@ export function StationIntercomView({
   const micMenuRef = useRef<HTMLDivElement>(null);
   const outputMenuRef = useRef<HTMLDivElement>(null);
   const [isAudioOpen, setIsAudioOpen] = useState(false);
+  const [isPersonalAudioOpen, setIsPersonalAudioOpen] = useState(true);
+  const [isChannelAudioFeedsOpen, setIsChannelAudioFeedsOpen] = useState(false);
+  const [channelAudioFeedRoomEditor, setChannelAudioFeedRoomEditor] =
+    useState<ChannelAudioFeedRoomEditor | null>(null);
+  const [channelAudioFeedRoomSaveBusy, setChannelAudioFeedRoomSaveBusy] =
+    useState(false);
+  const [channelAudioFeedRoomSaveError, setChannelAudioFeedRoomSaveError] =
+    useState("");
   const [isStreamDeckOpen, setIsStreamDeckOpen] = useState(false);
   const [streamDeckTestMode, setStreamDeckTestMode] = useState(false);
   const streamDeckImportInputRef = useRef<HTMLInputElement>(null);
@@ -576,6 +630,153 @@ export function StationIntercomView({
       : inputChannelCount === 2
         ? "Input 1 + Input 2"
         : `All ${inputChannelCount} inputs`;
+  const channelAudioFeedStatusById = useMemo(
+    () =>
+      new Map(channelAudioFeedStatuses.map((entry) => [entry.id, entry])),
+    [channelAudioFeedStatuses],
+  );
+  const channelAudioAllowedRooms = useMemo(
+    () =>
+      appData.rooms.filter((room) =>
+        canRoleSendToRoom(room.id, appData.self.roleId),
+      ),
+    [appData.rooms, appData.self.roleId, canRoleSendToRoom],
+  );
+  const channelAudioRoomCountById = useMemo(() => {
+    const countById = new Map<string, number>();
+    for (const feed of channelAudioFeeds) {
+      if (!feed.roomId) continue;
+      countById.set(feed.roomId, (countById.get(feed.roomId) ?? 0) + 1);
+    }
+    return countById;
+  }, [channelAudioFeeds]);
+  const allRoleIds = useMemo(
+    () => appData.roles.map((role) => role.id),
+    [appData.roles],
+  );
+
+  const feedInputChannelCount = (deviceId: string): number => {
+    const device = inputDevices.find((entry) => entry.deviceId === deviceId);
+    return Math.max(
+      1,
+      resolveInputDeviceChannelCount(
+        device as (MediaDeviceInfo & { inputChannels?: unknown }) | undefined,
+      ) ?? (deviceId === selectedInputDeviceId ? inputChannelCount : 1),
+    );
+  };
+
+  const feedInputChannelValue = (feed: ChannelAudioFeedSettings): string => {
+    const count = feedInputChannelCount(feed.inputDeviceId);
+    return feed.inputChannel !== "all" && feed.inputChannel <= count
+      ? String(feed.inputChannel)
+      : "all";
+  };
+
+  const feedAllInputsLabel = (count: number): string =>
+    count === 1
+      ? "Input 1"
+      : count === 2
+        ? "Input 1 + Input 2"
+        : `All ${count} inputs`;
+
+  const openChannelAudioRoomEditor = (room?: Room) => {
+    setChannelAudioFeedRoomSaveError("");
+    if (room) {
+      setChannelAudioFeedRoomEditor({
+        mode: "edit",
+        sourceRoomId: room.id,
+        id: room.id,
+        name: room.name,
+        priorityLevel: room.priorityLevel ?? 1,
+        senderRoleIds: [...room.senderRoleIds],
+        receiverRoleIds: [...room.receiverRoleIds],
+        forcedListenRoleIds: [...room.forcedListenRoleIds],
+      });
+      return;
+    }
+    setChannelAudioFeedRoomEditor({
+      mode: "create",
+      id: "",
+      name: "",
+      priorityLevel: 1,
+      senderRoleIds: [appData.self.roleId],
+      receiverRoleIds: allRoleIds,
+      forcedListenRoleIds: [],
+    });
+  };
+
+  const updateChannelAudioRoomEditor = (
+    patch: Partial<ChannelAudioFeedRoomEditor>,
+  ) => {
+    setChannelAudioFeedRoomEditor((current) =>
+      current ? { ...current, ...patch } : current,
+    );
+  };
+
+  const toggleChannelAudioRoomEditorRole = (
+    key: "senderRoleIds" | "receiverRoleIds" | "forcedListenRoleIds",
+    roleId: string,
+  ) => {
+    setChannelAudioFeedRoomEditor((current) => {
+      if (!current) return current;
+      const currentIds = current[key];
+      const nextIds = currentIds.includes(roleId)
+        ? currentIds.filter((id) => id !== roleId)
+        : [...currentIds, roleId];
+      return { ...current, [key]: nextIds };
+    });
+  };
+
+  const saveChannelAudioRoomEditor = async () => {
+    if (!channelAudioFeedRoomEditor) return;
+    const name = channelAudioFeedRoomEditor.name.trim();
+    if (!name) {
+      setChannelAudioFeedRoomSaveError("Channel name is required.");
+      return;
+    }
+    if (channelAudioFeedRoomEditor.senderRoleIds.length === 0) {
+      setChannelAudioFeedRoomSaveError("At least one sender role is required.");
+      return;
+    }
+    if (channelAudioFeedRoomEditor.receiverRoleIds.length === 0) {
+      setChannelAudioFeedRoomSaveError("At least one listener role is required.");
+      return;
+    }
+    const payload: ChannelAudioFeedRoomForm = {
+      id:
+        channelAudioFeedRoomEditor.mode === "create"
+          ? channelAudioFeedRoomEditor.id?.trim()
+          : channelAudioFeedRoomEditor.id,
+      name,
+      priorityLevel: channelAudioFeedRoomEditor.priorityLevel,
+      senderRoleIds: channelAudioFeedRoomEditor.senderRoleIds,
+      receiverRoleIds: channelAudioFeedRoomEditor.receiverRoleIds,
+      forcedListenRoleIds: channelAudioFeedRoomEditor.forcedListenRoleIds,
+    };
+    setChannelAudioFeedRoomSaveError("");
+    setChannelAudioFeedRoomSaveBusy(true);
+    try {
+      if (channelAudioFeedRoomEditor.mode === "edit") {
+        await onUpdateChannelAudioFeedRoom(
+          channelAudioFeedRoomEditor.sourceRoomId || channelAudioFeedRoomEditor.id || "",
+          payload,
+        );
+      } else {
+        const roomId = await onCreateChannelAudioFeedRoom(payload);
+        const lastFeed = channelAudioFeeds[channelAudioFeeds.length - 1];
+        if (lastFeed && !lastFeed.roomId) {
+          onUpdateChannelAudioFeed(lastFeed.id, { roomId });
+        }
+      }
+      setChannelAudioFeedRoomEditor(null);
+    } catch (error) {
+      setChannelAudioFeedRoomSaveError(
+        error instanceof Error ? error.message : "Party line creation failed.",
+      );
+    } finally {
+      setChannelAudioFeedRoomSaveBusy(false);
+    }
+  };
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -2035,6 +2236,22 @@ export function StationIntercomView({
                 {chatAndSignalPanel}
               </div>
             </section>
+            <section className="station-block station-utility station-utility-section station-pi-monitoring">
+              <h3>Raspberry monitoring</h3>
+              <div className="panel station-pi-monitoring-panel">
+                <RaspberryPiStationsPanel
+                  stations={raspberryPiStations}
+                  title="Raspberry Pis"
+                  emptyText="No Raspberry heartbeat received."
+                  className="station-pi-stations"
+                />
+                {raspberryPiStationsError ? (
+                  <small className="streamdeck-error">
+                    {raspberryPiStationsError}
+                  </small>
+                ) : null}
+              </div>
+            </section>
           </aside>
         ) : null}
       </div>
@@ -2827,7 +3044,27 @@ export function StationIntercomView({
                     </button>
                   </div>
                   {isAudioOpen ? (
-                    <div className="audio-box-body">
+                    <div className="audio-box-body audio-subsection-stack">
+                      <div
+                        className={`audio-subsection ${isPersonalAudioOpen ? "" : "collapsed"}`}
+                      >
+                        <button
+                          type="button"
+                          className="audio-subsection-toggle"
+                          onClick={() =>
+                            setIsPersonalAudioOpen((value) => !value)
+                          }
+                          aria-expanded={isPersonalAudioOpen}
+                        >
+                          My audio
+                          <span
+                            className={`chev ${isPersonalAudioOpen ? "open" : ""}`}
+                          >
+                            ▾
+                          </span>
+                        </button>
+                        {isPersonalAudioOpen ? (
+                          <div className="audio-subsection-body audio-personal-grid">
                       <div className="audio-left">
                         <h4>Microphone</h4>
                         <div className="audio-row audio-row-mic">
@@ -3062,6 +3299,509 @@ export function StationIntercomView({
                             Explicit speaker selection is not supported by this
                             browser; using system default output.
                           </small>
+                        ) : null}
+                      </div>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div
+                        className={`audio-subsection ${isChannelAudioFeedsOpen ? "" : "collapsed"}`}
+                      >
+                        <button
+                          type="button"
+                          className="audio-subsection-toggle"
+                          onClick={() =>
+                            setIsChannelAudioFeedsOpen((value) => !value)
+                          }
+                          aria-expanded={isChannelAudioFeedsOpen}
+                        >
+                          Channel audio feeds
+                          <span
+                            className={`chev ${isChannelAudioFeedsOpen ? "open" : ""}`}
+                          >
+                            ▾
+                          </span>
+                        </button>
+                        {isChannelAudioFeedsOpen ? (
+                          <div className="audio-subsection-body channel-audio-feed-section">
+                            <div className="channel-audio-room-manager">
+                              <div className="channel-audio-room-manager-head">
+                                <div>
+                                  <strong>Talk channels</strong>
+                                  <small>
+                                    Manage the talk channels that feeds can send
+                                    into.
+                                  </small>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="shortcut-btn"
+                                  onClick={() => openChannelAudioRoomEditor()}
+                                >
+                                  Add talk channel
+                                </button>
+                              </div>
+                              {appData.rooms.length > 0 ? (
+                                <div className="channel-audio-room-list">
+                                  {appData.rooms.map((room) => (
+                                    <article
+                                      key={room.id}
+                                      className="channel-audio-room-item"
+                                    >
+                                      <div className="channel-audio-room-main">
+                                        <strong>{room.name}</strong>
+                                        <small>{room.id}</small>
+                                      </div>
+                                      <div className="channel-audio-room-meta">
+                                        <span>
+                                          Senders {room.senderRoleIds.length}
+                                        </span>
+                                        <span>
+                                          Listeners {room.receiverRoleIds.length}
+                                        </span>
+                                        <span>
+                                          Feeds{" "}
+                                          {channelAudioRoomCountById.get(
+                                            room.id,
+                                          ) ?? 0}
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="shortcut-btn"
+                                        onClick={() =>
+                                          openChannelAudioRoomEditor(room)
+                                        }
+                                      >
+                                        Edit
+                                      </button>
+                                    </article>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="station-empty">
+                                  No talk channels configured.
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="channel-audio-feed-toolbar">
+                              <div>
+                                <strong>Audio feeds</strong>
+                                <small>
+                                  Feed an interface input into one of the talk
+                                  channels.
+                                </small>
+                              </div>
+                              <button
+                                type="button"
+                                className="shortcut-btn"
+                                onClick={onCreateChannelAudioFeed}
+                              >
+                                Add feed
+                              </button>
+                            </div>
+                            {channelAudioFeeds.length === 0 ? (
+                              <p className="station-empty">
+                                No channel audio feeds configured.
+                              </p>
+                            ) : (
+                              <div className="channel-audio-feed-list">
+                                {channelAudioFeeds.map((feed, index) => {
+                                  const inputCount = feedInputChannelCount(
+                                    feed.inputDeviceId,
+                                  );
+                                  const status =
+                                    channelAudioFeedStatusById.get(feed.id);
+                                  return (
+                                    <article
+                                      key={feed.id}
+                                      className="channel-audio-feed-card"
+                                    >
+                                      <div className="channel-audio-feed-head">
+                                        <label className="streamdeck-control">
+                                          <span>Feed name</span>
+                                          <input
+                                            type="text"
+                                            value={feed.name}
+                                            onChange={(event) =>
+                                              onUpdateChannelAudioFeed(
+                                                feed.id,
+                                                {
+                                                  name:
+                                                    event.currentTarget.value,
+                                                },
+                                              )
+                                            }
+                                            placeholder={`Feed ${index + 1}`}
+                                          />
+                                        </label>
+                                        <label className="channel-audio-feed-enabled">
+                                          <input
+                                            type="checkbox"
+                                            checked={feed.enabled}
+                                            onChange={(event) =>
+                                              onUpdateChannelAudioFeed(
+                                                feed.id,
+                                                {
+                                                  enabled:
+                                                    event.currentTarget.checked,
+                                                },
+                                              )
+                                            }
+                                          />
+                                          <span>Send</span>
+                                        </label>
+                                      </div>
+
+                                      <div className="channel-audio-feed-grid">
+                                        <label className="streamdeck-control">
+                                          <span>Party line</span>
+                                          <select
+                                            value={feed.roomId}
+                                            onChange={(event) =>
+                                              onUpdateChannelAudioFeed(
+                                                feed.id,
+                                                {
+                                                  roomId:
+                                                    event.currentTarget.value,
+                                                },
+                                              )
+                                            }
+                                          >
+                                            <option value="">
+                                              Select party line
+                                            </option>
+                                            {channelAudioAllowedRooms.map(
+                                              (room) => (
+                                                <option
+                                                  key={room.id}
+                                                  value={room.id}
+                                                >
+                                                  {room.name}
+                                                </option>
+                                              ),
+                                            )}
+                                          </select>
+                                        </label>
+
+                                        <label className="streamdeck-control">
+                                          <span>Input device</span>
+                                          <select
+                                            value={feed.inputDeviceId}
+                                            onChange={(event) =>
+                                              onUpdateChannelAudioFeed(
+                                                feed.id,
+                                                {
+                                                  inputDeviceId:
+                                                    event.currentTarget.value,
+                                                  inputChannel: "all",
+                                                },
+                                              )
+                                            }
+                                          >
+                                            <option value="">
+                                              System default
+                                            </option>
+                                            {inputDevices.map((device) => (
+                                              <option
+                                                key={device.deviceId}
+                                                value={device.deviceId}
+                                              >
+                                                {device.label ||
+                                                  `Input ${device.deviceId.slice(0, 6)}`}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </label>
+
+                                        <label className="streamdeck-control">
+                                          <span>Interface input</span>
+                                          <select
+                                            aria-label={`Interface input for ${feed.name || `Feed ${index + 1}`}`}
+                                            value={feedInputChannelValue(feed)}
+                                            onChange={(event) =>
+                                              onUpdateChannelAudioFeed(
+                                                feed.id,
+                                                {
+                                                  inputChannel:
+                                                    event.currentTarget.value ===
+                                                    "all"
+                                                      ? "all"
+                                                      : Number(
+                                                          event.currentTarget
+                                                            .value,
+                                                        ),
+                                                },
+                                              )
+                                            }
+                                          >
+                                            <option value="all">
+                                              {feedAllInputsLabel(inputCount)}
+                                            </option>
+                                            {inputCount > 1
+                                              ? Array.from(
+                                                  { length: inputCount },
+                                                  (_, channelIndex) => (
+                                                    <option
+                                                      key={`${feed.id}-input-${channelIndex + 1}`}
+                                                      value={channelIndex + 1}
+                                                    >
+                                                      Input {channelIndex + 1}
+                                                    </option>
+                                                  ),
+                                                )
+                                              : null}
+                                          </select>
+                                        </label>
+                                      </div>
+
+                                      <div className="station-gain-control input-gain-control channel-audio-feed-gain">
+                                        <label htmlFor={`channel-feed-gain-${feed.id}`}>
+                                          {gainToDbLabel(feed.gain, INPUT_DB_MAX)}
+                                        </label>
+                                        <input
+                                          id={`channel-feed-gain-${feed.id}`}
+                                          type="range"
+                                          min={MUTE_POS}
+                                          max={INPUT_DB_MAX}
+                                          step={1}
+                                          value={gainToSlider(
+                                            feed.gain,
+                                            INPUT_DB_MAX,
+                                          )}
+                                          style={
+                                            {
+                                              "--fill": `${sliderFillPercent(feed.gain, INPUT_DB_MAX)}%`,
+                                            } as React.CSSProperties
+                                          }
+                                          onChange={(event) =>
+                                            onUpdateChannelAudioFeed(feed.id, {
+                                              gain: sliderToGain(
+                                                Number(
+                                                  event.currentTarget.value,
+                                                ),
+                                                INPUT_DB_MAX,
+                                              ),
+                                            })
+                                          }
+                                          aria-label={`Feed gain for ${feed.name || `Feed ${index + 1}`}`}
+                                        />
+                                      </div>
+
+                                      <div className="channel-audio-feed-footer">
+                                        <small
+                                          className={`channel-audio-feed-status ${status?.state || "idle"}`}
+                                        >
+                                          {status?.state === "live"
+                                            ? "Live"
+                                            : status?.state === "starting"
+                                              ? "Starting"
+                                              : status?.state === "error"
+                                                ? status.message ||
+                                                  "Feed error"
+                                                : "Idle"}
+                                        </small>
+                                        <button
+                                          type="button"
+                                          className="shortcut-btn shortcut-btn-clear"
+                                          onClick={() =>
+                                            onRemoveChannelAudioFeed(feed.id)
+                                          }
+                                        >
+                                          Remove
+                                        </button>
+                                      </div>
+                                    </article>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {channelAudioFeedRoomEditor ? (
+                              <div
+                                className="channel-audio-room-editor-backdrop"
+                                onClick={() => {
+                                  if (!channelAudioFeedRoomSaveBusy) {
+                                    setChannelAudioFeedRoomEditor(null);
+                                  }
+                                }}
+                              >
+                                <form
+                                  className="channel-audio-room-editor"
+                                  onClick={(event) => event.stopPropagation()}
+                                  onSubmit={(event) => {
+                                    event.preventDefault();
+                                    void saveChannelAudioRoomEditor();
+                                  }}
+                                >
+                                  <header className="channel-audio-room-editor-header">
+                                    <div>
+                                      <h4>
+                                        {channelAudioFeedRoomEditor.mode ===
+                                        "create"
+                                          ? "Add talk channel"
+                                          : "Edit talk channel"}
+                                      </h4>
+                                      <p>
+                                        Configure who can send, who can listen
+                                        and whether listening is forced.
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="station-modal-close"
+                                      onClick={() =>
+                                        setChannelAudioFeedRoomEditor(null)
+                                      }
+                                      disabled={channelAudioFeedRoomSaveBusy}
+                                      aria-label="Close talk channel editor"
+                                    >
+                                      ×
+                                    </button>
+                                  </header>
+
+                                  <div className="channel-audio-room-editor-fields">
+                                    <label className="streamdeck-control">
+                                      <span>Channel name *</span>
+                                      <input
+                                        type="text"
+                                        value={channelAudioFeedRoomEditor.name}
+                                        onChange={(event) =>
+                                          updateChannelAudioRoomEditor({
+                                            name: event.currentTarget.value,
+                                          })
+                                        }
+                                        placeholder="Music feed"
+                                        aria-invalid={
+                                          channelAudioFeedRoomSaveError !== "" &&
+                                          channelAudioFeedRoomEditor.name.trim() === ""
+                                        }
+                                      />
+                                    </label>
+
+                                    {channelAudioFeedRoomEditor.mode ===
+                                    "create" ? (
+                                      <label className="streamdeck-control">
+                                        <span>Channel ID</span>
+                                        <input
+                                          type="text"
+                                          value={
+                                            channelAudioFeedRoomEditor.id || ""
+                                          }
+                                          onChange={(event) =>
+                                            updateChannelAudioRoomEditor({
+                                              id: event.currentTarget.value,
+                                            })
+                                          }
+                                          placeholder="auto-generated"
+                                        />
+                                      </label>
+                                    ) : (
+                                      <label className="streamdeck-control">
+                                        <span>Channel ID</span>
+                                        <input
+                                          type="text"
+                                          value={
+                                            channelAudioFeedRoomEditor.sourceRoomId ||
+                                            channelAudioFeedRoomEditor.id ||
+                                            ""
+                                          }
+                                          readOnly
+                                        />
+                                      </label>
+                                    )}
+
+                                    <label className="streamdeck-control">
+                                      <span>Priority</span>
+                                      <select
+                                        value={
+                                          channelAudioFeedRoomEditor.priorityLevel
+                                        }
+                                        onChange={(event) =>
+                                          updateChannelAudioRoomEditor({
+                                            priorityLevel: Number(
+                                              event.currentTarget.value,
+                                            ),
+                                          })
+                                        }
+                                      >
+                                        <option value={0}>Low</option>
+                                        <option value={1}>Normal</option>
+                                        <option value={2}>High</option>
+                                        <option value={3}>Critical</option>
+                                      </select>
+                                    </label>
+                                  </div>
+
+                                  <div className="channel-audio-room-role-grid">
+                                    {(
+                                      [
+                                        ["senderRoleIds", "Can send"],
+                                        ["receiverRoleIds", "Can listen"],
+                                        ["forcedListenRoleIds", "Forced listen"],
+                                      ] as const
+                                    ).map(([key, label]) => (
+                                      <fieldset
+                                        key={key}
+                                        className="channel-audio-room-role-group"
+                                      >
+                                        <legend>{label}</legend>
+                                        {appData.roles.map((role) => (
+                                          <label
+                                            key={`${key}-${role.id}`}
+                                            className="channel-audio-room-role-option"
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={channelAudioFeedRoomEditor[
+                                                key
+                                              ].includes(role.id)}
+                                              onChange={() =>
+                                                toggleChannelAudioRoomEditorRole(
+                                                  key,
+                                                  role.id,
+                                                )
+                                              }
+                                            />
+                                            <span>{role.name}</span>
+                                          </label>
+                                        ))}
+                                      </fieldset>
+                                    ))}
+                                  </div>
+
+                                  {channelAudioFeedRoomSaveError ? (
+                                    <p className="streamdeck-error">
+                                      {channelAudioFeedRoomSaveError}
+                                    </p>
+                                  ) : null}
+
+                                  <footer className="channel-audio-room-editor-actions">
+                                    <button
+                                      type="button"
+                                      className="shortcut-btn shortcut-btn-clear"
+                                      onClick={() =>
+                                        setChannelAudioFeedRoomEditor(null)
+                                      }
+                                      disabled={channelAudioFeedRoomSaveBusy}
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      type="submit"
+                                      className="shortcut-btn"
+                                      disabled={channelAudioFeedRoomSaveBusy}
+                                    >
+                                      {channelAudioFeedRoomSaveBusy
+                                        ? "Saving..."
+                                        : "Save"}
+                                    </button>
+                                  </footer>
+                                </form>
+                              </div>
+                            ) : null}
+                          </div>
                         ) : null}
                       </div>
                     </div>

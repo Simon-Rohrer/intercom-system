@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Bootstrap } from "../../types";
 import { createRoom, deleteRoom, updateRoom } from "../../api";
+import { AdminCardHeader } from "./AdminCardHeader";
 import { RoleMultiSelect } from "./RoleMultiSelect";
 import { useAdminAction } from "./useAdminAction";
 
@@ -125,18 +126,11 @@ export function AdminRoomsCard({
 
   return (
     <div className="admin-card">
-      <div className="admin-card-header">
-        <div className="admin-card-title">Configuration · Party Lines</div>
-        <div className="admin-card-actions">
-          <button
-            className="admin-toggle-button"
-            onClick={() => setIsOpen((v) => !v)}
-            aria-expanded={isOpen}
-          >
-            {isOpen ? "Hide" : "Show"}
-          </button>
-        </div>
-      </div>
+      <AdminCardHeader
+        title="Configuration · Party Lines"
+        isOpen={isOpen}
+        onToggle={() => setIsOpen((v) => !v)}
+      />
       {isOpen ? (
         <div className="admin-card-body">
           <div className="admin-block">

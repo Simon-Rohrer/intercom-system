@@ -638,6 +638,16 @@ export async function getRaspberryPiStations(
   return res.json() as Promise<RaspberryPiStationsResponse>;
 }
 
+export async function getRaspberryPiStationStatuses(
+  token: string,
+): Promise<RaspberryPiStationsResponse> {
+  const res = await fetch(apiUrl("/api/raspberry-pis"), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("failed to load Raspberry Pi stations");
+  return res.json() as Promise<RaspberryPiStationsResponse>;
+}
+
 export async function getStatus(token: string): Promise<StatusResponse> {
   const res = await fetch(apiUrl("/api/status"), {
     headers: { Authorization: `Bearer ${token}` },

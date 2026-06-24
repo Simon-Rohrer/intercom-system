@@ -7,8 +7,11 @@ import type {
 import {
   adminLogin,
   bootstrap,
+  createRoom,
+  updateRoom,
   getStreamDeckSettings,
   getPublicBootstrap,
+  getRaspberryPiStationStatuses,
   getStatus,
   isUnauthorizedError,
   login,
@@ -30,6 +33,7 @@ import { RealtimeEventsPanel } from "./components/panels/RealtimeEventsPanel";
 import {
   tokenStorageKey,
   sessionSettingsStorageKey,
+  type ChannelAudioFeedSettings,
   type SessionSettings,
 } from "./app/settings";
 import {
@@ -64,6 +68,7 @@ import type {
   LoginConflict,
   Presence,
   PublicBootstrap,
+  RaspberryPiStationStatus,
   StreamDeckButtonConfig,
   StreamDeckSettings,
 } from "./types";
@@ -76,6 +81,15 @@ const adminPathname = "/admin";
 const loginPathname = "/login";
 const normalStatusPollIntervalMs = 3000;
 const lowPowerStatusPollIntervalMs = 15000;
+
+type ChannelAudioFeedRoomPayload = {
+  id?: string;
+  name: string;
+  priorityLevel: number;
+  senderRoleIds: string[];
+  receiverRoleIds: string[];
+  forcedListenRoleIds: string[];
+};
 const streamDeckSelectListenHoldMs = 2000;
 
 function isAdminPathname(pathname: string): boolean {
@@ -241,6 +255,10 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   const [roomListenerCounts, setRoomListenerCounts] = useState<
     Record<string, number>
   >({});
+  const [raspberryPiStations, setRaspberryPiStations] = useState<
+    RaspberryPiStationStatus[] | null
+  >(null);
+  const [raspberryPiStationsError, setRaspberryPiStationsError] = useState("");
   const [pendingTakeover, setPendingTakeover] = useState<
     | {
         username: string;
@@ -490,6 +508,10 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     audioGateThresholdDb: settings.audioGateThresholdDb,
     selectedInputGainFor: settings.selectedInputGainFor,
     onInputGainChange: settings.onInputGainChange,
+    channelAudioFeeds: settings.channelAudioFeeds,
+    inputDevices: audioDevices.inputDevices as Array<
+      MediaDeviceInfo & { inputChannels?: unknown }
+    >,
     initialListenRoomIds: storedSession.listenRoomIds ?? [],
     initialTalkRoomIds: storedSession.talkRoomIds ?? [],
     hadStoredSessionSettings:
@@ -555,6 +577,109 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       )?.label || "System default"
     );
   }, [audioDevices.outputDevices, settings.selectedOutputDeviceId]);
+
+  const createLocalChannelAudioFeed = useCallback(() => {
+    const now = Date.now().toString(36);
+    const id = `feed-${now}`;
+    const fallbackRoomId =
+      appData?.rooms.find((room) =>
+        roleAllowed(room.senderRoleIds, appData.self.roleId),
+      )?.id || "";
+    const nextFeed: ChannelAudioFeedSettings = {
+      id,
+      name: "Music feed",
+      roomId: fallbackRoomId,
+      inputDeviceId: settings.selectedInputDeviceId,
+      inputChannel: selectedInputChannel,
+      gain: 1,
+      enabled: false,
+    };
+    settings.setChannelAudioFeeds((prev) => [...prev, nextFeed]);
+  }, [
+    appData,
+    selectedInputChannel,
+    settings,
+  ]);
+
+  const updateChannelAudioFeed = useCallback(
+    (
+      feedId: string,
+      patch: Partial<Omit<ChannelAudioFeedSettings, "id">>,
+    ) => {
+      settings.setChannelAudioFeeds((prev) =>
+        prev.map((feed) =>
+          feed.id === feedId
+            ? {
+                ...feed,
+                ...patch,
+              }
+            : feed,
+        ),
+      );
+    },
+    [settings],
+  );
+
+  const removeChannelAudioFeed = useCallback(
+    (feedId: string) => {
+      settings.setChannelAudioFeeds((prev) =>
+        prev.filter((feed) => feed.id !== feedId),
+      );
+    },
+    [settings],
+  );
+
+  const createChannelAudioFeedRoom = useCallback(
+    async (payload: ChannelAudioFeedRoomPayload) => {
+      if (!token || !appData) {
+        throw new Error("No active session.");
+      }
+      const trimmedName = payload.name.trim() || "Music feed";
+      const slug =
+        (payload.id || trimmedName)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 32) || "audio-feed";
+      let id = slug;
+      const existingRoomIds = new Set(appData.rooms.map((room) => room.id));
+      if (existingRoomIds.has(id)) {
+        id = `${slug}-${Date.now().toString(36)}`;
+      }
+      await createRoom(token, settings.adminPinGuard, {
+        id,
+        name: trimmedName,
+        priorityLevel: payload.priorityLevel,
+        senderRoleIds: payload.senderRoleIds,
+        receiverRoleIds: payload.receiverRoleIds,
+        forcedListenRoleIds: payload.forcedListenRoleIds,
+      });
+      const updated = await bootstrap(token);
+      setAppData(updated);
+      setPublicData(updated);
+      return id;
+    },
+    [appData, settings.adminPinGuard, token],
+  );
+
+  const updateChannelAudioFeedRoom = useCallback(
+    async (roomId: string, payload: ChannelAudioFeedRoomPayload) => {
+      if (!token || !appData) {
+        throw new Error("No active session.");
+      }
+      await updateRoom(token, settings.adminPinGuard, roomId, {
+        name: payload.name.trim() || "Music feed",
+        priorityLevel: payload.priorityLevel,
+        senderRoleIds: payload.senderRoleIds,
+        receiverRoleIds: payload.receiverRoleIds,
+        forcedListenRoleIds: payload.forcedListenRoleIds,
+      });
+      const updated = await bootstrap(token);
+      setAppData(updated);
+      setPublicData(updated);
+    },
+    [appData, settings.adminPinGuard, token],
+  );
 
   const roleNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -1191,6 +1316,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   useEffect(() => {
     if (!token || authMode !== "operator") {
       setRoomListenerCounts({});
+      setRaspberryPiStations(null);
+      setRaspberryPiStationsError("");
       return;
     }
     let cancelled = false;
@@ -1202,8 +1329,22 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         const status = await getStatus(token);
         if (cancelled) return;
         setRoomListenerCounts(status.roomListenerCounts ?? {});
-      } catch {
+      } catch (error) {
         if (cancelled) return;
+        console.warn("Failed to load status", error);
+      }
+      try {
+        const piStatus = await getRaspberryPiStationStatuses(token);
+        if (cancelled) return;
+        setRaspberryPiStations(piStatus.stations);
+        setRaspberryPiStationsError("");
+      } catch (error) {
+        if (cancelled) return;
+        setRaspberryPiStationsError(
+          error instanceof Error
+            ? error.message
+            : "failed to load Raspberry Pi stations",
+        );
       } finally {
         inFlight = false;
       }
@@ -2310,6 +2451,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         setAlwaysOn={session.setAlwaysOn}
         lastCompanionCommand={session.lastCompanionCommand}
         chatAndSignalPanel={chatAndSignalBlock}
+        raspberryPiStations={raspberryPiStations}
+        raspberryPiStationsError={raspberryPiStationsError}
         showDebug={showDebug}
         realtimeDebugBlock={realtimeDebugBlock}
         enableDirectPpt={settings.enableDirectPpt}
@@ -2366,6 +2509,13 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         isLocalMonitorActive={session.isLocalMonitorActive}
         onToggleLocalMonitor={() => void session.toggleLocalMonitor()}
         onInputGainChange={settings.onInputGainChange}
+        channelAudioFeeds={settings.channelAudioFeeds}
+        channelAudioFeedStatuses={session.channelAudioFeedStatuses}
+        onCreateChannelAudioFeed={createLocalChannelAudioFeed}
+        onUpdateChannelAudioFeed={updateChannelAudioFeed}
+        onRemoveChannelAudioFeed={removeChannelAudioFeed}
+        onCreateChannelAudioFeedRoom={createChannelAudioFeedRoom}
+        onUpdateChannelAudioFeedRoom={updateChannelAudioFeedRoom}
         audioGateEnabled={settings.audioGateEnabled}
         onAudioGateEnabledChange={settings.setAudioGateEnabled}
         audioGateThresholdDb={settings.audioGateThresholdDb}

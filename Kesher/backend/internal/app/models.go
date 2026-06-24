@@ -304,6 +304,15 @@ type RoomMatrixEvent struct {
 	ListenRoomIDs []string `json:"listenRoomIds"`
 	TalkRoomIDs   []string `json:"talkRoomIds"`
 }
+
+type ChannelAudioFeedEvent struct {
+	SourceID string `json:"sourceId"`
+	RoomID   string `json:"roomId"`
+	TrackID  string `json:"trackId"`
+	StreamID string `json:"streamId,omitempty"`
+	Active   bool   `json:"active"`
+}
+
 type PresenceState struct {
 	UserID          string   `json:"userId"`
 	Username        string   `json:"username"`

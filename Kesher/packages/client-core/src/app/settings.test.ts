@@ -64,6 +64,7 @@ describe("settings helpers", () => {
       inputGainByDeviceId: {},
       roomGainById: {},
       directGainByUserId: {},
+      channelAudioFeeds: [],
     });
   });
 
@@ -88,6 +89,18 @@ describe("settings helpers", () => {
         inputGainByDeviceId: { "mic-1": 0.9, broken: -3 },
         roomGainById: { a: 1.5, b: -2 },
         directGainByUserId: { u1: 5, u2: 0.5 },
+        channelAudioFeeds: [
+          {
+            id: "feed-1",
+            name: "Music",
+            roomId: "stage",
+            inputDeviceId: "scarlett",
+            inputChannel: 99,
+            gain: 99,
+            enabled: true,
+          },
+          { id: "", name: "broken" },
+        ],
       }),
     );
 
@@ -106,6 +119,17 @@ describe("settings helpers", () => {
       inputGainByDeviceId: { "mic-1": 0.9, broken: 0 },
       roomGainById: { a: 1.5, b: 0 },
       directGainByUserId: { u1: 2, u2: 0.5 },
+      channelAudioFeeds: [
+        {
+          id: "feed-1",
+          name: "Music",
+          roomId: "stage",
+          inputDeviceId: "scarlett",
+          inputChannel: 32,
+          gain: 16,
+          enabled: true,
+        },
+      ],
     });
   });
 

@@ -1,7 +1,17 @@
 export function sourceUserIDFromTrackID(trackID: string): string {
   const prefix = "audio-user-";
   if (!trackID.startsWith(prefix)) return "";
-  return trackID.slice(prefix.length);
+  const raw = trackID.slice(prefix.length);
+  const sourceMarker = "--source-";
+  const markerIndex = raw.indexOf(sourceMarker);
+  return markerIndex >= 0 ? raw.slice(0, markerIndex) : raw;
+}
+
+export function sourceIDFromTrackID(trackID: string): string {
+  const marker = "--source-";
+  const markerIndex = trackID.indexOf(marker);
+  if (markerIndex < 0) return "main";
+  return trackID.slice(markerIndex + marker.length) || "main";
 }
 
 export function sourceUserIDFromRemoteSDPMid(

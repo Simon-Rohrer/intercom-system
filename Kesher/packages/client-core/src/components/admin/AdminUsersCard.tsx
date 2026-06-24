@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Bootstrap } from "../../types";
+import { AdminCardHeader } from "./AdminCardHeader";
 import { UsersPanel } from "./UsersPanel";
 
 type AdminUsersCardProps = {
@@ -19,18 +20,11 @@ export function AdminUsersCard({
 
   return (
     <div className="admin-card">
-      <div className="admin-card-header">
-        <div className="admin-card-title">Configuration · Users</div>
-        <div className="admin-card-actions">
-          <button
-            className="admin-toggle-button"
-            onClick={() => setIsOpen((v) => !v)}
-            aria-expanded={isOpen}
-          >
-            {isOpen ? "Hide" : "Show"}
-          </button>
-        </div>
-      </div>
+      <AdminCardHeader
+        title="Configuration · Users"
+        isOpen={isOpen}
+        onToggle={() => setIsOpen((v) => !v)}
+      />
       {isOpen ? (
         <div className="admin-card-body">
           <UsersPanel

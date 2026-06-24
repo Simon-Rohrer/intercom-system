@@ -7,6 +7,7 @@ import type {
 	ConfigurationDocument,
 	ConfigurationSection,
 } from "../../types";
+import { AdminCardHeader } from "./AdminCardHeader";
 
 type AdminShowfileCardProps = {
 	token: string;
@@ -253,18 +254,11 @@ export function AdminShowfileCard({
 
 	return (
 		<div className="admin-card">
-			<div className="admin-card-header">
-				<div className="admin-card-title">Configuration · Showfile</div>
-				<div className="admin-card-actions">
-					<button
-						className="admin-toggle-button"
-						onClick={() => setIsOpen((value) => !value)}
-						aria-expanded={isOpen}
-					>
-						{isOpen ? "Hide" : "Show"}
-					</button>
-				</div>
-			</div>
+			<AdminCardHeader
+				title="Configuration · Showfile"
+				isOpen={isOpen}
+				onToggle={() => setIsOpen((value) => !value)}
+			/>
 			{isOpen ? (
 				<div className="admin-card-body">
 					<div className="admin-block">

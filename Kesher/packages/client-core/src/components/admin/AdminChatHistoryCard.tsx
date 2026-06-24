@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { clearChatHistory, updateAckSettings } from "../../api";
 import type { Bootstrap } from "../../types";
+import { AdminCardHeader } from "./AdminCardHeader";
 
 type AdminChatHistoryCardProps = {
   token: string;
@@ -69,18 +70,11 @@ export function AdminChatHistoryCard({
 
   return (
     <div className="admin-card">
-      <div className="admin-card-header">
-        <div className="admin-card-title">Chat · Maintenance</div>
-        <div className="admin-card-actions">
-          <button
-            className="admin-toggle-button"
-            onClick={() => setIsOpen((v) => !v)}
-            aria-expanded={isOpen}
-          >
-            {isOpen ? "Hide" : "Show"}
-          </button>
-        </div>
-      </div>
+      <AdminCardHeader
+        title="Chat · Maintenance"
+        isOpen={isOpen}
+        onToggle={() => setIsOpen((v) => !v)}
+      />
       {isOpen ? (
         <div className="admin-card-body">
           <div className="admin-block admin-chat-block">

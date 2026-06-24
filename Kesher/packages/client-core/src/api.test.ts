@@ -10,6 +10,7 @@ import {
   duplicateRole,
   exportConfiguration,
   getPublicBootstrap,
+  getRaspberryPiStationStatuses,
   getRaspberryPiStations,
   getStreamDeckSettings,
   importConfiguration,
@@ -233,6 +234,32 @@ const server = setupServer(
       offlineAfterMs: 30000,
     });
   }),
+  http.get("http://localhost/api/raspberry-pis", ({ request }) => {
+    const auth = request.headers.get("authorization");
+    if (!auth) return new HttpResponse("unauthorized", { status: 401 });
+    return HttpResponse.json({
+      stations: [
+        {
+          deviceId: "pi-1",
+          name: "Kamera-1",
+          ipAddress: "192.168.1.51",
+          roleId: "camera",
+          lowPowerMode: true,
+          launcherVersion: "2",
+          browserStatus: "running",
+          loginStatus: "waiting_for_intercom",
+          lastSeenUnixMs: 1,
+          updatedAtUnixMs: 1,
+          online: true,
+          intercomConnected: true,
+          effectiveStatus: "intercom_connected",
+          secondsSinceSeen: 2,
+        },
+      ],
+      timestampUnixMs: 3,
+      offlineAfterMs: 30000,
+    });
+  }),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -287,6 +314,12 @@ describe("api helpers", () => {
     const data = await getRaspberryPiStations("token-123", "123456");
     expect(data.stations[0]?.deviceId).toBe("pi-1");
     expect(data.stations[0]?.online).toBe(true);
+  });
+
+  it("loads Raspberry Pi station statuses for operators", async () => {
+    const data = await getRaspberryPiStationStatuses("token-123");
+    expect(data.stations[0]?.deviceId).toBe("pi-1");
+    expect(data.stations[0]?.intercomConnected).toBe(true);
   });
 
   it("logs in and returns token + user", async () => {

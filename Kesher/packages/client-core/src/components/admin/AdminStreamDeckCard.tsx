@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { resetAdminRoleStreamDeckSettings } from "../../api";
 import type { Bootstrap } from "../../types";
+import { AdminCardHeader } from "./AdminCardHeader";
 
 type AdminStreamDeckCardProps = {
   token: string;
@@ -42,18 +43,11 @@ export function AdminStreamDeckCard({
 
   return (
     <div className="admin-card">
-      <div className="admin-card-header">
-        <div className="admin-card-title">Stream Deck Profiles</div>
-        <div className="admin-card-actions">
-          <button
-            className="admin-toggle-button"
-            onClick={() => setIsOpen((value) => !value)}
-            aria-expanded={isOpen}
-          >
-            {isOpen ? "Hide" : "Show"}
-          </button>
-        </div>
-      </div>
+      <AdminCardHeader
+        title="Stream Deck Profiles"
+        isOpen={isOpen}
+        onToggle={() => setIsOpen((value) => !value)}
+      />
       {isOpen ? (
         <div className="admin-card-body">
           <p>

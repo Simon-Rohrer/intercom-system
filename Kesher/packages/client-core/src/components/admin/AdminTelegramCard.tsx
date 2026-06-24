@@ -8,6 +8,7 @@ import {
 } from "../../api";
 import type { Bootstrap } from "../../types";
 import type { TelegramMapping } from "../../types";
+import { AdminCardHeader } from "./AdminCardHeader";
 import { useAdminAction } from "./useAdminAction";
 
 type AdminTelegramCardProps = {
@@ -114,18 +115,11 @@ export function AdminTelegramCard({
 
   return (
     <div className="admin-card">
-      <div className="admin-card-header">
-        <div className="admin-card-title">Telegram Bot Integration</div>
-        <div className="admin-card-actions">
-          <button
-            className="admin-toggle-button"
-            onClick={() => setIsOpen((v) => !v)}
-            aria-expanded={isOpen}
-          >
-            {isOpen ? "Hide" : "Show"}
-          </button>
-        </div>
-      </div>
+      <AdminCardHeader
+        title="Telegram Bot Integration"
+        isOpen={isOpen}
+        onToggle={() => setIsOpen((v) => !v)}
+      />
       {isOpen ? (
         <div className="admin-card-body">
           <div className="admin-block">

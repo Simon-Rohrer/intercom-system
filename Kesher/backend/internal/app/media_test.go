@@ -142,3 +142,34 @@ func TestMediaManagerCanClearIdleRoomFallbackSuppression(t *testing.T) {
 		t.Fatal("expected idle room fallback suppression to be cleared")
 	}
 }
+
+func TestMediaManagerRoutesChannelAudioFeedToConfiguredRoom(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	hub := NewHub(store, logger)
+	media := NewMediaManager(hub, logger)
+	source := &client{
+		session:     Session{Token: "source", RoleID: "audio"},
+		user:        User{ID: "u1", Username: "source", RoleID: "audio"},
+		listenRooms: toRoomSet([]string{"foh"}),
+		talkRooms:   toRoomSet([]string{"foh"}),
+		send:        make(chan WSOutbound, 2),
+	}
+	hub.Add(source)
+
+	sourceKey := channelAudioFeedSourceKey("source", "music")
+	media.SetChannelAudioFeed("source", "music", "stage", "track-1", true)
+	snapshot := media.buildHubSnapshotLocked()
+	rooms := media.talkRoomsForSourceFromSnapshotLocked(sourceKey, snapshot)
+
+	if _, ok := rooms["stage"]; !ok {
+		t.Fatalf("expected feed to route to configured room, got %#v", rooms)
+	}
+	if _, ok := rooms["foh"]; ok {
+		t.Fatalf("feed should not inherit the user's normal talk room, got %#v", rooms)
+	}
+}

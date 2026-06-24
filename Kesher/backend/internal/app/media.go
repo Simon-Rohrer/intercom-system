@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,9 +31,20 @@ type routedDest struct {
 }
 
 type mediaSourceTrack struct {
-	codec  webrtc.RTPCodecCapability
-	userID string
-	dests  map[string]*routedDest // key: destination peer token
+	codec      webrtc.RTPCodecCapability
+	sourceKey  string
+	ownerToken string
+	sourceID   string
+	userID     string
+	dests      map[string]*routedDest // key: destination peer token
+}
+
+type channelAudioFeedRouting struct {
+	ownerToken string
+	sourceID   string
+	roomID     string
+	trackID    string
+	active     bool
 }
 
 type mediaSnapshotClient struct {
@@ -86,7 +98,9 @@ type MediaManager struct {
 	logger                     *slog.Logger
 	hub                        *Hub
 	peers                      map[string]*mediaPeer
-	sources                    map[string]*mediaSourceTrack   // sourceToken -> track
+	sources                    map[string]*mediaSourceTrack // sourceToken -> track
+	channelAudioFeeds          map[string]channelAudioFeedRouting
+	channelAudioFeedTrackKeys  map[string]string
 	broadcastActive            map[string]map[string]struct{} // sourceToken -> broadcastGroupID set
 	directActive               map[string]string              // sourceToken -> targetUserID
 	idleRoomFallbackSuppressed map[string]struct{}            // sourceToken -> suppressed after direct/broadcast release while mic is idle
@@ -122,6 +136,41 @@ type MediaManager struct {
 
 const syncRoutingDebounce = 1 * time.Millisecond
 const renegotiationDebounce = 5 * time.Millisecond
+const maxBrowserAudioSourcesPerPeer = 9
+
+const mainAudioSourceID = "main"
+
+func channelAudioFeedSourceKey(ownerToken, sourceID string) string {
+	return ownerToken + "#feed:" + sourceID
+}
+
+func channelAudioFeedTrackKey(ownerToken, trackID string) string {
+	return ownerToken + "\x00" + trackID
+}
+
+func sanitizeChannelAudioFeedSourceID(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-' || r == '_':
+			b.WriteRune(r)
+		}
+		if b.Len() >= 64 {
+			break
+		}
+	}
+	return b.String()
+}
 
 // buildWebRTCAPI creates a Pion webrtc.API tuned for low-latency audio-only SFU.
 // It registers only the Opus codec, disables mDNS for faster ICE, and uses a
@@ -180,6 +229,8 @@ func NewMediaManager(hub *Hub, logger *slog.Logger) *MediaManager {
 		hub:                        hub,
 		peers:                      make(map[string]*mediaPeer),
 		sources:                    make(map[string]*mediaSourceTrack),
+		channelAudioFeeds:          make(map[string]channelAudioFeedRouting),
+		channelAudioFeedTrackKeys:  make(map[string]string),
 		broadcastActive:            make(map[string]map[string]struct{}),
 		directActive:               make(map[string]string),
 		idleRoomFallbackSuppressed: make(map[string]struct{}),
@@ -205,12 +256,14 @@ func (m *MediaManager) EnsurePeer(token string, user User) error {
 	if err != nil {
 		return err
 	}
-	_, err = pc.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, webrtc.RTPTransceiverInit{
-		Direction: webrtc.RTPTransceiverDirectionRecvonly,
-	})
-	if err != nil {
-		_ = pc.Close()
-		return err
+	for i := 0; i < maxBrowserAudioSourcesPerPeer; i++ {
+		_, err = pc.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio, webrtc.RTPTransceiverInit{
+			Direction: webrtc.RTPTransceiverDirectionRecvonly,
+		})
+		if err != nil {
+			_ = pc.Close()
+			return err
+		}
 	}
 	peer := &mediaPeer{
 		token:   token,
@@ -245,8 +298,8 @@ func (m *MediaManager) EnsurePeer(token string, user User) error {
 
 	// Pre-attach existing source tracks to this new peer so audio can flow
 	// instantly when routing gates open (no renegotiation needed later).
-	for sourceToken := range m.sources {
-		m.recomputeSourceRoutingLocked(sourceToken)
+	for sourceKey := range m.sources {
+		m.recomputeSourceRoutingLocked(sourceKey)
 	}
 
 	return nil
@@ -425,7 +478,25 @@ func (m *MediaManager) RemovePeer(token string) {
 	delete(m.broadcastActive, token)
 	delete(m.directActive, token)
 	delete(m.idleRoomFallbackSuppressed, token)
-	delete(m.sources, token)
+	sourceKeysToRemove := make([]string, 0, 1)
+	for sourceKey, src := range m.sources {
+		if src.ownerToken == token {
+			sourceKeysToRemove = append(sourceKeysToRemove, sourceKey)
+		}
+	}
+	for _, sourceKey := range sourceKeysToRemove {
+		delete(m.sources, sourceKey)
+	}
+	for sourceKey, feed := range m.channelAudioFeeds {
+		if feed.ownerToken == token {
+			delete(m.channelAudioFeeds, sourceKey)
+		}
+	}
+	for trackKey, sourceKey := range m.channelAudioFeedTrackKeys {
+		if strings.HasPrefix(trackKey, token+"\x00") || strings.HasPrefix(sourceKey, token+"#feed:") {
+			delete(m.channelAudioFeedTrackKeys, trackKey)
+		}
+	}
 
 	// Clean up per-dest entries referencing this peer from all sources.
 	for _, src := range m.sources {
@@ -444,7 +515,13 @@ func (m *MediaManager) RemovePeer(token string) {
 	}
 
 	for _, p := range m.peers {
-		if m.removeSenderLocked(p, token) {
+		removed := false
+		for _, sourceKey := range sourceKeysToRemove {
+			if m.removeSenderLocked(p, sourceKey) {
+				removed = true
+			}
+		}
+		if removed {
 			m.requestRenegotiationLocked(p)
 		}
 	}
@@ -457,13 +534,24 @@ func (m *MediaManager) handleRemoteTrack(sourcePeer *mediaPeer, remote *webrtc.T
 	codec := remote.Codec().RTPCodecCapability
 
 	m.mu.Lock()
-	src := &mediaSourceTrack{
-		codec:  codec,
-		userID: sourcePeer.userID,
-		dests:  make(map[string]*routedDest),
+	sourceKey := sourcePeer.token
+	sourceID := mainAudioSourceID
+	if mappedSourceKey, ok := m.channelAudioFeedTrackKeys[channelAudioFeedTrackKey(sourcePeer.token, remote.ID())]; ok {
+		sourceKey = mappedSourceKey
+		if feed, feedOK := m.channelAudioFeeds[mappedSourceKey]; feedOK {
+			sourceID = feed.sourceID
+		}
 	}
-	m.sources[sourcePeer.token] = src
-	m.recomputeSourceRoutingLocked(sourcePeer.token)
+	src := &mediaSourceTrack{
+		codec:      codec,
+		sourceKey:  sourceKey,
+		ownerToken: sourcePeer.token,
+		sourceID:   sourceID,
+		userID:     sourcePeer.userID,
+		dests:      make(map[string]*routedDest),
+	}
+	m.sources[sourceKey] = src
+	m.recomputeSourceRoutingLocked(sourceKey)
 	m.mu.Unlock()
 
 	buf := make([]byte, 2048)
@@ -476,7 +564,7 @@ func (m *MediaManager) handleRemoteTrack(sourcePeer *mediaPeer, remote *webrtc.T
 		// routing changes (which need a full Lock) remain infrequent.
 		m.mu.RLock()
 		hasNativeDest := false
-		if s := m.sources[sourcePeer.token]; s != nil {
+		if s := m.sources[sourceKey]; s != nil {
 			for destToken, dest := range s.dests {
 				if dest.gate.Load() {
 					if _, err := dest.localTrack.Write(buf[:n]); err != nil {
@@ -498,9 +586,9 @@ func (m *MediaManager) handleRemoteTrack(sourcePeer *mediaPeer, remote *webrtc.T
 	}
 
 	m.mu.Lock()
-	delete(m.sources, sourcePeer.token)
+	delete(m.sources, sourceKey)
 	for _, p := range m.peers {
-		if m.removeSenderLocked(p, sourcePeer.token) {
+		if m.removeSenderLocked(p, sourceKey) {
 			m.requestRenegotiationLocked(p)
 		}
 	}
@@ -575,6 +663,42 @@ func (m *MediaManager) SetIdleRoomFallbackSuppressed(sourceToken string, suppres
 	m.recomputeSourceRoutingLocked(sourceToken)
 }
 
+func (m *MediaManager) SetChannelAudioFeed(sourceToken, sourceID, roomID, trackID string, active bool) string {
+	sourceID = sanitizeChannelAudioFeedSourceID(sourceID)
+	roomID = strings.TrimSpace(roomID)
+	trackID = strings.TrimSpace(trackID)
+	if sourceID == "" {
+		return ""
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sourceKey := channelAudioFeedSourceKey(sourceToken, sourceID)
+	if active {
+		m.channelAudioFeeds[sourceKey] = channelAudioFeedRouting{
+			ownerToken: sourceToken,
+			sourceID:   sourceID,
+			roomID:     roomID,
+			trackID:    trackID,
+			active:     true,
+		}
+		if trackID != "" {
+			m.channelAudioFeedTrackKeys[channelAudioFeedTrackKey(sourceToken, trackID)] = sourceKey
+		}
+	} else {
+		if current, ok := m.channelAudioFeeds[sourceKey]; ok && roomID == "" {
+			roomID = current.roomID
+		}
+		delete(m.channelAudioFeeds, sourceKey)
+		for trackKey, mappedSourceKey := range m.channelAudioFeedTrackKeys {
+			if mappedSourceKey == sourceKey {
+				delete(m.channelAudioFeedTrackKeys, trackKey)
+			}
+		}
+	}
+	m.recomputeSourceRoutingLocked(sourceKey)
+	return roomID
+}
+
 func (m *MediaManager) recomputeAllSourcesLocked() {
 	for sourceToken := range m.sources {
 		m.recomputeSourceRoutingLocked(sourceToken)
@@ -631,15 +755,19 @@ func (m *MediaManager) recomputeSourceRoutingWithSnapshotLocked(sourceToken stri
 	_, idleRoomFallbackSuppressed := m.idleRoomFallbackSuppressed[sourceToken]
 
 	for _, p := range m.peers {
-		if p.token == sourceToken {
+		if p.token == src.ownerToken {
 			continue
 		}
 
 		// Ensure a per-destination track exists (pre-attachment).
 		if _, exists := src.dests[p.token]; !exists {
+			localTrackID := fmt.Sprintf("audio-user-%s", src.userID)
+			if src.sourceID != "" && src.sourceID != mainAudioSourceID {
+				localTrackID = fmt.Sprintf("%s--source-%s", localTrackID, src.sourceID)
+			}
 			localTrack, err := webrtc.NewTrackLocalStaticRTP(
 				src.codec,
-				fmt.Sprintf("audio-user-%s", src.userID),
+				localTrackID,
 				"intercom",
 			)
 			if err != nil {
@@ -692,6 +820,17 @@ func (m *MediaManager) buildHubSnapshotLocked() mediaHubSnapshot {
 }
 
 func (m *MediaManager) talkRoomsForSourceFromSnapshotLocked(sourceToken string, snapshot mediaHubSnapshot) map[string]struct{} {
+	if feed, ok := m.channelAudioFeeds[sourceToken]; ok && feed.active && feed.roomID != "" {
+		sourceClient, ok := snapshot.clients[feed.ownerToken]
+		if !ok {
+			return map[string]struct{}{}
+		}
+		allowed, err := m.hub.store.RoomAllowsSenderRole(context.Background(), feed.roomID, sourceClient.roleID)
+		if err != nil || !allowed {
+			return map[string]struct{}{}
+		}
+		return map[string]struct{}{feed.roomID: {}}
+	}
 	sourceClient, ok := snapshot.clients[sourceToken]
 	if !ok || len(sourceClient.talkRooms) == 0 {
 		return map[string]struct{}{}

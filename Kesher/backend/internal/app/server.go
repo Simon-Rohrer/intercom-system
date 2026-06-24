@@ -3423,6 +3423,7 @@ func NewServer(cfg Config) (*Server, error) {
 	mux.HandleFunc("/api/logout", s.withAuth(s.handleLogout))
 	mux.HandleFunc("/api/bootstrap", s.withAuth(s.handleBootstrap))
 	mux.HandleFunc("/api/status", s.withAuth(s.handleStatus))
+	mux.HandleFunc("/api/raspberry-pis", s.withAuth(s.handleRaspberryPis))
 	mux.HandleFunc("/api/user/stream-deck/settings", s.withAuth(s.handleUserStreamDeckSettings))
 	mux.HandleFunc("/api/user/stream-deck/preview", s.withAuth(s.handleUserStreamDeckPreview))
 	mux.HandleFunc("/api/admin/stream-deck/settings", s.withAuth(s.handleAdminRoleStreamDeckSettings))
@@ -3638,22 +3639,14 @@ func raspberryPiEffectiveStatus(record RaspberryPiHeartbeatRecord, online, inter
 	return "launcher_online"
 }
 
-func (s *Server) handleAdminRaspberryPis(w http.ResponseWriter, r *http.Request, session Session) {
-	if !s.requireAdmin(w, r, session) {
-		return
-	}
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	records, err := s.store.ListRaspberryPiHeartbeats(r.Context())
+func (s *Server) buildRaspberryPiStationsResponse(ctx context.Context) (RaspberryPiStationsResponse, error) {
+	records, err := s.store.ListRaspberryPiHeartbeats(ctx)
 	if err != nil {
-		s.internalErr(w, err)
-		return
+		return RaspberryPiStationsResponse{}, err
 	}
 	activeClients := map[string]ActiveClient{}
 	if s.hub != nil {
-		for _, client := range s.hub.GetActiveClients(r.Context()) {
+		for _, client := range s.hub.GetActiveClients(ctx) {
 			activeClients[raspberryPiActiveClientKey(client.Username, client.RoleID)] = client
 		}
 	}
@@ -3678,11 +3671,40 @@ func (s *Server) handleAdminRaspberryPis(w http.ResponseWriter, r *http.Request,
 			SecondsSinceSeen:           ageMs / 1000,
 		})
 	}
-	s.writeJSON(w, http.StatusOK, RaspberryPiStationsResponse{
+	return RaspberryPiStationsResponse{
 		Stations:        stations,
 		TimestampUnixMs: nowMs,
 		OfflineAfterMs:  offlineAfterMs,
-	})
+	}, nil
+}
+
+func (s *Server) handleRaspberryPis(w http.ResponseWriter, r *http.Request, _ Session) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	response, err := s.buildRaspberryPiStationsResponse(r.Context())
+	if err != nil {
+		s.internalErr(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) handleAdminRaspberryPis(w http.ResponseWriter, r *http.Request, session Session) {
+	if !s.requireAdmin(w, r, session) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	response, err := s.buildRaspberryPiStationsResponse(r.Context())
+	if err != nil {
+		s.internalErr(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, response)
 }
 
 type RealtimeStatsResponse struct {
@@ -5646,6 +5668,44 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			}
 			// Notify Companion clients of listen-state changes so button images update immediately
 			s.publishCompanionPresenceUpdate(r.Context(), session.RoleID)
+		case "channel_audio_feed_state":
+			raw, _ := json.Marshal(in.Data)
+			var e ChannelAudioFeedEvent
+			_ = json.Unmarshal(raw, &e)
+			e.SourceID = sanitizeChannelAudioFeedSourceID(e.SourceID)
+			e.RoomID = strings.TrimSpace(e.RoomID)
+			e.TrackID = strings.TrimSpace(e.TrackID)
+			if e.SourceID == "" {
+				continue
+			}
+			if e.Active {
+				if e.RoomID == "" {
+					continue
+				}
+				if allowed, err := s.store.RoomAllowsSenderRole(r.Context(), e.RoomID, session.RoleID); err != nil || !allowed {
+					continue
+				}
+			}
+			roomID := ""
+			if s.media != nil {
+				roomID = s.media.SetChannelAudioFeed(session.Token, e.SourceID, e.RoomID, e.TrackID, e.Active)
+			}
+			if roomID == "" {
+				roomID = e.RoomID
+			}
+			if roomID == "" {
+				continue
+			}
+			body := "always_off"
+			if e.Active {
+				body = "always_on"
+			}
+			s.hub.RouteEvent(session.Token, "voice_state", RoutedEvent{
+				Scope:    "room",
+				TargetID: roomID,
+				Body:     body,
+				Source:   e.SourceID,
+			})
 		case "chat":
 			s.routeInbound(r.Context(), session, in, "chat")
 		case "chat_ack":

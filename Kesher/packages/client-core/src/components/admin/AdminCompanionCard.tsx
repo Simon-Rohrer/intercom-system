@@ -9,6 +9,7 @@ import type {
   CompanionAdminSummary,
   CompanionPublishedProfileSummary,
 } from "../../types";
+import { AdminCardHeader } from "./AdminCardHeader";
 
 type AdminCompanionCardProps = {
   token: string;
@@ -148,18 +149,11 @@ export function AdminCompanionCard({
 
   return (
     <div className="admin-card">
-      <div className="admin-card-header">
-        <div className="admin-card-title">Integration · Companion</div>
-        <div className="admin-card-actions">
-          <button
-            className="admin-toggle-button"
-            onClick={() => setIsOpen((value) => !value)}
-            aria-expanded={isOpen}
-          >
-            {isOpen ? "Hide" : "Show"}
-          </button>
-        </div>
-      </div>
+      <AdminCardHeader
+        title="Integration · Companion"
+        isOpen={isOpen}
+        onToggle={() => setIsOpen((value) => !value)}
+      />
       {isOpen ? (
         <div className="admin-card-body">
           <div className="admin-block">

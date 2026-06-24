@@ -3,13 +3,14 @@
  * output-device routing (setSinkId), volume gain, and the incoming-audio
  * activity indicator.
  *
- * The caller is responsible for supplying `resolveGainForSourceUser` and
- * for setting `remoteSourceUserIdRef` entries when `pc.ontrack` fires.
+ * The caller is responsible for supplying `resolveGainForRemoteSource` and
+ * for setting `remoteSourceRef` entries when `pc.ontrack` fires.
  *
  * Exposed refs are shared with the WebRTC `ontrack` handler so the caller can
  * attach new audio elements/analyser nodes without storing them locally.
  */
 import { useEffect, useRef, useState } from "react";
+import type { RemoteAudioSource } from "./useIntercomSession";
 
 export type UseRemoteAudioOptions = {
   /** Currently selected output device id. */
@@ -25,7 +26,7 @@ export type UseRemoteAudioOptions = {
    * Using a ref means the audio meter loop always calls the latest version
    * without the effect having to re-register.
    */
-  resolveGainRef: React.MutableRefObject<(sourceUserID: string) => number>;
+  resolveGainRef: React.MutableRefObject<(source: RemoteAudioSource) => number>;
   /** Called when a recoverable audio error occurs. */
   onAudioError: (msg: string) => void;
   /** Disable continuous per-track RMS analysis on constrained clients. */
@@ -35,8 +36,8 @@ export type UseRemoteAudioOptions = {
 export type UseRemoteAudioResult = {
   /** HTMLAudioElement map keyed by `${trackId}-${streamId}`. */
   remoteAudioRef: React.MutableRefObject<Map<string, HTMLAudioElement>>;
-  /** Maps track key to the source user-id resolved from SDP mid. */
-  remoteSourceUserIdRef: React.MutableRefObject<Map<string, string>>;
+  /** Maps track key to the source resolved from SDP mid/track id. */
+  remoteSourceRef: React.MutableRefObject<Map<string, RemoteAudioSource>>;
   /** Per-key Web Audio chain (ctx + analyser + gain + buffer). */
   remoteAnalyserNodesRef: React.MutableRefObject<
     Map<
@@ -78,7 +79,7 @@ export function useRemoteAudio({
 
   // ── Refs ──
   const remoteAudioRef = useRef<Map<string, HTMLAudioElement>>(new Map());
-  const remoteSourceUserIdRef = useRef<Map<string, string>>(new Map());
+  const remoteSourceRef = useRef<Map<string, RemoteAudioSource>>(new Map());
   const remoteAnalyserNodesRef = useRef<
     Map<
       string,
@@ -146,8 +147,11 @@ export function useRemoteAudio({
 
   // ── Volume routing ──
   function applyVolumeToRemoteAudio(key: string) {
-    const sourceUserID = remoteSourceUserIdRef.current.get(key) || "";
-    const gainValue = resolveGainRef.current(sourceUserID);
+    const source = remoteSourceRef.current.get(key) || {
+      userID: "",
+      sourceID: "main",
+    };
+    const gainValue = resolveGainRef.current(source);
     const analyserNode = remoteAnalyserNodesRef.current.get(key);
     if (analyserNode) analyserNode.gain.gain.value = gainValue;
     const audio = remoteAudioRef.current.get(key);
@@ -266,7 +270,7 @@ export function useRemoteAudio({
 
   return {
     remoteAudioRef,
-    remoteSourceUserIdRef,
+    remoteSourceRef,
     remoteAnalyserNodesRef,
     incomingAudioActive,
     applyOutputDeviceToAudio,

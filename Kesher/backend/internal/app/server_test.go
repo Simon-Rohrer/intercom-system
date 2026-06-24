@@ -645,6 +645,44 @@ func TestServerHandleAdminRaspberryPisCorrelatesIntercomConnection(t *testing.T)
 	}
 }
 
+func TestServerHandleRaspberryPisReturnsStationsForAuthenticatedSession(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if _, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
+		DeviceID:      "pi-1",
+		Name:          "Kamera-1",
+		IPAddress:     "192.168.1.51",
+		RoleID:        "camera",
+		BrowserStatus: "running",
+		LoginStatus:   "waiting_for_intercom",
+	}); err != nil {
+		t.Fatalf("UpsertRaspberryPiHeartbeat failed: %v", err)
+	}
+	s := &Server{
+		store: store,
+		hub:   NewHub(store, slog.New(slog.NewTextHandler(io.Discard, nil))),
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/raspberry-pis", nil)
+	rec := httptest.NewRecorder()
+
+	s.handleRaspberryPis(rec, req, Session{UserID: "u2", Username: "Tim", RoleID: "light"})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected ok, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response RaspberryPiStationsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if len(response.Stations) != 1 || response.Stations[0].DeviceID != "pi-1" {
+		t.Fatalf("unexpected stations: %#v", response.Stations)
+	}
+}
+
 func TestServerHandleAdminRolesMethodNotAllowed(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {

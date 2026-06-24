@@ -16,6 +16,7 @@ import { normalizePresenceList, samePresenceList } from "../lib/presence";
 import {
   clampGainValue,
   clampInputGainValue,
+  type ChannelAudioFeedSettings,
   micInputBaseBoost,
   type InputChannelSelection,
 } from "../app/settings";
@@ -24,6 +25,7 @@ import {
   sameStringArray,
   sameStringSet,
   sourceUserIDFromRemoteSDPMid,
+  sourceIDFromTrackID,
   sourceUserIDFromTrackID,
 } from "../app/utils";
 import type {
@@ -35,7 +37,15 @@ import type {
   RoutedEvent,
   SessionRevokedEvent,
 } from "../types";
-import { useLocalMic } from "./useLocalMic";
+import {
+  requestLowLatencyMicStream,
+  resolveInputChannelIndexes,
+  useLocalMic,
+} from "./useLocalMic";
+import {
+  resolveInputDeviceChannelCount,
+  resolveTrackInputChannelCount,
+} from "../lib/audioDeviceChannels";
 import { useRemoteAudio } from "./useRemoteAudio";
 import { useRtpStats } from "./useRtpStats";
 import type { RtpStats } from "./useRtpStats";
@@ -168,6 +178,7 @@ function clampPriorityLevel(value: number | undefined): number {
 
 type GainRoute = {
   senderUserID: string;
+  sourceID?: string;
   scope: "direct" | "room" | "broadcast";
   targetID: string;
 };
@@ -428,9 +439,32 @@ async function applyOutgoingAudioSenderBitrate(
 
 export type VoiceRoute = {
   senderUserID: string;
+  sourceID: string;
   scope: "direct" | "room" | "broadcast";
   targetID: string;
   label: string;
+};
+
+export type RemoteAudioSource = {
+  userID: string;
+  sourceID: string;
+};
+
+export type ChannelAudioFeedStatus = {
+  id: string;
+  state: "idle" | "starting" | "live" | "error";
+  message?: string;
+};
+
+type ManagedChannelAudioFeed = {
+  id: string;
+  roomId: string;
+  trackId: string;
+  sender: RTCRtpSender;
+  captureStream: MediaStream;
+  processedStream: MediaStream;
+  audioContext: AudioContext | null;
+  gainNode: GainNode | null;
 };
 
 export type UseIntercomSessionOptions = {
@@ -463,6 +497,8 @@ export type UseIntercomSessionOptions = {
   audioGateThresholdDb: number;
   selectedInputGainFor: (deviceId: string) => number;
   onInputGainChange: (deviceId: string, gain: number) => void;
+  channelAudioFeeds: ChannelAudioFeedSettings[];
+  inputDevices: Array<MediaDeviceInfo & { inputChannels?: unknown }>;
 
   // Initial room matrix from session storage
   initialListenRoomIds: string[];
@@ -540,6 +576,7 @@ export type UseIntercomSessionResult = {
   inputChannelCount: number;
   displayedInputClipping: boolean;
   isLocalMonitorActive: boolean;
+  channelAudioFeedStatuses: ChannelAudioFeedStatus[];
   toggleLocalMonitor: () => Promise<void>;
   mediaSessionSupported: boolean;
   wakeLockSupported: boolean;
@@ -598,6 +635,8 @@ export function useIntercomSession({
   audioGateThresholdDb,
   selectedInputGainFor,
   onInputGainChange,
+  channelAudioFeeds,
+  inputDevices,
   initialListenRoomIds,
   initialTalkRoomIds,
   hadStoredSessionSettings,
@@ -677,6 +716,9 @@ export function useIntercomSession({
   const [talkRoomIds, setTalkRoomIds] = useState<string[]>(initialTalkRoomIds);
   const [viewMode, setViewMode] = useState<"station" | "simple">("station");
   const [message, setMessage] = useState("");
+  const [channelAudioFeedStatuses, setChannelAudioFeedStatuses] = useState<
+    ChannelAudioFeedStatus[]
+  >([]);
   const [wakeLockActive, setWakeLockActive] = useState(false);
   const [isStandaloneDisplayMode, setIsStandaloneDisplayMode] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -721,6 +763,12 @@ export function useIntercomSession({
   const prevChannelRef = useRef<string>("");
   const pendingInitialRoomRestoreRef = useRef(hadStoredSessionSettings);
   const appDataRef = useRef(appData);
+  const channelAudioFeedsRef = useRef(channelAudioFeeds);
+  const inputDevicesRef = useRef(inputDevices);
+  const managedChannelAudioFeedsRef = useRef<
+    Map<string, ManagedChannelAudioFeed>
+  >(new Map());
+  const channelAudioFeedSignatureRef = useRef("");
   const listenRoomIdsRef = useRef<string[]>(initialListenRoomIds);
   const talkRoomIdsRef = useRef<string[]>(initialTalkRoomIds);
   const seenChatKeysRef = useRef<Set<string>>(new Set());
@@ -738,6 +786,12 @@ export function useIntercomSession({
   useEffect(() => {
     appDataRef.current = appData;
   }, [appData]);
+  useEffect(() => {
+    channelAudioFeedsRef.current = channelAudioFeeds;
+  }, [channelAudioFeeds]);
+  useEffect(() => {
+    inputDevicesRef.current = inputDevices;
+  }, [inputDevices]);
   useEffect(() => {
     enableBackgroundAudioRecoveryRef.current = enableBackgroundAudioRecovery;
   }, [enableBackgroundAudioRecovery]);
@@ -778,7 +832,7 @@ export function useIntercomSession({
   );
 
   // ── Gain resolver (reads only refs → always-fresh; wrapped in ref for sub-hooks) ──
-  function resolveGainForSourceUser(sourceUserID: string): number {
+  function resolveGainForSourceUser(sourceUserID: string, sourceID = "main"): number {
     const ad = appDataRef.current;
     if (!ad) return 1;
     const routes = Array.from(activeVoiceRoutesRef.current.values());
@@ -885,6 +939,21 @@ export function useIntercomSession({
         clampGain: clampGainValue,
       });
     }
+    if (sourceID !== "main") {
+      const routedFeedRoom = routes.find(
+        (route) =>
+          route.senderUserID === sourceUserID &&
+          route.sourceID === sourceID &&
+          route.scope === "room" &&
+          listenRoomIdsRef.current.includes(route.targetID),
+      );
+      if (routedFeedRoom) {
+        return applyDuckingForSource(
+          sourceUserID,
+          clampGainValue(roomGainByIdRef.current[routedFeedRoom.targetID] ?? 1),
+        );
+      }
+    }
     const directToSelf = routes.some(
       (route) =>
         route.senderUserID === sourceUserID &&
@@ -940,9 +1009,13 @@ export function useIntercomSession({
     return applyDuckingForSource(sourceUserID, 1);
   }
 
+  function resolveGainForRemoteSource(source: RemoteAudioSource): number {
+    return resolveGainForSourceUser(source.userID, source.sourceID || "main");
+  }
+
   // Keep a stable ref so sub-hooks always call the latest version
-  const resolveGainRef = useRef(resolveGainForSourceUser);
-  resolveGainRef.current = resolveGainForSourceUser;
+  const resolveGainRef = useRef(resolveGainForRemoteSource);
+  resolveGainRef.current = resolveGainForRemoteSource;
 
   // ── Sub-hooks ─────────────────────────────────────────────────────────────────────────────
 
@@ -1068,6 +1141,227 @@ export function useIntercomSession({
     resumeRemoteAudioContexts,
   } = remote;
 
+  function setChannelAudioFeedStatus(
+    id: string,
+    state: ChannelAudioFeedStatus["state"],
+    message?: string,
+  ) {
+    setChannelAudioFeedStatuses((prev) => {
+      const next = prev.filter((entry) => entry.id !== id);
+      next.push({ id, state, message });
+      return next.sort((a, b) => a.id.localeCompare(b.id));
+    });
+  }
+
+  function buildChannelAudioFeedStream(
+    sourceStream: MediaStream,
+    feed: ChannelAudioFeedSettings,
+    inputChannelCountHint?: number | null,
+  ): {
+    stream: MediaStream;
+    audioContext: AudioContext | null;
+    gainNode: GainNode | null;
+  } {
+    const sourceTrack = sourceStream.getAudioTracks()[0];
+    if (!sourceTrack) {
+      return { stream: sourceStream, audioContext: null, gainNode: null };
+    }
+    const AudioCtx = window.AudioContext;
+    if (!AudioCtx) {
+      return { stream: sourceStream, audioContext: null, gainNode: null };
+    }
+    try {
+      const ctx = new AudioCtx({ latencyHint: "interactive" });
+      const src = ctx.createMediaStreamSource(sourceStream);
+      const gain = ctx.createGain();
+      gain.gain.value = clampInputGainValue(feed.gain);
+      const dest = ctx.createMediaStreamDestination();
+      const capturedChannelCount = resolveTrackInputChannelCount(
+        sourceTrack,
+        inputChannelCountHint,
+      );
+      let processorInput: AudioNode = src;
+      if (capturedChannelCount > 1) {
+        const splitter = ctx.createChannelSplitter(capturedChannelCount);
+        const monoMixer = ctx.createGain();
+        monoMixer.channelCount = 1;
+        monoMixer.channelCountMode = "explicit";
+        monoMixer.channelInterpretation = "discrete";
+        const selectedIndexes = resolveInputChannelIndexes(
+          feed.inputChannel,
+          capturedChannelCount,
+        );
+        monoMixer.gain.value = 1 / selectedIndexes.length;
+        src.connect(splitter);
+        for (const channel of selectedIndexes) {
+          splitter.connect(monoMixer, channel, 0);
+        }
+        processorInput = monoMixer;
+      }
+      processorInput.connect(gain);
+      gain.connect(dest);
+      const processedTrack = dest.stream.getAudioTracks()[0];
+      if (!processedTrack) {
+        void ctx.close();
+        return { stream: sourceStream, audioContext: null, gainNode: null };
+      }
+      processedTrack.enabled = feed.enabled;
+      return {
+        stream: new MediaStream([processedTrack]),
+        audioContext: ctx,
+        gainNode: gain,
+      };
+    } catch {
+      return { stream: sourceStream, audioContext: null, gainNode: null };
+    }
+  }
+
+  function sendChannelAudioFeedState(
+    feed: ChannelAudioFeedSettings,
+    active: boolean,
+    trackId = "",
+  ) {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(
+      JSON.stringify({
+        type: "channel_audio_feed_state",
+        data: {
+          sourceId: feed.id,
+          roomId: feed.roomId,
+          trackId,
+          active,
+        },
+      }),
+    );
+  }
+
+  function inputChannelCountHintForFeed(feed: ChannelAudioFeedSettings) {
+    const device = inputDevicesRef.current.find(
+      (entry) => entry.deviceId === feed.inputDeviceId,
+    );
+    return resolveInputDeviceChannelCount(device);
+  }
+
+  async function stopManagedChannelAudioFeed(
+    feedId: string,
+    notifyServer = true,
+  ) {
+    const managed = managedChannelAudioFeedsRef.current.get(feedId);
+    if (!managed) return;
+    managedChannelAudioFeedsRef.current.delete(feedId);
+    if (notifyServer) {
+      const feed = channelAudioFeedsRef.current.find((entry) => entry.id === feedId);
+      if (feed) sendChannelAudioFeedState(feed, false, managed.trackId);
+    }
+    try {
+      await managed.sender.replaceTrack(null);
+    } catch {
+      // sender may already be closed during reconnect cleanup
+    }
+    for (const track of managed.captureStream.getTracks()) track.stop();
+    for (const track of managed.processedStream.getTracks()) track.stop();
+    if (managed.audioContext) {
+      void managed.audioContext.close();
+    }
+    setChannelAudioFeedStatus(feedId, "idle");
+  }
+
+  async function stopAllManagedChannelAudioFeeds(notifyServer = true) {
+    const ids = Array.from(managedChannelAudioFeedsRef.current.keys());
+    await Promise.all(ids.map((id) => stopManagedChannelAudioFeed(id, notifyServer)));
+  }
+
+  async function startChannelAudioFeed(
+    feed: ChannelAudioFeedSettings,
+    pc: RTCPeerConnection,
+  ) {
+    if (!feed.enabled || !feed.roomId) {
+      setChannelAudioFeedStatus(feed.id, "idle");
+      return;
+    }
+    const ad = appDataRef.current;
+    if (!ad || !canRoleSendToRoom(feed.roomId, ad.self.roleId)) {
+      setChannelAudioFeedStatus(
+        feed.id,
+        "error",
+        "No send permission for this party line.",
+      );
+      return;
+    }
+    await stopManagedChannelAudioFeed(feed.id, false);
+    setChannelAudioFeedStatus(feed.id, "starting");
+    const captureStream = await requestLowLatencyMicStream(feed.inputDeviceId);
+    const processed = buildChannelAudioFeedStream(
+      captureStream,
+      feed,
+      inputChannelCountHintForFeed(feed),
+    );
+    const track = processed.stream.getAudioTracks()[0];
+    if (!track) {
+      for (const captureTrack of captureStream.getTracks()) captureTrack.stop();
+      if (processed.audioContext) void processed.audioContext.close();
+      throw new Error("Selected feed input produced no audio track.");
+    }
+    track.enabled = true;
+    const sender = pc.addTrack(track, processed.stream);
+    managedChannelAudioFeedsRef.current.set(feed.id, {
+      id: feed.id,
+      roomId: feed.roomId,
+      trackId: track.id,
+      sender,
+      captureStream,
+      processedStream: processed.stream,
+      audioContext: processed.audioContext,
+      gainNode: processed.gainNode,
+    });
+    sendChannelAudioFeedState(feed, true, track.id);
+    setChannelAudioFeedStatus(feed.id, "live");
+  }
+
+  async function startConfiguredChannelAudioFeeds(pc: RTCPeerConnection) {
+    const activeFeeds = channelAudioFeedsRef.current.filter(
+      (feed) => feed.enabled && feed.roomId,
+    );
+    for (const feed of activeFeeds) {
+      try {
+        await startChannelAudioFeed(feed, pc);
+      } catch (error) {
+        setChannelAudioFeedStatus(
+          feed.id,
+          "error",
+          error instanceof Error ? error.message : "Failed to start audio feed.",
+        );
+      }
+    }
+  }
+
+  function channelAudioFeedNegotiationSignature(
+    feeds: ChannelAudioFeedSettings[],
+  ): string {
+    return feeds
+      .filter((feed) => feed.enabled)
+      .map((feed) =>
+        [
+          feed.id,
+          feed.roomId,
+          feed.inputDeviceId,
+          feed.inputChannel,
+        ].join(":"),
+      )
+      .sort()
+      .join("|");
+  }
+
+  function applyChannelAudioFeedGains() {
+    for (const feed of channelAudioFeedsRef.current) {
+      const managed = managedChannelAudioFeedsRef.current.get(feed.id);
+      if (managed?.gainNode) {
+        managed.gainNode.gain.value = clampInputGainValue(feed.gain);
+      }
+    }
+  }
+
   // ── Voice route tracking ──
   function refreshActiveVoiceChannelState() {
     setActiveVoiceRoutes(Array.from(activeVoiceRoutesRef.current.values()));
@@ -1076,13 +1370,15 @@ export function useIntercomSession({
 
   function updateVoiceRoute(
     senderUserID: string,
+    sourceID: string,
     scopeValue: "direct" | "room" | "broadcast",
     targetID: string,
     body: string,
     fromUsername: string,
   ) {
     const ad = appDataRef.current;
-    const routeKey = `${senderUserID}:${scopeValue}:${targetID}`;
+    const normalizedSourceID = sourceID || "main";
+    const routeKey = `${senderUserID}:${normalizedSourceID}:${scopeValue}:${targetID}`;
     observedVoiceSendersRef.current.add(senderUserID);
     const label =
       scopeValue === "room"
@@ -1093,6 +1389,7 @@ export function useIntercomSession({
     if (body === "ptt_start" || body === "always_on") {
       activeVoiceRoutesRef.current.set(routeKey, {
         senderUserID,
+        sourceID: normalizedSourceID,
         scope: scopeValue,
         targetID,
         label,
@@ -1214,10 +1511,11 @@ export function useIntercomSession({
       audio.srcObject = null;
     }
     remote.remoteAudioRef.current.clear();
-    remote.remoteSourceUserIdRef.current.clear();
+    remote.remoteSourceRef.current.clear();
     activeVoiceRoutesRef.current.clear();
     observedVoiceSendersRef.current.clear();
     setActiveVoiceRoutes([]);
+    void stopAllManagedChannelAudioFeeds(false);
     if (mic.localStreamRef.current) {
       for (const track of mic.localStreamRef.current.getTracks()) track.stop();
       mic.localStreamRef.current = null;
@@ -1744,6 +2042,8 @@ export function useIntercomSession({
 
       ws.onopen = async () => {
         reconnectAttemptsRef.current = 0;
+        channelAudioFeedSignatureRef.current =
+          channelAudioFeedNegotiationSignature(channelAudioFeedsRef.current);
         setConnectionState("connected");
         setAudioError("");
         pendingICERef.current = [];
@@ -1785,8 +2085,12 @@ export function useIntercomSession({
           const sourceUserID =
             sourceUserIDFromTrackID(event.track.id) ||
             sourceUserIDFromRemoteSDPMid(pcRef.current, event.transceiver?.mid);
+          const sourceID = sourceIDFromTrackID(event.track.id);
           if (sourceUserID) {
-            remote.remoteSourceUserIdRef.current.set(key, sourceUserID);
+            remote.remoteSourceRef.current.set(key, {
+              userID: sourceUserID,
+              sourceID,
+            });
           }
           // Set adaptive playout delay based on current network conditions
           const stats = currentRtpStatsRef.current;
@@ -1874,6 +2178,7 @@ export function useIntercomSession({
             track.enabled = initialEnabled;
             pc.addTrack(track, stream);
           }
+          await startConfiguredChannelAudioFeeds(pc);
           await applyOutgoingAudioSenderBitrate(
             pc,
             lowPowerMode ? lowPowerOpusMaxBitrateBps : opusMaxBitrateBps,
@@ -2244,6 +2549,7 @@ export function useIntercomSession({
         ) {
           updateVoiceRoute(
             msg.data.fromUser.id,
+            msg.data.source || "main",
             msg.data.scope,
             msg.data.targetId,
             (msg.data.body || "").toString(),
@@ -2554,6 +2860,23 @@ export function useIntercomSession({
     incomingAudioActive,
   ]);
 
+  useEffect(() => {
+    applyChannelAudioFeedGains();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelAudioFeeds]);
+
+  useEffect(() => {
+    if (authMode !== "operator" || connectionState !== "connected") return;
+    const nextSignature =
+      channelAudioFeedNegotiationSignature(channelAudioFeeds);
+    if (nextSignature === channelAudioFeedSignatureRef.current) return;
+    channelAudioFeedSignatureRef.current = nextSignature;
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.close(1012, "channel audio feed changed");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authMode, channelAudioFeeds, connectionState]);
+
   // ── Presence sync → local state ──
   useEffect(() => {
     if (!appData) return;
@@ -2650,6 +2973,7 @@ export function useIntercomSession({
     inputChannelCount: mic.inputChannelCount,
     displayedInputClipping: mic.displayedInputClipping,
     isLocalMonitorActive: mic.isLocalMonitorActive,
+    channelAudioFeedStatuses,
     toggleLocalMonitor: async () => {
       if (mic.isLocalMonitorActive) {
         mic.stopLocalMonitor();

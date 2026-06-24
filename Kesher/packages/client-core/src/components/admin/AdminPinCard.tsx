@@ -1,4 +1,5 @@
 import React from "react";
+import { AdminCardHeader } from "./AdminCardHeader";
 
 type AdminPinCardProps = {
   onUpdateAdminPin: (currentPin: string, newPin: string) => Promise<void>;
@@ -46,18 +47,11 @@ export function AdminPinCard({ onUpdateAdminPin }: AdminPinCardProps) {
 
   return (
     <div className="admin-card">
-      <div className="admin-card-header">
-        <div className="admin-card-title">Security · Admin PIN</div>
-        <div className="admin-card-actions">
-          <button
-            className="admin-toggle-button"
-            onClick={() => setIsOpen((v) => !v)}
-            aria-expanded={isOpen}
-          >
-            {isOpen ? "Hide" : "Show"}
-          </button>
-        </div>
-      </div>
+      <AdminCardHeader
+        title="Security · Admin PIN"
+        isOpen={isOpen}
+        onToggle={() => setIsOpen((v) => !v)}
+      />
       {isOpen ? (
         <div className="admin-card-body">
           <div className="admin-pin-form">

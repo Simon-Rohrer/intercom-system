@@ -5,6 +5,7 @@ import {
   deleteBroadcastGroup,
   updateBroadcastGroup,
 } from "../../api";
+import { AdminCardHeader } from "./AdminCardHeader";
 import { RoleMultiSelect } from "./RoleMultiSelect";
 import { PartyLineMultiSelect } from "./PartyLineMultiSelect";
 import { useAdminAction } from "./useAdminAction";
@@ -111,20 +112,11 @@ export function AdminChannelsCard({
 
   return (
     <div className="admin-card">
-      <div className="admin-card-header">
-        <div className="admin-card-title">
-          Configuration · Broadcast Channels
-        </div>
-        <div className="admin-card-actions">
-          <button
-            className="admin-toggle-button"
-            onClick={() => setIsOpen((v) => !v)}
-            aria-expanded={isOpen}
-          >
-            {isOpen ? "Hide" : "Show"}
-          </button>
-        </div>
-      </div>
+      <AdminCardHeader
+        title="Configuration · Broadcast Channels"
+        isOpen={isOpen}
+        onToggle={() => setIsOpen((v) => !v)}
+      />
       {isOpen ? (
         <div className="admin-card-body">
           <div className="admin-block">

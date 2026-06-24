@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { Bootstrap, Room, Role } from "../../types";
 import { updateRoutingMatrix, type RoutingMatrixEntry } from "../../api";
+import { AdminCardHeader } from "./AdminCardHeader";
 
 type AdminRoutingMatrixCardProps = {
   token: string;
@@ -184,18 +185,11 @@ export function AdminRoutingMatrixCard({
 
   return (
     <div className="admin-card">
-      <div className="admin-card-header">
-        <div className="admin-card-title">Routing Matrix</div>
-        <div className="admin-card-actions">
-          <button
-            className="admin-toggle-button"
-            onClick={() => setIsOpen((v) => !v)}
-            aria-expanded={isOpen}
-          >
-            {isOpen ? "Hide" : "Show"}
-          </button>
-        </div>
-      </div>
+      <AdminCardHeader
+        title="Routing Matrix"
+        isOpen={isOpen}
+        onToggle={() => setIsOpen((v) => !v)}
+      />
       {isOpen ? (
         <div className="admin-card-body">
           {adminError ? <p className="admin-error">{adminError}</p> : null}

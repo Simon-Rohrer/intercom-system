@@ -90,9 +90,20 @@ export type GlobalSettings = {
   inputGainByDeviceId: Record<string, number>;
   roomGainById: Record<string, number>;
   directGainByUserId: Record<string, number>;
+  channelAudioFeeds: ChannelAudioFeedSettings[];
 };
 
 export type InputChannelSelection = "all" | number;
+
+export type ChannelAudioFeedSettings = {
+  id: string;
+  name: string;
+  roomId: string;
+  inputDeviceId: string;
+  inputChannel: InputChannelSelection;
+  gain: number;
+  enabled: boolean;
+};
 
 export type FavoriteSettings = {
   pinnedRoomIds: string[];
@@ -155,6 +166,41 @@ function sanitizeInputChannelMap(
   return sanitized;
 }
 
+function sanitizeInputChannelSelection(value: unknown): InputChannelSelection {
+  if (value === "all") return "all";
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    return "all";
+  }
+  return Math.min(32, value);
+}
+
+function sanitizeChannelAudioFeeds(value: unknown): ChannelAudioFeedSettings[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: ChannelAudioFeedSettings[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const entry = raw as Record<string, unknown>;
+    const id = typeof entry.id === "string" ? entry.id.trim() : "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const name = typeof entry.name === "string" ? entry.name.trim() : "";
+    const roomId = typeof entry.roomId === "string" ? entry.roomId.trim() : "";
+    const inputDeviceId =
+      typeof entry.inputDeviceId === "string" ? entry.inputDeviceId : "";
+    result.push({
+      id,
+      name: name || "Channel audio feed",
+      roomId,
+      inputDeviceId,
+      inputChannel: sanitizeInputChannelSelection(entry.inputChannel),
+      gain: clampInputGainValue(typeof entry.gain === "number" ? entry.gain : 1),
+      enabled: entry.enabled === true,
+    });
+  }
+  return result.slice(0, 8);
+}
+
 export function loadSessionSettings(): SessionSettings {
   try {
     const raw = localStorage.getItem(sessionSettingsStorageKey);
@@ -196,6 +242,7 @@ export function loadGlobalSettings(): GlobalSettings {
         inputGainByDeviceId: {},
         roomGainById: {},
         directGainByUserId: {},
+        channelAudioFeeds: [],
       };
     }
     const parsed = JSON.parse(raw) as Partial<GlobalSettings>;
@@ -253,6 +300,7 @@ export function loadGlobalSettings(): GlobalSettings {
         parsed.directGainByUserId,
         clampOutputGainValue,
       ),
+      channelAudioFeeds: sanitizeChannelAudioFeeds(parsed.channelAudioFeeds),
     };
   } catch {
     return {
@@ -270,6 +318,7 @@ export function loadGlobalSettings(): GlobalSettings {
       inputGainByDeviceId: {},
       roomGainById: {},
       directGainByUserId: {},
+      channelAudioFeeds: [],
     };
   }
 }

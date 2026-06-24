@@ -4,6 +4,8 @@ import type {
   RaspberryPiStationStatus,
   RealtimeStatsResponse,
 } from "../../types";
+import { RaspberryPiStationsPanel } from "../RaspberryPiStationsPanel";
+import { AdminCardHeader } from "./AdminCardHeader";
 
 type AdminMonitoringCardProps = {
   token: string;
@@ -25,33 +27,6 @@ function formatHitRate(hits: number, misses: number): string {
   return `${Math.round((hits / total) * 100)}%`;
 }
 
-function formatSecondsSinceSeen(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return "n/a";
-  if (seconds < 5) return "now";
-  if (seconds < 60) return `${Math.round(seconds)}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
-}
-
-function stationStatusLabel(station: RaspberryPiStationStatus): string {
-  if (station.intercomConnected) return "Intercom connected";
-  if (!station.online) return "Offline";
-  if (station.effectiveStatus === "login_error") return "Login error";
-  if (station.effectiveStatus === "waiting_for_intercom") {
-    return "Waiting for intercom";
-  }
-  if (station.browserStatus === "running") return "Browser running";
-  return station.effectiveStatus || "Launcher online";
-}
-
-function stationStatusClass(station: RaspberryPiStationStatus): string {
-  if (station.intercomConnected) return "admin-status-ok";
-  if (station.online) return "admin-status-wait";
-  return "admin-status-warn";
-}
-
 export function AdminMonitoringCard({
   token,
   adminPin,
@@ -59,6 +34,7 @@ export function AdminMonitoringCard({
   activeRoutesCount,
 }: AdminMonitoringCardProps) {
   const [isOpen, setIsOpen] = React.useState(false);
+  const [isRaspberryOpen, setIsRaspberryOpen] = React.useState(false);
   const [stats, setStats] = React.useState<RealtimeStatsResponse | null>(null);
   const [raspberryStations, setRaspberryStations] = React.useState<
     RaspberryPiStationStatus[] | null
@@ -120,18 +96,11 @@ export function AdminMonitoringCard({
 
   return (
     <div className="admin-card">
-      <div className="admin-card-header">
-        <div className="admin-card-title">Monitoring · Audio / RTP</div>
-        <div className="admin-card-actions">
-          <button
-            className="admin-toggle-button"
-            onClick={() => setIsOpen((v) => !v)}
-            aria-expanded={isOpen}
-          >
-            {isOpen ? "Hide" : "Show"}
-          </button>
-        </div>
-      </div>
+      <AdminCardHeader
+        title="Monitoring · Audio / RTP"
+        isOpen={isOpen}
+        onToggle={() => setIsOpen((v) => !v)}
+      />
       {isOpen ? (
         <div className="admin-card-body admin-metrics">
           <div className="admin-metric">
@@ -335,41 +304,26 @@ export function AdminMonitoringCard({
                 : "none"}
             </div>
           </div>
-          <div className="admin-pi-stations" aria-label="Raspberry Pi stations">
-            <div className="admin-pi-stations-header">
-              <span>Raspberry stations</span>
+          <div className="admin-monitoring-dropdown">
+            <button
+              type="button"
+              className="admin-monitoring-dropdown-toggle"
+              onClick={() => setIsRaspberryOpen((value) => !value)}
+              aria-expanded={isRaspberryOpen}
+            >
+              <span>Raspberry Pis</span>
               <small>
-                {raspberryStations ? `${raspberryStations.length} known` : "Loading"}
+                {raspberryStations
+                  ? `${raspberryIntercomCount} connected / ${raspberryStations.length} known`
+                  : "Loading"}
               </small>
-            </div>
-            {raspberryStations && raspberryStations.length > 0 ? (
-              raspberryStations.map((station) => (
-                <div className="admin-pi-station" key={station.deviceId}>
-                  <div className="admin-pi-station-main">
-                    <strong>{station.name}</strong>
-                    <span>{station.roleId}</span>
-                    <small>{station.ipAddress || station.deviceId}</small>
-                  </div>
-                  <div className="admin-pi-station-state">
-                    <span className={stationStatusClass(station)}>
-                      {stationStatusLabel(station)}
-                    </span>
-                    <small>
-                      seen {formatSecondsSinceSeen(station.secondsSinceSeen)}
-                    </small>
-                  </div>
-                  {station.loginError ? (
-                    <div className="admin-pi-station-error">
-                      {station.loginError}
-                    </div>
-                  ) : null}
-                </div>
-              ))
-            ) : (
-              <div className="admin-pi-empty">
-                No Raspberry heartbeat received.
-              </div>
-            )}
+              <span className={`chev ${isRaspberryOpen ? "open" : ""}`}>
+                ▾
+              </span>
+            </button>
+            {isRaspberryOpen ? (
+              <RaspberryPiStationsPanel stations={raspberryStations} />
+            ) : null}
           </div>
           {error ? (
             <div className="admin-metric">

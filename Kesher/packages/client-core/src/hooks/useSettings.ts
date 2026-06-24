@@ -5,6 +5,7 @@ import {
   clampOutputGainValue,
   defaultAdminPin,
   favoritesStorageKey,
+  type ChannelAudioFeedSettings,
   type FavoriteSettings,
   globalSettingsStorageKey,
   type GlobalSettings,
@@ -74,6 +75,10 @@ export type UseSettingsResult = {
     React.SetStateAction<Record<string, number>>
   >;
   directGainByUserIdRef: React.MutableRefObject<Record<string, number>>;
+  channelAudioFeeds: ChannelAudioFeedSettings[];
+  setChannelAudioFeeds: React.Dispatch<
+    React.SetStateAction<ChannelAudioFeedSettings[]>
+  >;
 
   // Favorites
   pinnedRoomIds: string[];
@@ -155,6 +160,9 @@ export function useSettings(): UseSettingsResult {
   const [directGainByUserId, setDirectGainByUserId] = useState<
     Record<string, number>
   >(initialGlobalSettings.directGainByUserId);
+  const [channelAudioFeeds, setChannelAudioFeeds] = useState<
+    ChannelAudioFeedSettings[]
+  >(initialGlobalSettings.channelAudioFeeds ?? []);
 
   // Favorites
   const [pinnedRoomIds, setPinnedRoomIds] = useState<string[]>(
@@ -225,6 +233,7 @@ export function useSettings(): UseSettingsResult {
         inputGainByDeviceId,
         roomGainById,
         directGainByUserId,
+        channelAudioFeeds,
       } satisfies GlobalSettings),
     );
   }, [
@@ -242,6 +251,7 @@ export function useSettings(): UseSettingsResult {
     inputGainByDeviceId,
     roomGainById,
     directGainByUserId,
+    channelAudioFeeds,
   ]);
 
   // Persistence – favorites
@@ -362,6 +372,8 @@ export function useSettings(): UseSettingsResult {
     directGainByUserId,
     setDirectGainByUserId,
     directGainByUserIdRef,
+    channelAudioFeeds,
+    setChannelAudioFeeds,
 
     pinnedRoomIds,
     setPinnedRoomIds,

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { exportAdminLogsText, getAdminLogs } from "../../api";
 import type { AdminLogEntry } from "../../types";
+import { AdminCardHeader } from "./AdminCardHeader";
 
 type AdminLogsCardProps = {
   token: string;
@@ -116,18 +117,11 @@ export function AdminLogsCard({ token, adminPin }: AdminLogsCardProps) {
 
   return (
     <div className="admin-card">
-      <div className="admin-card-header">
-        <div className="admin-card-title">Logs · Request / Audit / Errors</div>
-        <div className="admin-card-actions">
-          <button
-            className="admin-toggle-button"
-            onClick={() => void handleToggleOpen()}
-            aria-expanded={isOpen}
-          >
-            {isOpen ? "Hide" : "Show"}
-          </button>
-        </div>
-      </div>
+      <AdminCardHeader
+        title="Logs · Request / Audit / Errors"
+        isOpen={isOpen}
+        onToggle={() => void handleToggleOpen()}
+      />
       {isOpen ? (
         <div className="admin-card-body">
           <div className="admin-logs-filters">
