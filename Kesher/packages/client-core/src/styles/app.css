@@ -2759,6 +2759,35 @@ button.secondary {
 .simple-ptt.active small {
   color: var(--station-call-active-icon);
 }
+.simple-ptt:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+.simple-audio-status {
+  display: grid;
+  gap: 0.22rem;
+  padding: 0.68rem 0.78rem;
+  border: 1px solid rgba(52, 199, 89, 0.3);
+  border-radius: 8px;
+  background: rgba(52, 199, 89, 0.08);
+}
+.simple-audio-status strong {
+  color: #a9f4bf;
+  font-size: 0.82rem;
+}
+.simple-audio-status span {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+.simple-audio-status.has-error {
+  border-color: rgba(255, 77, 87, 0.38);
+  background: rgba(255, 77, 87, 0.09);
+}
+.simple-audio-status.has-error strong,
+.simple-audio-status.has-error span {
+  color: #ffc1c5;
+}
 .simple-ptt:active,
 .station-ptt:active,
 .station-card-head:active {

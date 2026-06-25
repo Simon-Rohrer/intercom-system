@@ -33,6 +33,10 @@ type SimpleIntercomViewProps = {
   wakeLockSupported: boolean;
   wakeLockActive: boolean;
   isStandaloneDisplayMode: boolean;
+  audioError: string;
+  webrtcState: string;
+  hasVoiceTarget: boolean;
+  hasListenTarget: boolean;
   simplePptTargetLabel: string;
   doLogout: () => void;
 };
@@ -62,6 +66,10 @@ export function SimpleIntercomView({
   wakeLockSupported,
   wakeLockActive,
   isStandaloneDisplayMode,
+  audioError,
+  webrtcState,
+  hasVoiceTarget,
+  hasListenTarget,
   simplePptTargetLabel,
   doLogout,
 }: SimpleIntercomViewProps) {
@@ -80,7 +88,21 @@ export function SimpleIntercomView({
       : "all";
   const allInputsLabel =
     inputChannelCount === 1 ? "Input 1" : `All ${inputChannelCount} inputs`;
+  const hasInputDevice = inputDevices.length > 0;
+  const runtimeIssues = [
+    !hasVoiceTarget
+      ? "No party line is assigned to this role. Set a default party line in the role settings."
+      : "",
+    !hasListenTarget
+      ? "No receive party line is assigned to this role. Allow the role to receive the default party line."
+      : "",
+    !hasInputDevice
+      ? "No microphone is available to Chromium. Check USB power, PipeWire and browser permissions."
+      : "",
+    audioError,
+  ].filter(Boolean);
   const mainPttButtonProps = createHoldButtonProps<HTMLButtonElement>({
+    disabled: !hasVoiceTarget || !hasInputDevice,
     onStart: () => {
       setPressedButton("main");
       onStartPpt();
@@ -129,11 +151,32 @@ export function SimpleIntercomView({
         </div>
         <button
           className={`simple-ptt hold-button ${mainActive ? "active" : ""}`}
+          disabled={!hasVoiceTarget || !hasInputDevice}
           {...mainPttButtonProps}
         >
           Hold to talk
           <small>{simplePptTargetLabel}</small>
         </button>
+        <div
+          className={`simple-audio-status ${
+            runtimeIssues.length > 0 ? "has-error" : "is-ready"
+          }`}
+          role="status"
+          aria-label="Audio runtime status"
+          aria-live="polite"
+        >
+          <strong>
+            {runtimeIssues.length > 0 ? "Audio not ready" : "Audio ready"}
+          </strong>
+          {runtimeIssues.length > 0 ? (
+            runtimeIssues.map((issue) => <span key={issue}>{issue}</span>)
+          ) : (
+            <span>
+              Party line: {simplePptTargetLabel} · Microphone ready
+              {webrtcState ? ` · WebRTC: ${webrtcState}` : ""}
+            </span>
+          )}
+        </div>
         <button
           className={`simple-reply hold-button ${replyTarget ? "" : "disabled"} ${replyActive ? "active" : ""}`}
           disabled={!replyTarget}

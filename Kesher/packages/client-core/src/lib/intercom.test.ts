@@ -3,6 +3,7 @@ import {
   defaultRoomMatrixForRole,
   matrixAnchorRoomId,
   resolveChatTargetRoomId,
+  restoreRoomMatrixForRole,
   roleAllowed,
   toggleRoomSelectionState,
 } from "./intercom";
@@ -18,7 +19,7 @@ describe("intercom utility helpers", () => {
     expect(matrixAnchorRoomId(["listen-1", "listen-2"], [])).toBe("listen-1");
   });
 
-  it("uses one configured default talk room and forced listen rooms on login", () => {
+  it("uses one configured default room for talk and listen plus forced rooms", () => {
     expect(
       defaultRoomMatrixForRole(
         [{ id: "audio", name: "Audio", defaultRoomId: "foh" }],
@@ -40,7 +41,10 @@ describe("intercom utility helpers", () => {
         ],
         "audio",
       ),
-    ).toEqual({ listenRoomIds: ["producer"], talkRoomIds: ["foh"] });
+    ).toEqual({
+      listenRoomIds: ["foh", "producer"],
+      talkRoomIds: ["foh"],
+    });
   });
 
   it("does not select a talk room without an explicit allowed default", () => {
@@ -59,6 +63,54 @@ describe("intercom utility helpers", () => {
         "audio",
       ),
     ).toEqual({ listenRoomIds: [], talkRoomIds: [] });
+  });
+
+  it("restores missing simple-view room selections from the role default", () => {
+    expect(
+      restoreRoomMatrixForRole(
+        [{ id: "camera", name: "Camera", defaultRoomId: "production" }],
+        [
+          {
+            id: "production",
+            name: "Production",
+            senderRoleIds: ["camera"],
+            receiverRoleIds: ["camera"],
+            forcedListenRoleIds: [],
+          },
+        ],
+        "camera",
+        [],
+        [],
+        true,
+      ),
+    ).toEqual({
+      listenRoomIds: ["production"],
+      talkRoomIds: ["production"],
+    });
+  });
+
+  it("preserves an empty station-view selection", () => {
+    expect(
+      restoreRoomMatrixForRole(
+        [{ id: "camera", name: "Camera", defaultRoomId: "production" }],
+        [
+          {
+            id: "production",
+            name: "Production",
+            senderRoleIds: ["camera"],
+            receiverRoleIds: ["camera"],
+            forcedListenRoleIds: [],
+          },
+        ],
+        "camera",
+        [],
+        [],
+        false,
+      ),
+    ).toEqual({
+      listenRoomIds: [],
+      talkRoomIds: [],
+    });
   });
 
   it("falls back to the role default room for chat when no anchor room is selected", () => {

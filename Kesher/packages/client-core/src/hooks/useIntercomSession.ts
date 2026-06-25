@@ -9,6 +9,7 @@ import {
   defaultRoomMatrixForRole,
   matrixAnchorRoomId,
   mergeForcedListenRooms,
+  restoreRoomMatrixForRole,
   roleAllowed,
   toggleRoomSelectionState,
 } from "../lib/intercom";
@@ -602,6 +603,8 @@ export type UseIntercomSessionResult = {
   events: Array<{ label: string; at: string }>;
   rtpStats: RtpStats;
   incomingAudioActive: boolean;
+  audioError: string;
+  webrtcState: string;
   roomLevelById: Record<string, number>;
   activeVoiceRoutes: VoiceRoute[];
   incomingAttention: { title: string; detail: string } | null;
@@ -713,8 +716,8 @@ export function useIntercomSession({
   const [connectionState, setConnectionState] = useState<
     "connecting" | "connected" | "reconnecting" | "offline"
   >("offline");
-  const [, setAudioError] = useState("");
-  const [, setWebrtcState] = useState("");
+  const [audioError, setAudioError] = useState("");
+  const [webrtcState, setWebrtcState] = useState("");
   const [presence, setPresence] = useState<Presence[]>([]);
   const [chatMessages, setChatMessages] = useState<
     Array<{
@@ -2041,34 +2044,25 @@ export function useIntercomSession({
         setVoiceMode(nextMode);
         voiceModeRef.current = nextMode;
       }
-      setViewMode(
+      const nextViewMode =
         viewModeOverride ??
-          (roleDefaults?.defaultSimpleView ? "simple" : "station"),
-      );
+        (roleDefaults?.defaultSimpleView ? "simple" : "station");
+      setViewMode(nextViewMode);
       pendingInitialRoomRestoreRef.current = isInitial
         ? hadStoredSessionSettings
         : false;
       const hadStored = isInitial ? hadStoredSessionSettings : false;
       if (hadStored) {
-        setListenRoomIds((prev) => {
-          const sanitized = prev.filter((roomId) => {
-            const room = data.rooms.find((entry) => entry.id === roomId);
-            return (
-              !!room && roleAllowed(room.receiverRoleIds, data.self.roleId)
-            );
-          });
-          return mergeForcedListenRooms(
-            sanitized,
-            data.rooms,
-            data.self.roleId,
-          );
-        });
-        setTalkRoomIds((prev) =>
-          prev.filter((roomId) => {
-            const room = data.rooms.find((entry) => entry.id === roomId);
-            return !!room && roleAllowed(room.senderRoleIds, data.self.roleId);
-          }),
+        const restored = restoreRoomMatrixForRole(
+          data.roles,
+          data.rooms,
+          data.self.roleId,
+          listenRoomIdsRef.current,
+          talkRoomIdsRef.current,
+          nextViewMode === "simple",
         );
+        setListenRoomIds(restored.listenRoomIds);
+        setTalkRoomIds(restored.talkRoomIds);
       } else {
         const defaults = defaultRoomMatrixForRole(
           data.roles,
@@ -3030,6 +3024,8 @@ export function useIntercomSession({
     events,
     rtpStats,
     incomingAudioActive,
+    audioError,
+    webrtcState,
     roomLevelById,
     activeVoiceRoutes,
     incomingAttention,

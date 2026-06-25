@@ -61,9 +61,49 @@ export function defaultRoomMatrixForRole(
       room.id === role?.defaultRoomId &&
       roleAllowed(room.senderRoleIds, roleId),
   );
+  const defaultListenRoomId =
+    defaultTalkRoom && roleAllowed(defaultTalkRoom.receiverRoleIds, roleId)
+      ? defaultTalkRoom.id
+      : null;
   return {
-    listenRoomIds: mergeForcedListenRooms([], rooms, roleId),
+    listenRoomIds: mergeForcedListenRooms(
+      defaultListenRoomId ? [defaultListenRoomId] : [],
+      rooms,
+      roleId,
+    ),
     talkRoomIds: defaultTalkRoom ? [defaultTalkRoom.id] : [],
+  };
+}
+
+export function restoreRoomMatrixForRole(
+  roles: Role[],
+  rooms: Room[],
+  roleId: string,
+  storedListenRoomIds: string[],
+  storedTalkRoomIds: string[],
+  ensureDefaults: boolean,
+): { listenRoomIds: string[]; talkRoomIds: string[] } {
+  const defaults = defaultRoomMatrixForRole(roles, rooms, roleId);
+  const storedListen = storedListenRoomIds.filter((roomId) => {
+    const room = rooms.find((entry) => entry.id === roomId);
+    return !!room && roleAllowed(room.receiverRoleIds, roleId);
+  });
+  const storedTalk = storedTalkRoomIds.filter((roomId) => {
+    const room = rooms.find((entry) => entry.id === roomId);
+    return !!room && roleAllowed(room.senderRoleIds, roleId);
+  });
+  const listenRoomIds =
+    ensureDefaults && storedListen.length === 0
+      ? defaults.listenRoomIds
+      : storedListen;
+  const talkRoomIds =
+    ensureDefaults && storedTalk.length === 0
+      ? defaults.talkRoomIds
+      : storedTalk;
+
+  return {
+    listenRoomIds: mergeForcedListenRooms(listenRoomIds, rooms, roleId),
+    talkRoomIds,
   };
 }
 

@@ -43,7 +43,6 @@ import {
 import {
   defaultRoomMatrixForRole,
   roleAllowed,
-  matrixAnchorRoomId,
 } from "./lib/intercom";
 import {
   gainWithDbDelta,
@@ -2344,10 +2343,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       (p) => p.userId === session.lastDirectCallerUserId,
     ) || null;
 
-  const simpleVoiceTargetId = matrixAnchorRoomId(
-    session.listenRoomIds,
-    session.talkRoomIds,
-  );
+  const simpleVoiceTargetId = session.talkRoomIds[0] || "";
   const simplePttTargetLabel =
     appData.rooms.find((room) => room.id === simpleVoiceTargetId)?.name ||
     "No party line selected";
@@ -2406,6 +2402,10 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           wakeLockActive={session.wakeLockActive}
           isStandaloneDisplayMode={session.isStandaloneDisplayMode}
           simplePptTargetLabel={simplePttTargetLabel}
+          audioError={session.audioError}
+          webrtcState={session.webrtcState}
+          hasVoiceTarget={simpleVoiceTargetId !== ""}
+          hasListenTarget={session.listenRoomIds.length > 0}
           doLogout={() => void doLogout()}
         />
         {attentionFlashOverlay}
