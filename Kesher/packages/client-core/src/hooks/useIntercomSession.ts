@@ -474,6 +474,8 @@ export type UseIntercomSessionOptions = {
   showDebug: boolean;
   /** Reduce browser rendering, metering, polling and Opus packet overhead. */
   lowPowerMode: boolean;
+  /** Optional URL-level override for kiosk/runtime view selection. */
+  viewModeOverride: "simple" | "station" | null;
 
   // Settings refs (stable across renders)
   selectedInputDeviceId: string;
@@ -614,6 +616,7 @@ export function useIntercomSession({
   authMode,
   showDebug,
   lowPowerMode,
+  viewModeOverride,
   selectedInputDeviceId,
   selectedInputDeviceIdRef,
   selectedInputChannel,
@@ -1969,7 +1972,10 @@ export function useIntercomSession({
         setVoiceMode(nextMode);
         voiceModeRef.current = nextMode;
       }
-      setViewMode(roleDefaults?.defaultSimpleView ? "simple" : "station");
+      setViewMode(
+        viewModeOverride ??
+          (roleDefaults?.defaultSimpleView ? "simple" : "station"),
+      );
       pendingInitialRoomRestoreRef.current = isInitial
         ? hadStoredSessionSettings
         : false;
@@ -2004,7 +2010,7 @@ export function useIntercomSession({
         setTalkRoomIds(defaults.talkRoomIds);
       }
     },
-    [hadStoredSessionSettings, forcePttOnMobile],
+    [hadStoredSessionSettings, forcePttOnMobile, viewModeOverride],
   );
 
   // ── Admin mode: reset operator state ──

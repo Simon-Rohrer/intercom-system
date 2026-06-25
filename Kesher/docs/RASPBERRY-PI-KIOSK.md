@@ -31,6 +31,7 @@ Edit `deploy/raspberry-pi/raspberry-pis.json` before installation, or edit
       "name": "FOH",
       "role_id": "audio",
       "low_power_mode": true,
+      "simple_view": true,
       "audio_input_match": "USB",
       "audio_output_match": "USB"
     }
@@ -57,6 +58,10 @@ Set `low_power_mode` to `true` on constrained stations such as a Raspberry Pi
 status polling, enables Opus DTX with 20 ms packets, and starts Chromium with a
 smaller renderer footprint. Audio reception, PTT, USB input selection and
 server-side routing remain active.
+
+Set `simple_view` to `true` when the kiosk should use the lightweight station
+view instead of the full channel grid. This is recommended for Raspberry Pis
+that show visible pointer or UI stalls while Chromium is open.
 
 The same file can contain all Raspberry Pis and can be copied unchanged to
 every station. A Pi refuses to start if its IP is missing, duplicated, or if

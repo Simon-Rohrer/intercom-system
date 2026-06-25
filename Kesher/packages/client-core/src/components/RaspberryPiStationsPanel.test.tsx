@@ -25,9 +25,12 @@ describe("RaspberryPiStationsPanel", () => {
     render(<RaspberryPiStationsPanel stations={[baseStation]} />);
 
     expect(screen.getByText("Intercom not connected")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Raspberry connected \| browser running/),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Kamera-1")).toBeInTheDocument();
+    expect(screen.getByText("192.168.0.61")).toBeInTheDocument();
+    expect(screen.getByText("Low power")).toBeInTheDocument();
+    expect(screen.getByText("Browser")).toBeInTheDocument();
+    expect(screen.getByText("running")).toBeInTheDocument();
+    expect(screen.getByText("Seen 12s ago")).toBeInTheDocument();
   });
 
   it("shows when the Raspberry itself is not connected", () => {
@@ -47,6 +50,7 @@ describe("RaspberryPiStationsPanel", () => {
     );
 
     expect(screen.getByText("Raspberry not connected")).toBeInTheDocument();
-    expect(screen.getByText(/seen 1m ago/)).toBeInTheDocument();
+    expect(screen.getByText("Offline")).toBeInTheDocument();
+    expect(screen.getByText("Seen 1m ago")).toBeInTheDocument();
   });
 });

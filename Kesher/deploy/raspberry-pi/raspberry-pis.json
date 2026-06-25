@@ -9,7 +9,8 @@
       "ip_address": "192.168.0.61",
       "name": "Kamera-1",
       "role_id": "cam1",
-      "low_power_mode": true
+      "low_power_mode": true,
+      "simple_view": true
     }
   ]
 }

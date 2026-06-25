@@ -115,9 +115,12 @@ def resolve_client(config: dict[str, Any], addresses: list[str]) -> dict[str, An
             "name": name,
             "role_id": role_id,
             "low_power_mode": raw_client.get("low_power_mode", False),
+            "simple_view": raw_client.get("simple_view", False),
         }
         if not isinstance(client["low_power_mode"], bool):
             raise ValueError(f"clients[{index}].low_power_mode must be a boolean")
+        if not isinstance(client["simple_view"], bool):
+            raise ValueError(f"clients[{index}].simple_view must be a boolean")
         for optional_field in ("audio_input_match", "audio_output_match"):
             value = raw_client.get(optional_field)
             if isinstance(value, str) and value.strip():
@@ -146,6 +149,8 @@ def build_kesher_url(server_url: str, client: dict[str, Any]) -> str:
         params["audioOutputMatch"] = client["audio_output_match"]
     if client.get("low_power_mode") is True:
         params["lowPower"] = "1"
+    if client.get("simple_view") is True:
+        params["viewMode"] = "simple"
     return f"{server_url}/?{urlencode(params)}"
 
 
@@ -307,8 +312,19 @@ def browser_command(
             [
                 "--force-prefers-reduced-motion",
                 "--disable-smooth-scrolling",
+                "--enable-low-end-device-mode",
+                "--disable-background-networking",
+                "--disable-component-update",
+                "--disable-domain-reliability",
+                "--disable-sync",
+                "--disable-extensions",
+                "--disable-print-preview",
+                "--disable-pinch",
+                "--overscroll-history-navigation=0",
                 "--process-per-site",
                 "--renderer-process-limit=2",
+                "--js-flags=--max-old-space-size=96",
+                "--disable-features=Translate,BackForwardCache,MediaRouter,OptimizationHints,AutofillServerCommunication,CalculateNativeWinOcclusion",
             ]
         )
     command.append(kesher_url)

@@ -61,7 +61,7 @@ import {
 import { withResolvedStreamDeckButtonLabel } from "./lib/streamDeckLabels";
 import { sortDirectUsersByRoleAndUsername } from "./lib/users";
 import { resolveAutoLoginConfiguration } from "./lib/autoLogin";
-import { resolveLowPowerMode } from "./lib/runtimeMode";
+import { resolveLowPowerMode, resolveViewModeOverride } from "./lib/runtimeMode";
 import { resolveInputDeviceChannelCount } from "./lib/audioDeviceChannels";
 import type {
   Bootstrap,
@@ -300,6 +300,10 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     () => resolveLowPowerMode(window.location.search),
     [],
   );
+  const viewModeOverride = useMemo(
+    () => resolveViewModeOverride(window.location.search),
+    [],
+  );
 
   useEffect(() => {
     if (lowPowerMode) {
@@ -492,6 +496,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     authMode,
     showDebug,
     lowPowerMode,
+    viewModeOverride,
     selectedInputDeviceId: settings.selectedInputDeviceId,
     selectedInputDeviceIdRef: settings.selectedInputDeviceIdRef,
     selectedInputChannel: settings.selectedInputChannelFor(
