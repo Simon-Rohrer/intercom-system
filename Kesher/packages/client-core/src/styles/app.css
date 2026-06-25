@@ -6,6 +6,10 @@ html[data-kesher-low-power="true"] *::after {
   transition-duration: 0.01ms !important;
 }
 
+.station-shell.settings-open-low-power > :not(.station-modal-backdrop) {
+  visibility: hidden;
+}
+
 .root {
   max-width: 1520px;
   margin: 0 auto;
@@ -3954,6 +3958,22 @@ button.secondary {
   place-items: center;
   padding: clamp(0.5rem, 1.4vw, 1.1rem);
   backdrop-filter: blur(10px);
+}
+.station-modal-backdrop-low-power {
+  background: rgba(2, 7, 15, 0.92);
+  backdrop-filter: none;
+}
+.station-modal-backdrop-low-power .station-modal.panel {
+  background: var(--panel);
+  box-shadow: none;
+}
+.station-modal-backdrop-low-power .station-settings-card {
+  background: rgba(13, 27, 45, 0.98);
+  box-shadow: none;
+}
+.station-modal-backdrop-low-power .station-settings-nav button.active {
+  background: rgba(0, 209, 255, 0.1);
+  box-shadow: inset 3px 0 0 rgba(0, 209, 255, 0.58);
 }
 .station-modal {
   width: min(1180px, calc(100vw - 1rem));

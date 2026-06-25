@@ -758,23 +758,50 @@ describe("StationIntercomView", () => {
   it("opens stream deck settings as a dedicated subpage", async () => {
     const user = userEvent.setup();
 
-    render(<StationIntercomView {...baseProps} isUserSettingsOpen />);
+    const { container } = render(
+      <StationIntercomView {...baseProps} isUserSettingsOpen />,
+    );
 
     expect(
       screen.queryByRole("grid", { name: "Stream Deck 5x3 grid" }),
     ).not.toBeInTheDocument();
+    expect(container.querySelector("#settings-streamdeck")).toBeNull();
+    expect(container.querySelector("#settings-audio")).toBeNull();
+    expect(container.querySelector("#settings-layout")).not.toBeNull();
+    expect(container.querySelector("#settings-interaction")).toBeNull();
+    expect(container.querySelector("#settings-system")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
 
     expect(
       screen.getByRole("grid", { name: "Stream Deck 5x3 grid" }),
     ).toBeInTheDocument();
+    expect(container.querySelector("#settings-streamdeck")).not.toBeNull();
+    expect(container.querySelector("#settings-layout")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Layout" }));
 
     expect(
       screen.queryByRole("grid", { name: "Stream Deck 5x3 grid" }),
     ).not.toBeInTheDocument();
+    expect(container.querySelector("#settings-streamdeck")).toBeNull();
+  });
+
+  it("uses the reduced-effects settings backdrop in low-power mode", () => {
+    const { container } = render(
+      <StationIntercomView
+        {...baseProps}
+        isUserSettingsOpen
+        lowPowerMode
+      />,
+    );
+
+    expect(
+      container.querySelector(".station-modal-backdrop-low-power"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(".station-shell.settings-open-low-power"),
+    ).not.toBeNull();
   });
 
   it("emits down and up events in stream deck browser test mode", async () => {

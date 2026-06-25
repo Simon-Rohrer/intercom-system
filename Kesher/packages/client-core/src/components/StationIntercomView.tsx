@@ -1299,6 +1299,13 @@ export function StationIntercomView({
     useState<Map<number, string>>(new Map());
 
   const streamDeckPreviewRenderInputs = useMemo(() => {
+    if (
+      !isUserSettingsOpen ||
+      activeSettingsPage !== "streamdeck" ||
+      !isStreamDeckOpen
+    ) {
+      return [];
+    }
     const cache = streamDeckPreviewCacheRef.current;
     const listeningRoomIds = new Set(listenRoomIds);
     const selectedTalkRoomIds = new Set(talkRoomIds);
@@ -1368,6 +1375,9 @@ export function StationIntercomView({
       };
     });
   }, [
+    activeSettingsPage,
+    isStreamDeckOpen,
+    isUserSettingsOpen,
     listenRoomIds,
     talkRoomIds,
     streamDeckLabelLookup,
@@ -2006,7 +2016,11 @@ export function StationIntercomView({
   const hasChatAndSignalPanel = Boolean(chatAndSignalPanel);
 
   return (
-    <div className="root app station-shell">
+    <div
+      className={`root app station-shell ${
+        lowPowerMode && isUserSettingsOpen ? "settings-open-low-power" : ""
+      }`.trim()}
+    >
       {connectionState !== "connected" && (
         <div className="connection-offline-banner">
           <span className="connection-offline-icon" />
@@ -2619,7 +2633,9 @@ export function StationIntercomView({
       ) : null}
       {isUserSettingsOpen ? (
         <div
-          className="station-modal-backdrop"
+          className={`station-modal-backdrop ${
+            lowPowerMode ? "station-modal-backdrop-low-power" : ""
+          }`.trim()}
           onClick={() => setIsUserSettingsOpen(false)}
         >
           <section
@@ -2664,10 +2680,10 @@ export function StationIntercomView({
                 ))}
               </nav>
               <div className="station-modal-body">
+                {activeSettingsPage === "layout" ? (
                 <section
                   id="settings-layout"
                   className="station-settings-section station-settings-card"
-                  hidden={activeSettingsPage !== "layout"}
                 >
                   <SettingsSectionHeader
                     icon="layout"
@@ -2695,11 +2711,12 @@ export function StationIntercomView({
                     />
                   </div>
                 </section>
+                ) : null}
 
+                {activeSettingsPage === "interaction" ? (
                 <section
                   id="settings-interaction"
                   className="station-settings-section station-settings-card"
-                  hidden={activeSettingsPage !== "interaction"}
                 >
                   <SettingsSectionHeader
                     icon="controls"
@@ -2721,11 +2738,12 @@ export function StationIntercomView({
                     />
                   </div>
                 </section>
+                ) : null}
 
+                {activeSettingsPage === "system" ? (
                 <section
                   id="settings-system"
                   className="station-settings-section station-settings-card"
-                  hidden={activeSettingsPage !== "system"}
                 >
                   <SettingsSectionHeader
                     icon="system"
@@ -2776,11 +2794,12 @@ export function StationIntercomView({
                     enabled and install the app to your home screen.
                   </small>
                 </section>
+                ) : null}
 
+                {activeSettingsPage === "shortcuts" ? (
                 <section
                   id="settings-shortcuts"
                   className="station-settings-section station-settings-card station-settings-panel-section"
-                  hidden={activeSettingsPage !== "shortcuts"}
                 >
                   <SettingsSectionHeader
                     icon="keyboard"
@@ -2793,11 +2812,12 @@ export function StationIntercomView({
                     onRecordingChange={onRecordingShortcutChange}
                   />
                 </section>
+                ) : null}
 
+                {activeSettingsPage === "streamdeck" ? (
                 <section
                   id="settings-streamdeck"
                   className="station-settings-section station-settings-card streamdeck-settings-section"
-                  hidden={activeSettingsPage !== "streamdeck"}
                 >
                   <SettingsSectionHeader
                     icon="hardware"
@@ -3453,11 +3473,12 @@ export function StationIntercomView({
                   ) : null}
                 </div>
               </section>
+                ) : null}
 
+                {activeSettingsPage === "audio" ? (
                 <section
                   id="settings-audio"
                   className="audio-section station-settings-card"
-                  hidden={activeSettingsPage !== "audio"}
                 >
                   <SettingsSectionHeader
                     icon="audio"
@@ -4163,10 +4184,11 @@ export function StationIntercomView({
                   ) : null}
                 </div>
                 </section>
+                ) : null}
 
+                {activeSettingsPage === "system" ? (
                 <section
                   className="station-settings-section station-settings-card station-settings-version"
-                  hidden={activeSettingsPage !== "system"}
                 >
                   <SettingsSectionHeader
                     icon="info"
@@ -4184,6 +4206,7 @@ export function StationIntercomView({
                     />
                   </div>
                 </section>
+                ) : null}
 
               <p className="station-modal-hint">
                 Preferences apply only to you on this device.
