@@ -8,6 +8,28 @@ type UserCompanionCardProps = {
   roleId: string;
 };
 
+function DisclosureChevronIcon({ isOpen }: { isOpen: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{
+        width: "18px",
+        height: "18px",
+        transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+        transition: "transform 160ms ease",
+      }}
+    >
+      <path d="m9 6 6 6-6 6" />
+    </svg>
+  );
+}
+
 export function UserCompanionCard({
   token,
   username,
@@ -47,8 +69,17 @@ export function UserCompanionCard({
         style={{ cursor: "pointer" }}
         onClick={() => setIsOpen(!isOpen)}
       >
-        <h3 style={{ margin: 0 }}>
-          Companion Profile Publishing {isOpen ? "▼" : "▶"}
+        <h3
+          style={{
+            margin: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "0.5rem",
+          }}
+        >
+          <span>Companion Profile Publishing</span>
+          <DisclosureChevronIcon isOpen={isOpen} />
         </h3>
       </div>
       {isOpen && (

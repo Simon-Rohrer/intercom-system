@@ -7,6 +7,31 @@ type UserSettingsPanelProps = {
   roleId: string;
 };
 
+function SettingsGearIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ width: "22px", height: "22px" }}
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2v3" />
+      <path d="M12 19v3" />
+      <path d="m4.93 4.93 2.12 2.12" />
+      <path d="m16.95 16.95 2.12 2.12" />
+      <path d="M2 12h3" />
+      <path d="M19 12h3" />
+      <path d="m4.93 19.07 2.12-2.12" />
+      <path d="m16.95 7.05 2.12-2.12" />
+    </svg>
+  );
+}
+
 export function UserSettingsPanel({
   token,
   username,
@@ -43,7 +68,7 @@ export function UserSettingsPanel({
           }}
           title="User Settings"
         >
-          ⚙️
+          <SettingsGearIcon />
         </button>
       </div>
 

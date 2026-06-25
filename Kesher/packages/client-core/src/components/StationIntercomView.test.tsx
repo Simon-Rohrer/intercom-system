@@ -264,6 +264,7 @@ describe("StationIntercomView", () => {
       />,
     );
 
+    await user.click(screen.getByRole("button", { name: "Interaction" }));
     await user.click(
       screen.getByRole("checkbox", { name: "Swap PTT and reply buttons" }),
     );
@@ -681,7 +682,7 @@ describe("StationIntercomView", () => {
     );
   });
 
-  it("collapses and expands stream deck settings", async () => {
+  it("opens stream deck settings as a dedicated subpage", async () => {
     const user = userEvent.setup();
 
     render(<StationIntercomView {...baseProps} isUserSettingsOpen />);
@@ -696,7 +697,7 @@ describe("StationIntercomView", () => {
       screen.getByRole("grid", { name: "Stream Deck 5x3 grid" }),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
+    await user.click(screen.getByRole("button", { name: "Layout" }));
 
     expect(
       screen.queryByRole("grid", { name: "Stream Deck 5x3 grid" }),

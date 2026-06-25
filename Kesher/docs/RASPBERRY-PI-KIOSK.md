@@ -74,6 +74,14 @@ sudo systemctl start kesher-pi.service
 ```
 
 The installer preserves an existing `/etc/kesher/raspberry-pis.json`.
+If you changed the copied `deploy/raspberry-pi/raspberry-pis.json` and want to
+replace the active service config, run:
+
+```sh
+sudo ./install.sh <desktop-user> --update-config
+```
+
+This creates a timestamped backup of the previous `/etc/kesher/raspberry-pis.json`.
 
 Validate the mapping without opening Chromium:
 
@@ -81,6 +89,13 @@ Validate the mapping without opening Chromium:
 sudo -u <desktop-user> KESHER_PI_IP=192.168.1.51 \
   /opt/kesher-pi/kesher-pi-launcher.py --print-url
 ```
+
+After moving to a new server or subnet, verify all three values before
+restarting the service:
+
+- `server_url` points to the reachable Kesher server, for example `http://192.168.0.154:8080`
+- the current Pi address is listed as a client `ip_address`, for example `192.168.0.61`
+- the active file is `/etc/kesher/raspberry-pis.json`
 
 Inspect startup errors with:
 

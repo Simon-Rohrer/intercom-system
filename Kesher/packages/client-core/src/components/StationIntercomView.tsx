@@ -306,6 +306,250 @@ function formatGateThresholdDb(dbFs: number): string {
   return `${Math.round(dbFs)} dBFS`;
 }
 
+type SettingsIconName =
+  | "audio"
+  | "controls"
+  | "hardware"
+  | "info"
+  | "keyboard"
+  | "layout"
+  | "settings"
+  | "system";
+
+type SettingsPageId =
+  | "layout"
+  | "interaction"
+  | "system"
+  | "shortcuts"
+  | "streamdeck"
+  | "audio";
+
+const SETTINGS_NAV_ITEMS: {
+  id: SettingsPageId;
+  label: string;
+  icon: SettingsIconName;
+}[] = [
+  { id: "layout", label: "Layout", icon: "layout" },
+  { id: "interaction", label: "Interaction", icon: "controls" },
+  { id: "system", label: "System", icon: "system" },
+  { id: "shortcuts", label: "Shortcuts", icon: "keyboard" },
+  { id: "streamdeck", label: "Stream Deck", icon: "hardware" },
+  { id: "audio", label: "Sound settings", icon: "audio" },
+];
+
+function SettingsIcon({
+  name,
+  className = "",
+}: {
+  name: SettingsIconName;
+  className?: string;
+}) {
+  const commonProps = {
+    className,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+
+  if (name === "layout") {
+    return (
+      <svg {...commonProps}>
+        <rect x="3" y="4" width="7" height="7" rx="1.5" />
+        <rect x="14" y="4" width="7" height="7" rx="1.5" />
+        <rect x="3" y="15" width="18" height="5" rx="1.5" />
+      </svg>
+    );
+  }
+
+  if (name === "controls") {
+    return (
+      <svg {...commonProps}>
+        <path d="M4 7h10" />
+        <path d="M18 7h2" />
+        <circle cx="16" cy="7" r="2" />
+        <path d="M4 17h2" />
+        <path d="M10 17h10" />
+        <circle cx="8" cy="17" r="2" />
+      </svg>
+    );
+  }
+
+  if (name === "system") {
+    return (
+      <svg {...commonProps}>
+        <path d="M12 3v3" />
+        <path d="M12 18v3" />
+        <path d="M5.6 5.6l2.1 2.1" />
+        <path d="M16.3 16.3l2.1 2.1" />
+        <path d="M3 12h3" />
+        <path d="M18 12h3" />
+        <circle cx="12" cy="12" r="4" />
+      </svg>
+    );
+  }
+
+  if (name === "keyboard") {
+    return (
+      <svg {...commonProps}>
+        <rect x="3" y="6" width="18" height="12" rx="2" />
+        <path d="M7 10h.01" />
+        <path d="M11 10h.01" />
+        <path d="M15 10h.01" />
+        <path d="M7 14h6" />
+        <path d="M16 14h1" />
+      </svg>
+    );
+  }
+
+  if (name === "hardware") {
+    return (
+      <svg {...commonProps}>
+        <rect x="5" y="4" width="14" height="16" rx="2" />
+        <path d="M9 8h.01" />
+        <path d="M12 8h.01" />
+        <path d="M15 8h.01" />
+        <path d="M9 12h.01" />
+        <path d="M12 12h.01" />
+        <path d="M15 12h.01" />
+        <path d="M9 16h.01" />
+        <path d="M12 16h.01" />
+        <path d="M15 16h.01" />
+      </svg>
+    );
+  }
+
+  if (name === "audio") {
+    return (
+      <svg {...commonProps}>
+        <path d="M4 14h4l5 4V6L8 10H4z" />
+        <path d="M17 9.5a4 4 0 0 1 0 5" />
+        <path d="M19.5 7a7.5 7.5 0 0 1 0 10" />
+      </svg>
+    );
+  }
+
+  if (name === "info") {
+    return (
+      <svg {...commonProps}>
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 11v5" />
+        <path d="M12 8h.01" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...commonProps}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.05.05a2 2 0 1 1-2.83 2.83l-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6V20a2 2 0 1 1-4 0v-.07a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1H4a2 2 0 1 1 0-4h.07a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.05-.05A2 2 0 1 1 7.1 4.24l.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6V4a2 2 0 1 1 4 0v.07a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05A1.7 1.7 0 0 0 19.4 9c.24.34.45.69.6 1H20a2 2 0 1 1 0 4h-.07a1.7 1.7 0 0 0-.53 1z" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M6 6l12 12" />
+      <path d="M18 6 6 18" />
+    </svg>
+  );
+}
+
+function SettingsSectionHeader({
+  icon,
+  title,
+  eyebrow,
+}: {
+  icon: SettingsIconName;
+  title: string;
+  eyebrow: string;
+}) {
+  return (
+    <div className="station-settings-section-head">
+      <span className="station-settings-icon">
+        <SettingsIcon name={icon} />
+      </span>
+      <div>
+        <span>{eyebrow}</span>
+        <h4 className="station-settings-section-title">{title}</h4>
+      </div>
+    </div>
+  );
+}
+
+function SettingsToggle({
+  label,
+  description,
+  checked,
+  disabled = false,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (enabled: boolean) => void;
+}) {
+  return (
+    <label className={`station-setting ${disabled ? "disabled" : ""}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="station-setting-toggle" aria-hidden="true" />
+      <span className="station-setting-copy">
+        <span className="station-setting-label">{label}</span>
+        <small aria-hidden="true">{description}</small>
+      </span>
+    </label>
+  );
+}
+
+function SettingsStatusCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="station-settings-status-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 type ChannelAudioFeedRoomForm = {
   id?: string;
   name: string;
@@ -610,6 +854,8 @@ export function StationIntercomView({
   const [streamDeckTransferMessage, setStreamDeckTransferMessage] = useState("");
   const [streamDeckTransferError, setStreamDeckTransferError] = useState("");
   const [companionPublishBusy, setCompanionPublishBusy] = useState(false);
+  const [activeSettingsPage, setActiveSettingsPage] =
+    useState<SettingsPageId>("layout");
   const [streamDeckPreviewPressedIndexes, setStreamDeckPreviewPressedIndexes] =
     useState<number[]>([]);
   const [activeDirectTab, setActiveDirectTab] = useState<string>("all");
@@ -630,6 +876,15 @@ export function StationIntercomView({
   const streamDeckPreviewCacheRef = useRef<
     Map<number, { signature: string; dataUrl: string }>
   >(new Map());
+  const openSettingsPage = (page: SettingsPageId) => {
+    setActiveSettingsPage(page);
+    if (page === "streamdeck") {
+      setIsStreamDeckOpen(true);
+    }
+    if (page === "audio") {
+      setIsAudioOpen(true);
+    }
+  };
   const selectedInputChannelValue =
     inputChannelCount > 1 &&
     selectedInputChannel !== "all" &&
@@ -1771,7 +2026,8 @@ export function StationIntercomView({
               className="station-top-admin"
               onClick={() => setIsUserSettingsOpen(true)}
             >
-              User settings
+              <SettingsIcon name="settings" className="station-top-admin-icon" />
+              <span>User settings</span>
             </button>
             <button className="station-top-logout" onClick={doLogout}>
               Logout / Lock
@@ -2292,7 +2548,7 @@ export function StationIntercomView({
                 <RaspberryPiStationsPanel
                   stations={raspberryPiStations}
                   title="Raspberry Pis"
-                  emptyText="No Raspberry heartbeat received."
+                  emptyText="No Raspberry connected."
                   className="station-pi-stations"
                 />
                 {raspberryPiStationsError ? (
@@ -2315,121 +2571,186 @@ export function StationIntercomView({
         >
           <section
             className="station-modal panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="user-settings-title"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="station-modal-header">
-              <h3>User settings</h3>
+            <header className="station-modal-header">
+              <div className="station-modal-title">
+                <span>User settings</span>
+                <h3 id="user-settings-title">Station setup</h3>
+              </div>
               <button
                 className="station-modal-close"
                 onClick={() => setIsUserSettingsOpen(false)}
+                aria-label="Close user settings"
               >
-                Close
+                <CloseIcon />
               </button>
-            </div>
-            <div className="station-modal-body">
-              <section className="station-settings-section">
-                <h4 className="station-settings-section-title">Layout</h4>
-                <div className="station-settings-grid">
-                  <label className="station-setting">
-                    <input
-                      type="checkbox"
+            </header>
+            <div className="station-settings-shell">
+              <nav
+                className="station-settings-nav"
+                aria-label="User settings sections"
+              >
+                {SETTINGS_NAV_ITEMS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={activeSettingsPage === item.id ? "active" : ""}
+                    aria-current={
+                      activeSettingsPage === item.id ? "page" : undefined
+                    }
+                    aria-controls={`settings-${item.id}`}
+                    onClick={() => openSettingsPage(item.id)}
+                  >
+                    <SettingsIcon name={item.icon} />
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </nav>
+              <div className="station-modal-body">
+                <section
+                  id="settings-layout"
+                  className="station-settings-section station-settings-card"
+                  hidden={activeSettingsPage !== "layout"}
+                >
+                  <SettingsSectionHeader
+                    icon="layout"
+                    eyebrow="View"
+                    title="Layout"
+                  />
+                  <div className="station-settings-grid">
+                    <SettingsToggle
+                      label="Show only favorites"
+                      description="Focuses pinned party lines and direct users."
                       checked={showPinnedOnly}
-                      onChange={(e) => onShowPinnedOnlyChange(e.target.checked)}
+                      onChange={onShowPinnedOnlyChange}
                     />
-                    <span>Show only favorites</span>
-                  </label>
-                  <label className="station-setting">
-                    <input
-                      type="checkbox"
+                    <SettingsToggle
+                      label="Show direct communication as tabs"
+                      description="Groups direct users by favorites and roles."
                       checked={enableDirectTabs}
-                      onChange={(e) =>
-                        onEnableDirectTabsChange(e.target.checked)
-                      }
+                      onChange={onEnableDirectTabsChange}
                     />
-                    <span>Show direct communication as tabs</span>
-                  </label>
-                  <label className="station-setting">
-                    <input
-                      type="checkbox"
+                    <SettingsToggle
+                      label="Show volume controls"
+                      description="Shows per-channel and direct-user gain controls."
                       checked={showVolumeControls}
-                      onChange={(e) =>
-                        onShowVolumeControlsChange(e.target.checked)
-                      }
+                      onChange={onShowVolumeControlsChange}
                     />
-                    <span>Show volume controls</span>
-                  </label>
-                </div>
-              </section>
+                  </div>
+                </section>
 
-              <section className="station-settings-section">
-                <h4 className="station-settings-section-title">Interaction</h4>
-                <div className="station-settings-grid">
-                  <label className="station-setting">
-                    <input
-                      type="checkbox"
+                <section
+                  id="settings-interaction"
+                  className="station-settings-section station-settings-card"
+                  hidden={activeSettingsPage !== "interaction"}
+                >
+                  <SettingsSectionHeader
+                    icon="controls"
+                    eyebrow="Operation"
+                    title="Interaction"
+                  />
+                  <div className="station-settings-grid">
+                    <SettingsToggle
+                      label="Direct PTT Mode (press channel to talk)"
+                      description="Turns channel cards into hold-to-talk targets."
                       checked={enableDirectPpt}
-                      onChange={(e) =>
-                        onEnableDirectPptChange(e.target.checked)
-                      }
+                      onChange={onEnableDirectPptChange}
                     />
-                    <span>Direct PTT Mode (press channel to talk)</span>
-                  </label>
-                  <label className="station-setting">
-                    <input
-                      type="checkbox"
+                    <SettingsToggle
+                      label="Swap PTT and reply buttons"
+                      description="Changes the fixed control order on this device."
                       checked={swapPttAndReplyButtons}
-                      onChange={(e) =>
-                        onSwapPttAndReplyButtonsChange(e.target.checked)
-                      }
+                      onChange={onSwapPttAndReplyButtonsChange}
                     />
-                    <span>Swap PTT and reply buttons</span>
-                  </label>
-                </div>
-              </section>
+                  </div>
+                </section>
 
-              <section className="station-settings-section">
-                <h4 className="station-settings-section-title">System</h4>
-                <div className="station-settings-grid">
-                  <label className="station-setting">
-                    <input
-                      type="checkbox"
+                <section
+                  id="settings-system"
+                  className="station-settings-section station-settings-card"
+                  hidden={activeSettingsPage !== "system"}
+                >
+                  <SettingsSectionHeader
+                    icon="system"
+                    eyebrow="Device"
+                    title="System"
+                  />
+                  <div className="station-settings-grid">
+                    <SettingsToggle
+                      label="Background audio assist"
+                      description="Keeps audio recovery helpers active."
                       checked={enableBackgroundAudioRecovery}
-                      onChange={(e) =>
-                        onEnableBackgroundAudioRecoveryChange(e.target.checked)
-                      }
+                      onChange={onEnableBackgroundAudioRecoveryChange}
                     />
-                    <span>Background audio assist</span>
-                  </label>
-                  <label className="station-setting">
-                    <input
-                      type="checkbox"
+                    <SettingsToggle
+                      label="Keep device awake while connected"
+                      description={
+                        wakeLockSupported
+                          ? "Prevents the display from sleeping."
+                          : "Wake lock is unavailable in this browser."
+                      }
                       checked={keepScreenAwake}
                       disabled={!wakeLockSupported}
-                      onChange={(e) => onKeepScreenAwakeChange(e.target.checked)}
+                      onChange={onKeepScreenAwakeChange}
                     />
-                    <span>Keep device awake while connected</span>
-                  </label>
-                </div>
-              </section>
+                  </div>
+                  <div className="station-settings-status-grid">
+                    <SettingsStatusCard
+                      label="Media controls"
+                      value={mediaSessionSupported ? "Supported" : "Not supported"}
+                    />
+                    <SettingsStatusCard
+                      label="Wake lock"
+                      value={
+                        wakeLockSupported
+                          ? wakeLockActive
+                            ? "Active"
+                            : "Available"
+                          : "Not supported"
+                      }
+                    />
+                    <SettingsStatusCard
+                      label="Install mode"
+                      value={isStandaloneDisplayMode ? "Installed app" : "Browser tab"}
+                    />
+                  </div>
+                  <small className="station-settings-meta">
+                    For best mobile reliability, keep background audio assist
+                    enabled and install the app to your home screen.
+                  </small>
+                </section>
 
-              <section className="station-settings-section station-settings-status">
-                <small className="station-settings-meta">
-                  Media controls: {mediaSessionSupported ? "supported" : "not supported"} | Wake
-                  lock: {wakeLockSupported ? (wakeLockActive ? "active" : "available") : "not supported"} | Install mode: {isStandaloneDisplayMode ? "installed app" : "browser tab"}
-                </small>
-                <small className="station-settings-meta">
-                  For best mobile reliability, keep background audio assist
-                  enabled and install the app to your home screen.
-                </small>
-              </section>
+                <section
+                  id="settings-shortcuts"
+                  className="station-settings-section station-settings-card station-settings-panel-section"
+                  hidden={activeSettingsPage !== "shortcuts"}
+                >
+                  <SettingsSectionHeader
+                    icon="keyboard"
+                    eyebrow="Keyboard"
+                    title="Shortcuts"
+                  />
+                  <KeyboardShortcutsSettings
+                    shortcuts={keyboardShortcuts}
+                    onShortcutsChange={onKeyboardShortcutsChange}
+                    onRecordingChange={onRecordingShortcutChange}
+                  />
+                </section>
 
-              <KeyboardShortcutsSettings
-                shortcuts={keyboardShortcuts}
-                onShortcutsChange={onKeyboardShortcutsChange}
-                onRecordingChange={onRecordingShortcutChange}
-              />
-
-              <section className="station-settings-section streamdeck-settings-section">
+                <section
+                  id="settings-streamdeck"
+                  className="station-settings-section station-settings-card streamdeck-settings-section"
+                  hidden={activeSettingsPage !== "streamdeck"}
+                >
+                  <SettingsSectionHeader
+                    icon="hardware"
+                    eyebrow="Hardware"
+                    title="Stream Deck"
+                  />
                 <div className={`audio-box ${isStreamDeckOpen ? "" : "collapsed"}`}>
                   <div className="audio-box-header">
                     <button
@@ -2439,7 +2760,7 @@ export function StationIntercomView({
                       aria-expanded={isStreamDeckOpen}
                     >
                       Stream Deck
-                      <span className={`chev ${isStreamDeckOpen ? "open" : ""}`}>▾</span>
+                      <ChevronIcon className={`chev ${isStreamDeckOpen ? "open" : ""}`} />
                     </button>
                   </div>
                   {isStreamDeckOpen ? (
@@ -2524,7 +2845,7 @@ export function StationIntercomView({
                           </button>
                         </div>
                       </div>
-                    <div className="streamdeck-settings-actions" style={{ marginBottom: "0.6rem" }}>
+                    <div className="streamdeck-settings-note">
                       <small className="station-settings-meta">
                         Configure your Stream Deck layout here and click Save.
                         Companion sync is triggered automatically. Use Publish to
@@ -3080,7 +3401,16 @@ export function StationIntercomView({
                 </div>
               </section>
 
-              <div className="audio-section">
+                <section
+                  id="settings-audio"
+                  className="audio-section station-settings-card"
+                  hidden={activeSettingsPage !== "audio"}
+                >
+                  <SettingsSectionHeader
+                    icon="audio"
+                    eyebrow="Audio"
+                    title="Sound"
+                  />
                 <div className={`audio-box ${isAudioOpen ? "" : "collapsed"}`}>
                   <div className="audio-box-header">
                     <button
@@ -3090,7 +3420,7 @@ export function StationIntercomView({
                       aria-expanded={isAudioOpen}
                     >
                       Sound settings
-                      <span className={`chev ${isAudioOpen ? "open" : ""}`}>▾</span>
+                      <ChevronIcon className={`chev ${isAudioOpen ? "open" : ""}`} />
                     </button>
                   </div>
                   {isAudioOpen ? (
@@ -3107,11 +3437,9 @@ export function StationIntercomView({
                           aria-expanded={isPersonalAudioOpen}
                         >
                           My audio
-                          <span
+                          <ChevronIcon
                             className={`chev ${isPersonalAudioOpen ? "open" : ""}`}
-                          >
-                            ▾
-                          </span>
+                          />
                         </button>
                         {isPersonalAudioOpen ? (
                           <div className="audio-subsection-body audio-personal-grid">
@@ -3367,11 +3695,9 @@ export function StationIntercomView({
                           aria-expanded={isChannelAudioFeedsOpen}
                         >
                           Channel audio feeds
-                          <span
+                          <ChevronIcon
                             className={`chev ${isChannelAudioFeedsOpen ? "open" : ""}`}
-                          >
-                            ▾
-                          </span>
+                          />
                         </button>
                         {isChannelAudioFeedsOpen ? (
                           <div className="audio-subsection-body channel-audio-feed-section">
@@ -3515,7 +3841,7 @@ export function StationIntercomView({
                                       disabled={channelAudioFeedSaveBusy}
                                       aria-label="Close feed editor"
                                     >
-                                      ×
+                                      <CloseIcon />
                                     </button>
                                   </header>
 
@@ -3764,19 +4090,33 @@ export function StationIntercomView({
                     </div>
                   ) : null}
                 </div>
-              </div>
+                </section>
 
-              <section className="station-settings-section station-settings-version">
-                <h4 className="station-settings-section-title">App Version</h4>
-                <small>{appData.appVersion.version}</small>
-                <small className="station-settings-build">
-                  Built: {appData.appVersion.buildTimestamp}
-                </small>
-              </section>
+                <section
+                  className="station-settings-section station-settings-card station-settings-version"
+                  hidden={activeSettingsPage !== "system"}
+                >
+                  <SettingsSectionHeader
+                    icon="info"
+                    eyebrow="Build"
+                    title="App Version"
+                  />
+                  <div className="station-settings-version-grid">
+                    <SettingsStatusCard
+                      label="Version"
+                      value={appData.appVersion.version}
+                    />
+                    <SettingsStatusCard
+                      label="Built"
+                      value={appData.appVersion.buildTimestamp}
+                    />
+                  </div>
+                </section>
 
               <p className="station-modal-hint">
                 Preferences apply only to you on this device.
               </p>
+            </div>
             </div>
           </section>
         </div>

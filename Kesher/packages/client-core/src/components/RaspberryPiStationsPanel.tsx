@@ -18,15 +18,38 @@ function formatSecondsSinceSeen(seconds: number): string {
   return `${hours}h ago`;
 }
 
+function formatMachineStatus(value: string): string {
+  return value
+    .trim()
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ");
+}
+
 function stationStatusLabel(station: RaspberryPiStationStatus): string {
+  if (!station.online) return "Raspberry not connected";
   if (station.intercomConnected) return "Intercom connected";
-  if (!station.online) return "Offline";
   if (station.effectiveStatus === "login_error") return "Login error";
   if (station.effectiveStatus === "waiting_for_intercom") {
-    return "Waiting for intercom";
+    return "Intercom not connected";
   }
-  if (station.browserStatus === "running") return "Browser running";
-  return station.effectiveStatus || "Launcher online";
+  if (station.browserStatus === "running") return "Intercom not connected";
+  return formatMachineStatus(station.effectiveStatus) || "Raspberry connected";
+}
+
+function stationDetailLabel(station: RaspberryPiStationStatus): string {
+  const details = [
+    station.online ? "Raspberry connected" : "Raspberry not connected",
+  ];
+  const browserStatus = formatMachineStatus(station.browserStatus);
+  if (browserStatus && browserStatus !== "unknown") {
+    details.push(`browser ${browserStatus}`);
+  }
+  const loginStatus = formatMachineStatus(station.loginStatus);
+  if (loginStatus && loginStatus !== "unknown") {
+    details.push(loginStatus);
+  }
+  details.push(`seen ${formatSecondsSinceSeen(station.secondsSinceSeen)}`);
+  return details.join(" | ");
 }
 
 function stationStatusClass(station: RaspberryPiStationStatus): string {
@@ -65,7 +88,7 @@ export function RaspberryPiStationsPanel({
               <span className={stationStatusClass(station)}>
                 {stationStatusLabel(station)}
               </span>
-              <small>seen {formatSecondsSinceSeen(station.secondsSinceSeen)}</small>
+              <small>{stationDetailLabel(station)}</small>
             </div>
             {station.loginError ? (
               <div className="admin-pi-station-error">
