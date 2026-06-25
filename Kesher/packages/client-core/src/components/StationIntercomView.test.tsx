@@ -764,6 +764,29 @@ describe("StationIntercomView", () => {
     expect(onAudioGateThresholdDbChange).toHaveBeenCalledWith(-40);
   });
 
+  it("pauses sound metering and gate controls in low-power mode", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <StationIntercomView
+        {...baseProps}
+        isUserSettingsOpen
+        lowPowerMode
+        audioGateEnabled
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Sound settings/ }));
+
+    expect(screen.getByText("Low power mode keeps metering off.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Audio test paused" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Noise gate" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Noise gate" })).not.toBeChecked();
+    expect(
+      screen.getByRole("slider", { name: "Microphone gate threshold" }),
+    ).toBeDisabled();
+  });
+
   it("selects a physical USB interface input", async () => {
     const user = userEvent.setup();
     const onSelectedInputChannelChange = vi.fn();

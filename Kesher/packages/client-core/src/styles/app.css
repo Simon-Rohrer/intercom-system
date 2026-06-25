@@ -4484,6 +4484,16 @@ button.secondary {
 .station-modal-body .input-level-row .input-level-status {
   font-weight: 700;
 }
+.station-modal-body .input-level-row-muted {
+  padding: 0.7rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid rgba(133, 176, 240, 0.16);
+  background: rgba(17, 35, 57, 0.42);
+}
+.station-modal-body .input-level-row-muted .input-level-head strong,
+.station-modal-body .input-level-row-muted .input-level-status {
+  color: rgba(217, 236, 255, 0.62);
+}
 .station-modal-body .input-level-row .input-level-status.is-ok {
   color: #b7f0c7;
 }
@@ -4517,6 +4527,14 @@ button.secondary {
 .station-modal-body .local-monitor-btn:hover {
   background: rgba(255, 255, 255, 0.09);
   border-color: rgba(255, 255, 255, 0.2);
+}
+.station-modal-body .local-monitor-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.station-modal-body .local-monitor-btn:disabled:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 .station-modal-body .local-monitor-btn.active {
   background: rgba(0, 224, 143, 0.12);

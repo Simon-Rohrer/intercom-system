@@ -264,6 +264,8 @@ export type UseLocalMicOptions = {
   onRefreshAudioDevices: () => Promise<void>;
   /** Optional callback to tune the active outgoing RTCRtpSender after add/replace. */
   onAfterAudioSenderUpdated?: (pc: RTCPeerConnection) => Promise<void> | void;
+  /** Disable continuous metering and mic loopback on constrained kiosk devices. */
+  lowPowerMode?: boolean;
   /**
    * When true the mic-reinit effect fires on `selectedInputDeviceId` changes.
    * Should be `!!(token && appData)` in the caller.
@@ -320,10 +322,12 @@ export function useLocalMic({
   onAudioError,
   onRefreshAudioDevices,
   onAfterAudioSenderUpdated,
+  lowPowerMode = false,
   enableReinit,
 }: UseLocalMicOptions): UseLocalMicResult {
   const effectiveInputGain = (deviceGain: number): number =>
     clampInputGainValue(deviceGain * micInputBaseBoost);
+  const effectiveAudioGateEnabled = audioGateEnabled && !lowPowerMode;
 
   // ── State ──
   const [inputLevelDbFs, setInputLevelDbFs] = useState(meterDbFsFloor);
@@ -413,7 +417,7 @@ export function useLocalMic({
       
       let processedInput: AudioNode = processorInput;
       let gate: ScriptProcessorNode | null = null;
-      if (audioGateEnabled) {
+      if (effectiveAudioGateEnabled) {
         gate = ctx.createScriptProcessor(webAudioGateBufferSize, 1, 1);
         gate.onaudioprocess = (event) => {
           const input = event.inputBuffer.getChannelData(0);
@@ -490,6 +494,7 @@ export function useLocalMic({
 
   function startLevelMeter(stream: MediaStream) {
     stopLevelMeter();
+    if (lowPowerMode) return;
     const AudioCtx = window.AudioContext;
     if (!AudioCtx) return;
     const sourceTrack = stream.getAudioTracks()[0];
@@ -539,6 +544,10 @@ export function useLocalMic({
   }
 
   async function startLocalMonitor(outputDeviceId: string): Promise<void> {
+    if (lowPowerMode) {
+      stopLocalMonitor();
+      return;
+    }
     const processedStream = localStreamRef.current;
     if (!processedStream) return;
     const AudioCtx = window.AudioContext;
@@ -624,7 +633,7 @@ export function useLocalMic({
           for (const t of localStreamRef.current.getTracks()) t.stop();
         }
         localStreamRef.current = newStream;
-        if (isUserSettingsOpenRef.current) {
+        if (isUserSettingsOpenRef.current && !lowPowerMode) {
           startLevelMeter(newStream);
         } else {
           stopLevelMeter();
@@ -648,8 +657,9 @@ export function useLocalMic({
     selectedInputDeviceId,
     selectedInputChannel,
     inputChannelCountHint,
-    audioGateEnabled,
+    effectiveAudioGateEnabled,
     enableReinit,
+    lowPowerMode,
   ]);
 
   // ── Input gain node live update ──
@@ -663,7 +673,7 @@ export function useLocalMic({
 
   // ── Level meter toggle + local monitor auto-stop (settings panel open/close) ──
   useEffect(() => {
-    if (!isUserSettingsOpen) {
+    if (!isUserSettingsOpen || lowPowerMode) {
       stopLevelMeter();
       stopLocalMonitor();
       return;
@@ -671,7 +681,7 @@ export function useLocalMic({
     const processedStream = localStreamRef.current;
     if (processedStream) startLevelMeter(processedStream);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isUserSettingsOpen]);
+  }, [isUserSettingsOpen, lowPowerMode]);
 
   // ── Clipping display debounce ──
   useEffect(() => {

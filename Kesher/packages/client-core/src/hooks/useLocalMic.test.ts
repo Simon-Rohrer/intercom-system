@@ -1,10 +1,42 @@
-import { describe, expect, it, vi } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { useRef } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildLowLatencyMicConstraintCandidates,
   requestLowLatencyMicStream,
   computeGateCoefficients,
   resolveInputChannelIndexes,
+  useLocalMic,
 } from "./useLocalMic";
+
+function useTestLocalMic(lowPowerMode: boolean) {
+  const selectedInputDeviceIdRef = useRef("");
+  const isUserSettingsOpenRef = useRef(false);
+  const voiceModeRef = useRef<"always_on" | "ptt">("ptt");
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  return useLocalMic({
+    selectedInputDeviceId: "",
+    selectedInputDeviceIdRef,
+    selectedInputGainFor: () => 1,
+    inputGainByDeviceId: {},
+    selectedInputChannel: "all",
+    audioGateEnabled: false,
+    audioGateThresholdDb: -45,
+    isUserSettingsOpen: false,
+    isUserSettingsOpenRef,
+    voiceModeRef,
+    pcRef,
+    onAudioError: vi.fn(),
+    onRefreshAudioDevices: vi.fn(async () => undefined),
+    lowPowerMode,
+    enableReinit: false,
+  });
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("useLocalMic helpers", () => {
   it("builds low-latency microphone candidates with strict DSP disable first", () => {
@@ -154,5 +186,25 @@ describe("useLocalMic helpers", () => {
     expect(resolveInputChannelIndexes(3, 2)).toEqual([0]);
     expect(resolveInputChannelIndexes("all", 4)).toEqual([0, 1, 2, 3]);
     expect(resolveInputChannelIndexes(4, 4)).toEqual([3]);
+  });
+
+  it("does not start local metering in low-power mode", () => {
+    const AudioContextMock = vi.fn();
+    vi.stubGlobal("AudioContext", AudioContextMock);
+    const requestAnimationFrameSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockReturnValue(1);
+    const stream = {
+      getAudioTracks: () => [{ clone: vi.fn() }],
+    } as unknown as MediaStream;
+
+    const { result } = renderHook(() => useTestLocalMic(true));
+
+    act(() => {
+      result.current.startLevelMeter(stream);
+    });
+
+    expect(AudioContextMock).not.toHaveBeenCalled();
+    expect(requestAnimationFrameSpy).not.toHaveBeenCalled();
   });
 });

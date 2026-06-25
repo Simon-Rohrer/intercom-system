@@ -1039,6 +1039,7 @@ export function useIntercomSession({
         pc,
         lowPowerMode ? lowPowerOpusMaxBitrateBps : opusMaxBitrateBps,
       ),
+    lowPowerMode,
     enableReinit: !!(token && appData),
   });
 
@@ -1068,8 +1069,11 @@ export function useIntercomSession({
 
   useEffect(() => {
     if (!nativeAudio?.isNative) return;
-    nativeAudio.setAudioGate(audioGateEnabled, audioGateThresholdDb);
-  }, [nativeAudio, audioGateEnabled, audioGateThresholdDb]);
+    nativeAudio.setAudioGate(
+      lowPowerMode ? false : audioGateEnabled,
+      audioGateThresholdDb,
+    );
+  }, [nativeAudio, audioGateEnabled, audioGateThresholdDb, lowPowerMode]);
 
   const nativeInputSelectionRef = useRef(
     `${selectedInputDeviceId}:${selectedInputChannel}`,
@@ -2167,7 +2171,7 @@ export function useIntercomSession({
             selectedInputChannel,
           );
           mic.localStreamRef.current = stream;
-          if (isUserSettingsOpenRef.current) {
+          if (isUserSettingsOpenRef.current && !lowPowerMode) {
             mic.startLevelMeter(stream);
           } else {
             mic.stopLevelMeter();

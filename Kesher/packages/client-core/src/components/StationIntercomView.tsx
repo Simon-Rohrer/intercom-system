@@ -3515,27 +3515,42 @@ export function StationIntercomView({
                             interface.
                           </small>
                         </label>
-                        <div className="input-level-row" aria-live="polite">
-                          <div className="input-level-head">
-                            <small>Input level</small>
-                            <strong>{formatDbFs(inputLevelDbFs)}</strong>
-                          </div>
-                          <div className="meter">
-                            <div
-                              className="meter-bar"
-                              style={{
-                                width: `${meterDbFsToPercent(inputLevelDbFs)}%`,
-                              }}
-                            />
-                          </div>
-                          <small
-                            className={`input-level-status ${inputClipping ? "is-clipping" : "is-ok"}`}
+                        {lowPowerMode ? (
+                          <div
+                            className="input-level-row input-level-row-muted"
+                            aria-live="polite"
                           >
-                            {inputClipping
-                              ? "audio clipping"
-                              : "audio level ok"}
-                          </small>
-                        </div>
+                            <div className="input-level-head">
+                              <small>Input level</small>
+                              <strong>paused</strong>
+                            </div>
+                            <small className="input-level-status is-ok">
+                              Low power mode keeps metering off.
+                            </small>
+                          </div>
+                        ) : (
+                          <div className="input-level-row" aria-live="polite">
+                            <div className="input-level-head">
+                              <small>Input level</small>
+                              <strong>{formatDbFs(inputLevelDbFs)}</strong>
+                            </div>
+                            <div className="meter">
+                              <div
+                                className="meter-bar"
+                                style={{
+                                  width: `${meterDbFsToPercent(inputLevelDbFs)}%`,
+                                }}
+                              />
+                            </div>
+                            <small
+                              className={`input-level-status ${inputClipping ? "is-clipping" : "is-ok"}`}
+                            >
+                              {inputClipping
+                                ? "audio clipping"
+                                : "audio level ok"}
+                            </small>
+                          </div>
+                        )}
                         <div className="local-monitor-control">
                           <small className="local-monitor-hint">
                             Use headphones before starting the test.
@@ -3543,9 +3558,12 @@ export function StationIntercomView({
                           <button
                             type="button"
                             className={`local-monitor-btn${isLocalMonitorActive ? " active" : ""}`}
+                            disabled={lowPowerMode}
                             onClick={onToggleLocalMonitor}
                           >
-                            {isLocalMonitorActive
+                            {lowPowerMode
+                              ? "Audio test paused"
+                              : isLocalMonitorActive
                               ? "Stop audio test"
                               : "Test microphone"}
                           </button>
@@ -3588,7 +3606,8 @@ export function StationIntercomView({
                           <label>
                             <input
                               type="checkbox"
-                              checked={audioGateEnabled}
+                              checked={lowPowerMode ? false : audioGateEnabled}
+                              disabled={lowPowerMode}
                               onChange={(event) =>
                                 onAudioGateEnabledChange(
                                   event.currentTarget.checked,
@@ -3612,7 +3631,7 @@ export function StationIntercomView({
                             max={-12}
                             step={1}
                             value={audioGateThresholdDb}
-                            disabled={!audioGateEnabled}
+                            disabled={lowPowerMode || !audioGateEnabled}
                             onChange={(event) =>
                               onAudioGateThresholdDbChange(
                                 Number(event.currentTarget.value),
