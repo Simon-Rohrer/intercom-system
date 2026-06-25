@@ -38,6 +38,7 @@ const baseProps: ComponentProps<typeof StationIntercomView> = {
   canRoleReceiveFromRoom: () => true,
   toggleTalkRoom: vi.fn(),
   toggleListenRoom: vi.fn(),
+  roomLevelById: {},
   isReceivingRoom: () => false,
   isReceivingBroadcast: () => false,
   isReceivingDirect: () => false,
@@ -156,6 +157,78 @@ const baseProps: ComponentProps<typeof StationIntercomView> = {
 };
 
 describe("StationIntercomView", () => {
+  it("renders the incoming level beside each party-line favorite control", () => {
+    render(
+      <StationIntercomView
+        {...baseProps}
+        roomLevelById={{ "room-1": 0.72 }}
+      />,
+    );
+
+    const meter = screen.getByRole("meter", {
+      name: "Party Line 1 input level",
+    });
+    expect(meter).toHaveAttribute("aria-valuenow", "72");
+    expect(meter.querySelectorAll(".station-channel-meter-segment.active")).toHaveLength(
+      7,
+    );
+  });
+
+  it("does not toggle favorites when the party-line meter is clicked", async () => {
+    const user = userEvent.setup();
+    const onTogglePinnedRoom = vi.fn();
+    render(
+      <StationIntercomView
+        {...baseProps}
+        onTogglePinnedRoom={onTogglePinnedRoom}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("meter", { name: "Party Line 1 input level" }),
+    );
+    expect(onTogglePinnedRoom).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", { name: "Add channel to favorites" }),
+    );
+    expect(onTogglePinnedRoom).toHaveBeenCalledWith("room-1");
+  });
+
+  it("uses route activity without audio analysis in low-power mode", () => {
+    render(
+      <StationIntercomView
+        {...baseProps}
+        lowPowerMode
+        isReceivingRoom={() => true}
+      />,
+    );
+
+    expect(
+      screen.getByRole("meter", { name: "Party Line 1 input level" }),
+    ).toHaveAttribute("aria-valuenow", "42");
+  });
+
+  it("adds a safe wrap opportunity to slash-separated party-line names", () => {
+    const { container } = render(
+      <StationIntercomView
+        {...baseProps}
+        appData={{
+          ...baseProps.appData,
+          rooms: [
+            {
+              ...baseProps.appData.rooms[0],
+              name: "Licht/ProPresenter",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Licht/ProPresenter")).toBeVisible();
+    expect(container.querySelector(".station-room-card strong wbr")).not.toBeNull();
+  });
+
   it("shows the low-power indicator only when the mode is active", () => {
     const { rerender } = render(<StationIntercomView {...baseProps} />);
     expect(

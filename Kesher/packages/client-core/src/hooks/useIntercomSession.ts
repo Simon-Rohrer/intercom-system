@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   bootstrap,
   buildWebSocketUrl,
@@ -450,6 +450,57 @@ export type RemoteAudioSource = {
   sourceID: string;
 };
 
+export function aggregateRemoteRoomLevels({
+  remoteLevelByKey,
+  remoteSources,
+  routes,
+  presence,
+  listenRoomIDs,
+}: {
+  remoteLevelByKey: Record<string, number>;
+  remoteSources: ReadonlyMap<string, RemoteAudioSource>;
+  routes: VoiceRoute[];
+  presence: Presence[];
+  listenRoomIDs: string[];
+}): Record<string, number> {
+  const roomLevels: Record<string, number> = {};
+
+  for (const [key, level] of Object.entries(remoteLevelByKey)) {
+    if (level <= 0) continue;
+    const source = remoteSources.get(key);
+    if (!source) continue;
+
+    const sourceRoutes = routes.filter(
+      (route) =>
+        route.senderUserID === source.userID &&
+        route.sourceID === source.sourceID,
+    );
+    const matchingRoutes = sourceRoutes.filter(
+      (route) => route.scope === "room",
+    );
+    const sourcePresence = presence.find(
+      (entry) => entry.userId === source.userID,
+    );
+    const fallbackRoomIDs =
+      sourceRoutes.length === 0 &&
+      sourcePresence?.voiceMode === "always_on" &&
+      sourcePresence.micEnabled
+        ? sourcePresence.talkRooms ?? []
+        : [];
+    const roomIDs =
+      matchingRoutes.length > 0
+        ? matchingRoutes.map((route) => route.targetID)
+        : fallbackRoomIDs;
+
+    for (const roomID of roomIDs) {
+      if (!listenRoomIDs.includes(roomID)) continue;
+      roomLevels[roomID] = Math.max(roomLevels[roomID] ?? 0, level);
+    }
+  }
+
+  return roomLevels;
+}
+
 export type ChannelAudioFeedStatus = {
   id: string;
   state: "idle" | "starting" | "live" | "error";
@@ -551,6 +602,7 @@ export type UseIntercomSessionResult = {
   events: Array<{ label: string; at: string }>;
   rtpStats: RtpStats;
   incomingAudioActive: boolean;
+  roomLevelById: Record<string, number>;
   activeVoiceRoutes: VoiceRoute[];
   incomingAttention: { title: string; detail: string } | null;
   lastCompanionCommand: {
@@ -1142,6 +1194,23 @@ export function useIntercomSession({
   const incomingAudioActive = lowPowerMode
     ? activeVoiceRoutes.length > 0
     : remote.incomingAudioActive;
+  const roomLevelById = useMemo(
+    () =>
+      aggregateRemoteRoomLevels({
+        remoteLevelByKey: remote.remoteLevelByKey,
+        remoteSources: remote.remoteSourceRef.current,
+        routes: activeVoiceRoutes,
+        presence,
+        listenRoomIDs: listenRoomIds,
+      }),
+    [
+      activeVoiceRoutes,
+      listenRoomIds,
+      presence,
+      remote.remoteLevelByKey,
+      remote.remoteSourceRef,
+    ],
+  );
   const {
     pauseAllRemoteAudio,
     retryPlayAllRemoteAudio,
@@ -2127,7 +2196,7 @@ export function useIntercomSession({
               const src = ctx.createMediaStreamSource(stream);
               const gain = ctx.createGain();
               const analyser = ctx.createAnalyser();
-              analyser.fftSize = 256;
+              analyser.fftSize = 128;
               src.connect(gain);
               gain.connect(analyser);
               const analyserBuf = new Uint8Array(
@@ -2961,6 +3030,7 @@ export function useIntercomSession({
     events,
     rtpStats,
     incomingAudioActive,
+    roomLevelById,
     activeVoiceRoutes,
     incomingAttention,
     lastCompanionCommand,

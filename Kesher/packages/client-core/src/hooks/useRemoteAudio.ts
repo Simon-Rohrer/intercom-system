@@ -52,6 +52,8 @@ export type UseRemoteAudioResult = {
   >;
   /** True while incoming audio is detected above the RMS threshold. */
   incomingAudioActive: boolean;
+  /** Smoothed, normalized post-gain level per remote track key. */
+  remoteLevelByKey: Record<string, number>;
 
   applyOutputDeviceToAudio: (
     audio: HTMLAudioElement,
@@ -76,6 +78,9 @@ export function useRemoteAudio({
 }: UseRemoteAudioOptions): UseRemoteAudioResult {
   // ── State ──
   const [incomingAudioActive, setIncomingAudioActive] = useState(false);
+  const [remoteLevelByKey, setRemoteLevelByKey] = useState<
+    Record<string, number>
+  >({});
 
   // ── Refs ──
   const remoteAudioRef = useRef<Map<string, HTMLAudioElement>>(new Map());
@@ -91,9 +96,10 @@ export function useRemoteAudio({
       }
     >
   >(new Map());
-  const remoteAudioMeterRafRef = useRef<number | null>(null);
+  const remoteAudioMeterTimerRef = useRef<number | null>(null);
   const incomingAudioOffTimeoutRef = useRef<number | null>(null);
   const incomingAudioActiveRef = useRef(false);
+  const remoteLevelByKeyRef = useRef<Record<string, number>>({});
 
   // ── Output device ──
   async function applyOutputDeviceToAudio(
@@ -172,9 +178,9 @@ export function useRemoteAudio({
 
   // ── Incoming audio meter ──
   function stopRemoteAudioMeter() {
-    if (remoteAudioMeterRafRef.current !== null) {
-      cancelAnimationFrame(remoteAudioMeterRafRef.current);
-      remoteAudioMeterRafRef.current = null;
+    if (remoteAudioMeterTimerRef.current !== null) {
+      window.clearTimeout(remoteAudioMeterTimerRef.current);
+      remoteAudioMeterTimerRef.current = null;
     }
     if (incomingAudioOffTimeoutRef.current !== null) {
       window.clearTimeout(incomingAudioOffTimeoutRef.current);
@@ -185,15 +191,18 @@ export function useRemoteAudio({
     }
     remoteAnalyserNodesRef.current.clear();
     incomingAudioActiveRef.current = false;
+    remoteLevelByKeyRef.current = {};
     setIncomingAudioActive(false);
+    setRemoteLevelByKey({});
   }
 
   function startRemoteAudioMeterLoop() {
     if (!enableMetering) return;
-    if (remoteAudioMeterRafRef.current !== null) return;
+    if (remoteAudioMeterTimerRef.current !== null) return;
     const tick = () => {
       let active = false;
-      for (const { analyser, buf } of remoteAnalyserNodesRef.current.values()) {
+      const nextLevels: Record<string, number> = {};
+      for (const [key, { analyser, buf }] of remoteAnalyserNodesRef.current) {
         analyser.getByteTimeDomainData(
           buf as unknown as Uint8Array<ArrayBuffer>,
         );
@@ -203,10 +212,29 @@ export function useRemoteAudio({
           sum += centered * centered;
         }
         const rms = Math.sqrt(sum / buf.length);
+        const dbFs = rms > 0 ? 20 * Math.log10(rms) : -60;
+        const targetLevel =
+          rms < 0.006 ? 0 : Math.max(0, Math.min(1, (dbFs + 48) / 45));
+        const previousLevel = remoteLevelByKeyRef.current[key] ?? 0;
+        const smoothedLevel =
+          targetLevel >= previousLevel
+            ? targetLevel
+            : Math.max(0, previousLevel * 0.72);
+        const quantizedLevel =
+          smoothedLevel < 0.025 ? 0 : Math.round(smoothedLevel * 12) / 12;
+        nextLevels[key] = quantizedLevel;
         if (rms > 0.018) {
           active = true;
-          break;
         }
+      }
+      const previousLevels = remoteLevelByKeyRef.current;
+      const nextKeys = Object.keys(nextLevels);
+      const levelsChanged =
+        nextKeys.length !== Object.keys(previousLevels).length ||
+        nextKeys.some((key) => nextLevels[key] !== previousLevels[key]);
+      if (levelsChanged) {
+        remoteLevelByKeyRef.current = nextLevels;
+        setRemoteLevelByKey(nextLevels);
       }
       if (active) {
         if (incomingAudioOffTimeoutRef.current !== null) {
@@ -227,9 +255,9 @@ export function useRemoteAudio({
           setIncomingAudioActive(false);
         }, 1000);
       }
-      remoteAudioMeterRafRef.current = requestAnimationFrame(tick);
+      remoteAudioMeterTimerRef.current = window.setTimeout(tick, 80);
     };
-    remoteAudioMeterRafRef.current = requestAnimationFrame(tick);
+    remoteAudioMeterTimerRef.current = window.setTimeout(tick, 0);
   }
 
   function pauseAllRemoteAudio() {
@@ -273,6 +301,7 @@ export function useRemoteAudio({
     remoteSourceRef,
     remoteAnalyserNodesRef,
     incomingAudioActive,
+    remoteLevelByKey,
     applyOutputDeviceToAudio,
     applyVolumeToRemoteAudio,
     applyVolumeToAllRemoteAudio,

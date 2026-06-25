@@ -1,11 +1,98 @@
 import { describe, expect, it } from "vitest";
 import {
+  aggregateRemoteRoomLevels,
   resolveUnknownSourceGain,
   trySetReceiverPlayoutDelayHint,
   tuneOpusSdpForSpeech,
   upsertFmtpParams,
   getAdaptivePlayoutDelayHint,
 } from "./useIntercomSession";
+
+describe("aggregateRemoteRoomLevels", () => {
+  it("assigns each remote track level to its active party line", () => {
+    expect(
+      aggregateRemoteRoomLevels({
+        remoteLevelByKey: { trackA: 0.25, trackB: 0.83 },
+        remoteSources: new Map([
+          ["trackA", { userID: "u1", sourceID: "main" }],
+          ["trackB", { userID: "u2", sourceID: "feed-1" }],
+        ]),
+        routes: [
+          {
+            senderUserID: "u1",
+            sourceID: "main",
+            scope: "room",
+            targetID: "room-1",
+            label: "Room 1",
+          },
+          {
+            senderUserID: "u2",
+            sourceID: "feed-1",
+            scope: "room",
+            targetID: "room-2",
+            label: "Room 2",
+          },
+        ],
+        presence: [],
+        listenRoomIDs: ["room-1", "room-2"],
+      }),
+    ).toEqual({ "room-1": 0.25, "room-2": 0.83 });
+  });
+
+  it("falls back to always-on presence room assignments", () => {
+    expect(
+      aggregateRemoteRoomLevels({
+        remoteLevelByKey: { trackA: 0.5 },
+        remoteSources: new Map([
+          ["trackA", { userID: "u1", sourceID: "main" }],
+        ]),
+        routes: [],
+        presence: [
+          {
+            userId: "u1",
+            username: "User 1",
+            roleId: "op",
+            voiceMode: "always_on",
+            micEnabled: true,
+            talkRooms: ["room-1", "room-muted"],
+          },
+        ],
+        listenRoomIDs: ["room-1"],
+      }),
+    ).toEqual({ "room-1": 0.5 });
+  });
+
+  it("does not assign direct-call audio to a presence party line", () => {
+    expect(
+      aggregateRemoteRoomLevels({
+        remoteLevelByKey: { trackA: 0.75 },
+        remoteSources: new Map([
+          ["trackA", { userID: "u1", sourceID: "main" }],
+        ]),
+        routes: [
+          {
+            senderUserID: "u1",
+            sourceID: "main",
+            scope: "direct",
+            targetID: "self",
+            label: "Direct",
+          },
+        ],
+        presence: [
+          {
+            userId: "u1",
+            username: "User 1",
+            roleId: "op",
+            voiceMode: "always_on",
+            micEnabled: true,
+            talkRooms: ["room-1"],
+          },
+        ],
+        listenRoomIDs: ["room-1"],
+      }),
+    ).toEqual({});
+  });
+});
 
 describe("useIntercomSession low-latency helpers", () => {
   it("upserts opus fmtp params for low-latency speech with FEC enabled", () => {

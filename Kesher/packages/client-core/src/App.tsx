@@ -2433,6 +2433,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         }}
         toggleTalkRoom={session.toggleTalkRoom}
         toggleListenRoom={session.toggleListenRoom}
+        roomLevelById={session.roomLevelById}
         isReceivingRoom={isReceivingRoom}
         isReceivingBroadcast={isReceivingBroadcast}
         isReceivingDirect={isReceivingDirect}

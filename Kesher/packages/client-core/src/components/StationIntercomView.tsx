@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Bootstrap,
   BroadcastGroup,
@@ -58,6 +58,20 @@ function gainToDbLabel(gain: number, dbMax = OUTPUT_DB_MAX): string {
 function sliderFillPercent(gain: number, dbMax = OUTPUT_DB_MAX): number {
   const pos = gainToSlider(gain, dbMax);
   return ((pos - MUTE_POS) / (dbMax - MUTE_POS)) * 100;
+}
+
+function renderBreakableChannelName(name: string) {
+  const parts = name.split("/");
+  return parts.map((part, index) => (
+    <Fragment key={`${part}-${index}`}>
+      {part}
+      {index < parts.length - 1 ? (
+        <>
+          /<wbr />
+        </>
+      ) : null}
+    </Fragment>
+  ));
 }
 
 const METER_DBFS_MIN = -60;
@@ -587,6 +601,7 @@ type StationIntercomViewProps = {
   canRoleReceiveFromRoom: (roomId: string, currentRoleId: string) => boolean;
   toggleTalkRoom: (roomId: string) => void;
   toggleListenRoom: (roomId: string) => void;
+  roomLevelById: Record<string, number>;
   isReceivingRoom: (roomId: string) => boolean;
   isReceivingBroadcast: (groupId: string) => boolean;
   isReceivingDirect: (userId: string) => boolean;
@@ -730,6 +745,7 @@ export function StationIntercomView({
   canRoleReceiveFromRoom,
   toggleTalkRoom,
   toggleListenRoom,
+  roomLevelById,
   isReceivingRoom,
   isReceivingBroadcast,
   isReceivingDirect,
@@ -2101,6 +2117,9 @@ export function StationIntercomView({
                     : {};
 
                 const listenerCount = roomListenerCounts[room.id] ?? 0;
+                const roomLevel =
+                  roomLevelById[room.id] ??
+                  (lowPowerMode && isReceivingRoom(room.id) ? 0.42 : 0);
                 const talkButtonClassName = `station-card-head ${
                   enableDirectPpt ? "hold-button " : ""
                 }${
@@ -2120,7 +2139,7 @@ export function StationIntercomView({
                 return (
                   <article
                     key={`station-room-${room.id}`}
-                    className="station-card"
+                    className="station-card station-room-card"
                   >
                     {listenerCount > 0 ? (
                       <span
@@ -2131,23 +2150,57 @@ export function StationIntercomView({
                         {listenerCount}
                       </span>
                     ) : null}
-                    <button
-                      type="button"
-                      className={`station-pin-top ${pinnedRoomIds.includes(room.id) ? "active" : ""}`}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onPointerUp={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onTogglePinnedRoom(room.id);
-                      }}
-                      title={
-                        pinnedRoomIds.includes(room.id)
-                          ? "Remove channel from favorites"
-                          : "Add channel to favorites"
-                      }
-                    >
-                      *
-                    </button>
+                    <div className="station-level-indicator">
+                      <span
+                        className="station-channel-meter"
+                        role="meter"
+                        aria-label={`${room.name} input level`}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(roomLevel * 100)}
+                      >
+                        {Array.from({ length: 10 }, (_, index) => {
+                          const segmentNumber = index + 1;
+                          const activeSegments = Math.round(roomLevel * 10);
+                          const band =
+                            segmentNumber >= 9
+                              ? "peak"
+                              : segmentNumber >= 7
+                                ? "warning"
+                                : "signal";
+                          return (
+                            <span
+                              key={segmentNumber}
+                              className={`station-channel-meter-segment ${band} ${
+                                segmentNumber <= activeSegments ? "active" : ""
+                              }`}
+                            />
+                          );
+                        })}
+                      </span>
+                      <button
+                        type="button"
+                        className={`station-level-favorite ${pinnedRoomIds.includes(room.id) ? "active" : ""}`}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onPointerUp={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onTogglePinnedRoom(room.id);
+                        }}
+                        title={
+                          pinnedRoomIds.includes(room.id)
+                            ? "Remove channel from favorites"
+                            : "Add channel to favorites"
+                        }
+                      >
+                        <svg viewBox="0 0 16 16" aria-hidden="true">
+                          <path
+                            d="M5.2 2.5h5.6l-.8 3 2 2v1H8.8V13l-.8 1-.8-1V8.5H4v-1l2-2-.8-3Z"
+                            fill="currentColor"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                     <button
                       className={talkButtonClassName}
                       {...talkButtonHoldProps}
@@ -2167,7 +2220,7 @@ export function StationIntercomView({
                         <span className="station-receiving-badge">RX</span>
                       ) : null}
                       <small>Talk</small>
-                      <strong>{room.name}</strong>
+                      <strong>{renderBreakableChannelName(room.name)}</strong>
                       {(() => {
                         const p = room.priorityLevel ?? 1;
                         if (p === 1) return null;
