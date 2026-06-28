@@ -170,6 +170,23 @@ function getRoomMatrixSyncDebounceMs(): number {
 
 const roomMatrixSyncDebounceMs = getRoomMatrixSyncDebounceMs();
 
+export function getPttReleaseTailMs(): number {
+  try {
+    const raw = localStorage.getItem("ptt_release_tail_ms");
+    if (raw != null) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed)) {
+        return Math.max(0, Math.min(500, Math.trunc(parsed)));
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return 220;
+}
+
+const pttReleaseTailMs = getPttReleaseTailMs();
+
 function clampPriorityLevel(value: number | undefined): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return defaultRoutePriorityLevel;
@@ -819,6 +836,13 @@ export function useIntercomSession({
   );
   const restoreAlwaysOnAfterDirectPttRef = useRef(false);
   const prevChannelRef = useRef<string>("");
+  const pendingPttStopTimersRef = useRef<Map<string, number>>(new Map());
+  const nativePttStopTimerRef = useRef<number | null>(null);
+  const pttPressedRef = useRef(pttPressed);
+  const broadcastPttPressedRef = useRef<string | null>(broadcastPttPressed);
+  const directPttPressedUserIdRef = useRef<string | null>(
+    directPttPressedUserId,
+  );
   const pendingInitialRoomRestoreRef = useRef(hadStoredSessionSettings);
   const appDataRef = useRef(appData);
   const channelAudioFeedsRef = useRef(channelAudioFeeds);
@@ -835,6 +859,15 @@ export function useIntercomSession({
   useEffect(() => {
     voiceModeRef.current = voiceMode;
   }, [voiceMode]);
+  useEffect(() => {
+    pttPressedRef.current = pttPressed;
+  }, [pttPressed]);
+  useEffect(() => {
+    broadcastPttPressedRef.current = broadcastPttPressed;
+  }, [broadcastPttPressed]);
+  useEffect(() => {
+    directPttPressedUserIdRef.current = directPttPressedUserId;
+  }, [directPttPressedUserId]);
   useEffect(() => {
     listenRoomIdsRef.current = listenRoomIds;
   }, [listenRoomIds]);
@@ -1583,6 +1616,8 @@ export function useIntercomSession({
   }
 
   function cleanupRealtimeResources() {
+    clearAllPendingPttStops();
+    clearNativePttStopTimer();
     void nativeAudio?.stopEngine();
     mic.micReinitGenerationRef.current += 1;
     restoreAlwaysOnAfterDirectPttRef.current = false;
@@ -1753,38 +1788,119 @@ export function useIntercomSession({
     return canSelfSendToBroadcastGroup(scopedTargetId);
   }
 
-  function sendScopedVoiceState(
+  function voiceStateRouteKey(
+    scopeValue: "direct" | "room" | "broadcast",
+    scopedTargetId: string,
+  ): string {
+    return `${scopeValue}:${scopedTargetId}`;
+  }
+
+  function clearPendingPttStop(
+    scopeValue: "direct" | "room" | "broadcast",
+    scopedTargetId: string,
+  ) {
+    const key = voiceStateRouteKey(scopeValue, scopedTargetId);
+    const timer = pendingPttStopTimersRef.current.get(key);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      pendingPttStopTimersRef.current.delete(key);
+    }
+  }
+
+  function clearAllPendingPttStops() {
+    for (const timer of pendingPttStopTimersRef.current.values()) {
+      window.clearTimeout(timer);
+    }
+    pendingPttStopTimersRef.current.clear();
+  }
+
+  function clearNativePttStopTimer() {
+    if (nativePttStopTimerRef.current !== null) {
+      window.clearTimeout(nativePttStopTimerRef.current);
+      nativePttStopTimerRef.current = null;
+    }
+  }
+
+  function scheduleNativePttStop() {
+    clearNativePttStopTimer();
+    nativePttStopTimerRef.current = window.setTimeout(() => {
+      nativePttStopTimerRef.current = null;
+      nativeAudio?.setPtt(false);
+    }, pttReleaseTailMs);
+  }
+
+  function shouldKeepLocalMicOpenAfterStop(): boolean {
+    return (
+      voiceModeRef.current === "always_on" ||
+      pttPressedRef.current ||
+      !!broadcastPttPressedRef.current ||
+      !!directPttPressedUserIdRef.current
+    );
+  }
+
+  function applyLocalMicVoiceState(state: string) {
+    if (state === "always_on" || state === "ptt_start") {
+      mic.setOutgoingMicOpen(true);
+    } else if (state === "always_off") {
+      mic.setOutgoingMicOpen(false);
+    } else if (state === "ptt_stop") {
+      mic.setOutgoingMicOpen(shouldKeepLocalMicOpenAfterStop());
+    }
+  }
+
+  function sendScopedVoiceStateNow(
     scopeValue: "direct" | "room" | "broadcast",
     scopedTargetId: string,
     state: string,
-  ) {
+  ): boolean {
     if (
       !wsRef.current ||
       wsRef.current.readyState !== WebSocket.OPEN ||
       !scopedTargetId
     )
-      return;
+      return false;
     if (!canSendScopedVoiceState(scopeValue, scopedTargetId)) {
-      return;
+      return false;
     }
-    const stream = mic.localStreamRef.current;
-    if (stream) {
-      for (const track of stream.getAudioTracks()) {
-        if (state === "always_on" || state === "ptt_start") {
-          track.enabled = true;
-        } else if (state === "always_off") {
-          track.enabled = false;
-        } else if (state === "ptt_stop") {
-          track.enabled = voiceModeRef.current === "always_on";
-        }
-      }
-    }
+    applyLocalMicVoiceState(state);
     wsRef.current.send(
       JSON.stringify({
         type: "voice_state",
         data: { scope: scopeValue, targetId: scopedTargetId, body: state },
       }),
     );
+    return true;
+  }
+
+  function sendScopedVoiceState(
+    scopeValue: "direct" | "room" | "broadcast",
+    scopedTargetId: string,
+    state: string,
+  ) {
+    if (state === "ptt_start" || state === "always_on") {
+      clearPendingPttStop(scopeValue, scopedTargetId);
+      sendScopedVoiceStateNow(scopeValue, scopedTargetId, state);
+      return;
+    }
+
+    if (state === "always_off") {
+      clearAllPendingPttStops();
+      sendScopedVoiceStateNow(scopeValue, scopedTargetId, state);
+      return;
+    }
+
+    if (state === "ptt_stop" && pttReleaseTailMs > 0) {
+      clearPendingPttStop(scopeValue, scopedTargetId);
+      const key = voiceStateRouteKey(scopeValue, scopedTargetId);
+      const timer = window.setTimeout(() => {
+        pendingPttStopTimersRef.current.delete(key);
+        sendScopedVoiceStateNow(scopeValue, scopedTargetId, state);
+      }, pttReleaseTailMs);
+      pendingPttStopTimersRef.current.set(key, timer);
+      return;
+    }
+
+    sendScopedVoiceStateNow(scopeValue, scopedTargetId, state);
   }
 
   function roomMatrixSyncKey(listenRooms: string[], talkRooms: string[]): string {
@@ -1917,13 +2033,14 @@ export function useIntercomSession({
   // ── PTT actions ──
   function startPtt() {
     setPttPressed(true);
+    clearNativePttStopTimer();
     sendVoiceState("ptt_start");
     nativeAudio?.setPtt(true);
   }
   function stopPtt() {
     setPttPressed(false);
     sendVoiceState("ptt_stop");
-    nativeAudio?.setPtt(false);
+    scheduleNativePttStop();
   }
 
   function startBroadcastPtt(groupId: string) {

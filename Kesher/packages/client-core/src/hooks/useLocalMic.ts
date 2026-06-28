@@ -303,6 +303,7 @@ export type UseLocalMicResult = {
   startLevelMeter: (stream: MediaStream) => void;
   stopLevelMeter: () => void;
   applyVoiceModeToLocalTracks: (mode: "always_on" | "ptt") => void;
+  setOutgoingMicOpen: (open: boolean) => void;
   /** Start playing mic input back to the user via the selected output device. */
   startLocalMonitor: (outputDeviceId: string) => Promise<void>;
   /** Stop local audio monitor loopback. */
@@ -344,6 +345,7 @@ export function useLocalMic({
   const inputCaptureStreamRef = useRef<MediaStream | null>(null);
   const inputProcessingAudioCtxRef = useRef<AudioContext | null>(null);
   const inputGainNodeRef = useRef<GainNode | null>(null);
+  const outgoingGateNodeRef = useRef<GainNode | null>(null);
   const gateProcessorNodeRef = useRef<ScriptProcessorNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -390,6 +392,8 @@ export function useLocalMic({
       const src = ctx.createMediaStreamSource(sourceStream);
       const gain = ctx.createGain();
       gain.gain.value = effectiveInputGain(gainValue);
+      const outgoingGate = ctx.createGain();
+      outgoingGate.gain.value = 0;
       const dest = ctx.createMediaStreamDestination();
 
       // A browser microphone is usually mono, while USB audio interfaces
@@ -451,7 +455,8 @@ export function useLocalMic({
       }
 
       processedInput.connect(gain);
-      gain.connect(dest);
+      gain.connect(outgoingGate);
+      outgoingGate.connect(dest);
       const processedTrack = dest.stream.getAudioTracks()[0];
       if (!processedTrack) {
         void ctx.close();
@@ -459,6 +464,7 @@ export function useLocalMic({
       }
       inputProcessingAudioCtxRef.current = ctx;
       inputGainNodeRef.current = gain;
+      outgoingGateNodeRef.current = outgoingGate;
       gateProcessorNodeRef.current = gate;
       return new MediaStream([processedTrack]);
     } catch {
@@ -478,6 +484,7 @@ export function useLocalMic({
     }
     gateProcessorNodeRef.current = null;
     inputGainNodeRef.current = null;
+    outgoingGateNodeRef.current = null;
   }
 
   // ── Level metering ──
@@ -594,13 +601,21 @@ export function useLocalMic({
   }
 
   // ── Track enable/disable ──
-  function applyVoiceModeToLocalTracks(mode: "always_on" | "ptt") {
+  function setOutgoingMicOpen(open: boolean) {
+    const gate = outgoingGateNodeRef.current;
+    if (gate) {
+      gate.gain.value = open ? 1 : 0;
+    }
     const stream = localStreamRef.current;
     if (!stream) return;
-    const enabled = mode === "always_on";
     for (const track of stream.getAudioTracks()) {
-      track.enabled = enabled;
+      // Keep WebRTC RTP warm; the Web Audio gate carries the actual PTT mute.
+      track.enabled = gate ? true : open;
     }
+  }
+
+  function applyVoiceModeToLocalTracks(mode: "always_on" | "ptt") {
+    setOutgoingMicOpen(mode === "always_on");
   }
 
   // ── Mic reinit on device or connection change ──
@@ -755,6 +770,7 @@ export function useLocalMic({
     startLevelMeter,
     stopLevelMeter,
     applyVoiceModeToLocalTracks,
+    setOutgoingMicOpen,
     startLocalMonitor,
     stopLocalMonitor,
   };

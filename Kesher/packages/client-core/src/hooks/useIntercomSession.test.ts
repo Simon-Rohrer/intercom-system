@@ -6,6 +6,7 @@ import {
   tuneOpusSdpForSpeech,
   upsertFmtpParams,
   getAdaptivePlayoutDelayHint,
+  getPttReleaseTailMs,
 } from "./useIntercomSession";
 
 describe("aggregateRemoteRoomLevels", () => {
@@ -95,6 +96,10 @@ describe("aggregateRemoteRoomLevels", () => {
 });
 
 describe("useIntercomSession low-latency helpers", () => {
+  it("uses a short PTT release tail to avoid cutting buffered speech", () => {
+    expect(getPttReleaseTailMs()).toBe(220);
+  });
+
   it("upserts opus fmtp params for low-latency speech with FEC enabled", () => {
     expect(
       upsertFmtpParams(
