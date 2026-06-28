@@ -174,6 +174,24 @@ describe("StationIntercomView", () => {
     );
   });
 
+  it("renders the local outgoing level while talking into a selected party line", () => {
+    render(
+      <StationIntercomView
+        {...baseProps}
+        pttPressed
+        inputLevelDbFs={-30}
+      />,
+    );
+
+    const meter = screen.getByRole("meter", {
+      name: "Party Line 1 input level",
+    });
+    expect(meter).toHaveAttribute("aria-valuenow", "50");
+    expect(
+      meter.querySelectorAll(".station-channel-meter-segment.active"),
+    ).toHaveLength(5);
+  });
+
   it("does not toggle favorites when the party-line meter is clicked", async () => {
     const user = userEvent.setup();
     const onTogglePinnedRoom = vi.fn();
@@ -998,7 +1016,19 @@ describe("StationIntercomView", () => {
       screen.getByRole("button", { name: "Neuer Feed" }),
     );
     const dialog = screen.getByRole("dialog", { name: "Neuer Feed" });
+    expect(
+      within(dialog).queryByLabelText(/Talk channel name/i),
+    ).not.toBeInTheDocument();
+    const canSendGroup = within(dialog).getByRole("group", {
+      name: "Can send",
+    });
+    const ownSenderRole = within(canSendGroup).getByRole("checkbox", {
+      name: "Operator",
+    });
+    expect(ownSenderRole).toBeChecked();
+    expect(ownSenderRole).toBeDisabled();
     await user.type(within(dialog).getByLabelText(/Feed name/), "Music feed");
+    expect(within(dialog).getByText("Music feed")).toBeVisible();
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => {

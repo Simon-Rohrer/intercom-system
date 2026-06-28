@@ -1074,6 +1074,14 @@ export function useIntercomSession({
   // Keep a stable ref so sub-hooks always call the latest version
   const resolveGainRef = useRef(resolveGainForRemoteSource);
   resolveGainRef.current = resolveGainForRemoteSource;
+  const inputMeteringActive =
+    isUserSettingsOpen ||
+    voiceMode === "always_on" ||
+    pttPressed ||
+    !!broadcastPttPressed ||
+    !!directPttPressedUserId;
+  const inputMeteringActiveRef = useRef(inputMeteringActive);
+  inputMeteringActiveRef.current = inputMeteringActive;
 
   // ── Sub-hooks ─────────────────────────────────────────────────────────────────────────────
 
@@ -1088,6 +1096,7 @@ export function useIntercomSession({
     audioGateThresholdDb,
     isUserSettingsOpen,
     isUserSettingsOpenRef,
+    inputMeteringActive,
     voiceModeRef,
     pcRef,
     onAudioError: setAudioError,
@@ -2240,7 +2249,7 @@ export function useIntercomSession({
             selectedInputChannel,
           );
           mic.localStreamRef.current = stream;
-          if (isUserSettingsOpenRef.current && !lowPowerMode) {
+          if (inputMeteringActiveRef.current && !lowPowerMode) {
             mic.startLevelMeter(stream);
           } else {
             mic.stopLevelMeter();

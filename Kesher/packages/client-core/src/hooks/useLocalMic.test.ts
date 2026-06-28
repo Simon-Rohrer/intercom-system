@@ -24,6 +24,7 @@ function useTestLocalMic(lowPowerMode: boolean) {
     audioGateThresholdDb: -45,
     isUserSettingsOpen: false,
     isUserSettingsOpenRef,
+    inputMeteringActive: false,
     voiceModeRef,
     pcRef,
     onAudioError: vi.fn(),
@@ -206,5 +207,52 @@ describe("useLocalMic helpers", () => {
 
     expect(AudioContextMock).not.toHaveBeenCalled();
     expect(requestAnimationFrameSpy).not.toHaveBeenCalled();
+  });
+
+  it("can start input metering while settings are closed", () => {
+    const source = { connect: vi.fn() };
+    const analyser = {
+      fftSize: 0,
+      frequencyBinCount: 64,
+      getFloatTimeDomainData: vi.fn(),
+    };
+    const ctx = {
+      createMediaStreamSource: vi.fn(() => source),
+      createAnalyser: vi.fn(() => analyser),
+      close: vi.fn(),
+    };
+    const AudioContextMock = vi.fn(function (
+      this: typeof ctx,
+    ) {
+      Object.assign(this, ctx);
+    });
+    vi.stubGlobal("AudioContext", AudioContextMock);
+    const MediaStreamMock = vi.fn(function (
+      this: { getTracks: () => unknown[]; getAudioTracks: () => unknown[] },
+      tracks: unknown[] = [],
+    ) {
+      this.getTracks = () => tracks;
+      this.getAudioTracks = () => tracks;
+    });
+    vi.stubGlobal("MediaStream", MediaStreamMock);
+    const requestAnimationFrameSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockReturnValue(1);
+    const track = { clone: vi.fn(() => ({ enabled: false })) };
+    const stream = {
+      getAudioTracks: () => [track],
+    } as unknown as MediaStream;
+
+    const { result } = renderHook(() => useTestLocalMic(false));
+
+    act(() => {
+      result.current.startLevelMeter(stream);
+    });
+
+    expect(AudioContextMock).toHaveBeenCalled();
+    expect(MediaStreamMock).toHaveBeenCalled();
+    expect(ctx.createMediaStreamSource).toHaveBeenCalled();
+    expect(ctx.createAnalyser).toHaveBeenCalled();
+    expect(requestAnimationFrameSpy).toHaveBeenCalled();
   });
 });

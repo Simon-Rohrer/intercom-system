@@ -250,10 +250,12 @@ export type UseLocalMicOptions = {
   audioGateEnabled: boolean;
   /** User-configurable microphone gate threshold in dBFS. */
   audioGateThresholdDb: number;
-  /** Whether the settings panel is open (controls level meter). */
+  /** Whether the settings panel is open (controls local monitor lifetime). */
   isUserSettingsOpen: boolean;
-  /** Stable ref so the async WS-open path can check the current value. */
+  /** Stable ref so async paths can check whether settings are open. */
   isUserSettingsOpenRef: React.MutableRefObject<boolean>;
+  /** Whether input metering should run for settings or active outgoing talk. */
+  inputMeteringActive: boolean;
   /** Stable ref to the current voice mode (needed when applying mode to tracks). */
   voiceModeRef: React.MutableRefObject<"always_on" | "ptt">;
   /** The active RTCPeerConnection – used to replace the audio sender on device switch. */
@@ -317,6 +319,7 @@ export function useLocalMic({
   audioGateThresholdDb,
   isUserSettingsOpen,
   isUserSettingsOpenRef,
+  inputMeteringActive,
   voiceModeRef,
   pcRef,
   onAudioError,
@@ -351,12 +354,17 @@ export function useLocalMic({
   const localMonitorCtxRef = useRef<AudioContext | null>(null);
   const localMonitorAudioElRef = useRef<HTMLAudioElement | null>(null);
   const audioGateThresholdDbRef = useRef(audioGateThresholdDb);
+  const inputMeteringActiveRef = useRef(inputMeteringActive);
   const gateEnvelopeRef = useRef(0.0); // Current gate envelope (0.0 = fully muted, 1.0 = fully open)
   const gateCoefficientsRef = useRef({ attackCoeff: 0.1, releaseCoeff: 0.01 });
 
   useEffect(() => {
     audioGateThresholdDbRef.current = audioGateThresholdDb;
   }, [audioGateThresholdDb]);
+
+  useEffect(() => {
+    inputMeteringActiveRef.current = inputMeteringActive;
+  }, [inputMeteringActive]);
 
   // ── Mic stream acquisition ──
   async function getMicStream(deviceId: string): Promise<MediaStream> {
@@ -633,7 +641,7 @@ export function useLocalMic({
           for (const t of localStreamRef.current.getTracks()) t.stop();
         }
         localStreamRef.current = newStream;
-        if (isUserSettingsOpenRef.current && !lowPowerMode) {
+        if (inputMeteringActiveRef.current && !lowPowerMode) {
           startLevelMeter(newStream);
         } else {
           stopLevelMeter();
@@ -671,17 +679,25 @@ export function useLocalMic({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedInputDeviceId, inputGainByDeviceId]);
 
-  // ── Level meter toggle + local monitor auto-stop (settings panel open/close) ──
+  // ── Level meter toggle for settings and active outgoing talk ──
   useEffect(() => {
-    if (!isUserSettingsOpen || lowPowerMode) {
+    if (!inputMeteringActive || lowPowerMode) {
       stopLevelMeter();
-      stopLocalMonitor();
       return;
     }
     const processedStream = localStreamRef.current;
     if (processedStream) startLevelMeter(processedStream);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isUserSettingsOpen, lowPowerMode]);
+  }, [inputMeteringActive, lowPowerMode]);
+
+  // ── Local monitor auto-stop (settings panel open/close) ──
+  useEffect(() => {
+    if (!isUserSettingsOpen) {
+      stopLocalMonitor();
+      return;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isUserSettingsOpen]);
 
   // ── Clipping display debounce ──
   useEffect(() => {

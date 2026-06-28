@@ -75,6 +75,8 @@ function renderBreakableChannelName(name: string) {
 }
 
 const METER_DBFS_MIN = -60;
+const GATE_THRESHOLD_DBFS_MIN = -72;
+const GATE_THRESHOLD_DBFS_MAX = -12;
 const STREAM_DECK_IMPORT_FORMAT = "kesher-user-streamdeck";
 const STREAM_DECK_IMPORT_SCHEMA_VERSION = 1;
 
@@ -318,6 +320,18 @@ function formatDbFs(dbFs: number): string {
 
 function formatGateThresholdDb(dbFs: number): string {
   return `${Math.round(dbFs)} dBFS`;
+}
+
+function gateThresholdDbToPercent(dbFs: number): number {
+  const clamped = Math.max(
+    GATE_THRESHOLD_DBFS_MIN,
+    Math.min(GATE_THRESHOLD_DBFS_MAX, dbFs),
+  );
+  return (
+    ((clamped - GATE_THRESHOLD_DBFS_MIN) /
+      (GATE_THRESHOLD_DBFS_MAX - GATE_THRESHOLD_DBFS_MIN)) *
+    100
+  );
 }
 
 type SettingsIconName =
@@ -578,7 +592,6 @@ type ChannelAudioFeedEditor = {
   feedId?: string;
   roomId?: string;
   name: string;
-  roomName: string;
   priorityLevel: number;
   inputDeviceId: string;
   inputChannel: InputChannelSelection;
@@ -976,7 +989,6 @@ export function StationIntercomView({
         feedId: feed.id,
         roomId: feed.roomId,
         name: feed.name,
-        roomName: room?.name || feed.name,
         priorityLevel: room?.priorityLevel ?? 1,
         inputDeviceId: feed.inputDeviceId,
         inputChannel: feed.inputChannel,
@@ -991,7 +1003,6 @@ export function StationIntercomView({
     setChannelAudioFeedEditor({
       mode: "create",
       name: "",
-      roomName: "",
       priorityLevel: 1,
       inputDeviceId: selectedInputDeviceId,
       inputChannel: selectedInputChannel,
@@ -1032,8 +1043,10 @@ export function StationIntercomView({
       setChannelAudioFeedSaveError("Feed name is required.");
       return;
     }
-    const roomName = channelAudioFeedEditor.roomName.trim() || name;
-    if (channelAudioFeedEditor.senderRoleIds.length === 0) {
+    const senderRoleIds = Array.from(
+      new Set([appData.self.roleId, ...channelAudioFeedEditor.senderRoleIds]),
+    ).filter(Boolean);
+    if (senderRoleIds.length === 0) {
       setChannelAudioFeedSaveError("At least one sender role is required.");
       return;
     }
@@ -1042,9 +1055,9 @@ export function StationIntercomView({
       return;
     }
     const payload: ChannelAudioFeedRoomForm = {
-      name: roomName,
+      name,
       priorityLevel: channelAudioFeedEditor.priorityLevel,
-      senderRoleIds: channelAudioFeedEditor.senderRoleIds,
+      senderRoleIds,
       receiverRoleIds: channelAudioFeedEditor.receiverRoleIds,
       forcedListenRoleIds: channelAudioFeedEditor.forcedListenRoleIds,
     };
@@ -2131,9 +2144,22 @@ export function StationIntercomView({
                     : {};
 
                 const listenerCount = roomListenerCounts[room.id] ?? 0;
-                const roomLevel =
-                  roomLevelById[room.id] ??
-                  (lowPowerMode && isReceivingRoom(room.id) ? 0.42 : 0);
+                const remoteRoomLevel = roomLevelById[room.id] ?? 0;
+                const selfSendingToRoom =
+                  canTalk &&
+                  ((enableDirectPpt && isPttPressed) ||
+                    (talking && isSendingOnTalkRooms));
+                const selfRoomLevel =
+                  !lowPowerMode && selfSendingToRoom
+                    ? meterDbFsToPercent(inputLevelDbFs) / 100
+                    : 0;
+                const lowPowerRoomLevel =
+                  lowPowerMode && isReceivingRoom(room.id) ? 0.42 : 0;
+                const roomLevel = Math.max(
+                  remoteRoomLevel,
+                  selfRoomLevel,
+                  lowPowerRoomLevel,
+                );
                 const talkButtonClassName = `station-card-head ${
                   enableDirectPpt ? "hold-button " : ""
                 }${
@@ -3516,262 +3542,373 @@ export function StationIntercomView({
                           />
                         </button>
                         {isPersonalAudioOpen ? (
-                          <div className="audio-subsection-body audio-personal-grid">
-                      <div className="audio-left">
-                        <h4>Microphone</h4>
-                        <div className="audio-row audio-row-mic">
-                          <div className="mic-dropdown" ref={micMenuRef}>
-                            <button
-                              type="button"
-                              className="mic-dropdown-trigger"
-                              onClick={() => setIsMicMenuOpen((v) => !v)}
-                              disabled={inputDevices.length === 0}
-                              aria-haspopup="listbox"
-                              aria-expanded={isMicMenuOpen}
-                            >
-                              <span>{selectedMicLabel}</span>
-                              <span>v</span>
-                            </button>
-                            {isMicMenuOpen ? (
-                              <div className="mic-dropdown-menu" role="listbox">
-                                {inputDevices.map((d) => (
-                                  <button
-                                    type="button"
-                                    key={d.deviceId}
-                                    className={`mic-dropdown-item ${d.deviceId === selectedInputDeviceId ? "active" : ""}`}
-                                    onClick={() => {
-                                      setSelectedInputDeviceId(d.deviceId);
-                                      setIsMicMenuOpen(false);
-                                    }}
-                                    title={
-                                      d.label || `Mic ${d.deviceId.slice(0, 6)}`
+                          <div className="audio-subsection-body audio-personal-layout">
+                            <div className="audio-device-card audio-device-card-input">
+                              <div className="audio-card-head">
+                                <div>
+                                  <span>Input</span>
+                                  <h4>Microphone</h4>
+                                </div>
+                                <span
+                                  className={`audio-status-pill ${
+                                    lowPowerMode
+                                      ? "paused"
+                                      : inputClipping
+                                        ? "warning"
+                                        : "ok"
+                                  }`}
+                                >
+                                  {lowPowerMode
+                                    ? "Meter paused"
+                                    : inputClipping
+                                      ? "Clipping"
+                                      : "Ready"}
+                                </span>
+                              </div>
+
+                              <div className="audio-control-grid">
+                                <div className="audio-control audio-control-device">
+                                  <span className="audio-control-label">
+                                    Device
+                                  </span>
+                                  <div className="mic-dropdown" ref={micMenuRef}>
+                                    <button
+                                      type="button"
+                                      className="mic-dropdown-trigger"
+                                      onClick={() => setIsMicMenuOpen((v) => !v)}
+                                      disabled={inputDevices.length === 0}
+                                      aria-haspopup="listbox"
+                                      aria-expanded={isMicMenuOpen}
+                                    >
+                                      <span>{selectedMicLabel}</span>
+                                      <span>v</span>
+                                    </button>
+                                    {isMicMenuOpen ? (
+                                      <div
+                                        className="mic-dropdown-menu"
+                                        role="listbox"
+                                      >
+                                        {inputDevices.map((d) => (
+                                          <button
+                                            type="button"
+                                            key={d.deviceId}
+                                            className={`mic-dropdown-item ${d.deviceId === selectedInputDeviceId ? "active" : ""}`}
+                                            onClick={() => {
+                                              setSelectedInputDeviceId(
+                                                d.deviceId,
+                                              );
+                                              setIsMicMenuOpen(false);
+                                            }}
+                                            title={
+                                              d.label ||
+                                              `Mic ${d.deviceId.slice(0, 6)}`
+                                            }
+                                          >
+                                            {d.label ||
+                                              `Mic ${d.deviceId.slice(0, 6)}`}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+
+                                <label className="input-channel-control audio-control">
+                                  <span>Interface input</span>
+                                  <select
+                                    aria-label="Interface input"
+                                    value={selectedInputChannelValue}
+                                    onChange={(event) =>
+                                      onSelectedInputChannelChange(
+                                        event.currentTarget.value === "all"
+                                          ? "all"
+                                          : Number(event.currentTarget.value),
+                                      )
                                     }
                                   >
-                                    {d.label || `Mic ${d.deviceId.slice(0, 6)}`}
-                                  </button>
-                                ))}
+                                    <option value="all">{allInputsLabel}</option>
+                                    {inputChannelCount > 1
+                                      ? Array.from(
+                                          { length: inputChannelCount },
+                                          (_, index) => (
+                                            <option
+                                              key={`input-channel-${index + 1}`}
+                                              value={index + 1}
+                                            >
+                                              Input {index + 1}
+                                            </option>
+                                          ),
+                                        )
+                                      : null}
+                                  </select>
+                                  <small>
+                                    Choose the physical input on the selected USB
+                                    interface.
+                                  </small>
+                                </label>
                               </div>
-                            ) : null}
-                          </div>
-                        </div>
-                        <label className="input-channel-control">
-                          <span>Interface input</span>
-                          <select
-                            aria-label="Interface input"
-                            value={selectedInputChannelValue}
-                            onChange={(event) =>
-                              onSelectedInputChannelChange(
-                                event.currentTarget.value === "all"
-                                  ? "all"
-                                  : Number(event.currentTarget.value),
-                              )
-                            }
-                          >
-                            <option value="all">
-                              {allInputsLabel}
-                            </option>
-                            {inputChannelCount > 1
-                              ? Array.from(
-                                  { length: inputChannelCount },
-                                  (_, index) => (
-                                    <option
-                                      key={`input-channel-${index + 1}`}
-                                      value={index + 1}
+
+                              <div className="audio-meter-card">
+                                {lowPowerMode ? (
+                                  <div
+                                    className="input-level-row input-level-row-muted"
+                                    aria-live="polite"
+                                  >
+                                    <div className="input-level-head">
+                                      <small>Input level</small>
+                                      <strong>paused</strong>
+                                    </div>
+                                    <small className="input-level-status is-ok">
+                                      Low power mode keeps metering off.
+                                    </small>
+                                  </div>
+                                ) : (
+                                  <div
+                                    className="input-level-row"
+                                    aria-live="polite"
+                                  >
+                                    <div className="input-level-head">
+                                      <small>Input level</small>
+                                      <strong>
+                                        {formatDbFs(inputLevelDbFs)}
+                                      </strong>
+                                    </div>
+                                    <div className="meter">
+                                      <div
+                                        className="meter-bar"
+                                        style={{
+                                          width: `${meterDbFsToPercent(inputLevelDbFs)}%`,
+                                        }}
+                                      />
+                                    </div>
+                                    <small
+                                      className={`input-level-status ${inputClipping ? "is-clipping" : "is-ok"}`}
                                     >
-                                      Input {index + 1}
-                                    </option>
-                                  ),
-                                )
-                              : null}
-                          </select>
-                          <small>
-                            Choose the physical input on the selected USB
-                            interface.
-                          </small>
-                        </label>
-                        {lowPowerMode ? (
-                          <div
-                            className="input-level-row input-level-row-muted"
-                            aria-live="polite"
-                          >
-                            <div className="input-level-head">
-                              <small>Input level</small>
-                              <strong>paused</strong>
+                                      {inputClipping
+                                        ? "audio clipping"
+                                        : "audio level ok"}
+                                    </small>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="audio-utility-grid">
+                                <div className="local-monitor-control audio-test-card">
+                                  <small className="local-monitor-hint">
+                                    Use headphones before starting the test.
+                                  </small>
+                                  <button
+                                    type="button"
+                                    className={`local-monitor-btn${isLocalMonitorActive ? " active" : ""}`}
+                                    disabled={lowPowerMode}
+                                    onClick={onToggleLocalMonitor}
+                                  >
+                                    {lowPowerMode
+                                      ? "Audio test paused"
+                                      : isLocalMonitorActive
+                                        ? "Stop audio test"
+                                        : "Test microphone"}
+                                  </button>
+                                  {isLocalMonitorActive ? (
+                                    <small className="local-monitor-status">
+                                      You are hearing yourself - adjust headset
+                                      and check gain.
+                                    </small>
+                                  ) : null}
+                                </div>
+
+                                <div className="station-gain-control input-gain-control audio-slider-card">
+                                  <label htmlFor="input-gain">
+                                    <span>Input gain</span>
+                                    <strong>
+                                      {gainToDbLabel(inputGain, INPUT_DB_MAX)}
+                                    </strong>
+                                  </label>
+                                  <input
+                                    id="input-gain"
+                                    type="range"
+                                    min={MUTE_POS}
+                                    max={INPUT_DB_MAX}
+                                    step={1}
+                                    value={gainToSlider(inputGain, INPUT_DB_MAX)}
+                                    style={
+                                      {
+                                        "--fill": `${sliderFillPercent(inputGain, INPUT_DB_MAX)}%`,
+                                      } as React.CSSProperties
+                                    }
+                                    onChange={(event) =>
+                                      onInputGainChange(
+                                        selectedInputDeviceId,
+                                        sliderToGain(
+                                          Number(event.currentTarget.value),
+                                          INPUT_DB_MAX,
+                                        ),
+                                      )
+                                    }
+                                    aria-label="Input gain"
+                                  />
+                                </div>
+                              </div>
                             </div>
-                            <small className="input-level-status is-ok">
-                              Low power mode keeps metering off.
-                            </small>
-                          </div>
-                        ) : (
-                          <div className="input-level-row" aria-live="polite">
-                            <div className="input-level-head">
-                              <small>Input level</small>
-                              <strong>{formatDbFs(inputLevelDbFs)}</strong>
+
+                            <div className="audio-device-card audio-device-card-output">
+                              <div className="audio-card-head">
+                                <div>
+                                  <span>Output</span>
+                                  <h4>Speaker</h4>
+                                </div>
+                              </div>
+                              <div className="audio-control audio-control-device">
+                                <span className="audio-control-label">
+                                  Device
+                                </span>
+                                <div className="mic-dropdown" ref={outputMenuRef}>
+                                  <button
+                                    type="button"
+                                    className="mic-dropdown-trigger"
+                                    onClick={() =>
+                                      setIsOutputMenuOpen((v) => !v)
+                                    }
+                                    disabled={outputDevices.length === 0}
+                                    aria-haspopup="listbox"
+                                    aria-expanded={isOutputMenuOpen}
+                                  >
+                                    <span>{selectedOutputLabel}</span>
+                                    <span>v</span>
+                                  </button>
+                                  {isOutputMenuOpen ? (
+                                    <div
+                                      className="mic-dropdown-menu"
+                                      role="listbox"
+                                    >
+                                      <button
+                                        type="button"
+                                        className={`mic-dropdown-item ${selectedOutputDeviceId === "" ? "active" : ""}`}
+                                        onClick={() => {
+                                          setSelectedOutputDeviceId("");
+                                          setIsOutputMenuOpen(false);
+                                        }}
+                                        title="System default"
+                                      >
+                                        System default
+                                      </button>
+                                      {outputDevices.map((d) => (
+                                        <button
+                                          type="button"
+                                          key={d.deviceId}
+                                          className={`mic-dropdown-item ${d.deviceId === selectedOutputDeviceId ? "active" : ""}`}
+                                          onClick={() => {
+                                            setSelectedOutputDeviceId(
+                                              d.deviceId,
+                                            );
+                                            setIsOutputMenuOpen(false);
+                                          }}
+                                          title={
+                                            d.label ||
+                                            `Output ${d.deviceId.slice(0, 6)}`
+                                          }
+                                        >
+                                          {d.label ||
+                                            `Output ${d.deviceId.slice(0, 6)}`}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+                                {!outputSelectionSupported ? (
+                                  <small>
+                                    Explicit speaker selection is not supported
+                                    by this browser; using system default output.
+                                  </small>
+                                ) : null}
+                              </div>
                             </div>
-                            <div className="meter">
-                              <div
-                                className="meter-bar"
-                                style={{
-                                  width: `${meterDbFsToPercent(inputLevelDbFs)}%`,
-                                }}
-                              />
-                            </div>
-                            <small
-                              className={`input-level-status ${inputClipping ? "is-clipping" : "is-ok"}`}
+
+                            <div
+                              className={`audio-gate-card ${
+                                lowPowerMode
+                                  ? "disabled"
+                                  : audioGateEnabled
+                                    ? "active"
+                                    : ""
+                              }`}
                             >
-                              {inputClipping
-                                ? "audio clipping"
-                                : "audio level ok"}
-                            </small>
-                          </div>
-                        )}
-                        <div className="local-monitor-control">
-                          <small className="local-monitor-hint">
-                            Use headphones before starting the test.
-                          </small>
-                          <button
-                            type="button"
-                            className={`local-monitor-btn${isLocalMonitorActive ? " active" : ""}`}
-                            disabled={lowPowerMode}
-                            onClick={onToggleLocalMonitor}
-                          >
-                            {lowPowerMode
-                              ? "Audio test paused"
-                              : isLocalMonitorActive
-                              ? "Stop audio test"
-                              : "Test microphone"}
-                          </button>
-                          {isLocalMonitorActive ? (
-                            <small className="local-monitor-status">
-                              You are hearing yourself — adjust headset and
-                              check gain.
-                            </small>
-                          ) : null}
-                        </div>
-                        <div className="station-gain-control input-gain-control">
-                          <label htmlFor="input-gain">
-                            {gainToDbLabel(inputGain, INPUT_DB_MAX)}
-                          </label>
-                          <input
-                            id="input-gain"
-                            type="range"
-                            min={MUTE_POS}
-                            max={INPUT_DB_MAX}
-                            step={1}
-                            value={gainToSlider(inputGain, INPUT_DB_MAX)}
-                            style={
-                              {
-                                "--fill": `${sliderFillPercent(inputGain, INPUT_DB_MAX)}%`,
-                              } as React.CSSProperties
-                            }
-                            onChange={(event) =>
-                              onInputGainChange(
-                                selectedInputDeviceId,
-                                sliderToGain(
-                                  Number(event.currentTarget.value),
-                                  INPUT_DB_MAX,
-                                ),
-                              )
-                            }
-                            aria-label="Input gain"
-                          />
-                        </div>
-                        <div className="local-monitor-control">
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={lowPowerMode ? false : audioGateEnabled}
-                              disabled={lowPowerMode}
-                              onChange={(event) =>
-                                onAudioGateEnabledChange(
-                                  event.currentTarget.checked,
-                                )
-                              }
-                            />{" "}
-                            Noise gate
-                          </label>
-                          <small className="local-monitor-hint">
-                            Cuts low-level background noise before mic gain.
-                          </small>
-                        </div>
-                        <div className="station-gain-control input-gain-control">
-                          <label htmlFor="input-gate-threshold">
-                            Gate threshold {formatGateThresholdDb(audioGateThresholdDb)}
-                          </label>
-                          <input
-                            id="input-gate-threshold"
-                            type="range"
-                            min={-72}
-                            max={-12}
-                            step={1}
-                            value={audioGateThresholdDb}
-                            disabled={lowPowerMode || !audioGateEnabled}
-                            onChange={(event) =>
-                              onAudioGateThresholdDbChange(
-                                Number(event.currentTarget.value),
-                              )
-                            }
-                            aria-label="Microphone gate threshold"
-                          />
-                        </div>
-                      </div>
-                      <div className="audio-right">
-                        <h4>Speaker output</h4>
-                        <div className="mic-dropdown" ref={outputMenuRef}>
-                          <button
-                            type="button"
-                            className="mic-dropdown-trigger"
-                            onClick={() => setIsOutputMenuOpen((v) => !v)}
-                            disabled={outputDevices.length === 0}
-                            aria-haspopup="listbox"
-                            aria-expanded={isOutputMenuOpen}
-                          >
-                            <span>{selectedOutputLabel}</span>
-                            <span>v</span>
-                          </button>
-                          {isOutputMenuOpen ? (
-                            <div className="mic-dropdown-menu" role="listbox">
-                              <button
-                                type="button"
-                                className={`mic-dropdown-item ${selectedOutputDeviceId === "" ? "active" : ""}`}
-                                onClick={() => {
-                                  setSelectedOutputDeviceId("");
-                                  setIsOutputMenuOpen(false);
-                                }}
-                                title="System default"
-                              >
-                                System default
-                              </button>
-                              {outputDevices.map((d) => (
-                                <button
-                                  type="button"
-                                  key={d.deviceId}
-                                  className={`mic-dropdown-item ${d.deviceId === selectedOutputDeviceId ? "active" : ""}`}
-                                  onClick={() => {
-                                    setSelectedOutputDeviceId(d.deviceId);
-                                    setIsOutputMenuOpen(false);
-                                  }}
-                                  title={
-                                    d.label ||
-                                    `Output ${d.deviceId.slice(0, 6)}`
+                              <div className="audio-gate-header">
+                                <div>
+                                  <span>Processor</span>
+                                  <h4>Noise gate</h4>
+                                </div>
+                                <label className="audio-gate-switch">
+                                  <input
+                                    type="checkbox"
+                                    aria-label="Noise gate"
+                                    checked={
+                                      lowPowerMode ? false : audioGateEnabled
+                                    }
+                                    disabled={lowPowerMode}
+                                    onChange={(event) =>
+                                      onAudioGateEnabledChange(
+                                        event.currentTarget.checked,
+                                      )
+                                    }
+                                  />
+                                  <span
+                                    className="station-setting-toggle"
+                                    aria-hidden="true"
+                                  />
+                                </label>
+                              </div>
+                              <p className="audio-gate-copy">
+                                Cuts low-level background noise before mic gain.
+                              </p>
+                              <div className="audio-gate-readout">
+                                <span>Threshold</span>
+                                <strong>
+                                  {formatGateThresholdDb(audioGateThresholdDb)}
+                                </strong>
+                              </div>
+                              <div className="station-gain-control input-gain-control audio-gate-slider">
+                                <label htmlFor="input-gate-threshold">
+                                  <span>Gate threshold</span>
+                                  <strong>
+                                    {formatGateThresholdDb(
+                                      audioGateThresholdDb,
+                                    )}
+                                  </strong>
+                                </label>
+                                <input
+                                  id="input-gate-threshold"
+                                  type="range"
+                                  min={GATE_THRESHOLD_DBFS_MIN}
+                                  max={GATE_THRESHOLD_DBFS_MAX}
+                                  step={1}
+                                  value={audioGateThresholdDb}
+                                  disabled={lowPowerMode || !audioGateEnabled}
+                                  style={
+                                    {
+                                      "--fill": `${gateThresholdDbToPercent(audioGateThresholdDb)}%`,
+                                    } as React.CSSProperties
                                   }
-                                >
-                                  {d.label ||
-                                    `Output ${d.deviceId.slice(0, 6)}`}
-                                </button>
-                              ))}
+                                  onChange={(event) =>
+                                    onAudioGateThresholdDbChange(
+                                      Number(event.currentTarget.value),
+                                    )
+                                  }
+                                  aria-label="Microphone gate threshold"
+                                />
+                              </div>
+                              <div className="audio-gate-scale" aria-hidden="true">
+                                <span>Open</span>
+                                <span>Tight</span>
+                              </div>
+                              <small className="audio-gate-status">
+                                {lowPowerMode
+                                  ? "Low power mode keeps gate off."
+                                  : audioGateEnabled
+                                    ? "Gate active"
+                                    : "Gate bypassed"}
+                              </small>
                             </div>
-                          ) : null}
-                        </div>
-                        {!outputSelectionSupported ? (
-                          <small
-                            style={{ display: "block", marginTop: "0.5rem" }}
-                          >
-                            Explicit speaker selection is not supported by this
-                            browser; using system default output.
-                          </small>
-                        ) : null}
-                      </div>
                           </div>
                         ) : null}
                       </div>
@@ -3939,7 +4076,7 @@ export function StationIntercomView({
                                   </header>
 
                                   <div className="channel-audio-feed-editor-fields">
-                                    <label className="streamdeck-control">
+                                    <label className="streamdeck-control channel-audio-feed-name-control">
                                       <span>Feed name *</span>
                                       <input
                                         type="text"
@@ -3957,20 +4094,17 @@ export function StationIntercomView({
                                       />
                                     </label>
 
-                                    <label className="streamdeck-control">
-                                      <span>Talk channel name</span>
-                                      <input
-                                        type="text"
-                                        value={channelAudioFeedEditor.roomName}
-                                        onChange={(event) =>
-                                          updateChannelAudioFeedEditor({
-                                            roomName:
-                                              event.currentTarget.value,
-                                          })
-                                        }
-                                        placeholder="same as feed name"
-                                      />
-                                    </label>
+                                    <div className="channel-audio-feed-derived-room">
+                                      <span>Talk channel</span>
+                                      <strong>
+                                        {channelAudioFeedEditor.name.trim() ||
+                                          "Same as feed name"}
+                                      </strong>
+                                      <small>
+                                        The talk channel is named automatically
+                                        from the feed name.
+                                      </small>
+                                    </div>
 
                                     <label className="streamdeck-control">
                                       <span>Input device</span>
@@ -4123,26 +4257,44 @@ export function StationIntercomView({
                                         className="channel-audio-room-role-group"
                                       >
                                         <legend>{label}</legend>
-                                        {appData.roles.map((role) => (
-                                          <label
-                                            key={`${key}-${role.id}`}
-                                            className="channel-audio-room-role-option"
-                                          >
-                                            <input
-                                              type="checkbox"
-                                              checked={channelAudioFeedEditor[
-                                                key
-                                              ].includes(role.id)}
-                                              onChange={() =>
-                                                toggleChannelAudioFeedEditorRole(
-                                                  key,
-                                                  role.id,
-                                                )
+                                        {appData.roles.map((role) => {
+                                          const isRequiredSenderRole =
+                                            key === "senderRoleIds" &&
+                                            role.id === appData.self.roleId;
+                                          return (
+                                            <label
+                                              key={`${key}-${role.id}`}
+                                              className={`channel-audio-room-role-option ${
+                                                isRequiredSenderRole
+                                                  ? "locked"
+                                                  : ""
+                                              }`}
+                                              title={
+                                                isRequiredSenderRole
+                                                  ? "Your role must be allowed to send this feed."
+                                                  : undefined
                                               }
-                                            />
-                                            <span>{role.name}</span>
-                                          </label>
-                                        ))}
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                checked={
+                                                  isRequiredSenderRole ||
+                                                  channelAudioFeedEditor[
+                                                    key
+                                                  ].includes(role.id)
+                                                }
+                                                disabled={isRequiredSenderRole}
+                                                onChange={() =>
+                                                  toggleChannelAudioFeedEditorRole(
+                                                    key,
+                                                    role.id,
+                                                  )
+                                                }
+                                              />
+                                              <span>{role.name}</span>
+                                            </label>
+                                          );
+                                        })}
                                       </fieldset>
                                     ))}
                                   </div>
