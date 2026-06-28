@@ -120,7 +120,7 @@ const (
 	companionSelectListenHoldDelayDefault = 2 * time.Second
 	companionIncomingCallBlinkInterval    = 300 * time.Millisecond
 	companionIncomingCallEffectValue      = 3
-	raspberryPiHeartbeatOfflineAfter      = 30 * time.Second
+	raspberryPiHeartbeatOfflineAfter      = 12 * time.Second
 )
 
 func refreshWebSocketReadDeadline(conn *websocket.Conn) {

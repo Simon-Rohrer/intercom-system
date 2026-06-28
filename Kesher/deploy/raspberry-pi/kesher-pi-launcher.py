@@ -21,7 +21,7 @@ from urllib.request import Request, urlopen
 
 
 LAUNCHER_VERSION = "2"
-HEARTBEAT_INTERVAL_SECONDS = 10
+HEARTBEAT_INTERVAL_SECONDS = 5
 
 
 def require_text(value: Any, field: str) -> str:

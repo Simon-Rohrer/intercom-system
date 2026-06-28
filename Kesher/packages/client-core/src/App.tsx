@@ -78,8 +78,8 @@ import { useNativeAudio } from "./hooks/useNativeAudio";
 
 const adminPathname = "/admin";
 const loginPathname = "/login";
-const normalStatusPollIntervalMs = 3000;
-const lowPowerStatusPollIntervalMs = 15000;
+const normalStatusPollIntervalMs = 2000;
+const lowPowerStatusPollIntervalMs = 5000;
 
 type ChannelAudioFeedRoomPayload = {
   id?: string;

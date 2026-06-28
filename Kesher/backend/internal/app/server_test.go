@@ -683,6 +683,60 @@ func TestServerHandleRaspberryPisReturnsStationsForAuthenticatedSession(t *testi
 	}
 }
 
+func TestServerHandleRaspberryPisMarksStaleStationsOffline(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if _, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
+		DeviceID:      "pi-1",
+		Name:          "Kamera-1",
+		IPAddress:     "192.168.1.51",
+		RoleID:        "camera",
+		BrowserStatus: "running",
+		LoginStatus:   "waiting_for_intercom",
+	}); err != nil {
+		t.Fatalf("UpsertRaspberryPiHeartbeat failed: %v", err)
+	}
+	staleSeenMs := time.Now().Add(-raspberryPiHeartbeatOfflineAfter - time.Second).UnixMilli()
+	if _, err := store.db.ExecContext(
+		ctx,
+		`UPDATE raspberry_pi_heartbeats SET last_seen = ?, updated_at = ? WHERE device_id = ?`,
+		staleSeenMs,
+		staleSeenMs,
+		"pi-1",
+	); err != nil {
+		t.Fatalf("failed to age heartbeat: %v", err)
+	}
+	s := &Server{
+		store: store,
+		hub:   NewHub(store, slog.New(slog.NewTextHandler(io.Discard, nil))),
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/raspberry-pis", nil)
+	rec := httptest.NewRecorder()
+
+	s.handleRaspberryPis(rec, req, Session{UserID: "u2", Username: "Tim", RoleID: "light"})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected ok, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response RaspberryPiStationsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if response.OfflineAfterMs != raspberryPiHeartbeatOfflineAfter.Milliseconds() {
+		t.Fatalf("unexpected offline threshold: %d", response.OfflineAfterMs)
+	}
+	if len(response.Stations) != 1 {
+		t.Fatalf("expected one station, got %#v", response.Stations)
+	}
+	if response.Stations[0].Online || response.Stations[0].EffectiveStatus != "offline" {
+		t.Fatalf("expected stale station offline, got %#v", response.Stations[0])
+	}
+}
+
 func TestServerHandleRaspberryPisDedupesSameStationAliases(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {
