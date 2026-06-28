@@ -20,6 +20,29 @@ export type UseAudioDevicesResult = {
   refreshAudioDevices: () => Promise<void>;
 };
 
+export function normalizeAudioDeviceMatch(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+export function resolveAudioDeviceSelection(
+  devices: MediaDeviceInfo[],
+  requestedMatch: string | null | undefined,
+  previousDeviceId: string,
+  fallbackDeviceId: string,
+): string {
+  const matchText = normalizeAudioDeviceMatch(requestedMatch);
+  if (matchText) {
+    const match = devices.find((d) =>
+      d.label.toLowerCase().includes(matchText),
+    );
+    if (match) return match.deviceId;
+  }
+  if (previousDeviceId && devices.some((d) => d.deviceId === previousDeviceId)) {
+    return previousDeviceId;
+  }
+  return fallbackDeviceId;
+}
+
 export function useAudioDevices({
   setSelectedInputDeviceId,
   setSelectedOutputDeviceId,
@@ -56,26 +79,21 @@ export function useAudioDevices({
     const outputs = devices.filter((d) => d.kind === "audiooutput");
     setInputDevices(inputs);
     setOutputDevices(outputs);
-    
+
     const params = new URLSearchParams(window.location.search);
-    const audioInputMatch = params.get("audioInputMatch")?.toLowerCase();
-    const audioOutputMatch = params.get("audioOutputMatch")?.toLowerCase();
+    const audioInputMatch = params.get("audioInputMatch");
+    const audioOutputMatch = params.get("audioOutputMatch");
 
     setSelectedInputDeviceId((prev) => {
-      if (audioInputMatch) {
-        const match = inputs.find((d) => d.label.toLowerCase().includes(audioInputMatch));
-        if (match) return match.deviceId;
-      }
-      if (prev && inputs.some((d) => d.deviceId === prev)) return prev;
-      return inputs[0]?.deviceId || "";
+      return resolveAudioDeviceSelection(
+        inputs,
+        audioInputMatch,
+        prev,
+        inputs[0]?.deviceId || "",
+      );
     });
     setSelectedOutputDeviceId((prev) => {
-      if (audioOutputMatch) {
-        const match = outputs.find((d) => d.label.toLowerCase().includes(audioOutputMatch));
-        if (match) return match.deviceId;
-      }
-      if (prev && outputs.some((d) => d.deviceId === prev)) return prev;
-      return "";
+      return resolveAudioDeviceSelection(outputs, audioOutputMatch, prev, "");
     });
   }, [
     isNative,

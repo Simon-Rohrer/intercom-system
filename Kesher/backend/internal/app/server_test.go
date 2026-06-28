@@ -806,6 +806,136 @@ func TestServerHandleRaspberryPisDedupesSameStationAliases(t *testing.T) {
 	}
 }
 
+func attachTestHubClient(hub *Hub, session Session, user User) chan WSOutbound {
+	priority := make(chan WSOutbound, 4)
+	hub.mu.Lock()
+	hub.clients[session.Token] = &client{
+		session:      session,
+		user:         user,
+		connectedAt:  time.Now(),
+		listenRooms:  make(map[string]struct{}),
+		talkRooms:    make(map[string]struct{}),
+		voiceMode:    "ptt",
+		micEnabled:   true,
+		send:         make(chan WSOutbound, 4),
+		sendPriority: priority,
+	}
+	hub.mu.Unlock()
+	return priority
+}
+
+func TestServerHandleRaspberryPiRemoteStationsReturnsConnectedStations(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if err := store.CreateRole(ctx, "remote-cam", "Remote Camera", "", "ptt", false); err != nil {
+		t.Fatalf("CreateRole cam failed: %v", err)
+	}
+	if err := store.CreateRole(ctx, "remote-audio", "Remote Audio", "", "ptt", false); err != nil {
+		t.Fatalf("CreateRole audio failed: %v", err)
+	}
+	if _, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
+		DeviceID:      "pi-1",
+		Name:          "Kamera-1",
+		IPAddress:     "192.168.0.61",
+		RoleID:        "remote-cam",
+		BrowserStatus: "running",
+		LoginStatus:   "connected",
+	}); err != nil {
+		t.Fatalf("UpsertRaspberryPiHeartbeat pi-1 failed: %v", err)
+	}
+	if _, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
+		DeviceID:      "pi-2",
+		Name:          "Audio-Pi",
+		IPAddress:     "192.168.0.62",
+		RoleID:        "remote-audio",
+		BrowserStatus: "running",
+		LoginStatus:   "connected",
+	}); err != nil {
+		t.Fatalf("UpsertRaspberryPiHeartbeat pi-2 failed: %v", err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	hub := NewHub(store, logger)
+	sessions := NewSessionManager(time.Minute)
+	session := sessions.Create(User{ID: "u-pi", Username: "Kamera-1", RoleID: "remote-cam"})
+	attachTestHubClient(hub, session, User{ID: "u-pi", Username: "Kamera-1", RoleID: "remote-cam"})
+	s := &Server{store: store, hub: hub, sessions: sessions}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/raspberry-pis/remote", nil)
+	rec := httptest.NewRecorder()
+	s.handleRaspberryPiRemoteStations(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var response RaspberryPiRemoteStationsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("Decode response failed: %v", err)
+	}
+	if len(response.Stations) != 1 {
+		t.Fatalf("expected one remote station, got %+v", response.Stations)
+	}
+	if response.Stations[0].DeviceID != "pi-1" {
+		t.Fatalf("expected pi-1, got %s", response.Stations[0].DeviceID)
+	}
+}
+
+func TestServerHandleRaspberryPiRemoteCommandQueuesCompanionCommand(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if err := store.CreateRole(ctx, "remote-cam", "Remote Camera", "", "ptt", false); err != nil {
+		t.Fatalf("CreateRole failed: %v", err)
+	}
+	if err := store.CreateRoom(ctx, "remote-room-a", "Remote Room A", []string{"remote-cam"}, []string{"remote-cam"}, nil); err != nil {
+		t.Fatalf("CreateRoom failed: %v", err)
+	}
+	if _, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
+		DeviceID:      "pi-1",
+		Name:          "Kamera-1",
+		IPAddress:     "192.168.0.61",
+		RoleID:        "remote-cam",
+		BrowserStatus: "running",
+		LoginStatus:   "connected",
+	}); err != nil {
+		t.Fatalf("UpsertRaspberryPiHeartbeat failed: %v", err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	hub := NewHub(store, logger)
+	sessions := NewSessionManager(time.Minute)
+	session := sessions.Create(User{ID: "u-pi", Username: "Kamera-1", RoleID: "remote-cam"})
+	priority := attachTestHubClient(hub, session, User{ID: "u-pi", Username: "Kamera-1", RoleID: "remote-cam"})
+	s := &Server{store: store, hub: hub, sessions: sessions}
+
+	body := strings.NewReader(`{"deviceId":"pi-1","command":"ptt","scope":"room","targetId":"remote-room-a","state":"ptt_start"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/raspberry-pis/remote-command", body)
+	rec := httptest.NewRecorder()
+	s.handleRaspberryPiRemoteCommand(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	select {
+	case msg := <-priority:
+		if msg.Type != "companion_command" {
+			t.Fatalf("expected companion_command, got %s", msg.Type)
+		}
+		command, ok := msg.Data.(CompanionCommand)
+		if !ok {
+			t.Fatalf("expected CompanionCommand payload, got %T", msg.Data)
+		}
+		if command.Command != "ptt" || command.Scope != "room" || command.TargetID != "remote-room-a" || command.State != "ptt_start" {
+			t.Fatalf("unexpected command payload: %+v", command)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected queued companion command")
+	}
+}
+
 func TestServerHandleAdminRolesMethodNotAllowed(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {

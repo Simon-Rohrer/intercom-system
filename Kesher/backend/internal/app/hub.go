@@ -1083,6 +1083,26 @@ func (h *Hub) LatestTokenForUsername(username string) (string, bool) {
 	return selectedToken, true
 }
 
+func (h *Hub) LatestTokenForUsernameRole(username, roleID string) (string, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	var selectedToken string
+	var selectedAt time.Time
+	for token, c := range h.clients {
+		if !strings.EqualFold(c.user.Username, username) || c.session.RoleID != roleID {
+			continue
+		}
+		if selectedToken == "" || c.connectedAt.After(selectedAt) {
+			selectedToken = token
+			selectedAt = c.connectedAt
+		}
+	}
+	if selectedToken == "" {
+		return "", false
+	}
+	return selectedToken, true
+}
+
 func (h *Hub) SessionCountForUsername(username string) int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()

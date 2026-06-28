@@ -343,6 +343,7 @@ export function useLocalMic({
   // ── Refs ──
   const localStreamRef = useRef<MediaStream | null>(null);
   const inputCaptureStreamRef = useRef<MediaStream | null>(null);
+  const inputMonitorStreamRef = useRef<MediaStream | null>(null);
   const inputProcessingAudioCtxRef = useRef<AudioContext | null>(null);
   const inputGainNodeRef = useRef<GainNode | null>(null);
   const outgoingGateNodeRef = useRef<GainNode | null>(null);
@@ -395,6 +396,7 @@ export function useLocalMic({
       const outgoingGate = ctx.createGain();
       outgoingGate.gain.value = 0;
       const dest = ctx.createMediaStreamDestination();
+      const monitorDest = ctx.createMediaStreamDestination();
 
       // A browser microphone is usually mono, while USB audio interfaces
       // often expose multiple discrete input channels. Route the selected
@@ -455,6 +457,7 @@ export function useLocalMic({
       }
 
       processedInput.connect(gain);
+      gain.connect(monitorDest);
       gain.connect(outgoingGate);
       outgoingGate.connect(dest);
       const processedTrack = dest.stream.getAudioTracks()[0];
@@ -464,6 +467,7 @@ export function useLocalMic({
       }
       inputProcessingAudioCtxRef.current = ctx;
       inputGainNodeRef.current = gain;
+      inputMonitorStreamRef.current = monitorDest.stream;
       outgoingGateNodeRef.current = outgoingGate;
       gateProcessorNodeRef.current = gate;
       return new MediaStream([processedTrack]);
@@ -477,6 +481,11 @@ export function useLocalMic({
       for (const track of inputCaptureStreamRef.current.getTracks())
         track.stop();
       inputCaptureStreamRef.current = null;
+    }
+    if (inputMonitorStreamRef.current) {
+      for (const track of inputMonitorStreamRef.current.getTracks())
+        track.stop();
+      inputMonitorStreamRef.current = null;
     }
     if (inputProcessingAudioCtxRef.current) {
       void inputProcessingAudioCtxRef.current.close();
@@ -512,7 +521,8 @@ export function useLocalMic({
     if (lowPowerMode) return;
     const AudioCtx = window.AudioContext;
     if (!AudioCtx) return;
-    const sourceTrack = stream.getAudioTracks()[0];
+    const meterSourceStream = inputMonitorStreamRef.current ?? stream;
+    const sourceTrack = meterSourceStream.getAudioTracks()[0];
     if (!sourceTrack) return;
     const monitorTrack = sourceTrack.clone();
     monitorTrack.enabled = true;
@@ -564,14 +574,15 @@ export function useLocalMic({
       return;
     }
     const processedStream = localStreamRef.current;
-    if (!processedStream) return;
+    const monitorStream = inputMonitorStreamRef.current ?? processedStream;
+    if (!monitorStream) return;
     const AudioCtx = window.AudioContext;
     if (!AudioCtx) return;
     stopLocalMonitor();
     try {
       const ctx = new AudioCtx({ latencyHint: "interactive" });
       localMonitorCtxRef.current = ctx;
-      const monitorTrack = processedStream.getAudioTracks()[0]?.clone();
+      const monitorTrack = monitorStream.getAudioTracks()[0]?.clone();
       if (!monitorTrack) {
         void ctx.close();
         localMonitorCtxRef.current = null;

@@ -22,6 +22,7 @@ class LauncherTests(unittest.TestCase):
                     "name": "FOH",
                     "role_id": "audio",
                     "audio_input_match": "USB Audio",
+                    "audio_output_match": "Jabra Headset",
                     "low_power_mode": True,
                     "simple_view": True,
                 }
@@ -41,6 +42,7 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("autoTakeover=1", url)
         self.assertIn("roleId=audio", url)
         self.assertIn("audioInputMatch=USB+Audio", url)
+        self.assertIn("audioOutputMatch=Jabra+Headset", url)
         self.assertIn("lowPower=1", url)
         self.assertIn("viewMode=simple", url)
 

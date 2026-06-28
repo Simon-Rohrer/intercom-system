@@ -11,6 +11,7 @@ import {
   updateRoom,
   getStreamDeckSettings,
   getPublicBootstrap,
+  getRaspberryPiRemoteStations,
   getRaspberryPiStationStatuses,
   getStatus,
   isUnauthorizedError,
@@ -18,6 +19,7 @@ import {
   loginTakeover,
   publishUserCompanionProfile,
   renderStreamDeckPreviewImages,
+  sendRaspberryPiRemoteCommand,
   type StreamDeckPreviewButton,
   resetStreamDeckSettings,
   logout,
@@ -67,6 +69,8 @@ import type {
   LoginConflict,
   Presence,
   PublicBootstrap,
+  RaspberryPiRemoteCommandRequest,
+  RaspberryPiRemoteStationStatus,
   RaspberryPiStationStatus,
   StreamDeckButtonConfig,
   StreamDeckSettings,
@@ -258,6 +262,16 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     RaspberryPiStationStatus[] | null
   >(null);
   const [raspberryPiStationsError, setRaspberryPiStationsError] = useState("");
+  const [raspberryRemoteStations, setRaspberryRemoteStations] = useState<
+    RaspberryPiRemoteStationStatus[] | null
+  >(null);
+  const [raspberryRemoteError, setRaspberryRemoteError] = useState("");
+  const [raspberryRemoteCommandBusy, setRaspberryRemoteCommandBusy] =
+    useState(false);
+  const [raspberryRemoteCommandStatus, setRaspberryRemoteCommandStatus] =
+    useState("");
+  const [raspberryRemoteCommandError, setRaspberryRemoteCommandError] =
+    useState("");
   const [pendingTakeover, setPendingTakeover] = useState<
     | {
         username: string;
@@ -1365,6 +1379,47 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     };
   }, [token, authMode, lowPowerMode]);
 
+  // ── Raspberry remote polling on login screen ──
+  useEffect(() => {
+    if (token || !publicData) {
+      setRaspberryRemoteStations(null);
+      setRaspberryRemoteError("");
+      setRaspberryRemoteCommandStatus("");
+      setRaspberryRemoteCommandError("");
+      return;
+    }
+    let cancelled = false;
+    let inFlight = false;
+    const pollRemoteStations = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const response = await getRaspberryPiRemoteStations();
+        if (cancelled) return;
+        setRaspberryRemoteStations(response.stations);
+        setRaspberryRemoteError("");
+      } catch (error) {
+        if (cancelled) return;
+        setRaspberryRemoteError(
+          error instanceof Error
+            ? error.message
+            : "failed to load Raspberry Pi remote stations",
+        );
+      } finally {
+        inFlight = false;
+      }
+    };
+    void pollRemoteStations();
+    const intervalId = window.setInterval(
+      () => void pollRemoteStations(),
+      3000,
+    );
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [token, publicData]);
+
   // ── Session persistence (all four fields together) ──
   useEffect(() => {
     localStorage.setItem(
@@ -1544,6 +1599,32 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     setAppData(null);
   }
 
+  async function handleRaspberryRemoteCommand(
+    command: RaspberryPiRemoteCommandRequest,
+  ) {
+    setRaspberryRemoteCommandBusy(true);
+    setRaspberryRemoteCommandError("");
+    setRaspberryRemoteCommandStatus("Sending command...");
+    try {
+      const result = await sendRaspberryPiRemoteCommand(command);
+      setRaspberryRemoteCommandStatus(
+        result.ok
+          ? `${result.command || command.command} ${result.status || "queued"}`
+          : result.error || "Command failed.",
+      );
+      if (!result.ok) {
+        setRaspberryRemoteCommandError(result.error || "Command failed.");
+      }
+    } catch (error) {
+      setRaspberryRemoteCommandStatus("");
+      setRaspberryRemoteCommandError(
+        error instanceof Error ? error.message : "Command failed.",
+      );
+    } finally {
+      setRaspberryRemoteCommandBusy(false);
+    }
+  }
+
   async function handleConfirmTakeover() {
     if (!pendingTakeover) return;
     setAdminLoginError("");
@@ -1628,18 +1709,6 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     settings.keyboardShortcuts,
     shortcutCallbacks,
     !isRecordingShortcut,
-  );
-
-  const togglePinnedRoom = useCallback(
-    (roomId: string) => {
-      settings.setPinnedRoomIds((prev) =>
-        prev.includes(roomId)
-          ? prev.filter((id) => id !== roomId)
-          : [...prev, roomId],
-      );
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
   );
 
   const togglePinnedUser = useCallback(
@@ -2085,17 +2154,19 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     [],
   );
 
-  const handleSaveStreamDeckSettings = useCallback(async () => {
-    if (!token || !streamDeckSettings) return;
+  const handleSaveStreamDeckSettings = useCallback(async (next?: StreamDeckSettings) => {
+    const settingsToSave = next ?? streamDeckSettings;
+    if (!token || !settingsToSave) return;
     setStreamDeckBusy(true);
     setStreamDeckError("");
     try {
-      const saved = await updateStreamDeckSettings(token, streamDeckSettings);
+      const saved = await updateStreamDeckSettings(token, settingsToSave);
       setStreamDeckSettings(saved);
     } catch (err) {
       setStreamDeckError(
         err instanceof Error ? err.message : "Failed to save Stream Deck settings.",
       );
+      throw err;
     } finally {
       setStreamDeckBusy(false);
     }
@@ -2192,6 +2263,14 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           setAdminLoginError("");
           setAdminOverrideActive(false);
         }}
+        raspberryRemoteStations={raspberryRemoteStations}
+        raspberryRemoteError={raspberryRemoteError}
+        raspberryRemoteCommandBusy={raspberryRemoteCommandBusy}
+        raspberryRemoteCommandStatus={raspberryRemoteCommandStatus}
+        raspberryRemoteCommandError={raspberryRemoteCommandError}
+        onRaspberryRemoteCommand={(command) =>
+          void handleRaspberryRemoteCommand(command)
+        }
       />
     );
   }
@@ -2487,7 +2566,6 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         pinnedRoomIds={settings.pinnedRoomIds}
         pinnedUserIds={settings.pinnedUserIds}
         showPinnedOnly={settings.showPinnedOnly}
-        onTogglePinnedRoom={togglePinnedRoom}
         onTogglePinnedUser={togglePinnedUser}
         onShowPinnedOnlyChange={settings.setShowPinnedOnly}
         isUserSettingsOpen={isUserSettingsOpen}
@@ -2534,7 +2612,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         streamDeckBusy={streamDeckBusy}
         streamDeckError={streamDeckError}
         onStreamDeckSettingsChange={handleStreamDeckSettingsChange}
-        onSaveStreamDeckSettings={() => void handleSaveStreamDeckSettings()}
+        onSaveStreamDeckSettings={handleSaveStreamDeckSettings}
         onResetStreamDeckSettings={() => void handleResetStreamDeckSettings()}
         onPublishCompanionProfile={handlePublishUserCompanionProfile}
         streamDeckWebHidSupported={streamDeckWebHidSupported}

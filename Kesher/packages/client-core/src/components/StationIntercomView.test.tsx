@@ -86,7 +86,6 @@ const baseProps: ComponentProps<typeof StationIntercomView> = {
   pinnedRoomIds: [],
   pinnedUserIds: [],
   showPinnedOnly: false,
-  onTogglePinnedRoom: vi.fn(),
   onTogglePinnedUser: vi.fn(),
   onShowPinnedOnlyChange: vi.fn(),
   isUserSettingsOpen: false,
@@ -157,7 +156,7 @@ const baseProps: ComponentProps<typeof StationIntercomView> = {
 };
 
 describe("StationIntercomView", () => {
-  it("renders the incoming level beside each party-line favorite control", () => {
+  it("renders the incoming level in each party-line meter", () => {
     render(
       <StationIntercomView
         {...baseProps}
@@ -192,25 +191,15 @@ describe("StationIntercomView", () => {
     ).toHaveLength(5);
   });
 
-  it("does not toggle favorites when the party-line meter is clicked", async () => {
-    const user = userEvent.setup();
-    const onTogglePinnedRoom = vi.fn();
-    render(
-      <StationIntercomView
-        {...baseProps}
-        onTogglePinnedRoom={onTogglePinnedRoom}
-      />,
-    );
+  it("does not render a party-line favorite button on the level meter", () => {
+    render(<StationIntercomView {...baseProps} />);
 
-    await user.click(
-      screen.getByRole("meter", { name: "Party Line 1 input level" }),
-    );
-    expect(onTogglePinnedRoom).not.toHaveBeenCalled();
-
-    await user.click(
-      screen.getByRole("button", { name: "Add channel to favorites" }),
-    );
-    expect(onTogglePinnedRoom).toHaveBeenCalledWith("room-1");
+    expect(
+      screen.queryByRole("button", { name: "Add channel to favorites" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Remove channel from favorites" }),
+    ).not.toBeInTheDocument();
   });
 
   it("uses route activity without audio analysis in low-power mode", () => {
@@ -640,10 +629,10 @@ describe("StationIntercomView", () => {
     );
   });
 
-  it("adds and removes stream deck pages from toolbar buttons", async () => {
+  it("opens an empty next stream deck page from page navigation", async () => {
     const user = userEvent.setup();
     const onStreamDeckSettingsChange = vi.fn();
-    const { rerender } = render(
+    render(
       <StationIntercomView
         {...baseProps}
         isUserSettingsOpen
@@ -653,28 +642,50 @@ describe("StationIntercomView", () => {
 
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
 
-    await user.click(screen.getByRole("button", { name: "+ Page" }));
+    expect(screen.queryByRole("button", { name: "+ Page" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "- Page" })).not.toBeInTheDocument();
 
-    const addArg = onStreamDeckSettingsChange.mock.calls[0]?.[0];
-    expect(addArg?.pages?.length).toBe(2);
-    expect(addArg?.selectedPage).toBe(1);
+    await user.click(screen.getByRole("button", { name: ">" }));
 
+    const nextPageArg = onStreamDeckSettingsChange.mock.calls[0]?.[0];
+    expect(nextPageArg?.pages?.length).toBe(2);
+    expect(nextPageArg?.pages?.[1]?.page).toBe(1);
+    expect(nextPageArg?.selectedPage).toBe(1);
+  });
+
+  it("prunes empty stream deck editor pages before saving", async () => {
+    const user = userEvent.setup();
+    const onStreamDeckSettingsChange = vi.fn();
+    const onSaveStreamDeckSettings = vi.fn();
+    const { rerender } = render(
+      <StationIntercomView
+        {...baseProps}
+        isUserSettingsOpen
+        onStreamDeckSettingsChange={onStreamDeckSettingsChange}
+        onSaveStreamDeckSettings={onSaveStreamDeckSettings}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
+    await user.click(screen.getByRole("button", { name: ">" }));
+
+    const nextPageArg = onStreamDeckSettingsChange.mock.calls[0]?.[0];
     rerender(
       <StationIntercomView
         {...baseProps}
         isUserSettingsOpen
-        streamDeckSettings={addArg}
+        streamDeckSettings={nextPageArg}
         onStreamDeckSettingsChange={onStreamDeckSettingsChange}
+        onSaveStreamDeckSettings={onSaveStreamDeckSettings}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "- Page" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
 
-    const removeArg = onStreamDeckSettingsChange.mock.calls[1]?.[0];
-    expect(removeArg?.pages?.length).toBe(1);
-    expect(removeArg?.selectedPage).toBe(0);
-
-    expect(onStreamDeckSettingsChange).toHaveBeenCalledTimes(2);
+    const savedArg = onSaveStreamDeckSettings.mock.calls[0]?.[0];
+    expect(savedArg?.pages).toHaveLength(1);
+    expect(savedArg?.pages?.[0]?.page).toBe(0);
+    expect(savedArg?.selectedPage).toBe(0);
   });
 
   it("triggers save from stream deck settings header", async () => {
@@ -695,11 +706,82 @@ describe("StationIntercomView", () => {
     expect(onSaveStreamDeckSettings).toHaveBeenCalledTimes(1);
   });
 
+  it("confirms saved stream deck settings", async () => {
+    const user = userEvent.setup();
+    const onSaveStreamDeckSettings = vi.fn().mockResolvedValue(undefined);
+    render(
+      <StationIntercomView
+        {...baseProps}
+        isUserSettingsOpen
+        onSaveStreamDeckSettings={onSaveStreamDeckSettings}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Stream Deck profile saved.",
+    );
+  });
+
+  it("shows stream deck save failures", async () => {
+    const user = userEvent.setup();
+    const onSaveStreamDeckSettings = vi
+      .fn()
+      .mockRejectedValue(new Error("Save endpoint unavailable."));
+    render(
+      <StationIntercomView
+        {...baseProps}
+        isUserSettingsOpen
+        onSaveStreamDeckSettings={onSaveStreamDeckSettings}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Save endpoint unavailable.",
+    );
+  });
+
+  it("confirms published companion stream deck profiles", async () => {
+    const user = userEvent.setup();
+    const onSaveStreamDeckSettings = vi.fn().mockResolvedValue(undefined);
+    const onPublishCompanionProfile = vi.fn().mockResolvedValue({
+      profileVersion: 12,
+      roleId: "audio",
+      username: "tim",
+    });
+    render(
+      <StationIntercomView
+        {...baseProps}
+        isUserSettingsOpen
+        onSaveStreamDeckSettings={onSaveStreamDeckSettings}
+        onPublishCompanionProfile={onPublishCompanionProfile}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
+    await user.click(
+      screen.getByRole("button", { name: "Publish to Companion" }),
+    );
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Companion profile published as v12 for role audio.",
+    );
+  });
+
   it("exports stream deck settings as a JSON file", async () => {
     const user = userEvent.setup();
+    let exportedBlob: Blob | null = null;
     const createObjectURLSpy = vi
       .spyOn(URL, "createObjectURL")
-      .mockReturnValue("blob:streamdeck-export");
+      .mockImplementation((blob) => {
+        exportedBlob = blob as Blob;
+        return "blob:streamdeck-export";
+      });
     const revokeObjectURLSpy = vi
       .spyOn(URL, "revokeObjectURL")
       .mockImplementation(() => {});
@@ -711,6 +793,9 @@ describe("StationIntercomView", () => {
 
     expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:streamdeck-export");
+    const exportedText = await exportedBlob?.text();
+    const exportedJson = JSON.parse(exportedText || "{}");
+    expect(exportedJson.settings.pages).toHaveLength(1);
 
     createObjectURLSpy.mockRestore();
     revokeObjectURLSpy.mockRestore();

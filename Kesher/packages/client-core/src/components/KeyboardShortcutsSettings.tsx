@@ -38,7 +38,7 @@ export function KeyboardShortcutsSettings({
   onShortcutsChange,
   onRecordingChange,
 }: KeyboardShortcutsSettingsProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
   // Which action is currently being recorded (null = none).
   const [recording, setRecording] = useState<ShortcutAction | null>(null);
 

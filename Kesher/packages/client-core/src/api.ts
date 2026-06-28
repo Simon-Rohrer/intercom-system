@@ -12,6 +12,9 @@ import type {
   LoginSuccess,
   PublicBootstrap,
   RaspberryPiStationsResponse,
+  RaspberryPiRemoteCommandRequest,
+  RaspberryPiRemoteCommandResult,
+  RaspberryPiRemoteStationsResponse,
   RealtimeStatsResponse,
   Role,
   StatusResponse,
@@ -646,6 +649,27 @@ export async function getRaspberryPiStationStatuses(
   });
   if (!res.ok) throw new Error("failed to load Raspberry Pi stations");
   return res.json() as Promise<RaspberryPiStationsResponse>;
+}
+
+export async function getRaspberryPiRemoteStations(): Promise<RaspberryPiRemoteStationsResponse> {
+  const res = await fetch(apiUrl("/api/raspberry-pis/remote"));
+  if (!res.ok) throw new Error("failed to load Raspberry Pi remote stations");
+  return res.json() as Promise<RaspberryPiRemoteStationsResponse>;
+}
+
+export async function sendRaspberryPiRemoteCommand(
+  payload: RaspberryPiRemoteCommandRequest,
+): Promise<RaspberryPiRemoteCommandResult> {
+  const res = await fetch(apiUrl("/api/raspberry-pis/remote-command"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const message = (await res.text()).trim();
+    throw new Error(message || "failed to send Raspberry Pi remote command");
+  }
+  return res.json() as Promise<RaspberryPiRemoteCommandResult>;
 }
 
 export async function getStatus(token: string): Promise<StatusResponse> {

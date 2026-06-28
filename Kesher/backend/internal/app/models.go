@@ -144,6 +144,29 @@ type RaspberryPiStationsResponse struct {
 	OfflineAfterMs  int64                      `json:"offlineAfterMs"`
 }
 
+type RaspberryPiRemoteStationStatus struct {
+	DeviceID          string `json:"deviceId"`
+	Name              string `json:"name"`
+	RoleID            string `json:"roleId"`
+	Online            bool   `json:"online"`
+	IntercomConnected bool   `json:"intercomConnected"`
+	EffectiveStatus   string `json:"effectiveStatus"`
+	IntercomUsername  string `json:"intercomUsername,omitempty"`
+	IntercomRoleID    string `json:"intercomRoleId,omitempty"`
+	SecondsSinceSeen  int64  `json:"secondsSinceSeen"`
+}
+
+type RaspberryPiRemoteStationsResponse struct {
+	Stations        []RaspberryPiRemoteStationStatus `json:"stations"`
+	TimestampUnixMs int64                            `json:"timestampUnixMs"`
+	OfflineAfterMs  int64                            `json:"offlineAfterMs"`
+}
+
+type RaspberryPiRemoteCommandRequest struct {
+	DeviceID string `json:"deviceId"`
+	CompanionCommand
+}
+
 type Session struct {
 	Token     string
 	UserID    string

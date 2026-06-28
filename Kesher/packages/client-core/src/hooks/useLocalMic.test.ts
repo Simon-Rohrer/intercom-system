@@ -255,4 +255,88 @@ describe("useLocalMic helpers", () => {
     expect(ctx.createAnalyser).toHaveBeenCalled();
     expect(requestAnimationFrameSpy).toHaveBeenCalled();
   });
+
+  it("meters the pre-PTT monitor stream instead of the gated send stream", () => {
+    const source = { connect: vi.fn() };
+    const sendGain = { gain: { value: 0 }, connect: vi.fn() };
+    const outgoingGate = { gain: { value: 0 }, connect: vi.fn() };
+    const analyser = {
+      fftSize: 0,
+      frequencyBinCount: 64,
+      getFloatTimeDomainData: vi.fn(),
+    };
+    const inputTrack = {
+      getSettings: () => ({ channelCount: 1 }),
+      stop: vi.fn(),
+    };
+    const gatedTrack = {
+      clone: vi.fn(() => ({ enabled: false })),
+      getSettings: () => ({ channelCount: 1 }),
+      stop: vi.fn(),
+    };
+    const monitorTrack = {
+      clone: vi.fn(() => ({ enabled: false })),
+      getSettings: () => ({ channelCount: 1 }),
+      stop: vi.fn(),
+    };
+    const sourceStream = {
+      getAudioTracks: () => [inputTrack],
+      getTracks: () => [inputTrack],
+    } as unknown as MediaStream;
+    const gatedDestinationStream = {
+      getAudioTracks: () => [gatedTrack],
+      getTracks: () => [gatedTrack],
+    } as unknown as MediaStream;
+    const monitorDestinationStream = {
+      getAudioTracks: () => [monitorTrack],
+      getTracks: () => [monitorTrack],
+    } as unknown as MediaStream;
+    const gainNodes = [sendGain, outgoingGate];
+    const destinationStreams = [
+      gatedDestinationStream,
+      monitorDestinationStream,
+    ];
+    const createCtx = () => ({
+      sampleRate: 48000,
+      createMediaStreamSource: vi.fn(() => source),
+      createGain: vi.fn(() => gainNodes.shift()),
+      createMediaStreamDestination: vi.fn(() => ({
+        stream: destinationStreams.shift() ?? monitorDestinationStream,
+      })),
+      createAnalyser: vi.fn(() => analyser),
+      close: vi.fn(),
+    });
+    const AudioContextMock = vi.fn(function (
+      this: ReturnType<typeof createCtx>,
+    ) {
+      Object.assign(this, createCtx());
+    });
+    vi.stubGlobal("AudioContext", AudioContextMock);
+    const MediaStreamMock = vi.fn(function (
+      this: { getTracks: () => unknown[]; getAudioTracks: () => unknown[] },
+      tracks: unknown[] = [],
+    ) {
+      this.getTracks = () => tracks;
+      this.getAudioTracks = () => tracks;
+    });
+    vi.stubGlobal("MediaStream", MediaStreamMock);
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1);
+
+    const { result } = renderHook(() => useTestLocalMic(false));
+    let sendStream: MediaStream | null = null;
+
+    act(() => {
+      sendStream = result.current.buildOutgoingMicStream(
+        sourceStream,
+        1,
+        "all",
+      );
+    });
+    act(() => {
+      result.current.startLevelMeter(sendStream as MediaStream);
+    });
+
+    expect(monitorTrack.clone).toHaveBeenCalled();
+    expect(gatedTrack.clone).not.toHaveBeenCalled();
+  });
 });

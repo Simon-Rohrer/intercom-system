@@ -3424,6 +3424,8 @@ func NewServer(cfg Config) (*Server, error) {
 	mux.HandleFunc("/api/bootstrap", s.withAuth(s.handleBootstrap))
 	mux.HandleFunc("/api/status", s.withAuth(s.handleStatus))
 	mux.HandleFunc("/api/raspberry-pis", s.withAuth(s.handleRaspberryPis))
+	mux.HandleFunc("/api/raspberry-pis/remote", s.handleRaspberryPiRemoteStations)
+	mux.HandleFunc("/api/raspberry-pis/remote-command", s.handleRaspberryPiRemoteCommand)
 	mux.HandleFunc("/api/user/stream-deck/settings", s.withAuth(s.handleUserStreamDeckSettings))
 	mux.HandleFunc("/api/user/stream-deck/preview", s.withAuth(s.handleUserStreamDeckPreview))
 	mux.HandleFunc("/api/admin/stream-deck/settings", s.withAuth(s.handleAdminRoleStreamDeckSettings))
@@ -3736,6 +3738,148 @@ func (s *Server) handleAdminRaspberryPis(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	s.writeJSON(w, http.StatusOK, response)
+}
+
+func raspberryPiRemoteStationFromStatus(station RaspberryPiStationStatus) RaspberryPiRemoteStationStatus {
+	return RaspberryPiRemoteStationStatus{
+		DeviceID:          station.DeviceID,
+		Name:              station.Name,
+		RoleID:            station.RoleID,
+		Online:            station.Online,
+		IntercomConnected: station.IntercomConnected,
+		EffectiveStatus:   station.EffectiveStatus,
+		IntercomUsername:  station.IntercomUsername,
+		IntercomRoleID:    station.IntercomRoleID,
+		SecondsSinceSeen:  station.SecondsSinceSeen,
+	}
+}
+
+func (s *Server) buildRaspberryPiRemoteStationsResponse(ctx context.Context) (RaspberryPiRemoteStationsResponse, error) {
+	response, err := s.buildRaspberryPiStationsResponse(ctx)
+	if err != nil {
+		return RaspberryPiRemoteStationsResponse{}, err
+	}
+	stations := make([]RaspberryPiRemoteStationStatus, 0, len(response.Stations))
+	for _, station := range response.Stations {
+		if !station.Online || !station.IntercomConnected {
+			continue
+		}
+		stations = append(stations, raspberryPiRemoteStationFromStatus(station))
+	}
+	return RaspberryPiRemoteStationsResponse{
+		Stations:        stations,
+		TimestampUnixMs: response.TimestampUnixMs,
+		OfflineAfterMs:  response.OfflineAfterMs,
+	}, nil
+}
+
+func raspberryPiRemoteTargetLabel(station RaspberryPiStationStatus) (username, roleID string) {
+	username = strings.TrimSpace(station.IntercomUsername)
+	if username == "" {
+		username = strings.TrimSpace(station.Name)
+	}
+	roleID = strings.TrimSpace(station.IntercomRoleID)
+	if roleID == "" {
+		roleID = strings.TrimSpace(station.RoleID)
+	}
+	return username, roleID
+}
+
+func (s *Server) resolveRaspberryPiRemoteTarget(ctx context.Context, deviceID string) (RaspberryPiStationStatus, string, string, error) {
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" {
+		return RaspberryPiStationStatus{}, "", "", ErrInvalidInput
+	}
+	response, err := s.buildRaspberryPiStationsResponse(ctx)
+	if err != nil {
+		return RaspberryPiStationStatus{}, "", "", err
+	}
+	for _, station := range response.Stations {
+		if station.DeviceID != deviceID {
+			continue
+		}
+		if !station.Online || !station.IntercomConnected {
+			return RaspberryPiStationStatus{}, "", "", ErrConflict
+		}
+		username, roleID := raspberryPiRemoteTargetLabel(station)
+		if username == "" || roleID == "" {
+			return RaspberryPiStationStatus{}, "", "", ErrConflict
+		}
+		return station, username, roleID, nil
+	}
+	return RaspberryPiStationStatus{}, "", "", ErrNotFound
+}
+
+func (s *Server) handleRaspberryPiRemoteStations(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	response, err := s.buildRaspberryPiRemoteStationsResponse(r.Context())
+	if err != nil {
+		s.internalErr(w, err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) handleRaspberryPiRemoteCommand(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req RaspberryPiRemoteCommandRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	_, username, roleID, err := s.resolveRaspberryPiRemoteTarget(r.Context(), req.DeviceID)
+	if err != nil {
+		if errors.Is(err, ErrInvalidInput) {
+			http.Error(w, "deviceId required", http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			http.Error(w, "Raspberry Pi not found", http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, ErrConflict) {
+			http.Error(w, "Raspberry Pi is not connected to intercom", http.StatusConflict)
+			return
+		}
+		s.internalErr(w, err)
+		return
+	}
+
+	normalized, err := s.normalizeCompanionRelayCommand(r.Context(), roleID, username, req.CompanionCommand)
+	if err != nil {
+		status := http.StatusBadRequest
+		if strings.HasPrefix(err.Error(), "not allowed") {
+			status = http.StatusForbidden
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	if strings.TrimSpace(normalized.CommandID) == "" {
+		normalized.CommandID = uuid.NewString()
+	}
+	token, ok := s.hub.LatestTokenForUsernameRole(username, roleID)
+	if !ok {
+		http.Error(w, "Raspberry Pi browser session unavailable", http.StatusConflict)
+		return
+	}
+	if !s.hub.SendToToken(token, WSOutbound{Type: "companion_command", Data: normalized}) {
+		http.Error(w, "failed to deliver command", http.StatusBadGateway)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, CompanionCommandResult{
+		CommandID: normalized.CommandID,
+		Command:   normalized.Command,
+		OK:        true,
+		Status:    "queued",
+		Source:    "raspberry_remote",
+		Timestamp: time.Now().UnixMilli(),
+	})
 }
 
 type RealtimeStatsResponse struct {

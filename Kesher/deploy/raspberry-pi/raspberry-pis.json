@@ -9,6 +9,8 @@
       "ip_address": "192.168.0.61",
       "name": "Kamera-1",
       "role_id": "cam 1",
+      "audio_input_match": "Headset",
+      "audio_output_match": "Headset",
       "low_power_mode": true,
       "simple_view": true
     }

@@ -7,6 +7,7 @@ import type {
   RaspberryPiStationStatus,
   StreamDeckActionType,
   StreamDeckButtonConfig,
+  StreamDeckPageConfig,
   StreamDeckPageType,
   StreamDeckSettings,
 } from "../types";
@@ -249,6 +250,18 @@ function createEmptyStreamDeckButtons(count: number) {
   return Array.from({ length: count }, (_, index) => ({ index }));
 }
 
+function createEmptyStreamDeckPage(
+  settings: Pick<StreamDeckSettings, "gridColumns" | "gridRows">,
+  page: number,
+): StreamDeckPageConfig {
+  return {
+    page,
+    title: "",
+    pageType: "manual",
+    buttons: createEmptyStreamDeckButtons(settings.gridColumns * settings.gridRows),
+  };
+}
+
 function cloneStreamDeckButtonConfig(
   button: StreamDeckButtonConfig,
 ): StreamDeckButtonConfig {
@@ -266,6 +279,93 @@ function cloneStreamDeckSettings(settings: StreamDeckSettings): StreamDeckSettin
       buttons: page.buttons.map((button) => cloneStreamDeckButtonConfig(button)),
     })),
   };
+}
+
+function isConfiguredStreamDeckButton(button: StreamDeckButtonConfig) {
+  return Boolean(
+    (button.label && button.label.trim()) ||
+      (button.color && button.color.trim()) ||
+      (button.action && button.action.type !== "none"),
+  );
+}
+
+function isConfiguredStreamDeckPage(page: StreamDeckPageConfig) {
+  return Boolean(
+    (page.title && page.title.trim()) ||
+      (page.pageType && page.pageType !== "manual") ||
+      page.parentPage !== undefined ||
+      page.buttons.some(isConfiguredStreamDeckButton),
+  );
+}
+
+function compactStreamDeckSettings(settings: StreamDeckSettings): StreamDeckSettings {
+  const configuredPages = settings.pages
+    .filter(isConfiguredStreamDeckPage)
+    .sort((a, b) => a.page - b.page);
+  const compactPages =
+    configuredPages.length > 0
+      ? configuredPages
+      : [createEmptyStreamDeckPage(settings, 0)];
+  const pageNumbers = new Set(compactPages.map((page) => page.page));
+  const pages = compactPages.map((page) => ({
+    ...page,
+    parentPage:
+      page.parentPage !== undefined && pageNumbers.has(page.parentPage)
+        ? page.parentPage
+        : undefined,
+    buttons: page.buttons.map((button) => cloneStreamDeckButtonConfig(button)),
+  }));
+  const selectedPage = pageNumbers.has(settings.selectedPage)
+    ? settings.selectedPage
+    : pages[0].page;
+
+  return {
+    ...settings,
+    selectedPage,
+    pages,
+  };
+}
+
+function streamDeckActionLabel(actionType: StreamDeckActionType | undefined) {
+  switch (actionType) {
+    case "ptt_room":
+      return "PTT fixed channel";
+    case "select_talk_room":
+      return "Select talk channel";
+    case "select_listen_room":
+      return "Select + listen channel";
+    case "ptt_selected":
+      return "PTT selected channels";
+    case "listen_room":
+      return "Listen channel";
+    case "call_room":
+      return "Call channel";
+    case "direct_user":
+      return "Direct user";
+    case "direct_role":
+      return "Direct role";
+    case "reply_to_caller":
+      return "Reply to caller";
+    case "incoming_call_indicator":
+      return "Incoming call indicator";
+    case "broadcast_ptt":
+      return "Broadcast PTT";
+    case "page_up":
+      return "Page up";
+    case "page_down":
+      return "Page down";
+    case "page_home":
+      return "Home page";
+    case "page_jump":
+      return "Open page / folder";
+    case "volume_delta":
+      return "Volume step";
+    case "none":
+    case undefined:
+      return "Empty";
+    default:
+      return "Configured";
+  }
 }
 
 function streamDeckPreviewSignature(
@@ -511,6 +611,117 @@ function CloseIcon() {
   );
 }
 
+type StreamDeckUiIconName =
+  | "check"
+  | "device"
+  | "download"
+  | "reset"
+  | "save"
+  | "send"
+  | "upload"
+  | "warning";
+
+function StreamDeckUiIcon({
+  name,
+  className = "",
+}: {
+  name: StreamDeckUiIconName;
+  className?: string;
+}) {
+  const commonProps = {
+    className,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.9,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+    focusable: false,
+  };
+
+  if (name === "check") {
+    return (
+      <svg {...commonProps}>
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
+    );
+  }
+
+  if (name === "warning") {
+    return (
+      <svg {...commonProps}>
+        <path d="M12 9v4" />
+        <path d="M12 17h.01" />
+        <path d="M10.2 4.3 2.9 17a2 2 0 0 0 1.7 3h14.8a2 2 0 0 0 1.7-3L13.8 4.3a2 2 0 0 0-3.6 0z" />
+      </svg>
+    );
+  }
+
+  if (name === "device") {
+    return (
+      <svg {...commonProps}>
+        <rect x="6" y="3" width="12" height="18" rx="2" />
+        <path d="M9 7h.01" />
+        <path d="M12 7h.01" />
+        <path d="M15 7h.01" />
+        <path d="M9 11h.01" />
+        <path d="M12 11h.01" />
+        <path d="M15 11h.01" />
+        <path d="M9 15h.01" />
+        <path d="M12 15h.01" />
+        <path d="M15 15h.01" />
+      </svg>
+    );
+  }
+
+  if (name === "download") {
+    return (
+      <svg {...commonProps}>
+        <path d="M12 3v11" />
+        <path d="m7 9 5 5 5-5" />
+        <path d="M5 20h14" />
+      </svg>
+    );
+  }
+
+  if (name === "upload") {
+    return (
+      <svg {...commonProps}>
+        <path d="M12 21V10" />
+        <path d="m7 15 5-5 5 5" />
+        <path d="M5 4h14" />
+      </svg>
+    );
+  }
+
+  if (name === "save") {
+    return (
+      <svg {...commonProps}>
+        <path d="M5 4h12l2 2v14H5z" />
+        <path d="M8 4v6h8V4" />
+        <path d="M8 16h8" />
+      </svg>
+    );
+  }
+
+  if (name === "send") {
+    return (
+      <svg {...commonProps}>
+        <path d="m22 2-7 20-4-9-9-4z" />
+        <path d="M22 2 11 13" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...commonProps}>
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+    </svg>
+  );
+}
+
 function SettingsSectionHeader({
   icon,
   title,
@@ -529,6 +740,72 @@ function SettingsSectionHeader({
         <span>{eyebrow}</span>
         <h4 className="station-settings-section-title">{title}</h4>
       </div>
+    </div>
+  );
+}
+
+type StationSectionTone = "talk" | "direct" | "broadcast";
+
+function StationSectionIcon({ tone }: { tone: StationSectionTone }) {
+  const commonProps = {
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.9,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+
+  if (tone === "direct") {
+    return (
+      <svg {...commonProps}>
+        <path d="M7 8.5a4 4 0 0 1 8 0" />
+        <path d="M3.5 15.5c1.7-2 4-3 6.5-3" />
+        <path d="M20.5 15.5c-1.7-2-4-3-6.5-3" />
+        <path d="M8 19h8" />
+        <path d="M12 12.5V19" />
+      </svg>
+    );
+  }
+
+  if (tone === "broadcast") {
+    return (
+      <svg {...commonProps}>
+        <path d="M5 10v4" />
+        <path d="M8 8v8" />
+        <path d="M11 5v14" />
+        <path d="M15 8.5a4.5 4.5 0 0 1 0 7" />
+        <path d="M18 6a8.5 8.5 0 0 1 0 12" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...commonProps}>
+      <path d="M5 15h3l4 4V5L8 9H5z" />
+      <path d="M16 9.5a4 4 0 0 1 0 5" />
+      <path d="M19 7a7.5 7.5 0 0 1 0 10" />
+    </svg>
+  );
+}
+
+function StationSectionHeader({
+  tone,
+  title,
+  count,
+}: {
+  tone: StationSectionTone;
+  title: string;
+  count: string;
+}) {
+  return (
+    <div className="station-section-head">
+      <span className="station-section-icon">
+        <StationSectionIcon tone={tone} />
+      </span>
+      <h3>{title}</h3>
+      <span className="station-section-count">{count}</span>
     </div>
   );
 }
@@ -666,7 +943,6 @@ type StationIntercomViewProps = {
   pinnedRoomIds: string[];
   pinnedUserIds: string[];
   showPinnedOnly: boolean;
-  onTogglePinnedRoom: (roomId: string) => void;
   onTogglePinnedUser: (userId: string) => void;
   onShowPinnedOnlyChange: (value: boolean) => void;
   isUserSettingsOpen: boolean;
@@ -723,7 +999,7 @@ type StationIntercomViewProps = {
   streamDeckBusy: boolean;
   streamDeckError: string;
   onStreamDeckSettingsChange: (next: StreamDeckSettings) => void;
-  onSaveStreamDeckSettings: () => void;
+  onSaveStreamDeckSettings: (settings?: StreamDeckSettings) => void | Promise<void>;
   onResetStreamDeckSettings: () => void;
   onPublishCompanionProfile: () => Promise<CompanionProfileResponse>;
   streamDeckWebHidSupported: boolean;
@@ -806,7 +1082,6 @@ export function StationIntercomView({
   pinnedRoomIds,
   pinnedUserIds,
   showPinnedOnly,
-  onTogglePinnedRoom,
   onTogglePinnedUser,
   onShowPinnedOnlyChange,
   isUserSettingsOpen,
@@ -882,6 +1157,7 @@ export function StationIntercomView({
   const streamDeckImportInputRef = useRef<HTMLInputElement>(null);
   const [streamDeckTransferMessage, setStreamDeckTransferMessage] = useState("");
   const [streamDeckTransferError, setStreamDeckTransferError] = useState("");
+  const [streamDeckSaveBusy, setStreamDeckSaveBusy] = useState(false);
   const [companionPublishBusy, setCompanionPublishBusy] = useState(false);
   const [activeSettingsPage, setActiveSettingsPage] =
     useState<SettingsPageId>("layout");
@@ -1287,6 +1563,38 @@ export function StationIntercomView({
       ) || streamDeckCurrentButtons[0] || null,
     [streamDeckCurrentButtons, streamDeckSelectedButtonIndex],
   );
+  const streamDeckConfiguredButtonCount = useMemo(
+    () =>
+      (streamDeckSettings?.pages ?? []).reduce(
+        (count, page) =>
+          count + page.buttons.filter(isConfiguredStreamDeckButton).length,
+        0,
+      ),
+    [streamDeckSettings],
+  );
+  const streamDeckConfiguredPageCount = useMemo(
+    () =>
+      (streamDeckSettings?.pages ?? []).filter(isConfiguredStreamDeckPage)
+        .length,
+    [streamDeckSettings],
+  );
+  const streamDeckCurrentPageConfiguredButtonCount = useMemo(
+    () => streamDeckCurrentButtons.filter(isConfiguredStreamDeckButton).length,
+    [streamDeckCurrentButtons],
+  );
+  const streamDeckNotice = streamDeckTransferError || streamDeckError
+    ? {
+        tone: "error" as const,
+        title: "Stream Deck action failed",
+        message: streamDeckTransferError || streamDeckError,
+      }
+    : streamDeckTransferMessage
+      ? {
+          tone: "success" as const,
+          title: "Stream Deck action complete",
+          message: streamDeckTransferMessage,
+        }
+      : null;
 
   const streamDeckLabelLookup = useMemo(
     () => ({
@@ -1807,87 +2115,21 @@ export function StationIntercomView({
   };
 
   const goToStreamDeckPage = (direction: -1 | 1) => {
-    if (!streamDeckSettings || streamDeckPageOrder.length === 0) return;
-    const currentPageIndex = streamDeckPageOrder.findIndex(
-      (pageNo) => pageNo === streamDeckSettings.selectedPage,
-    );
-    const safeCurrentIndex = currentPageIndex >= 0 ? currentPageIndex : 0;
-    const nextIndex = Math.max(
-      0,
-      Math.min(streamDeckPageOrder.length - 1, safeCurrentIndex + direction),
-    );
-    const nextPage = streamDeckPageOrder[nextIndex];
-    if (nextPage === undefined || nextPage === streamDeckSettings.selectedPage) {
+    if (!streamDeckSettings) return;
+    const nextPage = Math.max(0, streamDeckSettings.selectedPage + direction);
+    if (nextPage === streamDeckSettings.selectedPage) {
       return;
     }
+    const pageExists = streamDeckSettings.pages.some(
+      (page) => page.page === nextPage,
+    );
     applyStreamDeckSettings({
       ...streamDeckSettings,
       selectedPage: nextPage,
-    });
-  };
-
-  const addStreamDeckPage = () => {
-    if (!streamDeckSettings) return;
-    const existing = new Set(streamDeckSettings.pages.map((page) => page.page));
-    let nextPageNumber = 0;
-    while (existing.has(nextPageNumber)) {
-      nextPageNumber += 1;
-    }
-    const buttonCount = streamDeckSettings.gridColumns * streamDeckSettings.gridRows;
-    applyStreamDeckSettings({
-      ...streamDeckSettings,
-      selectedPage: nextPageNumber,
       pages: [
         ...streamDeckSettings.pages,
-        {
-          page: nextPageNumber,
-          title: "",
-          pageType: "manual",
-          buttons: createEmptyStreamDeckButtons(buttonCount),
-        },
-      ],
-    });
-  };
-
-  const removeCurrentStreamDeckPage = () => {
-    if (!streamDeckSettings || streamDeckSettings.pages.length <= 1) {
-      return;
-    }
-    const nextPages = streamDeckSettings.pages.filter(
-      (page) => page.page !== streamDeckSettings.selectedPage,
-    );
-    const nextOrder = nextPages.map((page) => page.page).sort((a, b) => a - b);
-    const fallbackPage =
-      nextOrder.find((pageNo) => pageNo > streamDeckSettings.selectedPage) ??
-      nextOrder[nextOrder.length - 1];
-    if (fallbackPage === undefined) {
-      return;
-    }
-    applyStreamDeckSettings({
-      ...streamDeckSettings,
-      selectedPage: fallbackPage,
-      pages: nextPages.map((page) => ({
-        ...page,
-        parentPage:
-          page.parentPage === streamDeckSettings.selectedPage
-            ? undefined
-            : page.parentPage,
-        buttons: page.buttons.map((button) => {
-          if (
-            button.action?.type === "page_jump" &&
-            button.action.targetPage === streamDeckSettings.selectedPage
-          ) {
-            return {
-              ...button,
-              action: {
-                type: "page_jump",
-                targetPage: fallbackPage,
-              },
-            };
-          }
-          return button;
-        }),
-      })),
+        ...(pageExists ? [] : [createEmptyStreamDeckPage(streamDeckSettings, nextPage)]),
+      ].sort((a, b) => a.page - b.page),
     });
   };
 
@@ -1896,6 +2138,7 @@ export function StationIntercomView({
       return;
     }
     const nowIso = new Date().toISOString();
+    const settings = compactStreamDeckSettings(streamDeckSettings);
     const payload = {
       meta: {
         format: STREAM_DECK_IMPORT_FORMAT,
@@ -1903,7 +2146,7 @@ export function StationIntercomView({
         exportedAt: nowIso,
         username: appData.self.username,
       },
-      settings: streamDeckSettings,
+      settings,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
@@ -1919,6 +2162,25 @@ export function StationIntercomView({
     window.URL.revokeObjectURL(url);
     setStreamDeckTransferError("");
     setStreamDeckTransferMessage("Stream Deck profile exported.");
+  };
+
+  const saveStreamDeckSettings = async () => {
+    if (!streamDeckSettings) {
+      return;
+    }
+    setStreamDeckSaveBusy(true);
+    setStreamDeckTransferMessage("");
+    setStreamDeckTransferError("");
+    try {
+      await onSaveStreamDeckSettings(compactStreamDeckSettings(streamDeckSettings));
+      setStreamDeckTransferMessage("Stream Deck profile saved.");
+    } catch (error) {
+      setStreamDeckTransferError(
+        error instanceof Error ? error.message : "Stream Deck save failed.",
+      );
+    } finally {
+      setStreamDeckSaveBusy(false);
+    }
   };
 
   const openStreamDeckImportPicker = () => {
@@ -1949,7 +2211,12 @@ export function StationIntercomView({
 
   const publishCompanionProfile = async () => {
     setCompanionPublishBusy(true);
+    setStreamDeckTransferMessage("");
+    setStreamDeckTransferError("");
     try {
+      if (streamDeckSettings) {
+        await onSaveStreamDeckSettings(compactStreamDeckSettings(streamDeckSettings));
+      }
       const published = await onPublishCompanionProfile();
       setStreamDeckTransferError("");
       setStreamDeckTransferMessage(
@@ -2100,12 +2367,13 @@ export function StationIntercomView({
       <div className="station-content-grid">
         <div className="station-primary-column">
           <section className="station-block station-talk-section">
-            <h3>Talk channels</h3>
-            <div className="station-filter-bar small">
-              <span className="station-filter-hint">
-                Pin party lines or users to keep focus when things get busy.
-              </span>
-            </div>
+            <StationSectionHeader
+              tone="talk"
+              title="Talk channels"
+              count={`${visibleRooms.length} ${
+                visibleRooms.length === 1 ? "channel" : "channels"
+              }`}
+            />
             {visibleRooms.length === 0 ? (
               <p className="station-empty">No channels to show.</p>
             ) : null}
@@ -2218,28 +2486,6 @@ export function StationIntercomView({
                           );
                         })}
                       </span>
-                      <button
-                        type="button"
-                        className={`station-level-favorite ${pinnedRoomIds.includes(room.id) ? "active" : ""}`}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onPointerUp={(event) => event.stopPropagation()}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onTogglePinnedRoom(room.id);
-                        }}
-                        title={
-                          pinnedRoomIds.includes(room.id)
-                            ? "Remove channel from favorites"
-                            : "Add channel to favorites"
-                        }
-                      >
-                        <svg viewBox="0 0 16 16" aria-hidden="true">
-                          <path
-                            d="M5.2 2.5h5.6l-.8 3 2 2v1H8.8V13l-.8 1-.8-1V8.5H4v-1l2-2-.8-3Z"
-                            fill="currentColor"
-                          />
-                        </svg>
-                      </button>
                     </div>
                     <button
                       className={talkButtonClassName}
@@ -2342,7 +2588,15 @@ export function StationIntercomView({
           </section>
 
           <section className="station-block station-direct-section">
-            <h3>Direct communication</h3>
+            <StationSectionHeader
+              tone="direct"
+              title="Direct communication"
+              count={`${
+                enableDirectTabs
+                  ? allDirectOnlineTargets.length
+                  : directOnlineTargets.length
+              } online`}
+            />
             {enableDirectTabs && directGroups.length > 0 ? (
               <>
                 <div
@@ -2564,7 +2818,13 @@ export function StationIntercomView({
 
           {broadcastGroups.length > 0 ? (
             <section className="station-block station-broadcast-section">
-              <h3>Broadcast channels</h3>
+              <StationSectionHeader
+                tone="broadcast"
+                title="Broadcast channels"
+                count={`${broadcastGroups.length} ${
+                  broadcastGroups.length === 1 ? "group" : "groups"
+                }`}
+              />
               <div className="station-broadcast-grid">
                 {broadcastGroups.map((group) => {
                   const allowedRoleIds = Array.isArray(group.allowedRoleIds)
@@ -2865,9 +3125,19 @@ export function StationIntercomView({
                   {isStreamDeckOpen ? (
                     <div className="audio-box-body">
                       <div className="streamdeck-settings-header">
-                        <h4 className="station-settings-section-title">
-                          Configuration
-                        </h4>
+                        <div className="streamdeck-settings-title">
+                          <span className="streamdeck-settings-icon">
+                            <StreamDeckUiIcon name="device" />
+                          </span>
+                          <div>
+                            <h4 className="station-settings-section-title">
+                              Configuration
+                            </h4>
+                            <small className="station-settings-meta">
+                              User layout, hardware bridge and Companion publish.
+                            </small>
+                          </div>
+                        </div>
                         <div className="streamdeck-settings-actions">
                           <input
                             ref={streamDeckImportInputRef}
@@ -2884,12 +3154,13 @@ export function StationIntercomView({
                             type="button"
                             className="shortcut-btn"
                             onClick={
-                              streamDeckWebHidActive
-                                ? onDisconnectStreamDeckWebHid
-                                : onConnectStreamDeckWebHid
+                            streamDeckWebHidActive
+                              ? onDisconnectStreamDeckWebHid
+                              : onConnectStreamDeckWebHid
                             }
                             disabled={streamDeckWebHidBusy || !streamDeckWebHidSupported}
                           >
+                            <StreamDeckUiIcon name="device" />
                             {streamDeckWebHidBusy
                               ? "Working..."
                               : streamDeckWebHidActive
@@ -2902,6 +3173,7 @@ export function StationIntercomView({
                             onClick={exportStreamDeckSettings}
                             disabled={streamDeckBusy || !streamDeckSettings}
                           >
+                            <StreamDeckUiIcon name="download" />
                             Export
                           </button>
                           <button
@@ -2910,15 +3182,21 @@ export function StationIntercomView({
                             onClick={openStreamDeckImportPicker}
                             disabled={streamDeckBusy || !streamDeckSettings}
                           >
+                            <StreamDeckUiIcon name="upload" />
                             Import
                           </button>
                           <button
                             type="button"
-                            className="shortcut-btn"
-                            onClick={onSaveStreamDeckSettings}
-                            disabled={streamDeckBusy || !streamDeckSettings}
+                            className="shortcut-btn shortcut-btn-primary"
+                            onClick={() => void saveStreamDeckSettings()}
+                            disabled={
+                              streamDeckBusy ||
+                              streamDeckSaveBusy ||
+                              !streamDeckSettings
+                            }
                           >
-                            Save
+                            <StreamDeckUiIcon name="save" />
+                            {streamDeckSaveBusy || streamDeckBusy ? "Saving..." : "Save"}
                           </button>
                           <button
                             type="button"
@@ -2930,6 +3208,7 @@ export function StationIntercomView({
                               !streamDeckSettings
                             }
                           >
+                            <StreamDeckUiIcon name="send" />
                             {companionPublishBusy
                               ? "Publishing..."
                               : "Publish to Companion"}
@@ -2940,68 +3219,96 @@ export function StationIntercomView({
                             onClick={onResetStreamDeckSettings}
                             disabled={streamDeckBusy || !streamDeckSettings}
                           >
+                            <StreamDeckUiIcon name="reset" />
                             Reset
                           </button>
                         </div>
                       </div>
-                    <div className="streamdeck-settings-note">
-                      <small className="station-settings-meta">
-                        Configure your Stream Deck layout here and click Save.
-                        Companion sync is triggered automatically. Use Publish to
-                        Companion only as a manual retry.
-                      </small>
-                    </div>
-                    {streamDeckError ? (
-                      <small className="streamdeck-error">{streamDeckError}</small>
-                    ) : null}
-                    {streamDeckTransferError ? (
-                      <small className="streamdeck-error">{streamDeckTransferError}</small>
-                    ) : null}
-                    {streamDeckTransferMessage ? (
-                      <small className="station-settings-meta">{streamDeckTransferMessage}</small>
-                    ) : null}
-                    <small className="station-settings-meta">
-                      WebHID: {
-                        streamDeckWebHidSupported
-                          ? streamDeckWebHidActive
-                            ? "connected"
-                            : "ready"
-                          : "not supported"
-                      }
-                      {" | "}
-                      Input: {streamDeckBridgeConnected ? "connected" : "waiting"}
-                      {streamDeckBridgeLastEvent
-                        ? ` | Last event: ${streamDeckBridgeLastEvent}`
-                        : ""}
-                    </small>
-                    {lastCompanionCommand ? (
-                      <small className="station-settings-meta">
-                        Companion: {lastCompanionCommand.command || "unknown"}
-                        {` | ${lastCompanionCommand.status}`}
-                        {lastCompanionCommand.error
-                          ? ` | ${lastCompanionCommand.error}`
-                          : ""}
-                        {` | ${new Date(lastCompanionCommand.at).toLocaleTimeString()}`}
-                      </small>
-                    ) : null}
-                    {showDebug ? (
-                      <small className="station-settings-meta">
-                        Debug: use window.__kesherStreamDeckDev.buttonTap(0, 0)
-                        or buttonDown/buttonUp in browser console. Use
-                        window.__kesherStreamDeckDev.listHidDevices() to show
-                        granted HID devices or
-                        window.__kesherStreamDeckDev.requestAndListHidDevices()
-                        to re-open the device picker.
-                      </small>
-                    ) : null}
+                      {streamDeckNotice ? (
+                        <div
+                          className={`streamdeck-notice ${streamDeckNotice.tone}`}
+                          role={streamDeckNotice.tone === "error" ? "alert" : "status"}
+                        >
+                          <span className="streamdeck-notice-icon">
+                            <StreamDeckUiIcon
+                              name={
+                                streamDeckNotice.tone === "error"
+                                  ? "warning"
+                                  : "check"
+                              }
+                            />
+                          </span>
+                          <span>
+                            <strong>{streamDeckNotice.title}</strong>
+                            <small>{streamDeckNotice.message}</small>
+                          </span>
+                        </div>
+                      ) : null}
+                      <div className="streamdeck-status-grid">
+                        <div
+                          className={`streamdeck-status-card ${
+                            streamDeckWebHidActive
+                              ? "ok"
+                              : streamDeckWebHidSupported
+                                ? "wait"
+                                : "warn"
+                          }`}
+                        >
+                          <span>WebHID</span>
+                          <strong>
+                            {streamDeckWebHidSupported
+                              ? streamDeckWebHidActive
+                                ? "Connected"
+                                : "Ready"
+                              : "Not supported"}
+                          </strong>
+                        </div>
+                        <div
+                          className={`streamdeck-status-card ${
+                            streamDeckBridgeConnected ? "ok" : "wait"
+                          }`}
+                        >
+                          <span>Input bridge</span>
+                          <strong>
+                            {streamDeckBridgeConnected ? "Connected" : "Waiting"}
+                          </strong>
+                          {streamDeckBridgeLastEvent ? (
+                            <small>{streamDeckBridgeLastEvent}</small>
+                          ) : null}
+                        </div>
+                        <div className="streamdeck-status-card">
+                          <span>Profile</span>
+                          <strong>
+                            {streamDeckConfiguredButtonCount} keys /{" "}
+                            {Math.max(1, streamDeckConfiguredPageCount)} pages
+                          </strong>
+                          {lastCompanionCommand ? (
+                            <small>
+                              Companion {lastCompanionCommand.status} ·{" "}
+                              {new Date(lastCompanionCommand.at).toLocaleTimeString()}
+                            </small>
+                          ) : null}
+                        </div>
+                      </div>
+                      {lastCompanionCommand?.error ? (
+                        <small className="streamdeck-error">
+                          {lastCompanionCommand.error}
+                        </small>
+                      ) : null}
+                      {showDebug ? (
+                        <small className="station-settings-meta">
+                          Debug: window.__kesherStreamDeckDev.buttonTap(0, 0),
+                          buttonDown/buttonUp, listHidDevices().
+                        </small>
+                      ) : null}
                     {!streamDeckSettings ? (
                       <small className="station-settings-meta">
                         Loading Stream Deck settings...
                       </small>
                     ) : (
                       <div className="streamdeck-editor-shell">
-                        <fieldset style={{ border: 0, margin: 0, padding: 0 }}>
-                        <div className="streamdeck-toolbar">
+                        <fieldset className="streamdeck-fieldset">
+                        <div className="streamdeck-page-bar">
                           <label className="streamdeck-control">
                             <span>Profile</span>
                             <select value="default" disabled>
@@ -3015,8 +3322,7 @@ export function StationIntercomView({
                               onClick={() => goToStreamDeckPage(-1)}
                               disabled={
                                 streamDeckBusy ||
-                                streamDeckPageOrder[0] ===
-                                  streamDeckSettings.selectedPage
+                                streamDeckSettings.selectedPage <= 0
                               }
                             >
                               {"<"}
@@ -3028,35 +3334,11 @@ export function StationIntercomView({
                               type="button"
                               className="shortcut-btn"
                               onClick={() => goToStreamDeckPage(1)}
-                              disabled={
-                                streamDeckBusy ||
-                                streamDeckPageOrder[streamDeckPageOrder.length - 1] ===
-                                  streamDeckSettings.selectedPage
-                              }
+                              disabled={streamDeckBusy}
                             >
                               {">"}
                             </button>
                           </div>
-                          <button
-                            type="button"
-                            className="shortcut-btn"
-                            onClick={addStreamDeckPage}
-                            disabled={streamDeckBusy || !streamDeckSettings}
-                          >
-                            + Page
-                          </button>
-                          <button
-                            type="button"
-                            className="shortcut-btn shortcut-btn-clear"
-                            onClick={removeCurrentStreamDeckPage}
-                            disabled={
-                              streamDeckBusy ||
-                              !streamDeckSettings ||
-                              streamDeckSettings.pages.length <= 1
-                            }
-                          >
-                            - Page
-                          </button>
                           <button
                             type="button"
                             className={`shortcut-btn ${streamDeckTestMode ? "active" : ""}`}
@@ -3069,15 +3351,12 @@ export function StationIntercomView({
                           </button>
                         </div>
                         {streamDeckTestMode ? (
-                          <small className="station-settings-meta">
+                          <small className="streamdeck-mode-note">
                             Test mode active: press and hold any key in the grid to trigger down/up events without a physical Stream Deck.
                           </small>
                         ) : null}
-                        <small className="station-settings-meta">
-                          Drag one key onto another to swap them. Use Copy and Paste to duplicate button setups.
-                        </small>
                         {streamDeckCurrentPage ? (
-                          <div className="streamdeck-toolbar" style={{ marginTop: "0.65rem" }}>
+                          <div className="streamdeck-page-meta">
                             <label className="streamdeck-control">
                               <span>Page title</span>
                               <input
@@ -3137,88 +3416,112 @@ export function StationIntercomView({
                         ) : null}
 
                         <div className="streamdeck-layout">
-                          <div className="streamdeck-grid" role="grid" aria-label="Stream Deck 5x3 grid">
-                            {streamDeckCurrentButtons.map((button) => {
-                              const previewImage =
-                                streamDeckPreviewImageByIndex.get(button.index) || "";
-                              const isPressedInPreview =
-                                streamDeckPreviewPressedIndexes.includes(button.index);
-                              const showPressedRing =
-                                isPressedInPreview &&
-                                button.action?.type !== "listen_room" &&
-                                button.action?.type !== "select_listen_room";
-                              return (
-                                <button
-                                  type="button"
-                                  key={`streamdeck-button-${button.index}`}
-                                  aria-label={`Deck key ${button.index + 1}`}
-                                  className={`streamdeck-button ${
-                                    streamDeckSelectedButton?.index === button.index
-                                      ? "active"
-                                      : ""
-                                  } ${showPressedRing ? "test-pressed" : ""} ${
-                                    streamDeckDragSourceIndex === button.index
-                                      ? "drag-source"
-                                      : ""
-                                  } ${
-                                    streamDeckDropTargetIndex === button.index &&
-                                    streamDeckDragSourceIndex !== button.index
-                                      ? "drag-target"
-                                      : ""
-                                  }`}
-                                  draggable={!streamDeckTestMode}
-                                  onClick={() => setStreamDeckSelectedButtonIndex(button.index)}
-                                  onDragStart={(event) => {
-                                    event.dataTransfer.effectAllowed = "move";
-                                    handleStreamDeckButtonDragStart(button.index);
-                                  }}
-                                  onDragOver={(event) => {
-                                    event.preventDefault();
-                                    if (streamDeckDragSourceIndex !== null) {
-                                      event.dataTransfer.dropEffect = "move";
-                                      setStreamDeckDropTargetIndex(button.index);
+                          <div className="streamdeck-deck-panel">
+                            <div className="streamdeck-panel-heading">
+                              <div>
+                                <span>Deck preview</span>
+                                <strong>
+                                  Page {streamDeckSettings.selectedPage + 1}
+                                </strong>
+                              </div>
+                              <small>
+                                {streamDeckCurrentPageConfiguredButtonCount}/
+                                {streamDeckCurrentButtons.length} keys
+                              </small>
+                            </div>
+                            <div className="streamdeck-grid" role="grid" aria-label="Stream Deck 5x3 grid">
+                              {streamDeckCurrentButtons.map((button) => {
+                                const previewImage =
+                                  streamDeckPreviewImageByIndex.get(button.index) || "";
+                                const isPressedInPreview =
+                                  streamDeckPreviewPressedIndexes.includes(button.index);
+                                const showPressedRing =
+                                  isPressedInPreview &&
+                                  button.action?.type !== "listen_room" &&
+                                  button.action?.type !== "select_listen_room";
+                                return (
+                                  <button
+                                    type="button"
+                                    key={`streamdeck-button-${button.index}`}
+                                    aria-label={`Deck key ${button.index + 1}`}
+                                    className={`streamdeck-button ${
+                                      streamDeckSelectedButton?.index === button.index
+                                        ? "active"
+                                        : ""
+                                    } ${showPressedRing ? "test-pressed" : ""} ${
+                                      streamDeckDragSourceIndex === button.index
+                                        ? "drag-source"
+                                        : ""
+                                    } ${
+                                      streamDeckDropTargetIndex === button.index &&
+                                      streamDeckDragSourceIndex !== button.index
+                                        ? "drag-target"
+                                        : ""
+                                    }`}
+                                    draggable={!streamDeckTestMode}
+                                    onClick={() => setStreamDeckSelectedButtonIndex(button.index)}
+                                    onDragStart={(event) => {
+                                      event.dataTransfer.effectAllowed = "move";
+                                      handleStreamDeckButtonDragStart(button.index);
+                                    }}
+                                    onDragOver={(event) => {
+                                      event.preventDefault();
+                                      if (streamDeckDragSourceIndex !== null) {
+                                        event.dataTransfer.dropEffect = "move";
+                                        setStreamDeckDropTargetIndex(button.index);
+                                      }
+                                    }}
+                                    onDragEnter={() => {
+                                      if (streamDeckDragSourceIndex !== null) {
+                                        setStreamDeckDropTargetIndex(button.index);
+                                      }
+                                    }}
+                                    onDragEnd={resetStreamDeckDragState}
+                                    onDrop={(event) => {
+                                      event.preventDefault();
+                                      handleStreamDeckButtonDrop(button.index);
+                                    }}
+                                    onPointerDown={() =>
+                                      startStreamDeckPreviewPress(button.index)
                                     }
-                                  }}
-                                  onDragEnter={() => {
-                                    if (streamDeckDragSourceIndex !== null) {
-                                      setStreamDeckDropTargetIndex(button.index);
+                                    onPointerUp={() =>
+                                      stopStreamDeckPreviewPress(button.index)
                                     }
-                                  }}
-                                  onDragEnd={resetStreamDeckDragState}
-                                  onDrop={(event) => {
-                                    event.preventDefault();
-                                    handleStreamDeckButtonDrop(button.index);
-                                  }}
-                                  onPointerDown={() =>
-                                    startStreamDeckPreviewPress(button.index)
-                                  }
-                                  onPointerUp={() =>
-                                    stopStreamDeckPreviewPress(button.index)
-                                  }
-                                  onPointerCancel={() =>
-                                    stopStreamDeckPreviewPress(button.index)
-                                  }
-                                  onPointerLeave={() =>
-                                    stopStreamDeckPreviewPress(button.index)
-                                  }
-                                >
-                                  {previewImage ? (
-                                    <img
-                                      src={previewImage}
-                                      alt={`Preview of Stream Deck button ${button.index + 1}`}
-                                      className="streamdeck-button-preview"
-                                      draggable={false}
-                                    />
-                                  ) : null}
-                                </button>
-                              );
-                            })}
+                                    onPointerCancel={() =>
+                                      stopStreamDeckPreviewPress(button.index)
+                                    }
+                                    onPointerLeave={() =>
+                                      stopStreamDeckPreviewPress(button.index)
+                                    }
+                                  >
+                                    {previewImage ? (
+                                      <img
+                                        src={previewImage}
+                                        alt={`Preview of Stream Deck button ${button.index + 1}`}
+                                        className="streamdeck-button-preview"
+                                        draggable={false}
+                                      />
+                                    ) : null}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
 
                           <div className="streamdeck-editor panel">
-                        <h5>
-                          Button {(streamDeckSelectedButton?.index || 0) + 1}
-                        </h5>
+                        <div className="streamdeck-editor-heading">
+                          <div>
+                            <span>Selected key</span>
+                            <h5>
+                              Button {(streamDeckSelectedButton?.index || 0) + 1}
+                            </h5>
+                          </div>
+                          <small>
+                            {streamDeckActionLabel(
+                              streamDeckSelectedButton?.action?.type,
+                            )}
+                          </small>
+                        </div>
                         <div className="streamdeck-editor-actions">
                           <button
                             type="button"

@@ -270,6 +270,47 @@ export type RaspberryPiStationsResponse = {
   offlineAfterMs: number;
 };
 
+export type RaspberryPiRemoteStationStatus = {
+  deviceId: string;
+  name: string;
+  roleId: string;
+  online: boolean;
+  intercomConnected: boolean;
+  effectiveStatus: string;
+  intercomUsername?: string;
+  intercomRoleId?: string;
+  secondsSinceSeen: number;
+};
+
+export type RaspberryPiRemoteStationsResponse = {
+  stations: RaspberryPiRemoteStationStatus[];
+  timestampUnixMs: number;
+  offlineAfterMs: number;
+};
+
+export type RaspberryPiRemoteCommandRequest = {
+  deviceId: string;
+  command: string;
+  mode?: string;
+  scope?: string;
+  targetId?: string;
+  state?: string;
+  signal?: string;
+  volumeDelta?: number;
+  listenRoomIds?: string[];
+  talkRoomIds?: string[];
+};
+
+export type RaspberryPiRemoteCommandResult = {
+  commandId?: string;
+  command?: string;
+  ok: boolean;
+  status?: string;
+  error?: string;
+  source?: string;
+  timestamp?: number;
+};
+
 export type AdminLogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
 
 export type AdminLogEntry = {
