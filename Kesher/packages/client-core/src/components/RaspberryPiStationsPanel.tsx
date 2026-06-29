@@ -93,6 +93,29 @@ function statusValue(value: string): string {
   return formatMachineStatus(value) || "unknown";
 }
 
+function hasMetricValue(value: number | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function formatPercent(value: number | undefined): string {
+  return hasMetricValue(value) ? `${Math.round(value)}%` : "n/a";
+}
+
+function formatTemperature(value: number | undefined): string {
+  return hasMetricValue(value) ? `${Math.round(value)} C` : "n/a";
+}
+
+function metricTone(
+  value: number | undefined,
+  warningThreshold: number,
+  waitThreshold: number,
+): StatusTone {
+  if (!hasMetricValue(value)) return "wait";
+  if (value >= warningThreshold) return "warn";
+  if (value >= waitThreshold) return "wait";
+  return "ok";
+}
+
 function StatusDot({ tone }: { tone: StatusTone }) {
   return (
     <svg
@@ -184,6 +207,32 @@ export function RaspberryPiStationsPanel({
                       ? station.intercomUsername || "Connected"
                       : statusValue(station.loginStatus)}
                   </strong>
+                </span>
+              </div>
+              <div className="admin-pi-station-metrics">
+                <span
+                  className={statusToneClass(
+                    metricTone(station.cpuPercent, 85, 70),
+                  )}
+                >
+                  <small>CPU</small>
+                  <strong>{formatPercent(station.cpuPercent)}</strong>
+                </span>
+                <span
+                  className={statusToneClass(
+                    metricTone(station.memoryPercent, 90, 75),
+                  )}
+                >
+                  <small>RAM</small>
+                  <strong>{formatPercent(station.memoryPercent)}</strong>
+                </span>
+                <span
+                  className={statusToneClass(
+                    metricTone(station.temperatureC, 80, 70),
+                  )}
+                >
+                  <small>Temp</small>
+                  <strong>{formatTemperature(station.temperatureC)}</strong>
                 </span>
               </div>
               {station.loginError ? (

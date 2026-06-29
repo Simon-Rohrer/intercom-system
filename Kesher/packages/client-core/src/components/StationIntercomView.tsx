@@ -2300,6 +2300,9 @@ export function StationIntercomView({
     ? [mainPttButton, replyButton]
     : [replyButton, mainPttButton];
   const hasChatAndSignalPanel = Boolean(chatAndSignalPanel);
+  const stationLiveLabel = remoteControl
+    ? `Raspberry Remote: ${remoteControl.stationName}`
+    : `Live: ${appData.self.username.toUpperCase()}`;
 
   return (
     <div
@@ -2328,9 +2331,7 @@ export function StationIntercomView({
                   connectionState === "connected" ? "connected" : "disconnected"
                 }`}
               />
-              {remoteControl
-                ? `Raspberry Remote: ${remoteControl.stationName}`
-                : `Live: ${appData.self.username.toUpperCase()}`}
+              <span className="station-live-label">{stationLiveLabel}</span>
             </div>
             <div className="station-live-role">
               {remoteControl?.roleName ||

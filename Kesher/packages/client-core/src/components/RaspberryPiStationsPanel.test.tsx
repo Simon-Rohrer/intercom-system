@@ -14,6 +14,9 @@ const baseStation: RaspberryPiStationStatus = {
   loginStatus: "waiting_for_intercom",
   lastSeenUnixMs: 1,
   updatedAtUnixMs: 1,
+  cpuPercent: 37.4,
+  memoryPercent: 61.2,
+  temperatureC: 54.8,
   online: true,
   intercomConnected: false,
   effectiveStatus: "waiting_for_intercom",
@@ -30,6 +33,12 @@ describe("RaspberryPiStationsPanel", () => {
     expect(screen.getByText("Low power")).toBeInTheDocument();
     expect(screen.getByText("Browser")).toBeInTheDocument();
     expect(screen.getByText("running")).toBeInTheDocument();
+    expect(screen.getByText("CPU")).toBeInTheDocument();
+    expect(screen.getByText("37%")).toBeInTheDocument();
+    expect(screen.getByText("RAM")).toBeInTheDocument();
+    expect(screen.getByText("61%")).toBeInTheDocument();
+    expect(screen.getByText("Temp")).toBeInTheDocument();
+    expect(screen.getByText("55 C")).toBeInTheDocument();
     expect(screen.getByText("Seen 12s ago")).toBeInTheDocument();
   });
 

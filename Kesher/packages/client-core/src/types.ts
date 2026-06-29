@@ -254,6 +254,9 @@ export type RaspberryPiStationStatus = {
   browserStatus: string;
   loginStatus: string;
   loginError?: string;
+  cpuPercent?: number;
+  memoryPercent?: number;
+  temperatureC?: number;
   lastSeenUnixMs: number;
   updatedAtUnixMs: number;
   online: boolean;

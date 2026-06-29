@@ -31,6 +31,7 @@ export type DiscoveryRoom = {
 export type DiscoveryResponse = {
   username: string;
   roleId: string;
+  roleName?: string;
   pageNumber?: number;
   currentPageNumber?: number;
   profileVersion?: number;
@@ -99,8 +100,18 @@ export type StreamDeckSettings = {
   pages: StreamDeckPageConfig[];
 };
 
+export type CompanionPresetProfile = {
+  roleId: string;
+  roleName?: string;
+  username: string;
+  profileVersion?: number;
+  profileUpdatedAt?: number;
+  streamDeckSettings: StreamDeckSettings;
+};
+
 export type CompanionProfileResponse = {
   roleId: string;
+  roleName?: string;
   username: string;
   pageNumber?: number;
   currentPageNumber?: number;
@@ -112,6 +123,10 @@ export type CompanionProfileResponse = {
   activeRoleUsers?: Array<{ roleId: string; username: string; userId: string }>;
   broadcastGroups: Array<{ id: string; name: string }>;
   streamDeckSettings?: unknown;
+};
+
+export type CompanionProfilesResponse = {
+  profiles: CompanionProfileResponse[];
 };
 
 export type CompanionInbound =
@@ -144,4 +159,5 @@ export type CommandPayload = {
   talkRoomIds?: string[];
   brightness?: number;
   pageNumber?: number;
+  sourcePageNumber?: number;
 };

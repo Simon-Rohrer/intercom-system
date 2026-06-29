@@ -264,15 +264,19 @@ func (s *Server) handleCompanionWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
-	resolveUsername := func() string {
-		if roleID == "" {
+	resolveUsernameForRole := func(targetRoleID string) string {
+		targetRoleID = strings.TrimSpace(targetRoleID)
+		if targetRoleID == "" {
 			return ""
 		}
-		session, ok := s.sessions.LatestForRole(roleID)
+		session, ok := s.sessions.LatestForRole(targetRoleID)
 		if !ok {
 			return ""
 		}
 		return strings.TrimSpace(session.Username)
+	}
+	resolveUsername := func() string {
+		return resolveUsernameForRole(roleID)
 	}
 	presenceCh, unsubscribe := s.hub.SubscribePresence()
 	defer unsubscribe()
@@ -438,19 +442,35 @@ func (s *Server) handleCompanionWS(w http.ResponseWriter, r *http.Request) {
 		if in.Data.Command == "press_button" && s.logger != nil {
 			s.logger.Info("companion ws press_button raw",
 				"roleId", strings.TrimSpace(roleID),
+				"targetRoleId", strings.TrimSpace(in.Data.RoleID),
 				"commandId", commandID,
 				"buttonIndex", in.Data.ButtonIndex,
 				"state", strings.TrimSpace(in.Data.State),
 				"pageNumber", in.Data.PageNumber,
+				"sourcePageNumber", in.Data.SourcePageNumber,
 			)
 		}
 		resolvedRoleID := strings.TrimSpace(roleID)
 		if in.Data.Command == "press_button" {
+			if commandRoleID := strings.TrimSpace(in.Data.RoleID); commandRoleID != "" {
+				resolvedRoleID = commandRoleID
+			}
 			if resolvedRoleID == "" {
 				writeRejected("target role unavailable")
 				continue
 			}
-			result := s.executeCompanionButtonPress(r.Context(), resolvedRoleID, resolveUsername(), in.Data)
+			if commandRoleID := strings.TrimSpace(in.Data.RoleID); commandRoleID != "" {
+				knownRole, err := s.store.RoleExists(r.Context(), commandRoleID)
+				if err != nil {
+					writeRejected(err.Error())
+					continue
+				}
+				if !knownRole {
+					writeRejected("unknown target role")
+					continue
+				}
+			}
+			result := s.executeCompanionButtonPress(r.Context(), resolvedRoleID, resolveUsernameForRole(resolvedRoleID), in.Data)
 			writeCommandResult(result)
 			continue
 		}
@@ -2168,7 +2188,11 @@ func (s *Server) executeCompanionButtonPress(ctx context.Context, roleID string,
 	}
 	settings = s.companionResolvedSettings(ctx, roleID, settings)
 	currentPage := s.currentCompanionPage(ctx, roleID)
-	runtimePage := s.resolveCompanionRuntimePage(ctx, roleID, settings, currentPage)
+	sourcePage := currentPage
+	if command.SourcePageNumber != nil && *command.SourcePageNumber >= 0 {
+		sourcePage = *command.SourcePageNumber
+	}
+	runtimePage := s.resolveCompanionRuntimePage(ctx, roleID, settings, sourcePage)
 	page := runtimePage.Page
 	var button *StreamDeckButtonConfig
 	for i := range page.Buttons {
@@ -2206,6 +2230,7 @@ func (s *Server) executeCompanionButtonPress(ctx context.Context, roleID string,
 				"buttonIndex", command.ButtonIndex,
 				"phase", command.State,
 				"currentPage", currentPage,
+				"sourcePage", sourcePage,
 				"dynamic", runtimePage.Dynamic,
 				"totalPages", runtimePage.TotalPages,
 			)
@@ -2227,6 +2252,7 @@ func (s *Server) executeCompanionButtonPress(ctx context.Context, roleID string,
 			"buttonIndex", command.ButtonIndex,
 			"phase", phase,
 			"currentPage", currentPage,
+			"sourcePage", sourcePage,
 			"runtimePage", page.Page,
 			"dynamic", runtimePage.Dynamic,
 			"totalPages", runtimePage.TotalPages,
@@ -2253,7 +2279,7 @@ func (s *Server) executeCompanionButtonPress(ctx context.Context, roleID string,
 			s.acknowledgeCompanionIncomingCall(username)
 		}
 	}
-	holdKey := fmt.Sprintf("%s:%d:%d", roleID, currentPage, command.ButtonIndex)
+	holdKey := fmt.Sprintf("%s:%d:%d", roleID, page.Page, command.ButtonIndex)
 	emitCompanionCurrentPageImages := func() {
 		s.emitCompanionCurrentPageImages(ctx, roleID, username)
 	}
@@ -3232,6 +3258,7 @@ func (s *Server) handleCompanionDiscovery(w http.ResponseWriter, r *http.Request
 	s.writeJSON(w, http.StatusOK, CompanionDiscoveryResponse{
 		Username:          profileResp.Username,
 		RoleID:            profileResp.RoleID,
+		RoleName:          profileResp.RoleName,
 		Rooms:             profileResp.Rooms,
 		Users:             profileResp.Users,
 		ActiveRoleUsers:   profileResp.ActiveRoleUsers,
@@ -3430,6 +3457,7 @@ func NewServer(cfg Config) (*Server, error) {
 	mux.HandleFunc("/api/user/stream-deck/preview", s.withAuth(s.handleUserStreamDeckPreview))
 	mux.HandleFunc("/api/admin/stream-deck/settings", s.withAuth(s.handleAdminRoleStreamDeckSettings))
 	mux.HandleFunc("/api/admin/companion/config", s.withAuth(s.handleAdminCompanionConfig))
+	mux.HandleFunc("/api/companion/profiles", s.handleCompanionProfiles)
 	mux.HandleFunc("/api/companion/profile", s.handleCompanionProfile)
 	mux.HandleFunc("/api/admin/companion/publish", s.withAuth(s.handleAdminCompanionPublish))
 	mux.HandleFunc("/api/admin/companion/role-pages", s.withAuth(s.handleAdminCompanionRolePages))
@@ -4556,6 +4584,32 @@ func (s *Server) requireCompanionSecret(w http.ResponseWriter, r *http.Request) 
 	return true
 }
 
+func (s *Server) handleCompanionProfiles(w http.ResponseWriter, r *http.Request) {
+	if !s.requireCompanionSecret(w, r) {
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	profiles, err := s.store.ListCompanionProfiles(r.Context())
+	if err != nil {
+		s.internalErr(w, err)
+		return
+	}
+	for index := range profiles {
+		roleID := strings.TrimSpace(profiles[index].RoleID)
+		if roleID == "" {
+			continue
+		}
+		if strings.TrimSpace(profiles[index].RoleName) == "" {
+			profiles[index].RoleName = s.roleNameByID(r.Context(), roleID)
+		}
+		profiles[index].CurrentPageNumber = s.currentCompanionPage(r.Context(), roleID)
+	}
+	s.writeJSON(w, http.StatusOK, CompanionProfilesResponse{Profiles: profiles})
+}
+
 func (s *Server) handleCompanionProfile(w http.ResponseWriter, r *http.Request) {
 	if !s.requireCompanionSecret(w, r) {
 		return
@@ -4729,6 +4783,7 @@ func (s *Server) buildCompanionProfileResponse(ctx context.Context, targetUser U
 	}
 	return CompanionProfileResponse{
 		RoleID:            targetUser.RoleID,
+		RoleName:          s.roleNameByID(ctx, targetUser.RoleID),
 		Username:          targetUser.Username,
 		PageNumber:        pageNumber,
 		CurrentPageNumber: s.currentCompanionPage(ctx, targetUser.RoleID),

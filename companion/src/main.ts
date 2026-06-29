@@ -14,6 +14,7 @@ import { GetConfigFields, type ModuleConfig } from "./config.js";
 import { UpdateActions } from "./actions.js";
 import { UpdateFeedbacks } from "./feedbacks.js";
 import {
+  BuildPresetSignature,
   deriveTextColor,
   parseButtonBgColor,
   UpdatePresets,
@@ -24,8 +25,10 @@ import { ImageBridge } from "./imageBridge.js";
 import type {
   CommandPayload,
   CompanionInbound,
+  CompanionPresetProfile,
   CompanionState,
   CompanionProfileResponse,
+  CompanionProfilesResponse,
   DiscoveryResponse,
   StreamDeckActionType,
   StreamDeckPageType,
@@ -178,6 +181,7 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
   private reconnectAttempts = 0;
   private lastConnectionError = "";
   private insecureTlsDispatcher: Dispatcher | null = null;
+  private presetSignature = "";
   private commandSeq = 0;
   private imageBridge: ImageBridge | null = null;
   private imageEffectMapRaw = "";
@@ -206,14 +210,17 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
   public pendingCommandCount = 0;
   public profileVersion = 0;
   public profileStreamDeckSettings: StreamDeckSettings | null = null;
+  public presetProfiles: CompanionPresetProfile[] = [];
   public currentPageNumber = 0;
   public lastBridgeEventAt = 0;
   public lastBridgeCloseAt = 0;
   private appliedProfileVersion = 0;
+  private lastPresetProfilesFetch = 0;
   private heldDirectRoleTargets = new Map<string, string>();
   public discovery: DiscoveryResponse = {
     username: "",
     roleId: "",
+    roleName: "",
     rooms: [],
     users: [],
     broadcastGroups: [],
@@ -283,6 +290,9 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
   }
 
   updatePresets(): void {
+    const nextSignature = BuildPresetSignature(this);
+    if (nextSignature === this.presetSignature) return;
+    this.presetSignature = nextSignature;
     UpdatePresets(this);
   }
 
@@ -378,6 +388,21 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
     const settings = this.profileStreamDeckSettings;
     if (!settings) return null;
     const page = settings.pages.find((entry) => entry.page === pageNumber);
+    if (!page) return null;
+    return page.buttons.find((entry) => entry.index === buttonIndex) || null;
+  }
+
+  getPresetProfileButtonConfig(
+    roleId: string,
+    pageNumber: number,
+    buttonIndex: number,
+  ) {
+    const profile = this.presetProfiles.find(
+      (entry) => entry.roleId === roleId,
+    );
+    const page = profile?.streamDeckSettings.pages.find(
+      (entry) => entry.page === pageNumber,
+    );
     if (!page) return null;
     return page.buttons.find((entry) => entry.index === buttonIndex) || null;
   }
@@ -853,6 +878,68 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
     );
   }
 
+  private toCompanionPresetProfile(
+    profile: CompanionProfileResponse,
+    streamDeckSettings: StreamDeckSettings | null = null,
+  ): CompanionPresetProfile | null {
+    const settings =
+      streamDeckSettings || normalizeProfileStreamDeckSettings(profile.streamDeckSettings);
+    if (!settings) return null;
+    const roleId = String(
+      profile.roleId || this.discovery.roleId || this.config.roleId || "",
+    ).trim();
+    if (!roleId) return null;
+    return {
+      roleId,
+      roleName: profile.roleName || "",
+      username: String(
+        profile.username || this.discovery.username || this.config.username || "Default profile",
+      ).trim(),
+      profileVersion: Number(profile.profileVersion || 0),
+      profileUpdatedAt: Number(profile.profileUpdatedAt || 0),
+      streamDeckSettings: settings,
+    };
+  }
+
+  private async refreshCompanionPresetProfiles(
+    fallbackProfile: CompanionPresetProfile | null = null,
+    force = false,
+  ): Promise<void> {
+    const host = (this.config.host || "").trim();
+    if (!host) return;
+    const now = Date.now();
+    if (!force && now - this.lastPresetProfilesFetch < 5000) return;
+    this.lastPresetProfilesFetch = now;
+
+    const secretQuery = this.companionSecretQuery();
+    const url = secretQuery
+      ? `${this.baseHttpURL()}/api/companion/profiles?${secretQuery}`
+      : `${this.baseHttpURL()}/api/companion/profiles`;
+    try {
+      const response = await this.fetchJson<CompanionProfilesResponse>(
+        url,
+        "published profiles fetch",
+      );
+      const profiles = (Array.isArray(response.profiles) ? response.profiles : [])
+        .map((profile) => this.toCompanionPresetProfile(profile))
+        .filter((profile): profile is CompanionPresetProfile => !!profile);
+      this.presetProfiles = profiles.length > 0
+        ? profiles
+        : fallbackProfile
+          ? [fallbackProfile]
+          : [];
+    } catch (err) {
+      if (fallbackProfile) {
+        this.presetProfiles = [fallbackProfile];
+      }
+      const detail = this.formatConnectionError(
+        err,
+        "unknown published profiles sync error",
+      );
+      this.log("warn", `Published profiles sync failed: ${detail}`);
+    }
+  }
+
   async refreshDiscovery(): Promise<void> {
     const host = (this.config.host || "").trim();
     const targetQuery = this.companionTargetQuery();
@@ -874,6 +961,7 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
       if (this.profileVersion > this.appliedProfileVersion) {
         await this.refreshCompanionProfile();
       }
+      await this.refreshCompanionPresetProfiles(null, false);
       this.updateActions();
       this.updateFeedbacks();
       this.updatePresets();
@@ -908,6 +996,7 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
       this.discovery = {
         username: profile.username || this.discovery.username,
         roleId: profile.roleId || this.discovery.roleId,
+        roleName: profile.roleName || this.discovery.roleName,
         pageNumber: Number(profile.pageNumber ?? this.discovery.pageNumber ?? -1),
         currentPageNumber: Number(
           profile.currentPageNumber ??
@@ -925,6 +1014,11 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
       this.profileStreamDeckSettings = normalizeProfileStreamDeckSettings(
         profile.streamDeckSettings,
       );
+      const fallbackPresetProfile = this.toCompanionPresetProfile(
+        profile,
+        this.profileStreamDeckSettings,
+      );
+      this.presetProfiles = fallbackPresetProfile ? [fallbackPresetProfile] : [];
       this.currentPageNumber = Number(
         profile.currentPageNumber ??
           this.profileStreamDeckSettings?.selectedPage ??
@@ -932,6 +1026,7 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
       );
       this.profileVersion = Number(profile.profileVersion || 0);
       this.appliedProfileVersion = this.profileVersion;
+      await this.refreshCompanionPresetProfiles(fallbackPresetProfile, true);
       this.updateActions();
       this.updateFeedbacks();
       this.updatePresets();

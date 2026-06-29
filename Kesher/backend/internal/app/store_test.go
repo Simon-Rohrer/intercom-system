@@ -166,6 +166,9 @@ func TestStoreUpsertRaspberryPiHeartbeatPersistsLatestStatus(t *testing.T) {
 	defer store.Close()
 
 	ctx := context.Background()
+	firstCPU := 22.25
+	firstMemory := 63.8
+	firstTemperature := 55.4
 	first, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
 		DeviceID:        "pi-cam-1",
 		Name:            "Kamera-1",
@@ -175,14 +178,22 @@ func TestStoreUpsertRaspberryPiHeartbeatPersistsLatestStatus(t *testing.T) {
 		LauncherVersion: "2",
 		BrowserStatus:   "starting",
 		LoginStatus:     "waiting_for_intercom",
+		CPUPercent:      &firstCPU,
+		MemoryPercent:   &firstMemory,
+		TemperatureC:    &firstTemperature,
 	})
 	if err != nil {
 		t.Fatalf("UpsertRaspberryPiHeartbeat failed: %v", err)
 	}
-	if first.DeviceID != "pi-cam-1" || !first.LowPowerMode {
+	if first.DeviceID != "pi-cam-1" || !first.LowPowerMode ||
+		first.CPUPercent == nil || *first.CPUPercent != 22.3 ||
+		first.MemoryPercent == nil || *first.MemoryPercent != 63.8 ||
+		first.TemperatureC == nil || *first.TemperatureC != 55.4 {
 		t.Fatalf("unexpected first heartbeat: %#v", first)
 	}
 
+	secondCPU := 101.0
+	secondTemperature := 130.0
 	second, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
 		DeviceID:      "pi-cam-1",
 		Name:          "Kamera-1",
@@ -190,12 +201,20 @@ func TestStoreUpsertRaspberryPiHeartbeatPersistsLatestStatus(t *testing.T) {
 		RoleID:        "camera",
 		BrowserStatus: "running",
 		LoginStatus:   "waiting_for_intercom",
+		CPUPercent:    &secondCPU,
+		TemperatureC:  &secondTemperature,
 	})
 	if err != nil {
 		t.Fatalf("second UpsertRaspberryPiHeartbeat failed: %v", err)
 	}
 	if second.IPAddress != "192.168.1.52" || second.BrowserStatus != "running" {
 		t.Fatalf("heartbeat was not updated: %#v", second)
+	}
+	if second.CPUPercent == nil || *second.CPUPercent != 100 {
+		t.Fatalf("expected clamped CPU percent, got %#v", second.CPUPercent)
+	}
+	if second.MemoryPercent != nil || second.TemperatureC != nil {
+		t.Fatalf("expected omitted memory and invalid temperature, got %#v %#v", second.MemoryPercent, second.TemperatureC)
 	}
 
 	records, err := store.ListRaspberryPiHeartbeats(ctx)

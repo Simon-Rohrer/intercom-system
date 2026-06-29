@@ -47,7 +47,7 @@ html[data-kesher-low-power="true"] *::after {
 }
 .login-mode-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.35rem;
   padding: 0.25rem;
   border: 1px solid rgba(255, 255, 255, 0.05);
@@ -56,11 +56,14 @@ html[data-kesher-low-power="true"] *::after {
 }
 .login-mode-tabs button {
   min-height: 42px;
+  min-width: 0;
   border: 0;
   border-radius: 8px;
   background: transparent;
   color: var(--text-secondary);
   font-weight: 800;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 .login-mode-tabs button.is-active {
@@ -215,63 +218,6 @@ html[data-kesher-low-power="true"] *::after {
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
-}
-
-.login-admin-disclosure {
-  margin-top: 0.6rem;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.015);
-}
-.login-admin-disclosure-trigger {
-  width: 100%;
-  min-height: 48px;
-  padding: 0.7rem 0.8rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-  transition: background 120ms ease;
-}
-.login-admin-disclosure-trigger:hover,
-.login-admin-disclosure-trigger:focus-visible {
-  background: rgba(255, 255, 255, 0.03);
-}
-.login-admin-disclosure-trigger:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-.login-admin-disclosure-label {
-  display: flex;
-  align-items: baseline;
-  gap: 0.65rem;
-  font-weight: 800;
-}
-.login-admin-chevron {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  color: var(--text-secondary);
-  transition: transform 160ms ease;
-}
-.login-admin-chevron.is-open {
-  transform: rotate(90deg);
-}
-.login-admin-disclosure-panel.login-admin-card {
-  margin-top: 0;
-  padding: 0.85rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .login-remote-panel {
@@ -447,15 +393,6 @@ html[data-kesher-low-power="true"] *::after {
   .login-form input,
   .login-admin-card input {
     padding: 0.5rem;
-  }
-  .login-admin-disclosure-label {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-  .login-admin-disclosure-panel .login-admin-actions,
-  .login-admin-disclosure-panel .login-admin-actions button {
-    width: 100%;
   }
   .login-remote-room-grid {
     grid-template-columns: 1fr;
@@ -2414,14 +2351,16 @@ button {
 }
 
 .admin-pi-station-meta,
-.admin-pi-station-checks {
+.admin-pi-station-checks,
+.admin-pi-station-metrics {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
 }
 
 .admin-pi-station-meta span,
-.admin-pi-station-checks span {
+.admin-pi-station-checks span,
+.admin-pi-station-metrics span {
   min-width: 0;
   border-radius: 8px;
   border: 1px solid rgba(117, 198, 255, 0.11);
@@ -2454,18 +2393,21 @@ button {
   opacity: 0.75;
 }
 
-.admin-pi-station-checks {
+.admin-pi-station-checks,
+.admin-pi-station-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.admin-pi-station-checks span {
+.admin-pi-station-checks span,
+.admin-pi-station-metrics span {
   display: grid;
   gap: 0.06rem;
   padding: 0.34rem 0.42rem;
 }
 
-.admin-pi-station-checks small {
+.admin-pi-station-checks small,
+.admin-pi-station-metrics small {
   color: var(--text-muted);
   font-size: 0.64rem;
   font-weight: 850;
@@ -2473,7 +2415,8 @@ button {
   text-transform: uppercase;
 }
 
-.admin-pi-station-checks strong {
+.admin-pi-station-checks strong,
+.admin-pi-station-metrics strong {
   overflow: hidden;
   color: var(--text-bright);
   font-size: 0.76rem;
@@ -2482,17 +2425,20 @@ button {
   white-space: nowrap;
 }
 
-.admin-pi-station-checks .admin-pi-status-ok {
+.admin-pi-station-checks .admin-pi-status-ok,
+.admin-pi-station-metrics .admin-pi-status-ok {
   border-color: rgba(52, 199, 89, 0.18);
   background: rgba(52, 199, 89, 0.07);
 }
 
-.admin-pi-station-checks .admin-pi-status-wait {
+.admin-pi-station-checks .admin-pi-status-wait,
+.admin-pi-station-metrics .admin-pi-status-wait {
   border-color: rgba(0, 209, 255, 0.16);
   background: rgba(0, 209, 255, 0.06);
 }
 
-.admin-pi-station-checks .admin-pi-status-warn {
+.admin-pi-station-checks .admin-pi-status-warn,
+.admin-pi-station-metrics .admin-pi-status-warn {
   border-color: rgba(255, 83, 83, 0.18);
   background: rgba(193, 18, 31, 0.07);
 }
@@ -3179,6 +3125,7 @@ button.secondary {
   flex-direction: column;
   align-items: flex-start;
   gap: 0.2rem;
+  min-width: 0;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -3186,6 +3133,11 @@ button.secondary {
   display: inline-flex;
   gap: 0.45rem;
   align-items: center;
+  max-width: 100%;
+  min-width: 0;
+}
+.station-live-label {
+  min-width: 0;
 }
 .station-live-role {
   margin-left: calc(7px + 0.45rem);
@@ -3964,15 +3916,22 @@ button.secondary {
   gap: 0.28rem;
 }
 
-.station-pi-monitoring .admin-pi-station-checks span {
+.station-pi-monitoring .admin-pi-station-metrics {
+  gap: 0.28rem;
+}
+
+.station-pi-monitoring .admin-pi-station-checks span,
+.station-pi-monitoring .admin-pi-station-metrics span {
   padding: 0.3rem 0.34rem;
 }
 
-.station-pi-monitoring .admin-pi-station-checks small {
+.station-pi-monitoring .admin-pi-station-checks small,
+.station-pi-monitoring .admin-pi-station-metrics small {
   font-size: 0.58rem;
 }
 
-.station-pi-monitoring .admin-pi-station-checks strong {
+.station-pi-monitoring .admin-pi-station-checks strong,
+.station-pi-monitoring .admin-pi-station-metrics strong {
   font-size: 0.68rem;
 }
 
@@ -3989,7 +3948,8 @@ button.secondary {
 
 @media (max-width: 420px) {
   .station-pi-monitoring .admin-pi-station-head,
-  .station-pi-monitoring .admin-pi-station-checks {
+  .station-pi-monitoring .admin-pi-station-checks,
+  .station-pi-monitoring .admin-pi-station-metrics {
     grid-template-columns: 1fr;
   }
 }
@@ -6190,19 +6150,33 @@ button.secondary {
     top: 0;
     z-index: 2;
     display: flex;
+    align-items: center;
     gap: 0.45rem;
-    padding: 0.7rem 0.8rem;
+    min-height: 56px;
+    padding: 0.48rem 0.7rem;
     overflow-x: auto;
     overflow-y: hidden;
     border-right: 0;
     border-bottom: 1px solid rgba(126, 172, 224, 0.12);
     background: rgba(10, 19, 32, 0.92);
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+  }
+  .station-settings-nav::-webkit-scrollbar {
+    display: none;
   }
   .station-settings-nav button {
-    min-width: max-content;
+    flex: 0 0 auto;
+    min-width: 0;
     width: auto;
-    min-height: 40px;
-    padding: 0.55rem 0.68rem;
+    min-height: 36px;
+    padding: 0.42rem 0.6rem;
+    border-radius: 8px;
+    white-space: nowrap;
+    scroll-snap-align: start;
+  }
+  .station-settings-nav button.active {
+    box-shadow: inset 0 -2px 0 rgba(0, 209, 255, 0.72);
   }
   .station-modal-body {
     padding: 0.85rem;
@@ -6228,26 +6202,40 @@ button.secondary {
   }
   .station-modal-header {
     padding:
-      calc(0.8rem + env(safe-area-inset-top, 0px))
-      0.85rem
-      0.8rem;
+      calc(0.56rem + env(safe-area-inset-top, 0px))
+      0.72rem
+      0.52rem;
+    gap: 0.55rem;
+    min-height: calc(54px + env(safe-area-inset-top, 0px));
   }
   .station-modal-title > span {
-    font-size: 0.62rem;
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
   }
   .station-modal-header h3 {
-    font-size: 0.92rem;
+    font-size: 0.86rem;
+    letter-spacing: 0.065em;
+  }
+  .station-modal-close {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
   }
   .station-settings-nav {
-    padding: 0.62rem 0.75rem;
+    gap: 0.34rem;
+    min-height: 48px;
+    padding: 0.38rem 0.58rem;
   }
   .station-settings-nav button {
-    min-height: 38px;
-    font-size: 0.8rem;
+    min-height: 32px;
+    gap: 0.34rem;
+    padding: 0.34rem 0.5rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.01em;
   }
   .station-settings-nav svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
   }
   .station-modal-body {
     padding:
@@ -6469,6 +6457,53 @@ button.secondary {
     margin-bottom: 0;
     padding-bottom: 0;
     background: none;
+  }
+  .station-shell-remote .station-topbar {
+    gap: 0.55rem;
+    padding: 0.45rem 0.55rem;
+    border-radius: 8px;
+  }
+  .station-shell-remote .station-live {
+    flex: 1 1 auto;
+    gap: 0.08rem;
+  }
+  .station-shell-remote .station-live-name {
+    width: 100%;
+    gap: 0.28rem;
+    font-size: clamp(0.78rem, 3.1vw, 0.88rem);
+    line-height: 1.05;
+  }
+  .station-shell-remote .station-live-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .station-shell-remote .station-live-role {
+    margin-left: calc(7px + 0.28rem);
+    font-size: 0.62rem;
+    line-height: 1.05;
+    letter-spacing: 0.06em;
+  }
+  .station-shell-remote .station-top-actions {
+    flex: 0 0 auto;
+    gap: 0.3rem;
+  }
+  .station-shell-remote .station-top-admin,
+  .station-shell-remote .station-top-logout {
+    min-height: 32px;
+    padding: 0.28rem 0.4rem;
+    border-radius: 7px;
+    font-size: 0.58rem;
+    line-height: 1.05;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+  .station-shell-remote .station-top-admin {
+    gap: 0.28rem;
+  }
+  .station-shell-remote .station-top-admin-icon {
+    width: 14px;
+    height: 14px;
   }
   .station-topbar.has-low-power {
     grid-template-columns: minmax(0, 1fr) auto;

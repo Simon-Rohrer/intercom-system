@@ -28,6 +28,7 @@ type CompanionRoomDiscovery struct {
 type CompanionDiscoveryResponse struct {
 	Username          string                   `json:"username"`
 	RoleID            string                   `json:"roleId"`
+	RoleName          string                   `json:"roleName,omitempty"`
 	Rooms             []CompanionRoomDiscovery `json:"rooms"`
 	Users             []User                   `json:"users"`
 	ActiveRoleUsers   []CompanionRoleUser      `json:"activeRoleUsers,omitempty"`
@@ -40,6 +41,7 @@ type CompanionDiscoveryResponse struct {
 
 type CompanionProfileResponse struct {
 	RoleID            string                   `json:"roleId"`
+	RoleName          string                   `json:"roleName,omitempty"`
 	Username          string                   `json:"username"`
 	PageNumber        int                      `json:"pageNumber,omitempty"`
 	CurrentPageNumber int                      `json:"currentPageNumber,omitempty"`
@@ -51,6 +53,10 @@ type CompanionProfileResponse struct {
 	ProfileVersion    int                      `json:"profileVersion"`
 	ProfileStatus     string                   `json:"profileStatus"`
 	ProfileUpdatedAt  int64                    `json:"profileUpdatedAt,omitempty"`
+}
+
+type CompanionProfilesResponse struct {
+	Profiles []CompanionProfileResponse `json:"profiles"`
 }
 
 type CompanionPublishedProfileSummary struct {
@@ -103,29 +109,35 @@ type AdminUserView struct {
 }
 
 type RaspberryPiHeartbeatRequest struct {
-	DeviceID        string `json:"deviceId"`
-	Name            string `json:"name"`
-	IPAddress       string `json:"ipAddress"`
-	RoleID          string `json:"roleId"`
-	LowPowerMode    bool   `json:"lowPowerMode"`
-	LauncherVersion string `json:"launcherVersion"`
-	BrowserStatus   string `json:"browserStatus"`
-	LoginStatus     string `json:"loginStatus"`
-	LoginError      string `json:"loginError"`
+	DeviceID        string   `json:"deviceId"`
+	Name            string   `json:"name"`
+	IPAddress       string   `json:"ipAddress"`
+	RoleID          string   `json:"roleId"`
+	LowPowerMode    bool     `json:"lowPowerMode"`
+	LauncherVersion string   `json:"launcherVersion"`
+	BrowserStatus   string   `json:"browserStatus"`
+	LoginStatus     string   `json:"loginStatus"`
+	LoginError      string   `json:"loginError"`
+	CPUPercent      *float64 `json:"cpuPercent,omitempty"`
+	MemoryPercent   *float64 `json:"memoryPercent,omitempty"`
+	TemperatureC    *float64 `json:"temperatureC,omitempty"`
 }
 
 type RaspberryPiHeartbeatRecord struct {
-	DeviceID        string `json:"deviceId"`
-	Name            string `json:"name"`
-	IPAddress       string `json:"ipAddress"`
-	RoleID          string `json:"roleId"`
-	LowPowerMode    bool   `json:"lowPowerMode"`
-	LauncherVersion string `json:"launcherVersion"`
-	BrowserStatus   string `json:"browserStatus"`
-	LoginStatus     string `json:"loginStatus"`
-	LoginError      string `json:"loginError,omitempty"`
-	LastSeenUnixMs  int64  `json:"lastSeenUnixMs"`
-	UpdatedAtUnixMs int64  `json:"updatedAtUnixMs"`
+	DeviceID        string   `json:"deviceId"`
+	Name            string   `json:"name"`
+	IPAddress       string   `json:"ipAddress"`
+	RoleID          string   `json:"roleId"`
+	LowPowerMode    bool     `json:"lowPowerMode"`
+	LauncherVersion string   `json:"launcherVersion"`
+	BrowserStatus   string   `json:"browserStatus"`
+	LoginStatus     string   `json:"loginStatus"`
+	LoginError      string   `json:"loginError,omitempty"`
+	CPUPercent      *float64 `json:"cpuPercent,omitempty"`
+	MemoryPercent   *float64 `json:"memoryPercent,omitempty"`
+	TemperatureC    *float64 `json:"temperatureC,omitempty"`
+	LastSeenUnixMs  int64    `json:"lastSeenUnixMs"`
+	UpdatedAtUnixMs int64    `json:"updatedAtUnixMs"`
 }
 
 type RaspberryPiStationStatus struct {
@@ -424,19 +436,21 @@ type AudioModeInfo struct {
 }
 
 type CompanionCommand struct {
-	CommandID     string   `json:"commandId,omitempty"`
-	Command       string   `json:"command"`
-	Mode          string   `json:"mode,omitempty"`
-	Scope         string   `json:"scope,omitempty"`
-	TargetID      string   `json:"targetId,omitempty"`
-	State         string   `json:"state,omitempty"`
-	Signal        string   `json:"signal,omitempty"`
-	ButtonIndex   int      `json:"buttonIndex,omitempty"`
-	VolumeDelta   int      `json:"volumeDelta,omitempty"`
-	ListenRoomIDs []string `json:"listenRoomIds"`
-	TalkRoomIDs   []string `json:"talkRoomIds"`
-	Brightness    int      `json:"brightness,omitempty"`
-	PageNumber    int      `json:"pageNumber,omitempty"`
+	CommandID        string   `json:"commandId,omitempty"`
+	Command          string   `json:"command"`
+	RoleID           string   `json:"roleId,omitempty"`
+	Mode             string   `json:"mode,omitempty"`
+	Scope            string   `json:"scope,omitempty"`
+	TargetID         string   `json:"targetId,omitempty"`
+	State            string   `json:"state,omitempty"`
+	Signal           string   `json:"signal,omitempty"`
+	ButtonIndex      int      `json:"buttonIndex,omitempty"`
+	VolumeDelta      int      `json:"volumeDelta,omitempty"`
+	ListenRoomIDs    []string `json:"listenRoomIds"`
+	TalkRoomIDs      []string `json:"talkRoomIds"`
+	Brightness       int      `json:"brightness,omitempty"`
+	PageNumber       int      `json:"pageNumber,omitempty"`
+	SourcePageNumber *int     `json:"sourcePageNumber,omitempty"`
 }
 
 type CompanionCommandResult struct {

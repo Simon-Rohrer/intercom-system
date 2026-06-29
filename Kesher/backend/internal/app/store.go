@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"slices"
 	"sort"
@@ -466,6 +467,21 @@ func nullableString(value string) sql.NullString {
 	return sql.NullString{String: value, Valid: true}
 }
 
+func nullableFloat64(value *float64) sql.NullFloat64 {
+	if value == nil {
+		return sql.NullFloat64{}
+	}
+	return sql.NullFloat64{Float64: *value, Valid: true}
+}
+
+func float64PtrFromNull(value sql.NullFloat64) *float64 {
+	if !value.Valid {
+		return nil
+	}
+	result := value.Float64
+	return &result
+}
+
 func shouldSeedDefaults(dbPath string) (bool, error) {
 	if dbPath == ":memory:" || strings.Contains(dbPath, "mode=memory") {
 		return true, nil
@@ -718,6 +734,9 @@ func (s *Store) migrate(ctx context.Context) error {
 		browser_status TEXT NOT NULL DEFAULT '',
 		login_status TEXT NOT NULL DEFAULT '',
 		login_error TEXT NOT NULL DEFAULT '',
+		cpu_percent REAL,
+		memory_percent REAL,
+		temperature_c REAL,
 		last_seen INTEGER NOT NULL,
 		updated_at INTEGER NOT NULL
 	)`); err != nil {
@@ -732,6 +751,9 @@ func (s *Store) migrate(ctx context.Context) error {
 		{"browser_status", "TEXT NOT NULL DEFAULT ''"},
 		{"login_status", "TEXT NOT NULL DEFAULT ''"},
 		{"login_error", "TEXT NOT NULL DEFAULT ''"},
+		{"cpu_percent", "REAL"},
+		{"memory_percent", "REAL"},
+		{"temperature_c", "REAL"},
 		{"updated_at", "INTEGER NOT NULL DEFAULT 0"},
 	} {
 		if err := s.ensureColumn(ctx, "raspberry_pi_heartbeats", column.name, column.columnType); err != nil {
@@ -933,6 +955,25 @@ func trimBounded(value string, maxLen int) string {
 	return value[:maxLen]
 }
 
+func normalizePercentPtr(value *float64) *float64 {
+	if value == nil || math.IsNaN(*value) || math.IsInf(*value, 0) {
+		return nil
+	}
+	normalized := math.Round(math.Max(0, math.Min(100, *value))*10) / 10
+	return &normalized
+}
+
+func normalizeTemperaturePtr(value *float64) *float64 {
+	if value == nil || math.IsNaN(*value) || math.IsInf(*value, 0) {
+		return nil
+	}
+	if *value < -40 || *value > 125 {
+		return nil
+	}
+	normalized := math.Round(*value*10) / 10
+	return &normalized
+}
+
 func normalizeRaspberryPiHeartbeat(req RaspberryPiHeartbeatRequest) (RaspberryPiHeartbeatRequest, error) {
 	req.DeviceID = trimBounded(req.DeviceID, 128)
 	req.Name = trimBounded(req.Name, 128)
@@ -954,6 +995,9 @@ func normalizeRaspberryPiHeartbeat(req RaspberryPiHeartbeatRequest) (RaspberryPi
 	if req.LoginStatus == "" {
 		req.LoginStatus = "unknown"
 	}
+	req.CPUPercent = normalizePercentPtr(req.CPUPercent)
+	req.MemoryPercent = normalizePercentPtr(req.MemoryPercent)
+	req.TemperatureC = normalizeTemperaturePtr(req.TemperatureC)
 	return req, nil
 }
 
@@ -969,8 +1013,9 @@ func (s *Store) UpsertRaspberryPiHeartbeat(ctx context.Context, req RaspberryPiH
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT INTO raspberry_pi_heartbeats (
 		device_id, name, ip_address, role_id, low_power_mode, launcher_version,
-		browser_status, login_status, login_error, last_seen, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		browser_status, login_status, login_error, cpu_percent, memory_percent,
+		temperature_c, last_seen, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(device_id) DO UPDATE SET
 		name = excluded.name,
 		ip_address = excluded.ip_address,
@@ -980,10 +1025,15 @@ func (s *Store) UpsertRaspberryPiHeartbeat(ctx context.Context, req RaspberryPiH
 		browser_status = excluded.browser_status,
 		login_status = excluded.login_status,
 		login_error = excluded.login_error,
+		cpu_percent = excluded.cpu_percent,
+		memory_percent = excluded.memory_percent,
+		temperature_c = excluded.temperature_c,
 		last_seen = excluded.last_seen,
 		updated_at = excluded.updated_at`,
 		req.DeviceID, req.Name, req.IPAddress, req.RoleID, lowPowerMode,
 		req.LauncherVersion, req.BrowserStatus, req.LoginStatus, req.LoginError,
+		nullableFloat64(req.CPUPercent), nullableFloat64(req.MemoryPercent),
+		nullableFloat64(req.TemperatureC),
 		now, now,
 	)
 	if err != nil {
@@ -999,9 +1049,13 @@ func (s *Store) FindRaspberryPiHeartbeat(ctx context.Context, deviceID string) (
 	}
 	var record RaspberryPiHeartbeatRecord
 	var lowPowerMode int
+	var cpuPercent sql.NullFloat64
+	var memoryPercent sql.NullFloat64
+	var temperatureC sql.NullFloat64
 	err := s.db.QueryRowContext(ctx, `SELECT
 		device_id, name, ip_address, role_id, low_power_mode, launcher_version,
-		browser_status, login_status, login_error, last_seen, updated_at
+		browser_status, login_status, login_error, cpu_percent, memory_percent,
+		temperature_c, last_seen, updated_at
 		FROM raspberry_pi_heartbeats WHERE device_id = ?`, deviceID).Scan(
 		&record.DeviceID,
 		&record.Name,
@@ -1012,6 +1066,9 @@ func (s *Store) FindRaspberryPiHeartbeat(ctx context.Context, deviceID string) (
 		&record.BrowserStatus,
 		&record.LoginStatus,
 		&record.LoginError,
+		&cpuPercent,
+		&memoryPercent,
+		&temperatureC,
 		&record.LastSeenUnixMs,
 		&record.UpdatedAtUnixMs,
 	)
@@ -1022,13 +1079,17 @@ func (s *Store) FindRaspberryPiHeartbeat(ctx context.Context, deviceID string) (
 		return RaspberryPiHeartbeatRecord{}, err
 	}
 	record.LowPowerMode = lowPowerMode != 0
+	record.CPUPercent = float64PtrFromNull(cpuPercent)
+	record.MemoryPercent = float64PtrFromNull(memoryPercent)
+	record.TemperatureC = float64PtrFromNull(temperatureC)
 	return record, nil
 }
 
 func (s *Store) ListRaspberryPiHeartbeats(ctx context.Context) ([]RaspberryPiHeartbeatRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT
 		device_id, name, ip_address, role_id, low_power_mode, launcher_version,
-		browser_status, login_status, login_error, last_seen, updated_at
+		browser_status, login_status, login_error, cpu_percent, memory_percent,
+		temperature_c, last_seen, updated_at
 		FROM raspberry_pi_heartbeats ORDER BY name COLLATE NOCASE, device_id`)
 	if err != nil {
 		return nil, err
@@ -1038,6 +1099,9 @@ func (s *Store) ListRaspberryPiHeartbeats(ctx context.Context) ([]RaspberryPiHea
 	for rows.Next() {
 		var record RaspberryPiHeartbeatRecord
 		var lowPowerMode int
+		var cpuPercent sql.NullFloat64
+		var memoryPercent sql.NullFloat64
+		var temperatureC sql.NullFloat64
 		if err := rows.Scan(
 			&record.DeviceID,
 			&record.Name,
@@ -1048,12 +1112,18 @@ func (s *Store) ListRaspberryPiHeartbeats(ctx context.Context) ([]RaspberryPiHea
 			&record.BrowserStatus,
 			&record.LoginStatus,
 			&record.LoginError,
+			&cpuPercent,
+			&memoryPercent,
+			&temperatureC,
 			&record.LastSeenUnixMs,
 			&record.UpdatedAtUnixMs,
 		); err != nil {
 			return nil, err
 		}
 		record.LowPowerMode = lowPowerMode != 0
+		record.CPUPercent = float64PtrFromNull(cpuPercent)
+		record.MemoryPercent = float64PtrFromNull(memoryPercent)
+		record.TemperatureC = float64PtrFromNull(temperatureC)
 		records = append(records, record)
 	}
 	return records, rows.Err()
@@ -1393,12 +1463,56 @@ func (s *Store) GetCompanionProfileByRole(ctx context.Context, roleID string) (C
 	if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
 		return CompanionProfileResponse{}, ErrInvalidInput
 	}
+	if strings.TrimSpace(profile.RoleID) == "" {
+		profile.RoleID = roleID
+	}
 	profile.ProfileVersion = version
 	profile.ProfileUpdatedAt = updatedAt
 	if strings.TrimSpace(profile.ProfileStatus) == "" {
 		profile.ProfileStatus = "published"
 	}
 	return profile, nil
+}
+
+func (s *Store) ListCompanionProfiles(ctx context.Context) ([]CompanionProfileResponse, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT role_id, profile_version, profile_json, updated_at FROM companion_profiles ORDER BY role_id`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	profiles := make([]CompanionProfileResponse, 0)
+	for rows.Next() {
+		var (
+			roleID      string
+			version     int
+			profileJSON string
+			updatedAt   int64
+		)
+		if err := rows.Scan(&roleID, &version, &profileJSON, &updatedAt); err != nil {
+			return nil, err
+		}
+		var profile CompanionProfileResponse
+		if err := json.Unmarshal([]byte(profileJSON), &profile); err != nil {
+			return nil, ErrInvalidInput
+		}
+		if strings.TrimSpace(profile.RoleID) == "" {
+			profile.RoleID = strings.TrimSpace(roleID)
+		}
+		profile.ProfileVersion = version
+		profile.ProfileUpdatedAt = updatedAt
+		if strings.TrimSpace(profile.ProfileStatus) == "" {
+			profile.ProfileStatus = "published"
+		}
+		profiles = append(profiles, profile)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return profiles, nil
 }
 
 func (s *Store) PublishCompanionProfile(ctx context.Context, roleID string, publishedByUserID string, profile CompanionProfileResponse) (CompanionProfileResponse, error) {

@@ -20,8 +20,8 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
-LAUNCHER_VERSION = "2"
-HEARTBEAT_INTERVAL_SECONDS = 5
+LAUNCHER_VERSION = "3"
+HEARTBEAT_INTERVAL_SECONDS = 4
 
 
 def require_text(value: Any, field: str) -> str:
@@ -160,13 +160,105 @@ def ssl_context_for_url(url: str, allow_insecure_tls: bool) -> Optional[ssl.SSLC
     return None
 
 
+def read_cpu_times() -> Optional[tuple[int, int]]:
+    try:
+        line = Path("/proc/stat").read_text(encoding="utf-8").splitlines()[0]
+    except (IndexError, OSError):
+        return None
+    fields = line.split()
+    if len(fields) < 5 or fields[0] != "cpu":
+        return None
+    try:
+        values = [int(value) for value in fields[1:]]
+    except ValueError:
+        return None
+    idle = values[3] + (values[4] if len(values) > 4 else 0)
+    total = sum(values)
+    return total, idle
+
+
+def read_memory_percent() -> Optional[float]:
+    try:
+        lines = Path("/proc/meminfo").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    values: dict[str, int] = {}
+    for line in lines:
+        key, _, rest = line.partition(":")
+        amount = rest.strip().split()[0:1]
+        if amount:
+            try:
+                values[key] = int(amount[0])
+            except ValueError:
+                continue
+    total = values.get("MemTotal", 0)
+    available = values.get("MemAvailable", 0)
+    if total <= 0 or available < 0:
+        return None
+    return max(0.0, min(100.0, ((total - available) / total) * 100.0))
+
+
+def read_temperature_c() -> Optional[float]:
+    candidates = [Path("/sys/class/thermal/thermal_zone0/temp")]
+    candidates.extend(sorted(Path("/sys/class/thermal").glob("thermal_zone*/temp")))
+    seen: set[Path] = set()
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+        try:
+            raw = path.read_text(encoding="utf-8").strip()
+            value = float(raw)
+        except (OSError, ValueError):
+            continue
+        if value > 1000:
+            value = value / 1000.0
+        if -40.0 <= value <= 125.0:
+            return value
+    return None
+
+
+class SystemMetricsSampler:
+    def __init__(self) -> None:
+        self._previous_cpu_times = read_cpu_times()
+
+    def cpu_percent(self) -> Optional[float]:
+        current = read_cpu_times()
+        if current is None:
+            return None
+        previous = self._previous_cpu_times
+        self._previous_cpu_times = current
+        if previous is None:
+            return None
+        total_delta = current[0] - previous[0]
+        idle_delta = current[1] - previous[1]
+        if total_delta <= 0:
+            return None
+        busy_delta = max(0, total_delta - idle_delta)
+        return max(0.0, min(100.0, (busy_delta / total_delta) * 100.0))
+
+    def sample(self) -> dict[str, float]:
+        metrics: dict[str, float] = {}
+        cpu = self.cpu_percent()
+        memory = read_memory_percent()
+        temperature = read_temperature_c()
+        if cpu is not None:
+            metrics["cpuPercent"] = round(cpu, 1)
+        if memory is not None:
+            metrics["memoryPercent"] = round(memory, 1)
+        if temperature is not None:
+            metrics["temperatureC"] = round(temperature, 1)
+        return metrics
+
+
 def heartbeat_payload(
     client: dict[str, Any],
     browser_status: str,
     login_status: str,
     login_error: str = "",
+    metrics: Optional[dict[str, float]] = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "deviceId": client["device_id"],
         "name": client["name"],
         "ipAddress": client["ip_address"],
@@ -177,6 +269,9 @@ def heartbeat_payload(
         "loginStatus": login_status,
         "loginError": login_error,
     }
+    if metrics:
+        payload.update(metrics)
+    return payload
 
 
 def heartbeat_endpoint_url(config: dict[str, Any]) -> str:
@@ -189,10 +284,12 @@ def send_heartbeat(
     browser_status: str,
     login_status: str,
     login_error: str = "",
+    metrics_sampler: Optional[SystemMetricsSampler] = None,
 ) -> bool:
     heartbeat_url = heartbeat_endpoint_url(config)
+    metrics = metrics_sampler.sample() if metrics_sampler else None
     payload = json.dumps(
-        heartbeat_payload(client, browser_status, login_status, login_error),
+        heartbeat_payload(client, browser_status, login_status, login_error, metrics),
         separators=(",", ":"),
     ).encode("utf-8")
     headers = {
@@ -224,13 +321,22 @@ def start_heartbeat_loop(
     state_lock: threading.Lock,
     stop_event: threading.Event,
 ) -> threading.Thread:
+    metrics_sampler = SystemMetricsSampler()
+
     def run() -> None:
         while True:
             with state_lock:
                 browser_status = state.get("browser_status", "unknown")
                 login_status = state.get("login_status", "unknown")
                 login_error = state.get("login_error", "")
-            send_heartbeat(config, client, browser_status, login_status, login_error)
+            send_heartbeat(
+                config,
+                client,
+                browser_status,
+                login_status,
+                login_error,
+                metrics_sampler,
+            )
             if stop_event.wait(HEARTBEAT_INTERVAL_SECONDS):
                 return
 

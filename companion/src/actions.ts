@@ -24,18 +24,57 @@ export function UpdateActions(self: ModuleInstance): void {
             { id: "up", label: "Button up" },
           ],
         },
+        {
+          id: "sourcePageNumber",
+          type: "number",
+          label: "Kesher source page (-1 = current)",
+          default: -1,
+          min: -1,
+          max: 999,
+        },
+        {
+          id: "roleId",
+          type: "textinput",
+          label: "Target role ID (blank = current)",
+          default: "",
+        },
       ],
       callback: async (event) => {
         const buttonIndex = Number(event.options.buttonIndex ?? 0);
         const phase =
           String(event.options.phase || "down") === "up" ? "up" : "down";
-        const button = self.getCurrentPageButtonConfig(buttonIndex);
+        const sourcePageNumber = Number(event.options.sourcePageNumber ?? -1);
+        const targetRoleId = String(event.options.roleId || "").trim();
+        const hasSourcePage =
+          Number.isInteger(sourcePageNumber) && sourcePageNumber >= 0;
+        const button = hasSourcePage
+          ? targetRoleId
+            ? self.getPresetProfileButtonConfig(
+                targetRoleId,
+                sourcePageNumber,
+                buttonIndex,
+              )
+            : self.getProfileButtonConfig(sourcePageNumber, buttonIndex)
+          : self.getCurrentPageButtonConfig(buttonIndex);
         const actionType = String(button?.action?.type || "none");
         const label = String(button?.label || "").trim();
         self.log(
           "info",
-          `Trigger slot ${buttonIndex} page=${self.currentPageNumber} phase=${phase} action=${actionType} label=${label}`,
+          `Trigger slot ${buttonIndex} page=${hasSourcePage ? sourcePageNumber : self.currentPageNumber} phase=${phase} action=${actionType} label=${label}`,
         );
+        if (hasSourcePage) {
+          self.dispatchBridgeCommand(
+            {
+              command: "press_button",
+              roleId: targetRoleId || undefined,
+              buttonIndex,
+              state: phase,
+              sourcePageNumber,
+            },
+            `trigger_synced_button slot=${buttonIndex} sourcePage=${sourcePageNumber} phase=${phase}`,
+          );
+          return;
+        }
         if (actionType === "page_up" || actionType === "page_down") {
           if (phase === "down") {
             self.applyLocalPageNavigation(actionType);
@@ -58,9 +97,8 @@ export function UpdateActions(self: ModuleInstance): void {
         }
         if (actionType === "page_jump" || actionType === "page_home") {
           if (phase === "down") {
-            const targetPage = actionType === "page_home"
-              ? 0
-              : (button?.action?.targetPage ?? 0);
+            const targetPage =
+              actionType === "page_home" ? 0 : (button?.action?.targetPage ?? 0);
             self.applyLocalPageJump(targetPage);
             self.dispatchBridgeCommand(
               actionType === "page_home"
@@ -73,9 +111,9 @@ export function UpdateActions(self: ModuleInstance): void {
         }
         self.dispatchBridgeCommand(
           {
-          command: "press_button",
-          buttonIndex,
-          state: phase,
+            command: "press_button",
+            buttonIndex,
+            state: phase,
           },
           `trigger_synced_button index=${buttonIndex} phase=${phase}`,
         );

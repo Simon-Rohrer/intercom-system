@@ -29,51 +29,78 @@ export function deriveTextColor(bgcolor) {
         ? combineRgb(0, 0, 0)
         : combineRgb(255, 255, 255);
 }
-function buildUniversalSyncedSlotPreset(self, slotIndex) {
-    const button = self.getCurrentPageButtonConfig(slotIndex) || { index: slotIndex };
+function singleLine(value) {
+    return value.replace(/\s+/g, " ").trim();
+}
+function cleanLabel(value, fallback) {
+    const label = singleLine(value);
+    return label || fallback;
+}
+function presetIdPart(value) {
+    return String(value)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 48) || "item";
+}
+function rolePresetCategory(self, profile) {
+    const roleLabel = cleanLabel(profile?.roleName ||
+        profile?.roleId ||
+        self.discovery.roleName ||
+        self.discovery.roleId ||
+        self.config.roleId ||
+        "", "Unassigned role");
+    const profileLabel = cleanLabel(profile?.username || self.discovery.username || self.config.username || "", "Default profile");
+    return `Kesher / ${roleLabel} / ${profileLabel}`;
+}
+function pageLabel(page) {
+    const title = singleLine(page.title || "");
+    return title ? `Page ${page.page + 1} / ${title}` : `Page ${page.page + 1}`;
+}
+function buttonHasContent(button) {
+    const actionType = String(button.action?.type || "none").trim();
+    return ((actionType !== "" && actionType !== "none") ||
+        singleLine(button.label || "") !== "");
+}
+function buttonPresetName(self, page, button) {
+    const resolvedLabel = cleanLabel(self.resolveSyncedButtonLabel(button), `Key ${button.index + 1}`);
+    return `${pageLabel(page)} / Key ${button.index + 1} - ${resolvedLabel}`;
+}
+function buildProfileButtonPreset(self, profile, page, button) {
     const baseBg = parseButtonBgColor(button.color);
-    const labelVar = `$(internal:btn_${slotIndex + 1}_label)`;
-    const fallbackLabel = (button.label || "").trim();
+    const label = self.resolveSyncedButtonLabel(button) || `Key ${button.index + 1}`;
     const style = {
-        text: labelVar,
-        textExpression: true,
+        text: label,
         size: "auto",
         color: deriveTextColor(baseBg),
         bgcolor: baseBg,
         show_topbar: false,
     };
+    const actionOptions = {
+        roleId: profile.roleId,
+        buttonIndex: button.index,
+        sourcePageNumber: page.page,
+    };
     return {
         type: "button",
-        category: "Kesher Synced Slots",
-        name: `Synced Slot ${slotIndex + 1}`,
+        category: rolePresetCategory(self, profile),
+        name: buttonPresetName(self, page, button),
         style,
-        previewStyle: {
-            ...style,
-            text: fallbackLabel,
-            textExpression: false,
-        },
-        feedbacks: [
-            {
-                feedbackId: "dynamic_button_image",
-                options: { slotIndex },
-            },
-            {
-                feedbackId: "synced_slot_style",
-                options: { slotIndex },
-            },
-        ],
+        previewStyle: style,
+        feedbacks: [],
         steps: [
             {
                 down: [
                     {
                         actionId: "trigger_synced_button",
-                        options: { buttonIndex: slotIndex, phase: "down" },
+                        options: { ...actionOptions, phase: "down" },
                     },
                 ],
                 up: [
                     {
                         actionId: "trigger_synced_button",
-                        options: { buttonIndex: slotIndex, phase: "up" },
+                        options: { ...actionOptions, phase: "up" },
                     },
                 ],
             },
@@ -81,49 +108,96 @@ function buildUniversalSyncedSlotPreset(self, slotIndex) {
         options: { stepAutoProgress: true },
     };
 }
-function buildDynamicImageReadyPreset(slotIndex) {
-    const style = {
-        text: `KESHER ${slotIndex + 1}`,
-        size: "auto",
-        color: combineRgb(255, 255, 255),
-        bgcolor: combineRgb(20, 20, 20),
-        show_topbar: false,
-    };
-    return {
-        type: "button",
-        category: "Kesher Dynamic Web-UI Image",
-        name: `Dynamic Image Slot ${slotIndex + 1}`,
-        style,
-        feedbacks: [
-            {
-                feedbackId: "dynamic_button_image",
-                options: { slotIndex },
-            },
-        ],
-        steps: [
-            {
-                down: [
-                    {
-                        actionId: "trigger_synced_button",
-                        options: { buttonIndex: slotIndex, phase: "down" },
-                    },
-                ],
-                up: [
-                    {
-                        actionId: "trigger_synced_button",
-                        options: { buttonIndex: slotIndex, phase: "up" },
-                    },
-                ],
-            },
-        ],
-        options: { stepAutoProgress: true },
-    };
+function sortedProfilePages(settings) {
+    return (settings?.pages || [])
+        .slice()
+        .sort((a, b) => a.page - b.page);
+}
+function configuredButtons(page) {
+    return (page.buttons || [])
+        .filter(buttonHasContent)
+        .slice()
+        .sort((a, b) => a.index - b.index);
+}
+function fallbackCurrentProfile(self) {
+    if (!self.profileStreamDeckSettings)
+        return [];
+    return [
+        {
+            roleId: self.discovery.roleId || self.config.roleId || "role",
+            roleName: self.discovery.roleName || "",
+            username: self.discovery.username || self.config.username || "Default profile",
+            profileVersion: self.profileVersion || 0,
+            profileUpdatedAt: self.discovery.profileUpdatedAt || 0,
+            streamDeckSettings: self.profileStreamDeckSettings,
+        },
+    ];
+}
+function sortedPresetProfiles(self) {
+    const profiles = self.presetProfiles.length > 0
+        ? self.presetProfiles
+        : fallbackCurrentProfile(self);
+    return profiles
+        .slice()
+        .sort((a, b) => {
+        const roleCmp = cleanLabel(a.roleName || a.roleId, "role").localeCompare(cleanLabel(b.roleName || b.roleId, "role"), undefined, { sensitivity: "base" });
+        if (roleCmp !== 0)
+            return roleCmp;
+        return cleanLabel(a.username, "profile").localeCompare(cleanLabel(b.username, "profile"), undefined, { sensitivity: "base" });
+    });
+}
+export function BuildPresetSignature(self) {
+    const compactProfiles = sortedPresetProfiles(self).map((profile) => ({
+        roleId: profile.roleId,
+        roleName: profile.roleName || "",
+        username: profile.username,
+        profileVersion: profile.profileVersion || 0,
+        profileUpdatedAt: profile.profileUpdatedAt || 0,
+        pages: sortedProfilePages(profile.streamDeckSettings).map((page) => ({
+            page: page.page,
+            title: page.title || "",
+            buttons: configuredButtons(page).map((button) => ({
+                index: button.index,
+                label: button.label || "",
+                color: button.color || "",
+                action: button.action || null,
+            })),
+        })),
+    }));
+    return JSON.stringify({
+        roleId: self.discovery.roleId || self.config.roleId || "",
+        roleName: self.discovery.roleName || "",
+        username: self.discovery.username || self.config.username || "",
+        profileVersion: self.profileVersion || 0,
+        profileUpdatedAt: self.discovery.profileUpdatedAt || 0,
+        profiles: compactProfiles,
+    });
 }
 export function UpdatePresets(self) {
     const presets = {};
-    for (let slotIndex = 0; slotIndex < 100; slotIndex += 1) {
-        presets[`synced_slot_${slotIndex}`] = buildUniversalSyncedSlotPreset(self, slotIndex);
-        presets[`image_ready_slot_${slotIndex}`] = buildDynamicImageReadyPreset(slotIndex);
+    let count = 0;
+    for (const profile of sortedPresetProfiles(self)) {
+        for (const page of sortedProfilePages(profile.streamDeckSettings)) {
+            for (const button of configuredButtons(page)) {
+                const presetID = [
+                    "profile",
+                    presetIdPart(profile.roleId || "role"),
+                    presetIdPart(profile.username || "profile"),
+                    `p${page.page}`,
+                    `k${button.index}`,
+                ].join("_");
+                presets[presetID] = buildProfileButtonPreset(self, profile, page, button);
+                count += 1;
+            }
+        }
+    }
+    if (count === 0) {
+        presets.profile_empty = {
+            type: "text",
+            category: rolePresetCategory(self),
+            name: "No published buttons",
+            text: "Publish a Kesher Stream Deck profile with configured buttons.",
+        };
     }
     self.setPresetDefinitions(presets);
 }

@@ -5,7 +5,7 @@ import type {
   RaspberryPiRemoteStationStatus,
 } from "../types";
 
-type LoginMode = "operator" | "raspberry";
+type LoginMode = "operator" | "raspberry" | "admin";
 
 type LoginViewProps = {
   publicData: PublicBootstrap;
@@ -16,6 +16,7 @@ type LoginViewProps = {
   onLogin: () => void;
   loginError?: string;
   adminPin: string;
+  initialMode?: LoginMode;
   onAdminPinChange: (value: string) => void;
   onAdminLogin: () => void;
   adminError?: string;
@@ -65,6 +66,7 @@ export function LoginView({
   onLogin,
   loginError,
   adminPin,
+  initialMode = "operator",
   onAdminPinChange,
   onAdminLogin,
   adminError,
@@ -76,8 +78,7 @@ export function LoginView({
   onRaspberryRemoteJoin,
 }: LoginViewProps) {
   const stripWhitespace = (value: string) => value.replace(/\s+/g, "");
-  const [showAdmin, setShowAdmin] = useState(false);
-  const [loginMode, setLoginMode] = useState<LoginMode>("operator");
+  const [loginMode, setLoginMode] = useState<LoginMode>(initialMode);
   const activeRoleIds = new Set(publicData.activeRoleIds);
   const availableRoles = publicData.roles.filter(
     (role) => !activeRoleIds.has(role.id),
@@ -121,6 +122,15 @@ export function LoginView({
             aria-selected={loginMode === "raspberry"}
           >
             Raspberry remote
+          </button>
+          <button
+            type="button"
+            className={loginMode === "admin" ? "is-active" : ""}
+            onClick={() => setLoginMode("admin")}
+            role="tab"
+            aria-selected={loginMode === "admin"}
+          >
+            Admin
           </button>
         </div>
 
@@ -215,7 +225,7 @@ export function LoginView({
               </div>
             ) : null}
           </div>
-        ) : (
+        ) : loginMode === "raspberry" ? (
           <div className="login-remote-panel">
             <div className="login-remote-stations" aria-label="Active Raspberry Pis">
               {remoteStations.length === 0 ? (
@@ -262,63 +272,41 @@ export function LoginView({
               )}
             </div>
           </div>
-        )}
-
-        <div className="login-admin-disclosure">
-          <button
-            type="button"
-            className="login-admin-disclosure-trigger"
-            onClick={() => setShowAdmin((value) => !value)}
-            aria-expanded={showAdmin}
-            aria-controls="login-admin-panel"
+        ) : (
+          <div
+            className="login-admin-card"
+            role="tabpanel"
             aria-label="Admin console"
           >
-            <span className="login-admin-disclosure-label">
-              <span>Admin console</span>
+            <div className="login-admin-head">
+              <h3>Admin console</h3>
               <span className="login-admin-pin-hint">PIN required</span>
-            </span>
-            <svg
-              className={`login-admin-chevron${showAdmin ? " is-open" : ""}`}
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path d="m9 18 6-6-6-6" />
-            </svg>
-          </button>
-
-          {showAdmin ? (
-            <div
-              id="login-admin-panel"
-              className="login-admin-card login-admin-disclosure-panel"
-              role="region"
-              aria-label="Admin console"
-            >
-              <p className="login-admin-note">
-                For role and channel configuration only.
-              </p>
-              <label>
-                <span className="login-label-text">Admin PIN</span>
-                <input
-                  type="password"
-                  value={adminPin}
-                  onChange={(e) => onAdminPinChange(e.target.value)}
-                  placeholder="PIN"
-                  autoComplete="off"
-                />
-              </label>
-              {adminError ? <p className="login-error">{adminError}</p> : null}
-              <div className="login-admin-actions">
-                <button
-                  className="primary"
-                  onClick={onAdminLogin}
-                  disabled={!adminPin.trim()}
-                >
-                  Open admin console
-                </button>
-              </div>
             </div>
-          ) : null}
-        </div>
+            <p className="login-admin-note">
+              For role and channel configuration only.
+            </p>
+            <label>
+              <span className="login-label-text">Admin PIN</span>
+              <input
+                type="password"
+                value={adminPin}
+                onChange={(e) => onAdminPinChange(e.target.value)}
+                placeholder="PIN"
+                autoComplete="off"
+              />
+            </label>
+            {adminError ? <p className="login-error">{adminError}</p> : null}
+            <div className="login-admin-actions">
+              <button
+                className="primary"
+                onClick={onAdminLogin}
+                disabled={!adminPin.trim()}
+              >
+                Open admin console
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

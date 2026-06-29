@@ -2718,6 +2718,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         }}
         onLogin={() => void handleOperatorLogin()}
         adminPin={adminPinInput}
+        initialMode={authMode === "admin" ? "admin" : "operator"}
         onAdminPinChange={setAdminPinInput}
         onAdminLogin={() => void handleAdminLogin()}
         loginError={operatorLoginError}
