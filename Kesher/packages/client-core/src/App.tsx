@@ -93,6 +93,18 @@ type ChannelAudioFeedRoomPayload = {
   receiverRoleIds: string[];
   forcedListenRoleIds: string[];
 };
+
+type RaspberryRemoteDashboardSession = {
+  deviceId: string;
+  stationName: string;
+  username: string;
+  userId: string;
+  roleId: string;
+  listenRoomIds: string[];
+  talkRoomIds: string[];
+  voiceMode: "always_on" | "ptt";
+};
+
 const streamDeckSelectListenHoldMs = 2000;
 
 function isAdminPathname(pathname: string): boolean {
@@ -107,6 +119,24 @@ function syncPathname(pathname: string, replace = false) {
     "",
     `${pathname}${window.location.search}${window.location.hash}`,
   );
+}
+
+function raspberryRemoteRoleId(station: RaspberryPiRemoteStationStatus): string {
+  return station.intercomRoleId || station.roleId;
+}
+
+function raspberryRemoteUsername(station: RaspberryPiRemoteStationStatus): string {
+  return station.intercomUsername || station.name;
+}
+
+function raspberryRemoteVoiceMode(
+  station: RaspberryPiRemoteStationStatus,
+): "always_on" | "ptt" {
+  return station.voiceMode === "always_on" ? "always_on" : "ptt";
+}
+
+function matrixAnchorRoomId(listenRoomIds: string[], talkRoomIds: string[]) {
+  return talkRoomIds[0] || listenRoomIds[0] || "";
 }
 
 function localDefaultStreamDeckSettings(): StreamDeckSettings {
@@ -272,6 +302,18 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     useState("");
   const [raspberryRemoteCommandError, setRaspberryRemoteCommandError] =
     useState("");
+  const [raspberryRemoteSession, setRaspberryRemoteSession] =
+    useState<RaspberryRemoteDashboardSession | null>(null);
+  const [raspberryRemotePttPressed, setRaspberryRemotePttPressed] =
+    useState(false);
+  const [
+    raspberryRemotePttPressedChannelId,
+    setRaspberryRemotePttPressedChannelId,
+  ] = useState<string | null>(null);
+  const [raspberryRemoteBroadcastPttPressed, setRaspberryRemoteBroadcastPttPressed] =
+    useState<string | null>(null);
+  const [raspberryRemoteDirectPttPressedUserId, setRaspberryRemoteDirectPttPressedUserId] =
+    useState<string | null>(null);
   const [pendingTakeover, setPendingTakeover] = useState<
     | {
         username: string;
@@ -700,9 +742,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
   const roleNameById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const role of appData?.roles || []) map.set(role.id, role.name);
+    for (const role of appData?.roles || publicData?.roles || []) {
+      map.set(role.id, role.name);
+    }
     return map;
-  }, [appData]);
+  }, [appData, publicData]);
 
   const streamDeckSettingsRef = useRef<StreamDeckSettings | null>(null);
   const tokenRef = useRef<string | null>(null);
@@ -730,6 +774,12 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
   useEffect(() => {
     tokenRef.current = token;
+  }, [token]);
+
+  useEffect(() => {
+    if (token) {
+      setRaspberryRemoteSession(null);
+    }
   }, [token]);
 
   useEffect(() => {
@@ -1420,6 +1470,34 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     };
   }, [token, publicData]);
 
+  useEffect(() => {
+    if (!raspberryRemoteSession || !raspberryRemoteStations) return;
+    const station = raspberryRemoteStations.find(
+      (entry) => entry.deviceId === raspberryRemoteSession.deviceId,
+    );
+    if (!station) return;
+    const roleId = raspberryRemoteRoleId(station);
+    setRaspberryRemoteSession((current) => {
+      if (!current || current.deviceId !== station.deviceId) return current;
+      return {
+        ...current,
+        stationName: station.name,
+        username: raspberryRemoteUsername(station),
+        userId: station.intercomUserId || current.userId,
+        roleId,
+        listenRoomIds:
+          station.listenRoomIds.length > 0
+            ? [...station.listenRoomIds]
+            : current.listenRoomIds,
+        talkRoomIds:
+          station.talkRoomIds.length > 0
+            ? [...station.talkRoomIds]
+            : current.talkRoomIds,
+        voiceMode: raspberryRemoteVoiceMode(station),
+      };
+    });
+  }, [raspberryRemoteSession?.deviceId, raspberryRemoteStations]);
+
   // ── Session persistence (all four fields together) ──
   useEffect(() => {
     localStorage.setItem(
@@ -1623,6 +1701,61 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     } finally {
       setRaspberryRemoteCommandBusy(false);
     }
+  }
+
+  function handleRaspberryRemoteJoin(station: RaspberryPiRemoteStationStatus) {
+    if (!publicData || !station.online || !station.intercomConnected) return;
+    const roleId = raspberryRemoteRoleId(station);
+    const defaults = defaultRoomMatrixForRole(
+      publicData.roles,
+      publicData.rooms,
+      roleId,
+    );
+    setRaspberryRemoteCommandStatus("");
+    setRaspberryRemoteCommandError("");
+    setRaspberryRemotePttPressed(false);
+    setRaspberryRemotePttPressedChannelId(null);
+    setRaspberryRemoteBroadcastPttPressed(null);
+    setRaspberryRemoteDirectPttPressedUserId(null);
+    setRaspberryRemoteSession({
+      deviceId: station.deviceId,
+      stationName: station.name,
+      username: raspberryRemoteUsername(station),
+      userId: station.intercomUserId || `raspberry:${station.deviceId}`,
+      roleId,
+      listenRoomIds:
+        station.listenRoomIds.length > 0
+          ? [...station.listenRoomIds]
+          : defaults.listenRoomIds,
+      talkRoomIds:
+        station.talkRoomIds.length > 0
+          ? [...station.talkRoomIds]
+          : defaults.talkRoomIds,
+      voiceMode: raspberryRemoteVoiceMode(station),
+    });
+  }
+
+  function handleRaspberryRemoteLeave() {
+    if (raspberryRemotePttPressed && raspberryRemoteSession) {
+      const targetId = matrixAnchorRoomId(
+        raspberryRemoteSession.listenRoomIds,
+        raspberryRemoteSession.talkRoomIds,
+      );
+      if (targetId) {
+        void handleRaspberryRemoteCommand({
+          deviceId: raspberryRemoteSession.deviceId,
+          command: "ptt",
+          scope: "room",
+          targetId,
+          state: "ptt_stop",
+        });
+      }
+    }
+    setRaspberryRemoteSession(null);
+    setRaspberryRemotePttPressed(false);
+    setRaspberryRemotePttPressedChannelId(null);
+    setRaspberryRemoteBroadcastPttPressed(null);
+    setRaspberryRemoteDirectPttPressedUserId(null);
   }
 
   async function handleConfirmTakeover() {
@@ -2226,6 +2359,330 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     );
   }
 
+  if (raspberryRemoteSession) {
+    const remoteStation = raspberryRemoteStations?.find(
+      (station) => station.deviceId === raspberryRemoteSession.deviceId,
+    );
+    const remoteConnected =
+      remoteStation?.online === true && remoteStation.intercomConnected === true;
+    const remoteConnectionState: "connecting" | "connected" | "reconnecting" | "offline" =
+      remoteConnected
+        ? "connected"
+        : remoteStation?.online
+          ? "connecting"
+          : "offline";
+    const remoteRoleName =
+      roleNameById.get(raspberryRemoteSession.roleId) ||
+      raspberryRemoteSession.roleId;
+    const remoteAppData: Bootstrap = {
+      ...publicData,
+      self: {
+        id: raspberryRemoteSession.userId,
+        username: raspberryRemoteSession.stationName,
+        roleId: raspberryRemoteSession.roleId,
+      },
+      users: [],
+    };
+    const remoteVisibleChannelAudioFeeds = settings.channelAudioFeeds.filter(
+      (feed) => feed.ownerRoleId === raspberryRemoteSession.roleId,
+    );
+    const sendRemoteDashboardCommand = (
+      command: Omit<RaspberryPiRemoteCommandRequest, "deviceId">,
+    ) => {
+      void handleRaspberryRemoteCommand({
+        deviceId: raspberryRemoteSession.deviceId,
+        ...command,
+      });
+    };
+    const setRemoteMatrix = (listenRoomIds: string[], talkRoomIds: string[]) => {
+      const nextListen = [...listenRoomIds];
+      const nextTalk = [...talkRoomIds];
+      setRaspberryRemoteSession((current) =>
+        current
+          ? {
+              ...current,
+              listenRoomIds: nextListen,
+              talkRoomIds: nextTalk,
+            }
+          : current,
+      );
+      sendRemoteDashboardCommand({
+        command: "set_room_matrix",
+        listenRoomIds: nextListen,
+        talkRoomIds: nextTalk,
+      });
+    };
+    const startRemoteRoomPtt = (roomId: string) => {
+      if (!roomId) return;
+      setRaspberryRemotePttPressed(true);
+      sendRemoteDashboardCommand({
+        command: "ptt",
+        scope: "room",
+        targetId: roomId,
+        state: "ptt_start",
+      });
+    };
+    const stopRemoteRoomPtt = (roomId: string) => {
+      if (!roomId) return;
+      setRaspberryRemotePttPressed(false);
+      sendRemoteDashboardCommand({
+        command: "ptt",
+        scope: "room",
+        targetId: roomId,
+        state: "ptt_stop",
+      });
+    };
+    const remoteChatAndSignalBlock = (
+      <ChatSignalPanel
+        message=""
+        onMessageChange={() => undefined}
+        onSendChat={() => undefined}
+        onAcknowledge={() => undefined}
+        showAckOption={publicData.ackEnabled}
+        chatMessages={[]}
+        listenRoomIds={raspberryRemoteSession.listenRoomIds}
+        rooms={publicData.rooms
+          .filter((room) =>
+            roleAllowed(room.senderRoleIds, raspberryRemoteSession.roleId),
+          )
+          .map((room) => ({ id: room.id, name: room.name }))}
+        roles={publicData.roles.map((role) => ({ id: role.id, name: role.name }))}
+        activeUsers={[]}
+      />
+    );
+
+    return (
+      <StationIntercomView
+        token=""
+        connectionState={remoteConnectionState}
+        lowPowerMode={lowPowerMode}
+        appData={remoteAppData}
+        doLogout={handleRaspberryRemoteLeave}
+        listenRoomIds={raspberryRemoteSession.listenRoomIds}
+        talkRoomIds={raspberryRemoteSession.talkRoomIds}
+        canRoleSendToRoom={(roomId, currentRoleId) => {
+          const room = publicData.rooms.find((r) => r.id === roomId);
+          return !!room && roleAllowed(room.senderRoleIds, currentRoleId);
+        }}
+        canRoleReceiveFromRoom={(roomId, currentRoleId) => {
+          const room = publicData.rooms.find((r) => r.id === roomId);
+          return !!room && roleAllowed(room.receiverRoleIds, currentRoleId);
+        }}
+        toggleTalkRoom={(roomId) => {
+          const nextTalk = raspberryRemoteSession.talkRoomIds.includes(roomId)
+            ? raspberryRemoteSession.talkRoomIds.filter((id) => id !== roomId)
+            : [...raspberryRemoteSession.talkRoomIds, roomId];
+          setRemoteMatrix(raspberryRemoteSession.listenRoomIds, nextTalk);
+        }}
+        toggleListenRoom={(roomId) => {
+          const nextListen = raspberryRemoteSession.listenRoomIds.includes(roomId)
+            ? raspberryRemoteSession.listenRoomIds.filter((id) => id !== roomId)
+            : [...raspberryRemoteSession.listenRoomIds, roomId];
+          setRemoteMatrix(nextListen, raspberryRemoteSession.talkRoomIds);
+        }}
+        roomLevelById={{}}
+        isReceivingRoom={() => false}
+        isReceivingBroadcast={() => false}
+        isReceivingDirect={() => false}
+        broadcastPttPressed={raspberryRemoteBroadcastPttPressed}
+        startBroadcastPtt={(groupId) => {
+          setRaspberryRemoteBroadcastPttPressed(groupId);
+          sendRemoteDashboardCommand({
+            command: "ptt",
+            scope: "broadcast",
+            targetId: groupId,
+            state: "ptt_start",
+          });
+        }}
+        stopBroadcastPtt={(groupId) => {
+          setRaspberryRemoteBroadcastPttPressed((current) =>
+            current === groupId ? null : current,
+          );
+          sendRemoteDashboardCommand({
+            command: "ptt",
+            scope: "broadcast",
+            targetId: groupId,
+            state: "ptt_stop",
+          });
+        }}
+        broadcastGroups={publicData.broadcastGroups}
+        presence={[]}
+        roomListenerCounts={{}}
+        roleNameById={roleNameById}
+        lastDirectCallerUserId={null}
+        directPttPressedUserId={raspberryRemoteDirectPttPressedUserId}
+        startDirectPtt={(userId) => {
+          setRaspberryRemoteDirectPttPressedUserId(userId);
+          sendRemoteDashboardCommand({
+            command: "ptt",
+            scope: "direct",
+            targetId: userId,
+            state: "ptt_start",
+          });
+        }}
+        stopDirectPtt={(userId) => {
+          setRaspberryRemoteDirectPttPressedUserId((current) =>
+            current === userId ? null : current,
+          );
+          sendRemoteDashboardCommand({
+            command: "ptt",
+            scope: "direct",
+            targetId: userId,
+            state: "ptt_stop",
+          });
+        }}
+        sendScopedSignal={(scopeValue, scopedTargetId, signal) =>
+          sendRemoteDashboardCommand({
+            command: "signal",
+            scope: scopeValue,
+            targetId: scopedTargetId,
+            signal,
+          })
+        }
+        pttPressed={raspberryRemotePttPressed}
+        startPtt={() =>
+          startRemoteRoomPtt(
+            matrixAnchorRoomId(
+              raspberryRemoteSession.listenRoomIds,
+              raspberryRemoteSession.talkRoomIds,
+            ),
+          )
+        }
+        stopPtt={() =>
+          stopRemoteRoomPtt(
+            matrixAnchorRoomId(
+              raspberryRemoteSession.listenRoomIds,
+              raspberryRemoteSession.talkRoomIds,
+            ),
+          )
+        }
+        voiceMode={raspberryRemoteSession.voiceMode}
+        setAlwaysOn={(enabled) => {
+          setRaspberryRemoteSession((current) =>
+            current
+              ? { ...current, voiceMode: enabled ? "always_on" : "ptt" }
+              : current,
+          );
+          sendRemoteDashboardCommand({
+            command: "set_voice_mode",
+            mode: enabled ? "always_on" : "ptt",
+          });
+        }}
+        lastCompanionCommand={
+          raspberryRemoteCommandStatus || raspberryRemoteCommandError
+            ? {
+                command: raspberryRemoteCommandStatus || "remote_command",
+                status: raspberryRemoteCommandError ? "failed" : "executed",
+                error: raspberryRemoteCommandError || undefined,
+                at: Date.now(),
+              }
+            : null
+        }
+        chatAndSignalPanel={remoteChatAndSignalBlock}
+        raspberryPiStations={null}
+        raspberryPiStationsError={raspberryRemoteError}
+        showDebug={showDebug}
+        realtimeDebugBlock={null}
+        enableDirectPpt={settings.enableDirectPpt}
+        onEnableDirectPptChange={settings.setEnableDirectPpt}
+        enableDirectTabs={settings.enableDirectTabs}
+        onEnableDirectTabsChange={settings.setEnableDirectTabs}
+        swapPttAndReplyButtons={settings.swapPttAndReplyButtons}
+        onSwapPttAndReplyButtonsChange={settings.setSwapPttAndReplyButtons}
+        enableBackgroundAudioRecovery={settings.enableBackgroundAudioRecovery}
+        onEnableBackgroundAudioRecoveryChange={
+          settings.setEnableBackgroundAudioRecovery
+        }
+        keepScreenAwake={settings.keepScreenAwake}
+        onKeepScreenAwakeChange={settings.setKeepScreenAwake}
+        showVolumeControls={settings.showVolumeControls}
+        onShowVolumeControlsChange={settings.setShowVolumeControls}
+        mediaSessionSupported={false}
+        wakeLockSupported={false}
+        wakeLockActive={false}
+        isStandaloneDisplayMode={false}
+        onChannelPptStart={(roomId) => {
+          setRaspberryRemotePttPressedChannelId(roomId);
+          startRemoteRoomPtt(roomId);
+        }}
+        onChannelPptStop={(roomId) => {
+          setRaspberryRemotePttPressedChannelId((current) =>
+            current === roomId ? null : current,
+          );
+          stopRemoteRoomPtt(roomId);
+        }}
+        pptPressedChannelId={raspberryRemotePttPressedChannelId}
+        pinnedRoomIds={settings.pinnedRoomIds}
+        pinnedUserIds={settings.pinnedUserIds}
+        showPinnedOnly={settings.showPinnedOnly}
+        onTogglePinnedUser={togglePinnedUser}
+        onShowPinnedOnlyChange={settings.setShowPinnedOnly}
+        isUserSettingsOpen={isUserSettingsOpen}
+        setIsUserSettingsOpen={setIsUserSettingsOpen}
+        roomGainById={settings.roomGainById}
+        directGainByUserId={settings.directGainByUserId}
+        onRoomGainChange={settings.onRoomGainChange}
+        onDirectGainChange={settings.onDirectGainChange}
+        keyboardShortcuts={settings.keyboardShortcuts}
+        onKeyboardShortcutsChange={settings.setKeyboardShortcuts}
+        onRecordingShortcutChange={setIsRecordingShortcut}
+        inputDevices={audioDevices.inputDevices}
+        selectedInputDeviceId={settings.selectedInputDeviceId}
+        selectedMicLabel={selectedMicLabel}
+        setSelectedInputDeviceId={settings.setSelectedInputDeviceId}
+        selectedInputChannel={selectedInputChannel}
+        inputChannelCount={selectedInputChannelCount}
+        onSelectedInputChannelChange={(channel) =>
+          settings.onInputChannelChange(settings.selectedInputDeviceId, channel)
+        }
+        inputLevelDbFs={0}
+        inputGain={selectedInputGain}
+        inputClipping={false}
+        isLocalMonitorActive={false}
+        onToggleLocalMonitor={() => undefined}
+        onInputGainChange={settings.onInputGainChange}
+        channelAudioFeeds={remoteVisibleChannelAudioFeeds}
+        channelAudioFeedStatuses={[]}
+        onCreateChannelAudioFeed={createLocalChannelAudioFeed}
+        onUpdateChannelAudioFeed={updateChannelAudioFeed}
+        onRemoveChannelAudioFeed={removeChannelAudioFeed}
+        onCreateChannelAudioFeedRoom={createChannelAudioFeedRoom}
+        onUpdateChannelAudioFeedRoom={updateChannelAudioFeedRoom}
+        audioGateEnabled={settings.audioGateEnabled}
+        onAudioGateEnabledChange={settings.setAudioGateEnabled}
+        audioGateThresholdDb={settings.audioGateThresholdDb}
+        onAudioGateThresholdDbChange={settings.setAudioGateThresholdDb}
+        outputDevices={audioDevices.outputDevices}
+        selectedOutputDeviceId={settings.selectedOutputDeviceId}
+        selectedOutputLabel={selectedOutputLabel}
+        outputSelectionSupported={outputSelectionSupported}
+        setSelectedOutputDeviceId={(id) => void changeOutputDevice(id)}
+        streamDeckSettings={streamDeckSettings ?? localDefaultStreamDeckSettings()}
+        streamDeckBusy={streamDeckBusy}
+        streamDeckError={streamDeckError}
+        onStreamDeckSettingsChange={handleStreamDeckSettingsChange}
+        onSaveStreamDeckSettings={handleSaveStreamDeckSettings}
+        onResetStreamDeckSettings={() => void handleResetStreamDeckSettings()}
+        onPublishCompanionProfile={handlePublishUserCompanionProfile}
+        streamDeckWebHidSupported={streamDeckWebHidSupported}
+        streamDeckWebHidActive={streamDeckWebHidActive}
+        streamDeckWebHidBusy={streamDeckWebHidBusy}
+        onConnectStreamDeckWebHid={() => void connectStreamDeckWebHid()}
+        onDisconnectStreamDeckWebHid={() =>
+          void disconnectStreamDeckWebHid({ announce: true })
+        }
+        streamDeckBridgeConnected={streamDeckConnected}
+        streamDeckBridgeLastEvent={streamDeckLastEvent}
+        onStreamDeckTestButtonEvent={handleStreamDeckTestButtonEvent}
+        remoteControl={{
+          stationName: raspberryRemoteSession.stationName,
+          roleName: remoteRoleName,
+          onLeave: handleRaspberryRemoteLeave,
+        }}
+      />
+    );
+  }
+
   if (!token) {
     return (
       <LoginView
@@ -2265,12 +2722,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         }}
         raspberryRemoteStations={raspberryRemoteStations}
         raspberryRemoteError={raspberryRemoteError}
-        raspberryRemoteCommandBusy={raspberryRemoteCommandBusy}
-        raspberryRemoteCommandStatus={raspberryRemoteCommandStatus}
-        raspberryRemoteCommandError={raspberryRemoteCommandError}
-        onRaspberryRemoteCommand={(command) =>
-          void handleRaspberryRemoteCommand(command)
-        }
+        onRaspberryRemoteJoin={handleRaspberryRemoteJoin}
       />
     );
   }

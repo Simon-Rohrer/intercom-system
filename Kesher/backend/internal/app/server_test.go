@@ -824,7 +824,7 @@ func attachTestHubClient(hub *Hub, session Session, user User) chan WSOutbound {
 	return priority
 }
 
-func TestServerHandleRaspberryPiRemoteStationsReturnsConnectedStations(t *testing.T) {
+func TestServerHandleRaspberryPiRemoteStationsReturnsAllKnownStations(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -874,11 +874,21 @@ func TestServerHandleRaspberryPiRemoteStationsReturnsConnectedStations(t *testin
 	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
 		t.Fatalf("Decode response failed: %v", err)
 	}
-	if len(response.Stations) != 1 {
-		t.Fatalf("expected one remote station, got %+v", response.Stations)
+	if len(response.Stations) != 2 {
+		t.Fatalf("expected two remote stations, got %+v", response.Stations)
 	}
-	if response.Stations[0].DeviceID != "pi-1" {
-		t.Fatalf("expected pi-1, got %s", response.Stations[0].DeviceID)
+	byID := make(map[string]RaspberryPiRemoteStationStatus, len(response.Stations))
+	for _, station := range response.Stations {
+		byID[station.DeviceID] = station
+	}
+	if !byID["pi-1"].IntercomConnected {
+		t.Fatalf("expected pi-1 to be joinable, got %+v", byID["pi-1"])
+	}
+	if _, ok := byID["pi-2"]; !ok {
+		t.Fatalf("expected pi-2 in response, got %+v", response.Stations)
+	}
+	if byID["pi-2"].IntercomConnected {
+		t.Fatalf("expected pi-2 to be listed but not joinable, got %+v", byID["pi-2"])
 	}
 }
 

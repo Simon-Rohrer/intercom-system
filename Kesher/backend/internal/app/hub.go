@@ -103,11 +103,14 @@ func (h *Hub) SignalStateWithMetadataForUsername(username string) (string, strin
 }
 
 type ActiveClient struct {
-	Username  string
-	RoleID    string
-	RoleName  string
-	UserID    string
-	VoiceMode string
+	Username    string
+	RoleID      string
+	RoleName    string
+	UserID      string
+	VoiceMode   string
+	ListenRooms []string
+	TalkRooms   []string
+	MicEnabled  bool
 }
 
 // GetActiveClients returns a list of currently connected clients with their basic info.
@@ -141,11 +144,14 @@ func (h *Hub) GetActiveClients(ctx context.Context) []ActiveClient {
 	for _, c := range clientMap {
 		roleName := roleMap[c.session.RoleID]
 		result = append(result, ActiveClient{
-			Username:  c.user.Username,
-			RoleID:    c.session.RoleID,
-			RoleName:  roleName,
-			UserID:    c.user.ID,
-			VoiceMode: c.voiceMode,
+			Username:    c.user.Username,
+			RoleID:      c.session.RoleID,
+			RoleName:    roleName,
+			UserID:      c.user.ID,
+			VoiceMode:   c.voiceMode,
+			ListenRooms: roomSetToSortedSlice(c.listenRooms),
+			TalkRooms:   roomSetToSortedSlice(c.talkRooms),
+			MicEnabled:  c.micEnabled,
 		})
 	}
 

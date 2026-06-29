@@ -301,11 +301,10 @@ html[data-kesher-low-power="true"] *::after {
   background: rgba(255, 255, 255, 0.025);
   color: var(--text);
   text-align: left;
-  cursor: pointer;
 }
-.login-remote-station.is-active {
+.login-remote-station.is-ready {
   border-color: rgba(24, 195, 255, 0.46);
-  background: rgba(24, 195, 255, 0.1);
+  background: rgba(24, 195, 255, 0.08);
 }
 .login-remote-station > span:first-child {
   display: grid;
@@ -319,13 +318,43 @@ html[data-kesher-low-power="true"] *::after {
   font-size: 0.82rem;
   font-weight: 700;
 }
+.login-remote-station-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex: 0 0 auto;
+}
 .login-remote-status {
   flex: 0 0 auto;
-  color: var(--color-success);
   font-size: 0.78rem;
   font-weight: 900;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+.login-remote-status.is-ready {
+  color: var(--color-success);
+}
+.login-remote-status.is-waiting {
+  color: var(--color-warning);
+}
+.login-remote-status.is-offline {
+  color: var(--text-muted);
+}
+.login-remote-join {
+  min-height: 38px;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid rgba(24, 195, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(24, 195, 255, 0.11);
+  color: var(--text);
+  font-weight: 900;
+  cursor: pointer;
+}
+.login-remote-join:disabled {
+  cursor: not-allowed;
+  border-color: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--btn-disabled-text);
 }
 .login-remote-control {
   display: grid;
@@ -438,6 +467,10 @@ html[data-kesher-low-power="true"] *::after {
   .login-remote-control-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+  .login-remote-station-actions,
+  .login-remote-join {
+    width: 100%;
   }
 }
 .variant-subtitle {
@@ -3179,6 +3212,20 @@ button.secondary {
 .station-live-dot.disconnected {
   background: var(--disconnected-bg);
   box-shadow: 0 0 10px rgba(220, 50, 50, 0.75);
+}
+.station-shell-remote .station-topbar {
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(24, 195, 255, 0.2);
+  border-radius: 10px;
+  background: rgba(12, 24, 39, 0.72);
+}
+.station-shell-remote .station-live-name {
+  color: var(--accent);
+}
+.station-shell-remote .station-top-logout {
+  background: rgba(24, 195, 255, 0.1);
+  border-color: rgba(24, 195, 255, 0.32);
+  color: var(--text);
 }
 
 /* ── Connection offline banner ── */

@@ -145,15 +145,20 @@ type RaspberryPiStationsResponse struct {
 }
 
 type RaspberryPiRemoteStationStatus struct {
-	DeviceID          string `json:"deviceId"`
-	Name              string `json:"name"`
-	RoleID            string `json:"roleId"`
-	Online            bool   `json:"online"`
-	IntercomConnected bool   `json:"intercomConnected"`
-	EffectiveStatus   string `json:"effectiveStatus"`
-	IntercomUsername  string `json:"intercomUsername,omitempty"`
-	IntercomRoleID    string `json:"intercomRoleId,omitempty"`
-	SecondsSinceSeen  int64  `json:"secondsSinceSeen"`
+	DeviceID          string   `json:"deviceId"`
+	Name              string   `json:"name"`
+	RoleID            string   `json:"roleId"`
+	Online            bool     `json:"online"`
+	IntercomConnected bool     `json:"intercomConnected"`
+	EffectiveStatus   string   `json:"effectiveStatus"`
+	IntercomUserID    string   `json:"intercomUserId,omitempty"`
+	IntercomUsername  string   `json:"intercomUsername,omitempty"`
+	IntercomRoleID    string   `json:"intercomRoleId,omitempty"`
+	ListenRoomIDs     []string `json:"listenRoomIds"`
+	TalkRoomIDs       []string `json:"talkRoomIds"`
+	VoiceMode         string   `json:"voiceMode,omitempty"`
+	MicEnabled        bool     `json:"micEnabled"`
+	SecondsSinceSeen  int64    `json:"secondsSinceSeen"`
 }
 
 type RaspberryPiRemoteStationsResponse struct {

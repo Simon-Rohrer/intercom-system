@@ -259,8 +259,13 @@ export type RaspberryPiStationStatus = {
   online: boolean;
   intercomConnected: boolean;
   effectiveStatus: string;
+  intercomUserId?: string;
   intercomUsername?: string;
   intercomRoleId?: string;
+  listenRoomIds: string[];
+  talkRoomIds: string[];
+  voiceMode?: "ptt" | "always_on" | string;
+  micEnabled: boolean;
   secondsSinceSeen: number;
 };
 
@@ -277,8 +282,13 @@ export type RaspberryPiRemoteStationStatus = {
   online: boolean;
   intercomConnected: boolean;
   effectiveStatus: string;
+  intercomUserId?: string;
   intercomUsername?: string;
   intercomRoleId?: string;
+  listenRoomIds: string[];
+  talkRoomIds: string[];
+  voiceMode?: "ptt" | "always_on" | string;
+  micEnabled: boolean;
   secondsSinceSeen: number;
 };
 

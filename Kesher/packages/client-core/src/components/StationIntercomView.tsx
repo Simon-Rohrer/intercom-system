@@ -1020,6 +1020,11 @@ type StationIntercomViewProps = {
     buttonIndex: number;
     state: "down" | "up";
   }) => void;
+  remoteControl?: {
+    stationName: string;
+    roleName: string;
+    onLeave: () => void;
+  };
 };
 
 export function StationIntercomView({
@@ -1138,6 +1143,7 @@ export function StationIntercomView({
   streamDeckBridgeLastEvent,
   lastCompanionCommand,
   onStreamDeckTestButtonEvent,
+  remoteControl,
 }: StationIntercomViewProps) {
   const [isMicMenuOpen, setIsMicMenuOpen] = useState(false);
   const [isOutputMenuOpen, setIsOutputMenuOpen] = useState(false);
@@ -2299,7 +2305,7 @@ export function StationIntercomView({
     <div
       className={`root app station-shell ${
         lowPowerMode && isUserSettingsOpen ? "settings-open-low-power" : ""
-      }`.trim()}
+      } ${remoteControl ? "station-shell-remote" : ""}`.trim()}
     >
       {connectionState !== "connected" && (
         <div className="connection-offline-banner">
@@ -2322,10 +2328,14 @@ export function StationIntercomView({
                   connectionState === "connected" ? "connected" : "disconnected"
                 }`}
               />
-              Live: {appData.self.username.toUpperCase()}
+              {remoteControl
+                ? `Raspberry Remote: ${remoteControl.stationName}`
+                : `Live: ${appData.self.username.toUpperCase()}`}
             </div>
             <div className="station-live-role">
-              {roleNameById.get(appData.self.roleId) || appData.self.roleId}
+              {remoteControl?.roleName ||
+                roleNameById.get(appData.self.roleId) ||
+                appData.self.roleId}
             </div>
           </div>
           {lowPowerMode ? (
@@ -2339,8 +2349,11 @@ export function StationIntercomView({
               <SettingsIcon name="settings" className="station-top-admin-icon" />
               <span>User settings</span>
             </button>
-            <button className="station-top-logout" onClick={doLogout}>
-              Logout / Lock
+            <button
+              className="station-top-logout"
+              onClick={remoteControl ? remoteControl.onLeave : doLogout}
+            >
+              {remoteControl ? "Leave remote" : "Logout / Lock"}
             </button>
           </div>
         </div>

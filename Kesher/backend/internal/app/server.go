@@ -3740,7 +3740,22 @@ func (s *Server) handleAdminRaspberryPis(w http.ResponseWriter, r *http.Request,
 	s.writeJSON(w, http.StatusOK, response)
 }
 
-func raspberryPiRemoteStationFromStatus(station RaspberryPiStationStatus) RaspberryPiRemoteStationStatus {
+func raspberryPiRemoteStationFromStatus(
+	station RaspberryPiStationStatus,
+	presence *PresenceState,
+) RaspberryPiRemoteStationStatus {
+	listenRoomIDs := []string{}
+	talkRoomIDs := []string{}
+	voiceMode := ""
+	micEnabled := false
+	intercomUserID := ""
+	if presence != nil {
+		intercomUserID = presence.UserID
+		listenRoomIDs = append([]string(nil), presence.ListenRooms...)
+		talkRoomIDs = append([]string(nil), presence.TalkRooms...)
+		voiceMode = presence.VoiceMode
+		micEnabled = presence.MicEnabled
+	}
 	return RaspberryPiRemoteStationStatus{
 		DeviceID:          station.DeviceID,
 		Name:              station.Name,
@@ -3748,8 +3763,13 @@ func raspberryPiRemoteStationFromStatus(station RaspberryPiStationStatus) Raspbe
 		Online:            station.Online,
 		IntercomConnected: station.IntercomConnected,
 		EffectiveStatus:   station.EffectiveStatus,
+		IntercomUserID:    intercomUserID,
 		IntercomUsername:  station.IntercomUsername,
 		IntercomRoleID:    station.IntercomRoleID,
+		ListenRoomIDs:     listenRoomIDs,
+		TalkRoomIDs:       talkRoomIDs,
+		VoiceMode:         voiceMode,
+		MicEnabled:        micEnabled,
 		SecondsSinceSeen:  station.SecondsSinceSeen,
 	}
 }
@@ -3761,10 +3781,16 @@ func (s *Server) buildRaspberryPiRemoteStationsResponse(ctx context.Context) (Ra
 	}
 	stations := make([]RaspberryPiRemoteStationStatus, 0, len(response.Stations))
 	for _, station := range response.Stations {
-		if !station.Online || !station.IntercomConnected {
-			continue
+		var presence *PresenceState
+		if s.hub != nil {
+			username, roleID := raspberryPiRemoteTargetLabel(station)
+			if username != "" && roleID != "" {
+				if nextPresence, ok := s.hub.PresenceForUsername(username); ok && nextPresence.RoleID == roleID {
+					presence = &nextPresence
+				}
+			}
 		}
-		stations = append(stations, raspberryPiRemoteStationFromStatus(station))
+		stations = append(stations, raspberryPiRemoteStationFromStatus(station, presence))
 	}
 	return RaspberryPiRemoteStationsResponse{
 		Stations:        stations,
