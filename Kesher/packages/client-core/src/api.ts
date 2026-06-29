@@ -654,7 +654,55 @@ export async function getRaspberryPiStationStatuses(
 export async function getRaspberryPiRemoteStations(): Promise<RaspberryPiRemoteStationsResponse> {
   const res = await fetch(apiUrl("/api/raspberry-pis/remote"));
   if (!res.ok) throw new Error("failed to load Raspberry Pi remote stations");
-  return res.json() as Promise<RaspberryPiRemoteStationsResponse>;
+  const raw = (await res.json()) as Record<string, unknown>;
+  const stations = Array.isArray(raw.stations) ? raw.stations : [];
+  return {
+    stations: stations.map((station) => {
+      const entry = (station ?? {}) as Record<string, unknown>;
+      return {
+        deviceId: typeof entry.deviceId === "string" ? entry.deviceId : "",
+        name: typeof entry.name === "string" ? entry.name : "",
+        roleId: typeof entry.roleId === "string" ? entry.roleId : "",
+        online: entry.online === true,
+        intercomConnected: entry.intercomConnected === true,
+        effectiveStatus:
+          typeof entry.effectiveStatus === "string"
+            ? entry.effectiveStatus
+            : "",
+        intercomUserId:
+          typeof entry.intercomUserId === "string"
+            ? entry.intercomUserId
+            : undefined,
+        intercomUsername:
+          typeof entry.intercomUsername === "string"
+            ? entry.intercomUsername
+            : undefined,
+        intercomRoleId:
+          typeof entry.intercomRoleId === "string"
+            ? entry.intercomRoleId
+            : undefined,
+        listenRoomIds: toStringArray(entry.listenRoomIds),
+        talkRoomIds: toStringArray(entry.talkRoomIds),
+        voiceMode:
+          typeof entry.voiceMode === "string" ? entry.voiceMode : undefined,
+        micEnabled: entry.micEnabled === true,
+        secondsSinceSeen:
+          typeof entry.secondsSinceSeen === "number" &&
+          Number.isFinite(entry.secondsSinceSeen)
+            ? entry.secondsSinceSeen
+            : 0,
+      };
+    }),
+    timestampUnixMs:
+      typeof raw.timestampUnixMs === "number" &&
+      Number.isFinite(raw.timestampUnixMs)
+        ? raw.timestampUnixMs
+        : Date.now(),
+    offlineAfterMs:
+      typeof raw.offlineAfterMs === "number" && Number.isFinite(raw.offlineAfterMs)
+        ? raw.offlineAfterMs
+        : 0,
+  };
 }
 
 export async function sendRaspberryPiRemoteCommand(

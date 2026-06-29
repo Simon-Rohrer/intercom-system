@@ -135,6 +135,12 @@ function raspberryRemoteVoiceMode(
   return station.voiceMode === "always_on" ? "always_on" : "ptt";
 }
 
+function raspberryRemoteRoomIds(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
 function matrixAnchorRoomId(listenRoomIds: string[], talkRoomIds: string[]) {
   return talkRoomIds[0] || listenRoomIds[0] || "";
 }
@@ -1477,6 +1483,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     );
     if (!station) return;
     const roleId = raspberryRemoteRoleId(station);
+    const stationListenRoomIds = raspberryRemoteRoomIds(station.listenRoomIds);
+    const stationTalkRoomIds = raspberryRemoteRoomIds(station.talkRoomIds);
     setRaspberryRemoteSession((current) => {
       if (!current || current.deviceId !== station.deviceId) return current;
       return {
@@ -1486,12 +1494,12 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         userId: station.intercomUserId || current.userId,
         roleId,
         listenRoomIds:
-          station.listenRoomIds.length > 0
-            ? [...station.listenRoomIds]
+          stationListenRoomIds.length > 0
+            ? stationListenRoomIds
             : current.listenRoomIds,
         talkRoomIds:
-          station.talkRoomIds.length > 0
-            ? [...station.talkRoomIds]
+          stationTalkRoomIds.length > 0
+            ? stationTalkRoomIds
             : current.talkRoomIds,
         voiceMode: raspberryRemoteVoiceMode(station),
       };
@@ -1711,6 +1719,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       publicData.rooms,
       roleId,
     );
+    const stationListenRoomIds = raspberryRemoteRoomIds(station.listenRoomIds);
+    const stationTalkRoomIds = raspberryRemoteRoomIds(station.talkRoomIds);
     setRaspberryRemoteCommandStatus("");
     setRaspberryRemoteCommandError("");
     setRaspberryRemotePttPressed(false);
@@ -1724,12 +1734,12 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       userId: station.intercomUserId || `raspberry:${station.deviceId}`,
       roleId,
       listenRoomIds:
-        station.listenRoomIds.length > 0
-          ? [...station.listenRoomIds]
+        stationListenRoomIds.length > 0
+          ? stationListenRoomIds
           : defaults.listenRoomIds,
       talkRoomIds:
-        station.talkRoomIds.length > 0
-          ? [...station.talkRoomIds]
+        stationTalkRoomIds.length > 0
+          ? stationTalkRoomIds
           : defaults.talkRoomIds,
       voiceMode: raspberryRemoteVoiceMode(station),
     });
