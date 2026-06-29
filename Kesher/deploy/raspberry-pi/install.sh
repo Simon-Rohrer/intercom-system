@@ -63,7 +63,10 @@ sed \
 systemctl daemon-reload
 systemctl enable kesher-pi.service
 
+INSTALLED_VERSION="$(python3 /opt/kesher-pi/kesher-pi-launcher.py --version)"
 echo "Installation complete."
+echo "Installed launcher version: ${INSTALLED_VERSION}"
 echo "1. Edit /etc/kesher/raspberry-pis.json"
 echo "2. Test with: sudo -u ${TARGET_USER} KESHER_PI_IP=<PI-IP> /opt/kesher-pi/kesher-pi-launcher.py --print-url"
-echo "3. Start with: sudo systemctl start kesher-pi.service"
+echo "3. Check heartbeat payload with: sudo -u ${TARGET_USER} /opt/kesher-pi/kesher-pi-launcher.py --print-heartbeat"
+echo "4. Start with: sudo systemctl start kesher-pi.service"

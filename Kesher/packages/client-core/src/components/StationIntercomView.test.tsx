@@ -768,9 +768,54 @@ describe("StationIntercomView", () => {
       screen.getByRole("button", { name: "Publish to Companion" }),
     );
 
+    const dialog = screen.getByRole("dialog", {
+      name: "Publish this Stream Deck profile?",
+    });
+    expect(dialog).toHaveTextContent("Buttons / Presets / kesher");
+    expect(dialog).toHaveTextContent("Kesher / Operator / tim");
+    expect(onPublishCompanionProfile).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole("button", { name: "Publish now" }));
+
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Companion profile published as v12 for role audio.",
     );
+  });
+
+  it("cancels companion stream deck publishing before the API call", async () => {
+    const user = userEvent.setup();
+    const onPublishCompanionProfile = vi.fn().mockResolvedValue({
+      profileVersion: 12,
+      roleId: "audio",
+      username: "tim",
+    });
+    render(
+      <StationIntercomView
+        {...baseProps}
+        isUserSettingsOpen
+        onPublishCompanionProfile={onPublishCompanionProfile}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
+    await user.click(
+      screen.getByRole("button", { name: "Publish to Companion" }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "Publish this Stream Deck profile?",
+    });
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: "Cancel",
+      }),
+    );
+
+    expect(
+      screen.queryByRole("dialog", {
+        name: "Publish this Stream Deck profile?",
+      }),
+    ).toBeNull();
+    expect(onPublishCompanionProfile).not.toHaveBeenCalled();
   });
 
   it("exports stream deck settings as a JSON file", async () => {

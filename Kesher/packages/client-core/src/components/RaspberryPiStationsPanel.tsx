@@ -52,6 +52,15 @@ function stationDetailLabel(station: RaspberryPiStationStatus): string {
   return details.join(" | ");
 }
 
+function launcherVersionLabel(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const normalized = trimmed
+    .replace(/^kesher-pi-launcher\//i, "v")
+    .replace(/^v?(\d+)$/i, "v$1");
+  return `Launcher ${normalized}`;
+}
+
 type StatusTone = "ok" | "wait" | "warn";
 
 function stationStatusTone(station: RaspberryPiStationStatus): StatusTone {
@@ -159,6 +168,7 @@ export function RaspberryPiStationsPanel({
       {stations && stations.length > 0 ? (
         stations.map((station) => {
           const tone = stationStatusTone(station);
+          const launcherLabel = launcherVersionLabel(station.launcherVersion);
           return (
             <div
               className={`admin-pi-station ${statusToneClass(tone)}`}
@@ -185,6 +195,7 @@ export function RaspberryPiStationsPanel({
                   {station.ipAddress || station.deviceId}
                 </span>
                 {station.lowPowerMode ? <span>Low power</span> : null}
+                {launcherLabel ? <span>{launcherLabel}</span> : null}
                 <span>
                   Seen {formatSecondsSinceSeen(station.secondsSinceSeen)}
                 </span>

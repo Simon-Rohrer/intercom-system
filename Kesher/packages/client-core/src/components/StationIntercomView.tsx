@@ -1165,6 +1165,8 @@ export function StationIntercomView({
   const [streamDeckTransferError, setStreamDeckTransferError] = useState("");
   const [streamDeckSaveBusy, setStreamDeckSaveBusy] = useState(false);
   const [companionPublishBusy, setCompanionPublishBusy] = useState(false);
+  const [isCompanionPublishConfirmOpen, setIsCompanionPublishConfirmOpen] =
+    useState(false);
   const [activeSettingsPage, setActiveSettingsPage] =
     useState<SettingsPageId>("layout");
   const [streamDeckPreviewPressedIndexes, setStreamDeckPreviewPressedIndexes] =
@@ -1601,6 +1603,15 @@ export function StationIntercomView({
           message: streamDeckTransferMessage,
         }
       : null;
+  const companionPublishUsername =
+    appData.self.username.trim() || "Default profile";
+  const companionPublishRoleName =
+    roleNameById.get(appData.self.roleId) ||
+    appData.roles.find((role) => role.id === appData.self.roleId)?.name ||
+    appData.self.roleId ||
+    "Unassigned role";
+  const companionPublishPresetPath =
+    `Kesher / ${companionPublishRoleName} / ${companionPublishUsername}`;
 
   const streamDeckLabelLookup = useMemo(
     () => ({
@@ -2236,6 +2247,20 @@ export function StationIntercomView({
     } finally {
       setCompanionPublishBusy(false);
     }
+  };
+
+  const openCompanionPublishConfirm = () => {
+    if (!streamDeckSettings || streamDeckBusy || companionPublishBusy) {
+      return;
+    }
+    setStreamDeckTransferMessage("");
+    setStreamDeckTransferError("");
+    setIsCompanionPublishConfirmOpen(true);
+  };
+
+  const confirmCompanionPublish = async () => {
+    setIsCompanionPublishConfirmOpen(false);
+    await publishCompanionProfile();
   };
 
   const replyTarget =
@@ -3201,34 +3226,6 @@ export function StationIntercomView({
                           </button>
                           <button
                             type="button"
-                            className="shortcut-btn shortcut-btn-primary"
-                            onClick={() => void saveStreamDeckSettings()}
-                            disabled={
-                              streamDeckBusy ||
-                              streamDeckSaveBusy ||
-                              !streamDeckSettings
-                            }
-                          >
-                            <StreamDeckUiIcon name="save" />
-                            {streamDeckSaveBusy || streamDeckBusy ? "Saving..." : "Save"}
-                          </button>
-                          <button
-                            type="button"
-                            className="shortcut-btn"
-                            onClick={() => void publishCompanionProfile()}
-                            disabled={
-                              streamDeckBusy ||
-                              companionPublishBusy ||
-                              !streamDeckSettings
-                            }
-                          >
-                            <StreamDeckUiIcon name="send" />
-                            {companionPublishBusy
-                              ? "Publishing..."
-                              : "Publish to Companion"}
-                          </button>
-                          <button
-                            type="button"
                             className="shortcut-btn shortcut-btn-clear"
                             onClick={onResetStreamDeckSettings}
                             disabled={streamDeckBusy || !streamDeckSettings}
@@ -3809,12 +3806,97 @@ export function StationIntercomView({
                         ) : null}
                           </div>
                         </div>
+                        <div className="streamdeck-bottom-actions">
+                          <button
+                            type="button"
+                            className="shortcut-btn"
+                            onClick={openCompanionPublishConfirm}
+                            disabled={
+                              streamDeckBusy ||
+                              companionPublishBusy ||
+                              !streamDeckSettings
+                            }
+                          >
+                            <StreamDeckUiIcon name="send" />
+                            {companionPublishBusy
+                              ? "Publishing..."
+                              : "Publish to Companion"}
+                          </button>
+                          <button
+                            type="button"
+                            className="shortcut-btn shortcut-btn-primary"
+                            onClick={() => void saveStreamDeckSettings()}
+                            disabled={
+                              streamDeckBusy ||
+                              streamDeckSaveBusy ||
+                              !streamDeckSettings
+                            }
+                          >
+                            <StreamDeckUiIcon name="save" />
+                            {streamDeckSaveBusy || streamDeckBusy ? "Saving..." : "Save"}
+                          </button>
+                        </div>
                         </fieldset>
                       </div>
                     )}
                     </div>
                   ) : null}
                 </div>
+                {isCompanionPublishConfirmOpen ? (
+                  <div
+                    className="streamdeck-confirm-backdrop"
+                    role="presentation"
+                    onMouseDown={(event) => {
+                      if (event.target === event.currentTarget) {
+                        setIsCompanionPublishConfirmOpen(false);
+                      }
+                    }}
+                  >
+                    <div
+                      className="streamdeck-confirm-dialog"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="streamdeck-companion-confirm-title"
+                    >
+                      <div className="streamdeck-confirm-icon">
+                        <StreamDeckUiIcon name="warning" />
+                      </div>
+                      <div className="streamdeck-confirm-content">
+                        <span className="streamdeck-confirm-eyebrow">
+                          Companion publish
+                        </span>
+                        <h4 id="streamdeck-companion-confirm-title">
+                          Publish this Stream Deck profile?
+                        </h4>
+                        <p>
+                          Kesher will save the current layout and publish it to
+                          Companion. You will find it in Companion under{" "}
+                          <strong>Buttons / Presets / kesher</strong> as{" "}
+                          <strong>{companionPublishPresetPath}</strong>,
+                          grouped by page.
+                        </p>
+                        <div className="streamdeck-confirm-actions">
+                          <button
+                            type="button"
+                            className="shortcut-btn shortcut-btn-clear"
+                            onClick={() => setIsCompanionPublishConfirmOpen(false)}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            className="shortcut-btn shortcut-btn-primary"
+                            onClick={() => void confirmCompanionPublish()}
+                            disabled={companionPublishBusy || streamDeckBusy}
+                          >
+                            <StreamDeckUiIcon name="send" />
+                            Publish now
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </section>
                 ) : null}
 

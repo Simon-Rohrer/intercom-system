@@ -31,6 +31,7 @@ describe("RaspberryPiStationsPanel", () => {
     expect(screen.getByText("Kamera-1")).toBeInTheDocument();
     expect(screen.getByText("192.168.0.61")).toBeInTheDocument();
     expect(screen.getByText("Low power")).toBeInTheDocument();
+    expect(screen.getByText("Launcher v1")).toBeInTheDocument();
     expect(screen.getByText("Browser")).toBeInTheDocument();
     expect(screen.getByText("running")).toBeInTheDocument();
     expect(screen.getByText("CPU")).toBeInTheDocument();

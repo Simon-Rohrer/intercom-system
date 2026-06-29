@@ -85,6 +85,22 @@ class LauncherTests(unittest.TestCase):
         self.assertTrue(payload["lowPowerMode"])
         self.assertEqual(payload["browserStatus"], "running")
 
+    def test_builds_heartbeat_payload_with_system_metrics(self):
+        client = launcher.resolve_client(self.config, ["192.168.1.51"])
+        payload = launcher.heartbeat_payload(
+            client,
+            "running",
+            "waiting_for_intercom",
+            metrics={
+                "cpuPercent": 12.4,
+                "memoryPercent": 48.8,
+                "temperatureC": 53.0,
+            },
+        )
+        self.assertEqual(payload["cpuPercent"], 12.4)
+        self.assertEqual(payload["memoryPercent"], 48.8)
+        self.assertEqual(payload["temperatureC"], 53.0)
+
     def test_heartbeat_targets_configured_server_url(self):
         self.assertEqual(
             launcher.heartbeat_endpoint_url(self.config),

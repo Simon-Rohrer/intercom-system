@@ -274,6 +274,17 @@ def heartbeat_payload(
     return payload
 
 
+def diagnostic_heartbeat_payload(client: dict[str, Any]) -> dict[str, Any]:
+    sampler = SystemMetricsSampler()
+    time.sleep(1)
+    return heartbeat_payload(
+        client,
+        "diagnostic",
+        "diagnostic",
+        metrics=sampler.sample(),
+    )
+
+
 def heartbeat_endpoint_url(config: dict[str, Any]) -> str:
     return f'{config["server_url"]}/api/raspberry-pi/heartbeat'
 
@@ -444,15 +455,29 @@ def main() -> int:
         type=Path,
         default=Path("/etc/kesher/raspberry-pis.json"),
     )
+    parser.add_argument("--version", action="store_true")
     parser.add_argument("--print-url", action="store_true")
+    parser.add_argument("--print-heartbeat", action="store_true")
     args = parser.parse_args()
     try:
+        if args.version:
+            print(LAUNCHER_VERSION)
+            return 0
         config = load_config(args.config)
         addresses = detect_ipv4_addresses()
         client = resolve_client(config, addresses)
         kesher_url = build_kesher_url(config["server_url"], client)
         if args.print_url:
             print(kesher_url)
+            return 0
+        if args.print_heartbeat:
+            print(
+                json.dumps(
+                    diagnostic_heartbeat_payload(client),
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
             return 0
         heartbeat_state = {
             "browser_status": "not_started",

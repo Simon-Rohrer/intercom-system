@@ -58,18 +58,46 @@ function pageLabel(page) {
     const title = singleLine(page.title || "");
     return title ? `Page ${page.page + 1} / ${title}` : `Page ${page.page + 1}`;
 }
+function profilePagePresetCategory(self, profile, page) {
+    return `${rolePresetCategory(self, profile)} / ${pageLabel(page)}`;
+}
+function gridColumnCount(settings) {
+    const columns = Math.trunc(Number(settings.gridColumns || 5));
+    return Number.isFinite(columns) && columns > 0 ? Math.min(columns, 20) : 5;
+}
+function gridButtonCount(settings) {
+    const rows = Math.trunc(Number(settings.gridRows || 3));
+    const rowCount = Number.isFinite(rows) && rows > 0 ? Math.min(rows, 20) : 3;
+    const count = gridColumnCount(settings) * rowCount;
+    return Number.isFinite(count) && count > 0 ? Math.min(count, 100) : 15;
+}
 function buttonHasContent(button) {
     const actionType = String(button.action?.type || "none").trim();
     return ((actionType !== "" && actionType !== "none") ||
         singleLine(button.label || "") !== "");
 }
-function buttonPresetName(self, page, button) {
+function buttonPresetName(self, button) {
+    if (!buttonHasContent(button)) {
+        return `Key ${button.index + 1} - Empty`;
+    }
     const resolvedLabel = cleanLabel(self.resolveSyncedButtonLabel(button), `Key ${button.index + 1}`);
-    return `${pageLabel(page)} / Key ${button.index + 1} - ${resolvedLabel}`;
+    return `Key ${button.index + 1} - ${resolvedLabel}`;
+}
+function pageButtonsInGrid(settings, page) {
+    const byIndex = new Map();
+    for (const button of page.buttons || []) {
+        if (!Number.isInteger(button.index) || button.index < 0)
+            continue;
+        byIndex.set(button.index, button);
+    }
+    return Array.from({ length: gridButtonCount(settings) }, (_, index) => (byIndex.get(index) || { index }));
 }
 function buildProfileButtonPreset(self, profile, page, button) {
+    const hasContent = buttonHasContent(button);
     const baseBg = parseButtonBgColor(button.color);
-    const label = self.resolveSyncedButtonLabel(button) || `Key ${button.index + 1}`;
+    const label = hasContent
+        ? self.resolveSyncedButtonLabel(button) || `Key ${button.index + 1}`
+        : "";
     const style = {
         text: label,
         size: "auto",
@@ -84,27 +112,29 @@ function buildProfileButtonPreset(self, profile, page, button) {
     };
     return {
         type: "button",
-        category: rolePresetCategory(self, profile),
-        name: buttonPresetName(self, page, button),
+        category: profilePagePresetCategory(self, profile, page),
+        name: buttonPresetName(self, button),
         style,
         previewStyle: style,
         feedbacks: [],
-        steps: [
-            {
-                down: [
-                    {
-                        actionId: "trigger_synced_button",
-                        options: { ...actionOptions, phase: "down" },
-                    },
-                ],
-                up: [
-                    {
-                        actionId: "trigger_synced_button",
-                        options: { ...actionOptions, phase: "up" },
-                    },
-                ],
-            },
-        ],
+        steps: hasContent
+            ? [
+                {
+                    down: [
+                        {
+                            actionId: "trigger_synced_button",
+                            options: { ...actionOptions, phase: "down" },
+                        },
+                    ],
+                    up: [
+                        {
+                            actionId: "trigger_synced_button",
+                            options: { ...actionOptions, phase: "up" },
+                        },
+                    ],
+                },
+            ]
+            : [{ down: [], up: [] }],
         options: { stepAutoProgress: true },
     };
 }
@@ -112,12 +142,6 @@ function sortedProfilePages(settings) {
     return (settings?.pages || [])
         .slice()
         .sort((a, b) => a.page - b.page);
-}
-function configuredButtons(page) {
-    return (page.buttons || [])
-        .filter(buttonHasContent)
-        .slice()
-        .sort((a, b) => a.index - b.index);
 }
 function fallbackCurrentProfile(self) {
     if (!self.profileStreamDeckSettings)
@@ -153,10 +177,12 @@ export function BuildPresetSignature(self) {
         username: profile.username,
         profileVersion: profile.profileVersion || 0,
         profileUpdatedAt: profile.profileUpdatedAt || 0,
+        gridColumns: profile.streamDeckSettings.gridColumns,
+        gridRows: profile.streamDeckSettings.gridRows,
         pages: sortedProfilePages(profile.streamDeckSettings).map((page) => ({
             page: page.page,
             title: page.title || "",
-            buttons: configuredButtons(page).map((button) => ({
+            buttons: pageButtonsInGrid(profile.streamDeckSettings, page).map((button) => ({
                 index: button.index,
                 label: button.label || "",
                 color: button.color || "",
@@ -178,7 +204,7 @@ export function UpdatePresets(self) {
     let count = 0;
     for (const profile of sortedPresetProfiles(self)) {
         for (const page of sortedProfilePages(profile.streamDeckSettings)) {
-            for (const button of configuredButtons(page)) {
+            for (const button of pageButtonsInGrid(profile.streamDeckSettings, page)) {
                 const presetID = [
                     "profile",
                     presetIdPart(profile.roleId || "role"),

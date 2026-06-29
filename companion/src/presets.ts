@@ -88,6 +88,26 @@ function pageLabel(page: StreamDeckPageConfig): string {
   return title ? `Page ${page.page + 1} / ${title}` : `Page ${page.page + 1}`;
 }
 
+function profilePagePresetCategory(
+  self: ModuleInstance,
+  profile: CompanionPresetProfile,
+  page: StreamDeckPageConfig,
+): string {
+  return `${rolePresetCategory(self, profile)} / ${pageLabel(page)}`;
+}
+
+function gridColumnCount(settings: StreamDeckSettings): number {
+  const columns = Math.trunc(Number(settings.gridColumns || 5));
+  return Number.isFinite(columns) && columns > 0 ? Math.min(columns, 20) : 5;
+}
+
+function gridButtonCount(settings: StreamDeckSettings): number {
+  const rows = Math.trunc(Number(settings.gridRows || 3));
+  const rowCount = Number.isFinite(rows) && rows > 0 ? Math.min(rows, 20) : 3;
+  const count = gridColumnCount(settings) * rowCount;
+  return Number.isFinite(count) && count > 0 ? Math.min(count, 100) : 15;
+}
+
 function buttonHasContent(button: StreamDeckButtonConfig): boolean {
   const actionType = String(button.action?.type || "none").trim();
   return (
@@ -98,14 +118,31 @@ function buttonHasContent(button: StreamDeckButtonConfig): boolean {
 
 function buttonPresetName(
   self: ModuleInstance,
-  page: StreamDeckPageConfig,
   button: StreamDeckButtonConfig,
 ): string {
+  if (!buttonHasContent(button)) {
+    return `Key ${button.index + 1} - Empty`;
+  }
   const resolvedLabel = cleanLabel(
     self.resolveSyncedButtonLabel(button),
     `Key ${button.index + 1}`,
   );
-  return `${pageLabel(page)} / Key ${button.index + 1} - ${resolvedLabel}`;
+  return `Key ${button.index + 1} - ${resolvedLabel}`;
+}
+
+function pageButtonsInGrid(
+  settings: StreamDeckSettings,
+  page: StreamDeckPageConfig,
+): StreamDeckButtonConfig[] {
+  const byIndex = new Map<number, StreamDeckButtonConfig>();
+  for (const button of page.buttons || []) {
+    if (!Number.isInteger(button.index) || button.index < 0) continue;
+    byIndex.set(button.index, button);
+  }
+
+  return Array.from({ length: gridButtonCount(settings) }, (_, index) => (
+    byIndex.get(index) || { index }
+  ));
 }
 
 function buildProfileButtonPreset(
@@ -114,8 +151,11 @@ function buildProfileButtonPreset(
   page: StreamDeckPageConfig,
   button: StreamDeckButtonConfig,
 ) {
+  const hasContent = buttonHasContent(button);
   const baseBg = parseButtonBgColor(button.color);
-  const label = self.resolveSyncedButtonLabel(button) || `Key ${button.index + 1}`;
+  const label = hasContent
+    ? self.resolveSyncedButtonLabel(button) || `Key ${button.index + 1}`
+    : "";
   const style = {
     text: label,
     size: "auto" as const,
@@ -131,27 +171,29 @@ function buildProfileButtonPreset(
 
   return {
     type: "button" as const,
-    category: rolePresetCategory(self, profile),
-    name: buttonPresetName(self, page, button),
+    category: profilePagePresetCategory(self, profile, page),
+    name: buttonPresetName(self, button),
     style,
     previewStyle: style,
     feedbacks: [],
-    steps: [
-      {
-        down: [
+    steps: hasContent
+      ? [
           {
-            actionId: "trigger_synced_button",
-            options: { ...actionOptions, phase: "down" },
+            down: [
+              {
+                actionId: "trigger_synced_button",
+                options: { ...actionOptions, phase: "down" },
+              },
+            ],
+            up: [
+              {
+                actionId: "trigger_synced_button",
+                options: { ...actionOptions, phase: "up" },
+              },
+            ],
           },
-        ],
-        up: [
-          {
-            actionId: "trigger_synced_button",
-            options: { ...actionOptions, phase: "up" },
-          },
-        ],
-      },
-    ] as CompanionButtonStepActions[],
+        ] as CompanionButtonStepActions[]
+      : [{ down: [], up: [] }] as CompanionButtonStepActions[],
     options: { stepAutoProgress: true },
   };
 }
@@ -160,13 +202,6 @@ function sortedProfilePages(settings: StreamDeckSettings | null): StreamDeckPage
   return (settings?.pages || [])
     .slice()
     .sort((a, b) => a.page - b.page);
-}
-
-function configuredButtons(page: StreamDeckPageConfig): StreamDeckButtonConfig[] {
-  return (page.buttons || [])
-    .filter(buttonHasContent)
-    .slice()
-    .sort((a, b) => a.index - b.index);
 }
 
 function fallbackCurrentProfile(self: ModuleInstance): CompanionPresetProfile[] {
@@ -211,10 +246,12 @@ export function BuildPresetSignature(self: ModuleInstance): string {
     username: profile.username,
     profileVersion: profile.profileVersion || 0,
     profileUpdatedAt: profile.profileUpdatedAt || 0,
+    gridColumns: profile.streamDeckSettings.gridColumns,
+    gridRows: profile.streamDeckSettings.gridRows,
     pages: sortedProfilePages(profile.streamDeckSettings).map((page) => ({
       page: page.page,
       title: page.title || "",
-      buttons: configuredButtons(page).map((button) => ({
+      buttons: pageButtonsInGrid(profile.streamDeckSettings, page).map((button) => ({
         index: button.index,
         label: button.label || "",
         color: button.color || "",
@@ -239,7 +276,7 @@ export function UpdatePresets(self: ModuleInstance): void {
 
   for (const profile of sortedPresetProfiles(self)) {
     for (const page of sortedProfilePages(profile.streamDeckSettings)) {
-      for (const button of configuredButtons(page)) {
+      for (const button of pageButtonsInGrid(profile.streamDeckSettings, page)) {
         const presetID = [
           "profile",
           presetIdPart(profile.roleId || "role"),
@@ -247,7 +284,12 @@ export function UpdatePresets(self: ModuleInstance): void {
           `p${page.page}`,
           `k${button.index}`,
         ].join("_");
-        presets[presetID] = buildProfileButtonPreset(self, profile, page, button);
+        presets[presetID] = buildProfileButtonPreset(
+          self,
+          profile,
+          page,
+          button,
+        );
         count += 1;
       }
     }
