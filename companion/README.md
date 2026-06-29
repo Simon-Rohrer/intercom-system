@@ -7,7 +7,8 @@ Custom Bitfocus Companion module for controlling `kesher` browser sessions.
 - Connects to backend bridge WebSocket (preferred): `/api/companion/ws?roleId=<roleId>`
 - Loads discovery data (preferred): `/api/companion/discovery?roleId=<roleId>`
 - Preferred binding target: `roleId` (`/api/companion/ws?roleId=<roleId>` and `/api/companion/discovery?roleId=<roleId>`)
-- Legacy migration fallback: `username` query parameter is still accepted
+- The backend rejects the legacy `username` query parameter; configure a role ID when more than one profile is published
+- Automatically uses HTTPS/WSS on ports `443` and `8443`, and can accept local self-signed TLS certificates
 - Supports per-role page targeting via Kesher profile metadata (`pageNumber`), with optional module override
 - Loads admin-managed role Stream Deck layouts from Kesher profile data and exposes them as 15 universal live Companion slots
 - Does not automatically write/overwrite Companion button pages; Companion modules can expose presets, but Companion page/bank placement still needs to be done once in Companion
@@ -73,9 +74,10 @@ This uses `companion-module-build` and produces a package artifact in this modul
 2. In Companion, add a local custom module (or import local module package artifact).
 3. Configure:
    - backend host/port
-   - TLS on/off
+   - TLS on/off (`443` and `8443` are treated as TLS ports automatically)
+   - whether local self-signed TLS certificates should be accepted
    - target role ID (preferred)
-   - optional target username for legacy fallback during migration
+   - target username is deprecated and ignored by the current backend
    - optional `Target page override`:
      - `-1` = use role→page mapping delivered by Kesher backend
      - `>= 0` = force this Companion page number for this module instance

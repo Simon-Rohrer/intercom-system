@@ -1,4 +1,5 @@
 import { InstanceBase, InstanceStatus, runEntrypoint, } from "@companion-module/base";
+import { Agent as UndiciAgent, WebSocket as UndiciWebSocket, fetch as undiciFetch, } from "undici";
 import { GetConfigFields } from "./config.js";
 import { UpdateActions } from "./actions.js";
 import { UpdateFeedbacks } from "./feedbacks.js";
@@ -126,6 +127,8 @@ export class ModuleInstance extends InstanceBase {
     discoveryRefreshTimer = null;
     discoveryRefreshInFlight = false;
     reconnectAttempts = 0;
+    lastConnectionError = "";
+    insecureTlsDispatcher = null;
     commandSeq = 0;
     imageBridge = null;
     imageEffectMapRaw = "";
@@ -196,6 +199,10 @@ export class ModuleInstance extends InstanceBase {
         if (this.imageBridge) {
             this.imageBridge.disconnect();
             this.imageBridge = null;
+        }
+        if (this.insecureTlsDispatcher) {
+            await this.insecureTlsDispatcher.close();
+            this.insecureTlsDispatcher = null;
         }
     }
     async configUpdated(config) {
@@ -557,9 +564,75 @@ export class ModuleInstance extends InstanceBase {
             colorHex: "#ff2d26",
         };
     }
+    effectiveUseTls() {
+        const port = Number(this.config.port || 0);
+        return Boolean(this.config.useTls) || port === 443 || port === 8443;
+    }
+    autoTlsEnabled() {
+        const port = Number(this.config.port || 0);
+        return !Boolean(this.config.useTls) && (port === 443 || port === 8443);
+    }
+    allowSelfSignedTls() {
+        return this.effectiveUseTls() && this.config.allowSelfSignedTls !== false;
+    }
+    transportDispatcher() {
+        if (!this.allowSelfSignedTls())
+            return undefined;
+        if (!this.insecureTlsDispatcher) {
+            this.insecureTlsDispatcher = new UndiciAgent({
+                connect: {
+                    rejectUnauthorized: false,
+                },
+            });
+        }
+        return this.insecureTlsDispatcher;
+    }
     baseHttpURL() {
-        const protocol = this.config.useTls ? "https" : "http";
+        const protocol = this.effectiveUseTls() ? "https" : "http";
         return `${protocol}://${this.config.host}:${this.config.port}`;
+    }
+    baseWsURL() {
+        const protocol = this.effectiveUseTls() ? "wss" : "ws";
+        return `${protocol}://${this.config.host}:${this.config.port}`;
+    }
+    async fetchJson(url, label) {
+        const res = await undiciFetch(url, {
+            dispatcher: this.transportDispatcher(),
+        });
+        if (!res.ok) {
+            let body = "";
+            try {
+                body = (await res.text()).trim();
+            }
+            catch {
+                body = "";
+            }
+            const statusText = [res.status, res.statusText].filter(Boolean).join(" ");
+            const detail = body ? `${statusText}: ${body}` : statusText;
+            throw new Error(`${label} failed (${detail})`);
+        }
+        return (await res.json());
+    }
+    formatConnectionError(err, fallback) {
+        if (!(err instanceof Error))
+            return fallback;
+        const cause = err.cause;
+        if (cause && typeof cause === "object") {
+            const detail = cause;
+            const code = typeof detail.code === "string" ? detail.code : "";
+            const message = typeof detail.message === "string" ? detail.message : "";
+            const causeText = [code, message].filter(Boolean).join(": ");
+            if (causeText)
+                return `${err.message}: ${causeText}`;
+        }
+        return err.message || fallback;
+    }
+    createWebSocket(url) {
+        const dispatcher = this.transportDispatcher();
+        if (dispatcher) {
+            return new UndiciWebSocket(url, { dispatcher });
+        }
+        return new UndiciWebSocket(url);
     }
     companionSecretQuery() {
         const secret = (this.config.companionSecret || "").trim();
@@ -572,10 +645,6 @@ export class ModuleInstance extends InstanceBase {
         if (roleId) {
             return `roleId=${encodeURIComponent(roleId)}`;
         }
-        const username = (this.config.username || "").trim();
-        if (username) {
-            return `username=${encodeURIComponent(username)}`;
-        }
         return "";
     }
     companionTargetLabel() {
@@ -584,7 +653,7 @@ export class ModuleInstance extends InstanceBase {
             return `roleId=${roleId}`;
         const username = (this.config.username || "").trim();
         if (username)
-            return `username=${username}`;
+            return "auto (username ignored)";
         return "auto";
     }
     static formatTimestamp(ts) {
@@ -606,6 +675,9 @@ export class ModuleInstance extends InstanceBase {
         this.log("info", [
             "Connection diagnostics:",
             `target=${this.companionTargetLabel()}`,
+            `transport=${this.effectiveUseTls() ? "https/wss" : "http/ws"}`,
+            `autoTls=${this.autoTlsEnabled()}`,
+            `selfSignedTls=${this.allowSelfSignedTls()}`,
             `bridgeConnected=${this.bridgeConnected}`,
             `bridgeWsState=${bridgeState}`,
             `bound=${this.bound}`,
@@ -669,11 +741,8 @@ export class ModuleInstance extends InstanceBase {
             : `${this.baseHttpURL()}/api/companion/discovery`;
         this.discoveryRefreshInFlight = true;
         try {
-            const res = await fetch(url);
-            if (!res.ok) {
-                throw new Error(`discovery failed (${res.status})`);
-            }
-            const data = (await res.json());
+            const data = await this.fetchJson(url, "discovery");
+            this.lastConnectionError = "";
             this.discovery = data;
             if (Number.isInteger(Number(data.currentPageNumber ?? NaN))) {
                 this.currentPageNumber = Number(data.currentPageNumber ?? 0);
@@ -688,7 +757,12 @@ export class ModuleInstance extends InstanceBase {
             this.updateVariableDefinitions();
         }
         catch (err) {
-            this.log("warn", `Discovery refresh failed: ${err instanceof Error ? err.message : "unknown error"}`);
+            const syncError = this.formatConnectionError(err, "unknown discovery error");
+            this.lastConnectionError = syncError;
+            if (!this.bridgeConnected) {
+                this.updateStatus(InstanceStatus.ConnectionFailure, syncError);
+            }
+            this.log("warn", `Discovery refresh failed: ${syncError}`);
         }
         finally {
             this.discoveryRefreshInFlight = false;
@@ -705,11 +779,8 @@ export class ModuleInstance extends InstanceBase {
             ? `${this.baseHttpURL()}/api/companion/profile?${queryParts.join("&")}`
             : `${this.baseHttpURL()}/api/companion/profile`;
         try {
-            const res = await fetch(url);
-            if (!res.ok) {
-                throw new Error(`profile fetch failed (${res.status})`);
-            }
-            const profile = (await res.json());
+            const profile = await this.fetchJson(url, "profile fetch");
+            this.lastConnectionError = "";
             this.discovery = {
                 username: profile.username || this.discovery.username,
                 roleId: profile.roleId || this.discovery.roleId,
@@ -737,7 +808,11 @@ export class ModuleInstance extends InstanceBase {
             this.updateVariableDefinitions();
         }
         catch (err) {
-            const syncError = err instanceof Error ? err.message : "unknown profile sync error";
+            const syncError = this.formatConnectionError(err, "unknown profile sync error");
+            this.lastConnectionError = syncError;
+            if (!this.bridgeConnected) {
+                this.updateStatus(InstanceStatus.ConnectionFailure, syncError);
+            }
             this.log("warn", `Companion profile sync failed: ${syncError}`);
             this.checkFeedbacks();
         }
@@ -884,14 +959,19 @@ export class ModuleInstance extends InstanceBase {
             this.checkFeedbacks();
             return;
         }
-        const wsProtocol = this.config.useTls ? "wss" : "ws";
         const secretQuery = this.companionSecretQuery();
         const queryParts = [targetQuery, secretQuery].filter(Boolean);
         const url = queryParts.length
-            ? `${wsProtocol}://${host}:${this.config.port}/api/companion/ws?${queryParts.join("&")}`
-            : `${wsProtocol}://${host}:${this.config.port}/api/companion/ws`;
+            ? `${this.baseWsURL()}/api/companion/ws?${queryParts.join("&")}`
+            : `${this.baseWsURL()}/api/companion/ws`;
         this.updateStatus(InstanceStatus.Connecting);
-        const ws = new WebSocket(url);
+        if (this.autoTlsEnabled()) {
+            this.log("info", `Using TLS automatically for backend port ${this.config.port}`);
+        }
+        if (!targetQuery && (this.config.username || "").trim()) {
+            this.log("warn", "Target username is deprecated and ignored; set target role ID");
+        }
+        const ws = this.createWebSocket(url);
         this.ws = ws;
         this.startConnectWatchdog(ws);
         ws.onopen = () => {
@@ -901,6 +981,7 @@ export class ModuleInstance extends InstanceBase {
             this.clearReconnectTimer();
             this.reconnectAttempts = 0;
             this.bridgeConnected = true;
+            this.lastConnectionError = "";
             this.lastBridgeEventAt = Date.now();
             this.updateStatus(InstanceStatus.Ok);
             this.log("info", `Companion bridge connected (${targetLabel})`);
@@ -1037,7 +1118,7 @@ export class ModuleInstance extends InstanceBase {
             }
             this.pendingCommands.clear();
             this.pendingCommandCount = 0;
-            this.updateStatus(InstanceStatus.ConnectionFailure);
+            this.updateStatus(InstanceStatus.ConnectionFailure, this.lastConnectionError || "bridge disconnected");
             this.updateVariableValues();
             this.checkFeedbacks();
             this.scheduleReconnect();
@@ -1046,6 +1127,9 @@ export class ModuleInstance extends InstanceBase {
             if (this.ws !== ws)
                 return;
             this.log("warn", `Bridge websocket error (${targetLabel || "unconfigured target"}); waiting for close event`);
+            if (!this.lastConnectionError) {
+                this.lastConnectionError = "bridge websocket error";
+            }
             // Do not call ws.close() here: undici can recurse error->close->error and crash.
             void event;
         };
@@ -1162,7 +1246,7 @@ export class ModuleInstance extends InstanceBase {
         }
         const baseUrl = this.baseHttpURL();
         const targetQuery = this.companionTargetQuery();
-        this.imageBridge = new ImageBridge(this, baseUrl, targetQuery);
+        this.imageBridge = new ImageBridge(this, baseUrl, targetQuery, this.transportDispatcher());
         this.imageBridge.connect();
     }
 }

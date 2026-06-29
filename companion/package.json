@@ -14,7 +14,8 @@
     "yarn": "^4"
   },
   "dependencies": {
-    "@companion-module/base": "~1.12.1"
+    "@companion-module/base": "~1.12.1",
+    "undici": "^6.27.0"
   },
   "optionalDependencies": {
     "canvas": "^2.11.2"

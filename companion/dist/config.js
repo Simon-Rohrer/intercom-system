@@ -19,9 +19,16 @@ export function GetConfigFields() {
         {
             type: "checkbox",
             id: "useTls",
-            label: "Use TLS (wss)",
+            label: "Use TLS (https/wss)",
             default: false,
             width: 4,
+        },
+        {
+            type: "checkbox",
+            id: "allowSelfSignedTls",
+            label: "Accept self-signed TLS certificate",
+            default: true,
+            width: 8,
         },
         {
             type: "textinput",
@@ -40,7 +47,7 @@ export function GetConfigFields() {
         {
             type: "textinput",
             id: "username",
-            label: "Target username (legacy fallback)",
+            label: "Target username (deprecated; ignored)",
             default: "",
             width: 8,
         },

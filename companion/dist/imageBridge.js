@@ -1,3 +1,4 @@
+import { WebSocket as UndiciWebSocket, } from "undici";
 import { isCanvasAvailable, renderButtonImage } from "./imageRenderer.js";
 /**
  * Manages WebSocket connection to Kesher backend for image streaming
@@ -7,6 +8,7 @@ export class ImageBridge {
     instance;
     baseUrl;
     targetQuery;
+    dispatcher;
     ws = null;
     reconnectTimer = null;
     reconnectAttempts = 0;
@@ -19,10 +21,11 @@ export class ImageBridge {
     lastDisconnectAt = 0;
     // Store images by slot and by composite bank/slot key.
     imageStorage = new Map();
-    constructor(instance, baseUrl, targetQuery = "") {
+    constructor(instance, baseUrl, targetQuery = "", dispatcher) {
         this.instance = instance;
         this.baseUrl = baseUrl;
         this.targetQuery = targetQuery;
+        this.dispatcher = dispatcher;
     }
     /**
      * Connect to the Kesher image stream endpoint
@@ -39,7 +42,11 @@ export class ImageBridge {
                 ? `${wsUrl}/api/image-stream?${this.targetQuery}`
                 : `${wsUrl}/api/image-stream`;
             this.instance.log("debug", `Connecting to image stream: ${fullUrl}`);
-            this.ws = new WebSocket(fullUrl);
+            this.ws = this.dispatcher
+                ? new UndiciWebSocket(fullUrl, {
+                    dispatcher: this.dispatcher,
+                })
+                : new UndiciWebSocket(fullUrl);
             this.ws.onopen = () => this.handleConnect();
             this.ws.onmessage = (event) => this.handleMessage(event);
             this.ws.onerror = (event) => this.handleError(event);

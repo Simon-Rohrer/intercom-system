@@ -1,3 +1,7 @@
+import {
+  WebSocket as UndiciWebSocket,
+  type Dispatcher,
+} from "undici";
 import type { ModuleInstance } from "./main.js";
 import { isCanvasAvailable, renderButtonImage } from "./imageRenderer.js";
 
@@ -41,6 +45,7 @@ export class ImageBridge {
     private instance: ModuleInstance,
     private baseUrl: string,
     private targetQuery = "",
+    private dispatcher?: Dispatcher,
   ) {}
 
   /**
@@ -61,7 +66,11 @@ export class ImageBridge {
 
       this.instance.log("debug", `Connecting to image stream: ${fullUrl}`);
 
-      this.ws = new WebSocket(fullUrl);
+      this.ws = this.dispatcher
+        ? (new UndiciWebSocket(fullUrl, {
+            dispatcher: this.dispatcher,
+          }) as unknown as WebSocket)
+        : (new UndiciWebSocket(fullUrl) as unknown as WebSocket);
 
       this.ws.onopen = () => this.handleConnect();
       this.ws.onmessage = (event) => this.handleMessage(event);

@@ -2,7 +2,7 @@ export function UpdateVariableDefinitions(self) {
     const defs = [];
     defs.push({
         variableId: "connection_target",
-        name: "Active connection target label (roleId=... / username=... / auto)",
+        name: "Active connection target label (roleId=... / auto)",
     });
     defs.push({
         variableId: "bridge_connected",
