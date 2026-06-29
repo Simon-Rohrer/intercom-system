@@ -101,7 +101,7 @@ function resolveActionLabel(
     case "reply_to_caller":
       return `Reply\n${resolveReplyTargetLabel(lookup)}`;
     case "incoming_call_indicator":
-      return "Incoming";
+      return "Incoming\nCall";
     case "mute_toggle":
       return "Mute";
     case "volume_delta":

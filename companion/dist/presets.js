@@ -76,6 +76,21 @@ function buttonHasContent(button) {
     return ((actionType !== "" && actionType !== "none") ||
         singleLine(button.label || "") !== "");
 }
+function isIncomingCallIndicator(button) {
+    return String(button.action?.type || "").trim() === "incoming_call_indicator";
+}
+function incomingCallIndicatorFeedbacks() {
+    return [
+        {
+            feedbackId: "incoming_call_blink",
+            options: {},
+            style: {
+                color: combineRgb(0, 0, 0),
+                bgcolor: combineRgb(255, 210, 0),
+            },
+        },
+    ];
+}
 function buttonPresetName(self, button) {
     if (!buttonHasContent(button)) {
         return `Key ${button.index + 1} - Empty`;
@@ -94,6 +109,7 @@ function pageButtonsInGrid(settings, page) {
 }
 function buildProfileButtonPreset(self, profile, page, button) {
     const hasContent = buttonHasContent(button);
+    const isIndicator = isIncomingCallIndicator(button);
     const baseBg = parseButtonBgColor(button.color);
     const label = hasContent
         ? self.resolveSyncedButtonLabel(button) || `Key ${button.index + 1}`
@@ -110,14 +126,15 @@ function buildProfileButtonPreset(self, profile, page, button) {
         buttonIndex: button.index,
         sourcePageNumber: page.page,
     };
+    const shouldTriggerSlot = hasContent && !isIndicator;
     return {
         type: "button",
         category: profilePagePresetCategory(self, profile, page),
         name: buttonPresetName(self, button),
         style,
         previewStyle: style,
-        feedbacks: [],
-        steps: hasContent
+        feedbacks: isIndicator ? incomingCallIndicatorFeedbacks() : [],
+        steps: shouldTriggerSlot
             ? [
                 {
                     down: [

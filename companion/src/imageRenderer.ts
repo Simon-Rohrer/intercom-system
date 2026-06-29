@@ -134,7 +134,17 @@ function renderWithCanvas(
 
   const actionType = String(state.actionType || "none");
   const pressed = Boolean(state.pressed || state.isActive || state.state === "TALK" || state.state === "BROADCAST");
-  const useEmergencyPressedColor = pressed && actionType !== "listen_room";
+  const useCallPressedColor = pressed && (
+    actionType === "call_room" ||
+    actionType === "reply_to_caller" ||
+    actionType === "incoming_call_indicator"
+  );
+  const useEmergencyPressedColor =
+    pressed &&
+    actionType !== "listen_room" &&
+    actionType !== "call_room" &&
+    actionType !== "reply_to_caller" &&
+    actionType !== "incoming_call_indicator";
 
   const palette = getButtonPalette(actionType, state.color, pressed);
   const fill = palette.background;
@@ -165,6 +175,13 @@ function renderWithCanvas(
     roundedRect(ctx, cardX - 1, cardY - 1, cardWidth + 2, cardHeight + 2, radius + 1);
     ctx.lineWidth = 2;
     ctx.strokeStyle = "rgba(255, 115, 115, 0.28)";
+    ctx.stroke();
+  }
+
+  if (useCallPressedColor) {
+    roundedRect(ctx, cardX - 1, cardY - 1, cardWidth + 2, cardHeight + 2, radius + 1);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255, 214, 102, 0.35)";
     ctx.stroke();
   }
 
@@ -273,7 +290,13 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 function getButtonPalette(actionType: string, color: string | undefined, pressed: boolean): KeyPalette {
-  const useEmergencyPressedColor = pressed && actionType !== "none" && actionType !== "listen_room";
+  const useEmergencyPressedColor =
+    pressed &&
+    actionType !== "none" &&
+    actionType !== "listen_room" &&
+    actionType !== "call_room" &&
+    actionType !== "reply_to_caller" &&
+    actionType !== "incoming_call_indicator";
   if (useEmergencyPressedColor) {
     return {
       background: "#ef1212",
@@ -309,6 +332,8 @@ function getButtonPalette(actionType: string, color: string | undefined, pressed
       return { background: "#000000", border: "#1b2026", label: "#f1f4f8" };
     case "reply_to_caller":
       return { background: "#000000", border: "#ffc067", label: "#f6f0e8" };
+    case "incoming_call_indicator":
+      return { background: "#000000", border: "#ffd200", label: "#fff7d0" };
     case "mute_toggle":
       return { background: "#000000", border: "#f84e4e", label: "#fff1f1" };
     case "volume_delta":

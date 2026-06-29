@@ -17,6 +17,7 @@ const allowedStreamDeckActionTypes = new Set([
     "direct_user",
     "direct_role",
     "reply_to_caller",
+    "incoming_call_indicator",
     "broadcast_ptt",
     "mute_toggle",
     "volume_delta",
@@ -447,6 +448,8 @@ export class ModuleInstance extends InstanceBase {
                 return this.replyDirectUsername
                     ? `Reply\n${this.replyDirectUsername}`
                     : "Reply";
+            case "incoming_call_indicator":
+                return "Incoming\nCall";
             case "broadcast_ptt":
                 return (this.discovery.broadcastGroups.find((group) => group.id === action.broadcastGroupId)?.name || (action.broadcastGroupId || ""));
             case "mute_toggle":

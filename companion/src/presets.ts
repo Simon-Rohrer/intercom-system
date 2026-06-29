@@ -1,6 +1,7 @@
 import {
   combineRgb,
   type CompanionButtonStepActions,
+  type CompanionPresetFeedback,
   type CompanionPresetDefinitions,
 } from "@companion-module/base";
 import type { ModuleInstance } from "./main.js";
@@ -116,6 +117,23 @@ function buttonHasContent(button: StreamDeckButtonConfig): boolean {
   );
 }
 
+function isIncomingCallIndicator(button: StreamDeckButtonConfig): boolean {
+  return String(button.action?.type || "").trim() === "incoming_call_indicator";
+}
+
+function incomingCallIndicatorFeedbacks(): CompanionPresetFeedback[] {
+  return [
+    {
+      feedbackId: "incoming_call_blink",
+      options: {},
+      style: {
+        color: combineRgb(0, 0, 0),
+        bgcolor: combineRgb(255, 210, 0),
+      },
+    },
+  ];
+}
+
 function buttonPresetName(
   self: ModuleInstance,
   button: StreamDeckButtonConfig,
@@ -152,6 +170,7 @@ function buildProfileButtonPreset(
   button: StreamDeckButtonConfig,
 ) {
   const hasContent = buttonHasContent(button);
+  const isIndicator = isIncomingCallIndicator(button);
   const baseBg = parseButtonBgColor(button.color);
   const label = hasContent
     ? self.resolveSyncedButtonLabel(button) || `Key ${button.index + 1}`
@@ -168,6 +187,7 @@ function buildProfileButtonPreset(
     buttonIndex: button.index,
     sourcePageNumber: page.page,
   };
+  const shouldTriggerSlot = hasContent && !isIndicator;
 
   return {
     type: "button" as const,
@@ -175,8 +195,8 @@ function buildProfileButtonPreset(
     name: buttonPresetName(self, button),
     style,
     previewStyle: style,
-    feedbacks: [],
-    steps: hasContent
+    feedbacks: isIndicator ? incomingCallIndicatorFeedbacks() : [],
+    steps: shouldTriggerSlot
       ? [
           {
             down: [

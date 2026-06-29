@@ -175,6 +175,9 @@ export class ImageBridge {
                     this.instance.setButtonImageEffectValue(buttonIndex, effectValue, bankNumber);
                 }
             }
+            else {
+                this.instance.setButtonImageEffectValue(buttonIndex, 0, bankNumber);
+            }
             const buttonConfig = this.instance.getProfileButtonConfig(bankNumber, buttonIndex);
             // Prefer backend image payloads and only locally render when
             // metadata is known and canvas rendering is available.

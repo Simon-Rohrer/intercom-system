@@ -116,7 +116,7 @@ func TestCompanionButtonSnapshotStateMarksPTTSelectedForSelectActions(t *testing
 	}
 }
 
-func TestCompanionButtonSnapshotStateReplyToCallerSetsBlinkEffectOnIncomingSignal(t *testing.T) {
+func TestCompanionButtonSnapshotStateReplyToCallerDoesNotUseGlobalIncomingCallEffect(t *testing.T) {
 	s := newCompanionTestServer(t)
 	now := time.Now()
 	s.hub.Add(&client{
@@ -141,12 +141,12 @@ func TestCompanionButtonSnapshotStateReplyToCallerSetsBlinkEffectOnIncomingSigna
 	}
 
 	state := s.companionButtonSnapshotState(context.Background(), "role_a", 0, "operator", PresenceState{}, button)
-	if state.EffectValue != companionIncomingCallEffectValue {
-		t.Fatalf("expected blink effect value %d while signal is active, got %d", companionIncomingCallEffectValue, state.EffectValue)
+	if state.EffectValue != 0 {
+		t.Fatalf("expected reply button not to receive global incoming-call effect, got %d", state.EffectValue)
 	}
 }
 
-func TestCompanionButtonSnapshotStateReplyToCallerGetsGlobalAlertOnRoomCall(t *testing.T) {
+func TestCompanionButtonSnapshotStateReplyToCallerIgnoresRoomCallIndicatorEffect(t *testing.T) {
 	s := newCompanionTestServer(t)
 	now := time.Now()
 	s.hub.Add(&client{
@@ -171,15 +171,15 @@ func TestCompanionButtonSnapshotStateReplyToCallerGetsGlobalAlertOnRoomCall(t *t
 	}
 
 	state := s.companionButtonSnapshotState(context.Background(), "role_a", 0, "operator", PresenceState{}, button)
-	if state.EffectValue != companionIncomingCallEffectValue {
-		t.Fatalf("expected global call effect value %d, got %d", companionIncomingCallEffectValue, state.EffectValue)
+	if state.EffectValue != 0 {
+		t.Fatalf("expected room call not to apply global incoming-call effect, got %d", state.EffectValue)
 	}
 	if state.State != "IDLE" {
 		t.Fatalf("expected room call not to activate direct reply state, got %q", state.State)
 	}
 }
 
-func TestCompanionButtonSnapshotStateAppliesIncomingCallEffectToEverySlot(t *testing.T) {
+func TestCompanionButtonSnapshotStateDoesNotApplyIncomingCallEffectToEverySlot(t *testing.T) {
 	s := newCompanionTestServer(t)
 	s.setCompanionPendingIncomingCall("operator", true)
 
@@ -190,13 +190,13 @@ func TestCompanionButtonSnapshotStateAppliesIncomingCallEffectToEverySlot(t *tes
 	}
 	for _, button := range buttons {
 		state := s.companionButtonSnapshotState(context.Background(), "role_a", 0, "operator", PresenceState{}, button)
-		if state.EffectValue != companionIncomingCallEffectValue {
-			t.Fatalf("expected slot %d to receive call effect value %d, got %d", button.Index, companionIncomingCallEffectValue, state.EffectValue)
+		if state.EffectValue != 0 {
+			t.Fatalf("expected slot %d not to receive global incoming-call effect, got %d", button.Index, state.EffectValue)
 		}
 	}
 }
 
-func TestCompanionButtonSnapshotStateReplyToCallerKeepsBlinkWhenCallPending(t *testing.T) {
+func TestCompanionButtonSnapshotStateReplyToCallerKeepsStateBlinkWhenCallPending(t *testing.T) {
 	s := newCompanionTestServer(t)
 	s.setCompanionPendingIncomingCall("operator", true)
 	s.setCompanionPendingIncomingCallScope("operator", "direct")
@@ -209,8 +209,8 @@ func TestCompanionButtonSnapshotStateReplyToCallerKeepsBlinkWhenCallPending(t *t
 	}
 
 	state := s.companionButtonSnapshotState(context.Background(), "role_a", 0, "operator", PresenceState{}, button)
-	if state.EffectValue != companionIncomingCallEffectValue {
-		t.Fatalf("expected pending call effect value %d, got %d", companionIncomingCallEffectValue, state.EffectValue)
+	if state.EffectValue != 0 {
+		t.Fatalf("expected reply button not to receive yellow incoming-call effect, got %d", state.EffectValue)
 	}
 }
 
@@ -250,7 +250,7 @@ func TestCompanionButtonSnapshotStateIncomingCallIndicatorShowsCallerAndBlink(t 
 	}
 }
 
-func TestCompanionButtonSnapshotStateDirectRoleButtonBlinksForDirectCallSource(t *testing.T) {
+func TestCompanionButtonSnapshotStateDirectRoleButtonDoesNotUseGlobalCallEffect(t *testing.T) {
 	s := newCompanionTestServer(t)
 	now := time.Now()
 	s.hub.Add(&client{
@@ -278,12 +278,12 @@ func TestCompanionButtonSnapshotStateDirectRoleButtonBlinksForDirectCallSource(t
 	}
 
 	state := s.companionButtonSnapshotState(context.Background(), "role_a", 0, "operator", PresenceState{}, button)
-	if state.EffectValue != companionIncomingCallEffectValue {
-		t.Fatalf("expected matching direct-role button to blink, got effectValue=%d", state.EffectValue)
+	if state.EffectValue != 0 {
+		t.Fatalf("expected matching direct-role button not to receive global incoming-call effect, got effectValue=%d", state.EffectValue)
 	}
 }
 
-func TestCompanionButtonSnapshotStateRoomButtonBlinksForRoomCallSource(t *testing.T) {
+func TestCompanionButtonSnapshotStateRoomButtonDoesNotUseGlobalCallEffect(t *testing.T) {
 	s := newCompanionTestServer(t)
 	now := time.Now()
 	s.hub.Add(&client{
@@ -311,8 +311,8 @@ func TestCompanionButtonSnapshotStateRoomButtonBlinksForRoomCallSource(t *testin
 	}
 
 	state := s.companionButtonSnapshotState(context.Background(), "role_a", 0, "operator", PresenceState{}, button)
-	if state.EffectValue != companionIncomingCallEffectValue {
-		t.Fatalf("expected matching room button to blink, got effectValue=%d", state.EffectValue)
+	if state.EffectValue != 0 {
+		t.Fatalf("expected matching room button not to receive global incoming-call effect, got effectValue=%d", state.EffectValue)
 	}
 }
 

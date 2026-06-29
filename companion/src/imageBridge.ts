@@ -221,6 +221,8 @@ export class ImageBridge {
         if (Number.isFinite(effectValue)) {
           this.instance.setButtonImageEffectValue(buttonIndex, effectValue, bankNumber);
         }
+      } else {
+        this.instance.setButtonImageEffectValue(buttonIndex, 0, bankNumber);
       }
       const buttonConfig = this.instance.getProfileButtonConfig(bankNumber, buttonIndex);
 

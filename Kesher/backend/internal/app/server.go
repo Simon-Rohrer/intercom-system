@@ -340,6 +340,7 @@ func (s *Server) handleCompanionWS(w http.ResponseWriter, r *http.Request) {
 				state.SignalMessage = signalMessage
 			} else if s.hasCompanionPendingIncomingCall(resolvedUsername) {
 				state.SignalActive = true
+				state.SignalMessage = "call"
 				if caller, ok := s.companionPendingIncomingCaller(resolvedUsername); ok {
 					state.SignalFrom = caller
 				}
@@ -2001,8 +2002,8 @@ func (s *Server) companionHeldTarget(key string) (string, bool) {
 
 // refreshCompanionIncomingCallState synchronizes the short-lived hub signal into
 // the persistent Companion call latch. The latch remains active until the call
-// is acknowledged, so every Stream Deck slot can keep showing the alert even
-// after the caller releases the call button.
+// is acknowledged, so the Stream Deck incoming-call indicator can keep showing
+// the alert even after the caller releases the call button.
 func (s *Server) refreshCompanionIncomingCallState(username string) bool {
 	username = strings.TrimSpace(username)
 	if username == "" {
@@ -2056,12 +2057,6 @@ func (s *Server) companionButtonSnapshotState(ctx context.Context, roleID string
 	state := ButtonState{State: "IDLE"}
 	username = strings.TrimSpace(username)
 	hasPendingCall := s.refreshCompanionIncomingCallState(username)
-	if hasPendingCall {
-		// Effect value 3 maps to the yellow blink overlay in image-effect-map.json.
-		// Apply it before the empty-slot return so all 15 universal Companion slots
-		// flash, including unassigned Stream Deck keys.
-		state.EffectValue = companionIncomingCallEffectValue
-	}
 	if button.Action == nil || button.Action.Type == StreamDeckActionTypeNone {
 		return state
 	}
@@ -2143,6 +2138,7 @@ func (s *Server) companionButtonSnapshotState(ctx context.Context, roleID string
 			}
 		}
 		if hasPendingCall {
+			state.EffectValue = companionIncomingCallEffectValue
 			blinkOn := (time.Now().UnixMilli()/companionIncomingCallBlinkInterval.Milliseconds())%2 == 0
 			if blinkOn {
 				state.State = "TALK"
@@ -3027,14 +3023,19 @@ func (s *Server) resolveReplyToCallerLabels(button StreamDeckButtonConfig, usern
 
 func (s *Server) resolveIncomingCallIndicatorLabels(button StreamDeckButtonConfig, username string) (primary, subtitle string) {
 	primary = "Incoming"
+	subtitle = "Call"
 	if raw := strings.TrimSpace(button.Label); raw != "" {
 		parts := strings.SplitN(raw, "\n", 2)
 		if line := strings.TrimSpace(parts[0]); line != "" {
 			primary = line
 		}
+		subtitle = ""
+		if len(parts) > 1 {
+			subtitle = strings.TrimSpace(parts[1])
+		}
 	}
 	if strings.TrimSpace(username) == "" {
-		return primary, ""
+		return primary, subtitle
 	}
 	if signalFrom, _, _, _, _, signalActive := s.companionIncomingSignal(strings.TrimSpace(username)); signalActive {
 		s.setCompanionPendingIncomingCaller(strings.TrimSpace(username), signalFrom)
@@ -3045,7 +3046,7 @@ func (s *Server) resolveIncomingCallIndicatorLabels(button StreamDeckButtonConfi
 	if caller, ok := s.companionPendingIncomingCaller(strings.TrimSpace(username)); ok {
 		return primary, caller
 	}
-	return primary, ""
+	return primary, subtitle
 }
 
 // resolveButtonLabel resolves the display label and optional subtitle for a button,
@@ -3135,7 +3136,7 @@ func (s *Server) resolveButtonLabel(ctx context.Context, button StreamDeckButton
 		return s.resolveReplyToCallerLabels(button, "")
 
 	case StreamDeckActionTypeIncomingCall:
-		return "Incoming", ""
+		return s.resolveIncomingCallIndicatorLabels(button, "")
 
 	case StreamDeckActionTypePTTSelected:
 		return "PTT", ""

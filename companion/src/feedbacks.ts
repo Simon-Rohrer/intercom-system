@@ -117,6 +117,19 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
       options: [],
       callback: () => self.signalActive && self.signalBlinkPhase,
     },
+    incoming_call_blink: {
+      name: "Incoming call (blinking)",
+      type: "boolean",
+      defaultStyle: {
+        color: combineRgb(0, 0, 0),
+        bgcolor: combineRgb(255, 210, 0),
+      },
+      options: [],
+      callback: () =>
+        self.signalActive &&
+        self.signalBlinkPhase &&
+        self.signalMessage.trim().toLowerCase() === "call",
+    },
     voice_mode_is: {
       name: "Voice mode equals",
       type: "boolean",
