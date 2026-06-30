@@ -1,12 +1,12 @@
 {
-  "server_url": "https://192.168.0.154:8443",
+  "server_url": "https://192.168.178.58:8443",
   "browser_binary": "chromium",
   "allow_insecure_tls": true,
   "heartbeat_secret": "",
   "clients": [
     {
       "device_id": "kamera-1-pi",
-      "ip_address": "192.168.0.61",
+      "ip_address": "192.168.178.190",
       "name": "Kamera-1",
       "role_id": "cam 1",
       "audio_input_match": "Headset",

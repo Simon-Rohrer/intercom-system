@@ -120,6 +120,15 @@ class LauncherTests(unittest.TestCase):
         self.assertFalse(launcher.audio_runtime_ready(status))
         self.assertIn("no user audio socket", launcher.audio_runtime_summary(status))
 
+    def test_audio_runtime_not_ready_without_capture_source(self):
+        status = {
+            "pulseSocketReady": True,
+            "pipewireSocketReady": True,
+            "soundCardCount": 2,
+            "captureSourceCount": 0,
+        }
+        self.assertFalse(launcher.audio_runtime_ready(status))
+
     def test_heartbeat_targets_configured_server_url(self):
         self.assertEqual(
             launcher.heartbeat_endpoint_url(self.config),

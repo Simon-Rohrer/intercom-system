@@ -417,6 +417,14 @@ def _run_short_command(command: list[str]) -> str:
     return result.stdout.strip()
 
 
+def read_alsa_capture_pcms() -> list[str]:
+    try:
+        lines = Path("/proc/asound/pcm").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    return [line for line in lines if "capture" in line.lower()]
+
+
 def audio_runtime_status() -> dict[str, Any]:
     uid = os.getuid()
     runtime_dir = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{uid}")
@@ -433,6 +441,12 @@ def audio_runtime_status() -> dict[str, Any]:
         for line in _run_short_command(["arecord", "-l"]).splitlines()
         if line.strip().startswith("card ")
     ]
+    alsa_capture_pcms = read_alsa_capture_pcms()
+    capture_source_count = max(
+        len(pactl_sources),
+        len(arecord_cards),
+        len(alsa_capture_pcms),
+    )
     return {
         "runtimeDir": str(runtime_dir),
         "pulseSocket": str(pulse_socket),
@@ -440,9 +454,10 @@ def audio_runtime_status() -> dict[str, Any]:
         "pipewireSocket": str(pipewire_socket),
         "pipewireSocketReady": _socket_exists(pipewire_socket),
         "soundCardCount": len(sound_controls),
-        "captureSourceCount": len(pactl_sources) or len(arecord_cards),
+        "captureSourceCount": capture_source_count,
         "pactlSources": pactl_sources,
         "arecordCards": arecord_cards,
+        "alsaCapturePcms": alsa_capture_pcms,
     }
 
 
@@ -451,8 +466,7 @@ def audio_runtime_ready(status: dict[str, Any]) -> bool:
         status.get("pipewireSocketReady")
     )
     has_capture_source = int(status.get("captureSourceCount") or 0) > 0
-    has_sound_card = int(status.get("soundCardCount") or 0) > 0
-    return has_runtime_audio and (has_capture_source or has_sound_card)
+    return has_runtime_audio and has_capture_source
 
 
 def audio_runtime_summary(status: dict[str, Any]) -> str:
@@ -567,6 +581,12 @@ def main() -> int:
         if args.version:
             print(LAUNCHER_VERSION)
             return 0
+        if args.print_audio:
+            status = audio_runtime_status()
+            status["ready"] = audio_runtime_ready(status)
+            status["summary"] = audio_runtime_summary(status)
+            print(json.dumps(status, indent=2, sort_keys=True))
+            return 0
         config = load_config(args.config)
         addresses = detect_ipv4_addresses()
         client = resolve_client(config, addresses)
@@ -582,12 +602,6 @@ def main() -> int:
                     sort_keys=True,
                 )
             )
-            return 0
-        if args.print_audio:
-            status = audio_runtime_status()
-            status["ready"] = audio_runtime_ready(status)
-            status["summary"] = audio_runtime_summary(status)
-            print(json.dumps(status, indent=2, sort_keys=True))
             return 0
         heartbeat_state = {
             "browser_status": "not_started",
