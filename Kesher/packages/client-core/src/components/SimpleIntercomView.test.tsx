@@ -81,7 +81,23 @@ describe("SimpleIntercomView audio status", () => {
     expect(screen.getByRole("button", { name: /Hold to talk/ })).toBeDisabled();
   });
 
-  it("shows browser microphone errors", () => {
+  it("stays ready in receive-only mode without a microphone", () => {
+    render(
+      <SimpleIntercomView
+        {...baseProps}
+        inputDevices={[]}
+      />,
+    );
+
+    const audioStatus = screen.getByRole("status", {
+      name: "Audio runtime status",
+    });
+    expect(audioStatus).toHaveTextContent("Receive-only ready");
+    expect(audioStatus).toHaveTextContent("Listening stays active");
+    expect(screen.getByRole("button", { name: /Hold to talk/ })).toBeDisabled();
+  });
+
+  it("shows browser microphone permission errors", () => {
     render(
       <SimpleIntercomView
         {...baseProps}
@@ -93,9 +109,7 @@ describe("SimpleIntercomView audio status", () => {
     const audioStatus = screen.getByRole("status", {
       name: "Audio runtime status",
     });
-    expect(audioStatus).toHaveTextContent(
-      "No microphone is available",
-    );
+    expect(audioStatus).toHaveTextContent("Audio not ready");
     expect(audioStatus).toHaveTextContent("Permission denied");
   });
 });

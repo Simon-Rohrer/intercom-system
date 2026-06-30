@@ -96,9 +96,6 @@ export function SimpleIntercomView({
     !hasListenTarget
       ? "No receive party line is assigned to this role. Allow the role to receive the default party line."
       : "",
-    !hasInputDevice
-      ? "No microphone is available to Chromium. Check USB power, PipeWire and browser permissions."
-      : "",
     audioError,
   ].filter(Boolean);
   const mainPttButtonProps = createHoldButtonProps<HTMLButtonElement>({
@@ -155,7 +152,7 @@ export function SimpleIntercomView({
           {...mainPttButtonProps}
         >
           Hold to talk
-          <small>{simplePptTargetLabel}</small>
+          <small>{hasInputDevice ? simplePptTargetLabel : "No microphone"}</small>
         </button>
         <div
           className={`simple-audio-status ${
@@ -166,10 +163,19 @@ export function SimpleIntercomView({
           aria-live="polite"
         >
           <strong>
-            {runtimeIssues.length > 0 ? "Audio not ready" : "Audio ready"}
+            {runtimeIssues.length > 0
+              ? "Audio not ready"
+              : hasInputDevice
+                ? "Audio ready"
+                : "Receive-only ready"}
           </strong>
           {runtimeIssues.length > 0 ? (
             runtimeIssues.map((issue) => <span key={issue}>{issue}</span>)
+          ) : !hasInputDevice ? (
+            <span>
+              Listening stays active. Connect a microphone to enable talk.
+              {webrtcState ? ` · WebRTC: ${webrtcState}` : ""}
+            </span>
           ) : (
             <span>
               Party line: {simplePptTargetLabel} · Microphone ready

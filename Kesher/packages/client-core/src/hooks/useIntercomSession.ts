@@ -1848,6 +1848,19 @@ export function useIntercomSession({
     }
   }
 
+  function hasLocalTransmitTrack(): boolean {
+    if (nativeAudio?.isNative) return true;
+    return (
+      mic.localStreamRef.current
+        ?.getAudioTracks()
+        .some((track) => track.readyState === "live") === true
+    );
+  }
+
+  function isTransmitStartState(state: string): boolean {
+    return state === "always_on" || state === "ptt_start";
+  }
+
   function sendScopedVoiceStateNow(
     scopeValue: "direct" | "room" | "broadcast",
     scopedTargetId: string,
@@ -1860,6 +1873,9 @@ export function useIntercomSession({
     )
       return false;
     if (!canSendScopedVoiceState(scopeValue, scopedTargetId)) {
+      return false;
+    }
+    if (isTransmitStartState(state) && !hasLocalTransmitTrack()) {
       return false;
     }
     applyLocalMicVoiceState(state);
@@ -2012,6 +2028,14 @@ export function useIntercomSession({
       return;
     }
     if (enabled) {
+      if (!hasLocalTransmitTrack()) {
+        setVoiceMode("ptt");
+        voiceModeRef.current = "ptt";
+        setPttPressed(false);
+        setPttPressedChannelId(null);
+        sendVoiceState("always_off");
+        return;
+      }
       setVoiceMode("always_on");
       voiceModeRef.current = "always_on";
       setPttPressed(false);
@@ -2032,6 +2056,7 @@ export function useIntercomSession({
 
   // ── PTT actions ──
   function startPtt() {
+    if (!hasLocalTransmitTrack()) return;
     setPttPressed(true);
     clearNativePttStopTimer();
     sendVoiceState("ptt_start");
@@ -2045,6 +2070,7 @@ export function useIntercomSession({
 
   function startBroadcastPtt(groupId: string) {
     if (!canSelfSendToBroadcastGroup(groupId)) return;
+    if (!hasLocalTransmitTrack()) return;
     setBroadcastPttPressed(groupId);
     sendScopedVoiceState("broadcast", groupId, "ptt_start");
   }
@@ -2057,6 +2083,7 @@ export function useIntercomSession({
 
   function startDirectPtt(userId: string) {
     if (!canSendScopedVoiceState("direct", userId)) return;
+    if (!hasLocalTransmitTrack()) return;
     if (voiceModeRef.current === "always_on") {
       restoreAlwaysOnAfterDirectPttRef.current = true;
       setVoiceMode("ptt");
@@ -2086,6 +2113,7 @@ export function useIntercomSession({
     if (!appDataRef.current || !channelId) return;
     if (!canSelfSendToRoom(channelId)) return;
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!hasLocalTransmitTrack()) return;
     setTalkRoomIds([channelId]);
     setPttPressed(true);
     setPttPressedChannelId(channelId);
@@ -2384,16 +2412,22 @@ export function useIntercomSession({
           );
           mic.applyVoiceModeToLocalTracks(voiceModeRef.current);
         } catch (e) {
-          setAudioError(
-            `Failed to access microphone: ${e instanceof Error ? e.message : "unknown error"}`,
-          );
+          pc.addTransceiver("audio", { direction: "recvonly" });
+          setAudioError("");
           pushDebugEvent("system · local/mic · capture failed (receive-only)");
         }
         ws.send(JSON.stringify({ type: "webrtc_ready", data: {} }));
         sendRoomMatrix(listenRoomIdsRef.current, talkRoomIdsRef.current, true);
         const initialVoiceModeValue = voiceModeRef.current;
+        const canTransmit = hasLocalTransmitTrack();
+        if (!canTransmit && initialVoiceModeValue === "always_on") {
+          setVoiceMode("ptt");
+          voiceModeRef.current = "ptt";
+        }
         const voiceState =
-          initialVoiceModeValue === "always_on" ? "always_on" : "ptt_stop";
+          canTransmit && initialVoiceModeValue === "always_on"
+            ? "always_on"
+            : "always_off";
         ws.send(
           JSON.stringify({
             type: "voice_state",
@@ -2518,6 +2552,14 @@ export function useIntercomSession({
                     talkRoomIdsRef.current,
                   )
                 : "");
+            if (!resolvedTargetId) {
+              ackRejected("missing targetId");
+              return;
+            }
+            if (desiredState === "ptt_start" && !hasLocalTransmitTrack()) {
+              ackRejected("no microphone available");
+              return;
+            }
             if (nextScope === "room") {
               setPttPressed(desiredState === "ptt_start");
             } else if (nextScope === "direct") {
@@ -2536,10 +2578,6 @@ export function useIntercomSession({
                   current === resolvedTargetId ? null : current,
                 );
               }
-            }
-            if (!resolvedTargetId) {
-              ackRejected("missing targetId");
-              return;
             }
             if (nextScope === "direct") {
               ackSuccess();
