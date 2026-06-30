@@ -2331,11 +2331,15 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     }
   }, [token]);
 
-  const handlePublishUserCompanionProfile = useCallback(async () => {
+  const handlePublishUserCompanionProfile = useCallback(async (next?: StreamDeckSettings) => {
     if (!token) {
       throw new Error("Not authenticated.");
     }
-    return publishUserCompanionProfile(token);
+    const published = await publishUserCompanionProfile(token, next);
+    if (next) {
+      setStreamDeckSettings(next);
+    }
+    return published;
   }, [token]);
 
   // ── Early returns ──

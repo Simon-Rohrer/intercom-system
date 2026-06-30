@@ -1001,7 +1001,9 @@ type StationIntercomViewProps = {
   onStreamDeckSettingsChange: (next: StreamDeckSettings) => void;
   onSaveStreamDeckSettings: (settings?: StreamDeckSettings) => void | Promise<void>;
   onResetStreamDeckSettings: () => void;
-  onPublishCompanionProfile: () => Promise<CompanionProfileResponse>;
+  onPublishCompanionProfile: (
+    settings?: StreamDeckSettings,
+  ) => Promise<CompanionProfileResponse>;
   streamDeckWebHidSupported: boolean;
   streamDeckWebHidActive: boolean;
   streamDeckWebHidBusy: boolean;
@@ -2228,16 +2230,17 @@ export function StationIntercomView({
 
   const publishCompanionProfile = async () => {
     setCompanionPublishBusy(true);
+    setStreamDeckSaveBusy(true);
     setStreamDeckTransferMessage("");
     setStreamDeckTransferError("");
     try {
-      if (streamDeckSettings) {
-        await onSaveStreamDeckSettings(compactStreamDeckSettings(streamDeckSettings));
-      }
-      const published = await onPublishCompanionProfile();
+      const settingsToPublish = streamDeckSettings
+        ? compactStreamDeckSettings(streamDeckSettings)
+        : undefined;
+      const published = await onPublishCompanionProfile(settingsToPublish);
       setStreamDeckTransferError("");
       setStreamDeckTransferMessage(
-        `Companion profile published as v${published.profileVersion} for role ${published.roleId}.`,
+        `Stream Deck profile saved and published as Companion v${published.profileVersion} for role ${published.roleId}.`,
       );
     } catch (error) {
       setStreamDeckTransferMessage("");
@@ -2245,6 +2248,7 @@ export function StationIntercomView({
         error instanceof Error ? error.message : "Companion publish failed.",
       );
     } finally {
+      setStreamDeckSaveBusy(false);
       setCompanionPublishBusy(false);
     }
   };
@@ -3859,7 +3863,7 @@ export function StationIntercomView({
                       aria-labelledby="streamdeck-companion-confirm-title"
                     >
                       <div className="streamdeck-confirm-icon">
-                        <StreamDeckUiIcon name="warning" />
+                        <StreamDeckUiIcon name="send" />
                       </div>
                       <div className="streamdeck-confirm-content">
                         <span className="streamdeck-confirm-eyebrow">
@@ -3869,12 +3873,22 @@ export function StationIntercomView({
                           Publish this Stream Deck profile?
                         </h4>
                         <p>
-                          Kesher will save the current layout and publish it to
-                          Companion. You will find it in Companion under{" "}
-                          <strong>Buttons / Presets / kesher</strong> as{" "}
-                          <strong>{companionPublishPresetPath}</strong>,
-                          grouped by page.
+                          Kesher will save this layout first, then publish it to
+                          Companion.
                         </p>
+                        <div className="streamdeck-confirm-summary" aria-label="Publish details">
+                          <div>
+                            <span>Save</span>
+                            <strong>Current Stream Deck layout</strong>
+                          </div>
+                          <div>
+                            <span>Companion</span>
+                            <strong>Buttons / Presets / kesher</strong>
+                          </div>
+                        </div>
+                        <div className="streamdeck-confirm-path">
+                          {companionPublishPresetPath}
+                        </div>
                         <div className="streamdeck-confirm-actions">
                           <button
                             type="button"
@@ -3890,7 +3904,9 @@ export function StationIntercomView({
                             disabled={companionPublishBusy || streamDeckBusy}
                           >
                             <StreamDeckUiIcon name="send" />
-                            Publish now
+                            {companionPublishBusy || streamDeckBusy
+                              ? "Publishing..."
+                              : "Save & publish"}
                           </button>
                         </div>
                       </div>

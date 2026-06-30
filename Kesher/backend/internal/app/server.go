@@ -4381,7 +4381,8 @@ func (s *Server) handleAdminRoleStreamDeckSettings(w http.ResponseWriter, r *htt
 }
 
 type publishCompanionProfileRequest struct {
-	RoleID string `json:"roleId"`
+	RoleID   string              `json:"roleId"`
+	Settings *StreamDeckSettings `json:"settings,omitempty"`
 }
 
 func (s *Server) handleAdminCompanionConfig(w http.ResponseWriter, r *http.Request, session Session) {
@@ -4543,6 +4544,15 @@ func (s *Server) handleUserCompanionPublish(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	var req publishCompanionProfileRequest
+	if r.Body != nil {
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+	}
 	user, err := s.store.FindUserByID(r.Context(), session.UserID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -4551,6 +4561,15 @@ func (s *Server) handleUserCompanionPublish(w http.ResponseWriter, r *http.Reque
 		}
 		s.internalErr(w, err)
 		return
+	}
+	if req.Settings != nil {
+		if _, err := s.store.UpsertUserStreamDeckSettings(r.Context(), session.UserID, *req.Settings); err != nil {
+			if s.writeStoreErr(w, err) {
+				return
+			}
+			s.internalErr(w, err)
+			return
+		}
 	}
 	profile, err := s.buildCompanionProfileResponse(r.Context(), user)
 	if err != nil {

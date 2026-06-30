@@ -167,7 +167,7 @@ describe("LoginView", () => {
     expect(onUsernameChange).toHaveBeenLastCalledWith("TimFOH");
   });
 
-  it("toggles admin panel and handles admin login action", async () => {
+  it("selects admin tab and handles admin login action", async () => {
     const user = userEvent.setup();
     const onAdminPinChange = vi.fn();
     const onAdminLogin = vi.fn();
@@ -182,13 +182,13 @@ describe("LoginView", () => {
       />,
     );
 
-    const adminToggle = screen.getByRole("button", { name: "Admin console" });
-    expect(adminToggle).toHaveAttribute("aria-expanded", "false");
+    const adminTab = screen.getByRole("tab", { name: "Admin" });
+    expect(adminTab).toHaveAttribute("aria-selected", "false");
 
-    await user.click(adminToggle);
-    expect(adminToggle).toHaveAttribute("aria-expanded", "true");
+    await user.click(adminTab);
+    expect(adminTab).toHaveAttribute("aria-selected", "true");
     expect(
-      screen.getByRole("region", { name: "Admin console" }),
+      screen.getByRole("tabpanel", { name: "Admin console" }),
     ).toBeVisible();
     expect(screen.getByText("Wrong PIN")).toBeVisible();
 
@@ -199,10 +199,10 @@ describe("LoginView", () => {
     expect(onAdminPinChange).toHaveBeenCalled();
     expect(onAdminLogin).toHaveBeenCalledTimes(1);
 
-    await user.click(adminToggle);
-    expect(adminToggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(screen.getByRole("tab", { name: "Operator" }));
+    expect(adminTab).toHaveAttribute("aria-selected", "false");
     expect(
-      screen.queryByRole("region", { name: "Admin console" }),
+      screen.queryByRole("tabpanel", { name: "Admin console" }),
     ).not.toBeInTheDocument();
   });
 

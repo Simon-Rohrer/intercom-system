@@ -1005,6 +1005,7 @@ export async function publishCompanionProfile(
 
 export async function publishUserCompanionProfile(
   token: string,
+  settings?: StreamDeckSettings,
 ): Promise<CompanionProfileResponse> {
   const res = await fetch(apiUrl("/api/user/companion/publish"), {
     method: "POST",
@@ -1012,6 +1013,7 @@ export async function publishUserCompanionProfile(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
+    body: JSON.stringify(settings ? { settings } : {}),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json() as Promise<CompanionProfileResponse>;

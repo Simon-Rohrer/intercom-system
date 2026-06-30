@@ -2065,3 +2065,45 @@ func TestServerHandleUserStreamDeckSettingsRejectsInvalidPayload(t *testing.T) {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
+
+func TestServerHandleUserCompanionPublishSavesProvidedStreamDeckSettings(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	s := &Server{store: store, sessions: NewSessionManager(time.Minute)}
+	user, err := store.UpsertUser(context.Background(), "deck-publish", "audio")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := s.sessions.Create(user)
+
+	settings := DefaultStreamDeckSettings()
+	settings.Pages[0].Buttons[7].Action = &StreamDeckButtonAction{Type: StreamDeckActionTypeIncomingCall}
+	body, _ := json.Marshal(publishCompanionProfileRequest{Settings: &settings})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/user/companion/publish", bytes.NewBuffer(body))
+	rec := httptest.NewRecorder()
+	s.handleUserCompanionPublish(rec, req, session)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	stored, err := store.GetUserStreamDeckSettings(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("expected saved stream deck settings: %v", err)
+	}
+	action := stored.Pages[0].Buttons[7].Action
+	if action == nil || action.Type != StreamDeckActionTypeIncomingCall {
+		t.Fatalf("expected incoming-call indicator to be saved, got %+v", action)
+	}
+	published, err := store.GetCompanionProfileByRole(context.Background(), user.RoleID)
+	if err != nil {
+		t.Fatalf("expected companion profile to be published: %v", err)
+	}
+	publishedAction := published.StreamDeck.Pages[0].Buttons[7].Action
+	if publishedAction == nil || publishedAction.Type != StreamDeckActionTypeIncomingCall {
+		t.Fatalf("expected published profile to include incoming-call indicator, got %+v", publishedAction)
+	}
+}

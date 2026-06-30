@@ -775,10 +775,17 @@ describe("StationIntercomView", () => {
     expect(dialog).toHaveTextContent("Kesher / Operator / tim");
     expect(onPublishCompanionProfile).not.toHaveBeenCalled();
 
-    await user.click(within(dialog).getByRole("button", { name: "Publish now" }));
+    await user.click(within(dialog).getByRole("button", { name: "Save & publish" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Companion profile published as v12 for role audio.",
+      "Stream Deck profile saved and published as Companion v12 for role audio.",
+    );
+    expect(onPublishCompanionProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        version: 1,
+        gridColumns: 5,
+        gridRows: 3,
+      }),
     );
   });
 
