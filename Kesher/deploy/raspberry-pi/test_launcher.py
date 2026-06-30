@@ -101,6 +101,25 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(payload["memoryPercent"], 48.8)
         self.assertEqual(payload["temperatureC"], 53.0)
 
+    def test_audio_runtime_ready_with_user_audio_socket_and_capture(self):
+        status = {
+            "pulseSocketReady": True,
+            "pipewireSocketReady": False,
+            "soundCardCount": 1,
+            "captureSourceCount": 1,
+        }
+        self.assertTrue(launcher.audio_runtime_ready(status))
+
+    def test_audio_runtime_not_ready_without_user_audio_socket(self):
+        status = {
+            "pulseSocketReady": False,
+            "pipewireSocketReady": False,
+            "soundCardCount": 1,
+            "captureSourceCount": 1,
+        }
+        self.assertFalse(launcher.audio_runtime_ready(status))
+        self.assertIn("no user audio socket", launcher.audio_runtime_summary(status))
+
     def test_heartbeat_targets_configured_server_url(self):
         self.assertEqual(
             launcher.heartbeat_endpoint_url(self.config),

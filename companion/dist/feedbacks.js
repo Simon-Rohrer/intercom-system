@@ -114,9 +114,8 @@ export function UpdateFeedbacks(self) {
                 bgcolor: combineRgb(255, 210, 0),
             },
             options: [],
-            callback: () => self.signalActive &&
-                self.signalBlinkPhase &&
-                self.signalMessage.trim().toLowerCase() === "call",
+            callback: () => self.signalBlinkPhase &&
+                self.incomingCallBlinkActive(),
         },
         voice_mode_is: {
             name: "Voice mode equals",
@@ -213,13 +212,25 @@ export function UpdateFeedbacks(self) {
                     min: 0,
                     max: 99,
                 },
+                {
+                    id: "sourcePageNumber",
+                    type: "number",
+                    label: "Kesher source page (-1 = current)",
+                    default: -1,
+                    min: -1,
+                    max: 99,
+                },
             ],
             callback: (feedback) => {
                 // Keep legacy compatibility for existing buttons that still store bankIndex.
                 const slotIndex = Number(feedback.options.slotIndex ?? feedback.options.bankIndex ?? 0);
-                const imageBuffer = self.getButtonImage(slotIndex);
+                const sourcePageNumber = Number(feedback.options.sourcePageNumber ?? -1);
+                const pageNumber = Number.isFinite(sourcePageNumber) && sourcePageNumber >= 0
+                    ? Math.trunc(sourcePageNumber)
+                    : undefined;
+                const imageBuffer = self.getButtonImage(slotIndex, pageNumber);
                 if (imageBuffer) {
-                    const effectRule = self.getImageEffectRuleForSlot(slotIndex);
+                    const effectRule = self.getImageEffectRuleForSlot(slotIndex, pageNumber);
                     const rendered = applyImageEffectOverlay(imageBuffer, {
                         mode: effectRule.mode,
                         colorHex: effectRule.colorHex,

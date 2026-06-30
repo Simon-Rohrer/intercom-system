@@ -134,6 +134,19 @@ function incomingCallIndicatorFeedbacks(): CompanionPresetFeedback[] {
   ];
 }
 
+function dynamicButtonImageFeedback(
+  button: StreamDeckButtonConfig,
+  page: StreamDeckPageConfig,
+): CompanionPresetFeedback {
+  return {
+    feedbackId: "dynamic_button_image",
+    options: {
+      slotIndex: button.index,
+      sourcePageNumber: page.page,
+    },
+  };
+}
+
 function buttonPresetName(
   self: ModuleInstance,
   button: StreamDeckButtonConfig,
@@ -175,11 +188,15 @@ function buildProfileButtonPreset(
   const label = hasContent
     ? self.resolveSyncedButtonLabel(button) || `Key ${button.index + 1}`
     : "";
+  const imageBase64 = self.getButtonImage(button.index, page.page)?.toString("base64");
   const style = {
-    text: label,
-    size: "auto" as const,
+    text: imageBase64 ? "" : label,
+    size: "14" as const,
     color: deriveTextColor(baseBg),
     bgcolor: baseBg,
+    alignment: "center:center" as const,
+    pngalignment: "center:center" as const,
+    ...(imageBase64 ? { png64: imageBase64 } : {}),
     show_topbar: false,
   };
   const actionOptions = {
@@ -195,7 +212,10 @@ function buildProfileButtonPreset(
     name: buttonPresetName(self, button),
     style,
     previewStyle: style,
-    feedbacks: isIndicator ? incomingCallIndicatorFeedbacks() : [],
+    feedbacks: [
+      dynamicButtonImageFeedback(button, page),
+      ...(isIndicator ? incomingCallIndicatorFeedbacks() : []),
+    ],
     steps: shouldTriggerSlot
       ? [
           {

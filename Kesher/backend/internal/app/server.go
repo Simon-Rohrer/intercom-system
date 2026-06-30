@@ -31,42 +31,43 @@ type AckSettings struct {
 var errCompanionUserNotAllowed = errors.New("companion target user is not allowed")
 
 type Server struct {
-	cfg                              Config
-	logger                           *slog.Logger
-	adminLogs                        *adminLogStore
-	store                            *Store
-	sessions                         *SessionManager
-	sessionMu                        sync.Mutex
-	hub                              *Hub
-	media                            *MediaManager
-	telegram                         *TelegramBot
-	certMagic                        tlsProvider
-	httpSrv                          *http.Server
-	redirectSrv                      *http.Server
-	upgrader                         websocket.Upgrader
-	ackMu                            sync.RWMutex
-	ackEnabled                       bool
-	ackSet                           bool
-	companionMu                      sync.RWMutex
-	companionWS                      map[string]map[chan CompanionCommandResult]struct{}
-	companionState                   map[string]map[chan struct{}]struct{}
-	companionPageByRole              map[string]int
-	companionPageButtonDown          map[string]bool
-	companionPageNavAnchorByRole     map[string]int
-	companionHeldTargets             map[string]string
-	companionPendingCallByUser       map[string]bool
-	companionPendingCallerByUser     map[string]string
-	companionPendingCallScopeByUser  map[string]string
-	companionPendingCallSourceByUser map[string]string
-	companionAckedSignalByUser       map[string]string
-	companionSelectListenHoldDelay   time.Duration
-	imageStreamCoord                 *ImageStreamCoordinator
-	companionImageEffectMapMu        sync.Mutex
-	companionImageEffectMapCached    string
-	companionImageEffectMapModTime   time.Time
-	companionImageEffectMapChecked   time.Time
-	companionImageEffectMapErr       string
-	udpAudio                         *UDPAudioRelay
+	cfg                                 Config
+	logger                              *slog.Logger
+	adminLogs                           *adminLogStore
+	store                               *Store
+	sessions                            *SessionManager
+	sessionMu                           sync.Mutex
+	hub                                 *Hub
+	media                               *MediaManager
+	telegram                            *TelegramBot
+	certMagic                           tlsProvider
+	httpSrv                             *http.Server
+	redirectSrv                         *http.Server
+	upgrader                            websocket.Upgrader
+	ackMu                               sync.RWMutex
+	ackEnabled                          bool
+	ackSet                              bool
+	companionMu                         sync.RWMutex
+	companionWS                         map[string]map[chan CompanionCommandResult]struct{}
+	companionState                      map[string]map[chan struct{}]struct{}
+	companionPageByRole                 map[string]int
+	companionPageButtonDown             map[string]bool
+	companionPageNavAnchorByRole        map[string]int
+	companionHeldTargets                map[string]string
+	companionPendingCallByUser          map[string]bool
+	companionPendingCallerByUser        map[string]string
+	companionPendingCallScopeByUser     map[string]string
+	companionPendingCallSourceByUser    map[string]string
+	companionPendingCallStartedAtByUser map[string]time.Time
+	companionAckedSignalByUser          map[string]string
+	companionSelectListenHoldDelay      time.Duration
+	imageStreamCoord                    *ImageStreamCoordinator
+	companionImageEffectMapMu           sync.Mutex
+	companionImageEffectMapCached       string
+	companionImageEffectMapModTime      time.Time
+	companionImageEffectMapChecked      time.Time
+	companionImageEffectMapErr          string
+	udpAudio                            *UDPAudioRelay
 }
 
 type tlsProvider interface {
@@ -119,6 +120,7 @@ const (
 	websocketPingWriteWindow              = 5 * time.Second
 	companionSelectListenHoldDelayDefault = 2 * time.Second
 	companionIncomingCallBlinkInterval    = 300 * time.Millisecond
+	companionIncomingCallBlinkDuration    = 5 * time.Second
 	companionIncomingCallEffectValue      = 3
 	raspberryPiHeartbeatOfflineAfter      = 12 * time.Second
 )
@@ -338,12 +340,14 @@ func (s *Server) handleCompanionWS(w http.ResponseWriter, r *http.Request) {
 				state.SignalActive = true
 				state.SignalFrom = signalFrom
 				state.SignalMessage = signalMessage
+				state.SignalStartedAt = s.companionPendingIncomingCallStartedAtMillis(resolvedUsername)
 			} else if s.hasCompanionPendingIncomingCall(resolvedUsername) {
 				state.SignalActive = true
 				state.SignalMessage = "call"
 				if caller, ok := s.companionPendingIncomingCaller(resolvedUsername); ok {
 					state.SignalFrom = caller
 				}
+				state.SignalStartedAt = s.companionPendingIncomingCallStartedAtMillis(resolvedUsername)
 			}
 		}
 		writeJSON(WSOutbound{
@@ -1805,13 +1809,20 @@ func (s *Server) setCompanionPendingIncomingCall(username string, pending bool) 
 	if s.companionPendingCallByUser == nil {
 		s.companionPendingCallByUser = make(map[string]bool)
 	}
+	if s.companionPendingCallStartedAtByUser == nil {
+		s.companionPendingCallStartedAtByUser = make(map[string]time.Time)
+	}
 	if pending {
+		if !s.companionPendingCallByUser[username] {
+			s.companionPendingCallStartedAtByUser[username] = time.Now()
+		}
 		s.companionPendingCallByUser[username] = true
 	} else {
 		delete(s.companionPendingCallByUser, username)
 		delete(s.companionPendingCallerByUser, username)
 		delete(s.companionPendingCallScopeByUser, username)
 		delete(s.companionPendingCallSourceByUser, username)
+		delete(s.companionPendingCallStartedAtByUser, username)
 	}
 	s.companionMu.Unlock()
 }
@@ -1852,7 +1863,14 @@ func (s *Server) setCompanionPendingIncomingCallSource(username, sourceType, sou
 	if s.companionPendingCallSourceByUser == nil {
 		s.companionPendingCallSourceByUser = make(map[string]string)
 	}
-	s.companionPendingCallSourceByUser[username] = sourceType + "|" + sourceID
+	nextSource := sourceType + "|" + sourceID
+	if s.companionPendingCallByUser[username] && s.companionPendingCallSourceByUser[username] != nextSource {
+		if s.companionPendingCallStartedAtByUser == nil {
+			s.companionPendingCallStartedAtByUser = make(map[string]time.Time)
+		}
+		s.companionPendingCallStartedAtByUser[username] = time.Now()
+	}
+	s.companionPendingCallSourceByUser[username] = nextSource
 	s.companionMu.Unlock()
 }
 
@@ -1965,6 +1983,38 @@ func (s *Server) hasCompanionPendingIncomingCall(username string) bool {
 	pending := s.companionPendingCallByUser[username]
 	s.companionMu.RUnlock()
 	return pending
+}
+
+func (s *Server) companionPendingIncomingCallStartedAtMillis(username string) int64 {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return 0
+	}
+	s.companionMu.RLock()
+	startedAt := s.companionPendingCallStartedAtByUser[username]
+	s.companionMu.RUnlock()
+	if startedAt.IsZero() {
+		return 0
+	}
+	return startedAt.UnixMilli()
+}
+
+func (s *Server) companionIncomingCallBlinkActive(username string) bool {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return false
+	}
+	s.companionMu.RLock()
+	pending := s.companionPendingCallByUser[username]
+	startedAt := s.companionPendingCallStartedAtByUser[username]
+	s.companionMu.RUnlock()
+	if !pending {
+		return false
+	}
+	if startedAt.IsZero() {
+		return true
+	}
+	return time.Since(startedAt) < companionIncomingCallBlinkDuration
 }
 
 func (s *Server) rememberCompanionHeldTarget(key, targetID string) {
@@ -2119,7 +2169,7 @@ func (s *Server) companionButtonSnapshotState(ctx context.Context, roleID string
 
 	if action.Type == StreamDeckActionTypeReplyToCaller {
 		hasPendingDirectCall := hasPendingCall && s.companionPendingIncomingCallScope(username) == "direct"
-		if hasPendingDirectCall {
+		if hasPendingDirectCall && s.companionIncomingCallBlinkActive(username) {
 			if state.State != "TALK" {
 				blinkOn := (time.Now().UnixMilli()/companionIncomingCallBlinkInterval.Milliseconds())%2 == 0
 				if blinkOn {
@@ -2137,7 +2187,7 @@ func (s *Server) companionButtonSnapshotState(ctx context.Context, roleID string
 				state.Subtitle = caller
 			}
 		}
-		if hasPendingCall {
+		if hasPendingCall && s.companionIncomingCallBlinkActive(username) {
 			state.EffectValue = companionIncomingCallEffectValue
 			blinkOn := (time.Now().UnixMilli()/companionIncomingCallBlinkInterval.Milliseconds())%2 == 0
 			if blinkOn {
@@ -2149,7 +2199,7 @@ func (s *Server) companionButtonSnapshotState(ctx context.Context, roleID string
 	}
 
 	pendingSourceType, pendingSourceID, hasPendingSource := s.companionPendingIncomingCallSource(username)
-	if hasPendingCall && hasPendingSource && companionIncomingSourceMatchesButton(action, pendingSourceType, pendingSourceID) {
+	if hasPendingCall && hasPendingSource && s.companionIncomingCallBlinkActive(username) && companionIncomingSourceMatchesButton(action, pendingSourceType, pendingSourceID) {
 		blinkOn := (time.Now().UnixMilli()/companionIncomingCallBlinkInterval.Milliseconds())%2 == 0
 		if blinkOn {
 			state.State = "TALK"
@@ -3385,25 +3435,26 @@ func NewServer(cfg Config) (*Server, error) {
 		}
 	}
 	s := &Server{
-		cfg:                              cfg,
-		logger:                           logger,
-		adminLogs:                        adminLogs,
-		store:                            store,
-		sessions:                         NewSessionManager(cfg.SessionTTL),
-		hub:                              NewHub(store, logger),
-		companionWS:                      make(map[string]map[chan CompanionCommandResult]struct{}),
-		companionState:                   make(map[string]map[chan struct{}]struct{}),
-		companionPageByRole:              make(map[string]int),
-		companionPageButtonDown:          make(map[string]bool),
-		companionPageNavAnchorByRole:     make(map[string]int),
-		companionHeldTargets:             make(map[string]string),
-		companionPendingCallByUser:       make(map[string]bool),
-		companionPendingCallerByUser:     make(map[string]string),
-		companionPendingCallScopeByUser:  make(map[string]string),
-		companionPendingCallSourceByUser: make(map[string]string),
-		companionAckedSignalByUser:       make(map[string]string),
-		ackEnabled:                       true,
-		ackSet:                           true,
+		cfg:                                 cfg,
+		logger:                              logger,
+		adminLogs:                           adminLogs,
+		store:                               store,
+		sessions:                            NewSessionManager(cfg.SessionTTL),
+		hub:                                 NewHub(store, logger),
+		companionWS:                         make(map[string]map[chan CompanionCommandResult]struct{}),
+		companionState:                      make(map[string]map[chan struct{}]struct{}),
+		companionPageByRole:                 make(map[string]int),
+		companionPageButtonDown:             make(map[string]bool),
+		companionPageNavAnchorByRole:        make(map[string]int),
+		companionHeldTargets:                make(map[string]string),
+		companionPendingCallByUser:          make(map[string]bool),
+		companionPendingCallerByUser:        make(map[string]string),
+		companionPendingCallScopeByUser:     make(map[string]string),
+		companionPendingCallSourceByUser:    make(map[string]string),
+		companionPendingCallStartedAtByUser: make(map[string]time.Time),
+		companionAckedSignalByUser:          make(map[string]string),
+		ackEnabled:                          true,
+		ackSet:                              true,
 		upgrader: websocket.Upgrader{
 			CheckOrigin:      func(r *http.Request) bool { return true },
 			HandshakeTimeout: 10 * time.Second,

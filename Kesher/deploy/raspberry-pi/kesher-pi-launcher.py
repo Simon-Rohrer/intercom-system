@@ -22,6 +22,7 @@ from urllib.request import Request, urlopen
 
 LAUNCHER_VERSION = "3"
 HEARTBEAT_INTERVAL_SECONDS = 4
+AUDIO_RUNTIME_WAIT_SECONDS = 20
 
 
 def require_text(value: Any, field: str) -> str:
@@ -391,6 +392,108 @@ def wait_for_server(server_url: str, allow_insecure_tls: bool) -> None:
         time.sleep(3)
 
 
+def _socket_exists(path: Path) -> bool:
+    try:
+        return path.exists()
+    except OSError:
+        return False
+
+
+def _run_short_command(command: list[str]) -> str:
+    if not command or not shutil.which(command[0]):
+        return ""
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError, TimeoutError):
+        return ""
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def audio_runtime_status() -> dict[str, Any]:
+    uid = os.getuid()
+    runtime_dir = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{uid}")
+    pulse_socket = runtime_dir / "pulse" / "native"
+    pipewire_socket = runtime_dir / "pipewire-0"
+    sound_controls = sorted(Path("/dev/snd").glob("controlC*"))
+    pactl_sources = [
+        line
+        for line in _run_short_command(["pactl", "list", "short", "sources"]).splitlines()
+        if line and ".monitor" not in line
+    ]
+    arecord_cards = [
+        line
+        for line in _run_short_command(["arecord", "-l"]).splitlines()
+        if line.strip().startswith("card ")
+    ]
+    return {
+        "runtimeDir": str(runtime_dir),
+        "pulseSocket": str(pulse_socket),
+        "pulseSocketReady": _socket_exists(pulse_socket),
+        "pipewireSocket": str(pipewire_socket),
+        "pipewireSocketReady": _socket_exists(pipewire_socket),
+        "soundCardCount": len(sound_controls),
+        "captureSourceCount": len(pactl_sources) or len(arecord_cards),
+        "pactlSources": pactl_sources,
+        "arecordCards": arecord_cards,
+    }
+
+
+def audio_runtime_ready(status: dict[str, Any]) -> bool:
+    has_runtime_audio = bool(status.get("pulseSocketReady")) or bool(
+        status.get("pipewireSocketReady")
+    )
+    has_capture_source = int(status.get("captureSourceCount") or 0) > 0
+    has_sound_card = int(status.get("soundCardCount") or 0) > 0
+    return has_runtime_audio and (has_capture_source or has_sound_card)
+
+
+def audio_runtime_summary(status: dict[str, Any]) -> str:
+    runtime_ready = "pulse" if status.get("pulseSocketReady") else ""
+    if status.get("pipewireSocketReady"):
+        runtime_ready = f"{runtime_ready}+pipewire" if runtime_ready else "pipewire"
+    if not runtime_ready:
+        runtime_ready = "no user audio socket"
+    return (
+        f"{runtime_ready}; "
+        f"soundCards={status.get('soundCardCount', 0)}; "
+        f"captureSources={status.get('captureSourceCount', 0)}"
+    )
+
+
+def wait_for_audio_runtime(timeout_seconds: int = AUDIO_RUNTIME_WAIT_SECONDS) -> dict[str, Any]:
+    timeout = max(0, int(timeout_seconds))
+    deadline = time.monotonic() + timeout
+    last_status = audio_runtime_status()
+    while timeout > 0 and not audio_runtime_ready(last_status):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        print(
+            f"Kesher audio runtime not ready ({audio_runtime_summary(last_status)}); "
+            "retrying in 1 second",
+            flush=True,
+        )
+        time.sleep(min(1.0, remaining))
+        last_status = audio_runtime_status()
+    if audio_runtime_ready(last_status):
+        print(f"Kesher audio runtime ready: {audio_runtime_summary(last_status)}", flush=True)
+    else:
+        print(
+            "Kesher audio runtime still not ready; Chromium may show no microphone: "
+            f"{audio_runtime_summary(last_status)}",
+            flush=True,
+        )
+    return last_status
+
+
 def resolve_browser(configured_binary: Any) -> str:
     candidates = []
     if isinstance(configured_binary, str) and configured_binary.strip():
@@ -458,6 +561,7 @@ def main() -> int:
     parser.add_argument("--version", action="store_true")
     parser.add_argument("--print-url", action="store_true")
     parser.add_argument("--print-heartbeat", action="store_true")
+    parser.add_argument("--print-audio", action="store_true")
     args = parser.parse_args()
     try:
         if args.version:
@@ -478,6 +582,12 @@ def main() -> int:
                     sort_keys=True,
                 )
             )
+            return 0
+        if args.print_audio:
+            status = audio_runtime_status()
+            status["ready"] = audio_runtime_ready(status)
+            status["summary"] = audio_runtime_summary(status)
+            print(json.dumps(status, indent=2, sort_keys=True))
             return 0
         heartbeat_state = {
             "browser_status": "not_started",
@@ -507,7 +617,16 @@ def main() -> int:
                 heartbeat_state,
                 heartbeat_state_lock,
                 browser_status="starting",
+                login_status="waiting_for_audio",
+            )
+            audio_status = wait_for_audio_runtime(
+                int(config.get("audio_runtime_wait_seconds") or AUDIO_RUNTIME_WAIT_SECONDS)
+            )
+            update_heartbeat_state(
+                heartbeat_state,
+                heartbeat_state_lock,
                 login_status="starting_browser",
+                login_error="" if audio_runtime_ready(audio_status) else audio_runtime_summary(audio_status),
             )
             process = subprocess.Popen(
                 browser_command(

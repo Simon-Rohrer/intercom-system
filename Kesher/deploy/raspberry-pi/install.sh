@@ -35,6 +35,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_UID="$(id -u "${TARGET_USER}")"
 TARGET_HOME="$(getent passwd "${TARGET_USER}" | cut -d: -f6)"
 
+EXISTING_DEVICE_GROUPS=()
+for group in audio video input render; do
+  if getent group "${group}" >/dev/null; then
+    EXISTING_DEVICE_GROUPS+=("${group}")
+  fi
+done
+if [[ "${#EXISTING_DEVICE_GROUPS[@]}" -gt 0 ]]; then
+  IFS=,
+  usermod -aG "${EXISTING_DEVICE_GROUPS[*]}" "${TARGET_USER}"
+  unset IFS
+fi
+
 install -d -m 0755 /opt/kesher-pi /etc/kesher
 install -m 0755 "${SCRIPT_DIR}/kesher-pi-launcher.py" /opt/kesher-pi/kesher-pi-launcher.py
 
@@ -66,7 +78,11 @@ systemctl enable kesher-pi.service
 INSTALLED_VERSION="$(python3 /opt/kesher-pi/kesher-pi-launcher.py --version)"
 echo "Installation complete."
 echo "Installed launcher version: ${INSTALLED_VERSION}"
+if [[ "${#EXISTING_DEVICE_GROUPS[@]}" -gt 0 ]]; then
+  echo "Ensured ${TARGET_USER} is in device groups: ${EXISTING_DEVICE_GROUPS[*]}"
+fi
 echo "1. Edit /etc/kesher/raspberry-pis.json"
 echo "2. Test with: sudo -u ${TARGET_USER} KESHER_PI_IP=<PI-IP> /opt/kesher-pi/kesher-pi-launcher.py --print-url"
 echo "3. Check heartbeat payload with: sudo -u ${TARGET_USER} /opt/kesher-pi/kesher-pi-launcher.py --print-heartbeat"
-echo "4. Start with: sudo systemctl start kesher-pi.service"
+echo "4. Check audio runtime with: sudo -u ${TARGET_USER} XDG_RUNTIME_DIR=/run/user/${TARGET_UID} DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${TARGET_UID}/bus /opt/kesher-pi/kesher-pi-launcher.py --print-audio"
+echo "5. Start with: sudo systemctl start kesher-pi.service"

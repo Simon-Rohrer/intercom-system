@@ -91,6 +91,15 @@ function incomingCallIndicatorFeedbacks() {
         },
     ];
 }
+function dynamicButtonImageFeedback(button, page) {
+    return {
+        feedbackId: "dynamic_button_image",
+        options: {
+            slotIndex: button.index,
+            sourcePageNumber: page.page,
+        },
+    };
+}
 function buttonPresetName(self, button) {
     if (!buttonHasContent(button)) {
         return `Key ${button.index + 1} - Empty`;
@@ -114,11 +123,15 @@ function buildProfileButtonPreset(self, profile, page, button) {
     const label = hasContent
         ? self.resolveSyncedButtonLabel(button) || `Key ${button.index + 1}`
         : "";
+    const imageBase64 = self.getButtonImage(button.index, page.page)?.toString("base64");
     const style = {
-        text: label,
-        size: "auto",
+        text: imageBase64 ? "" : label,
+        size: "14",
         color: deriveTextColor(baseBg),
         bgcolor: baseBg,
+        alignment: "center:center",
+        pngalignment: "center:center",
+        ...(imageBase64 ? { png64: imageBase64 } : {}),
         show_topbar: false,
     };
     const actionOptions = {
@@ -133,7 +146,10 @@ function buildProfileButtonPreset(self, profile, page, button) {
         name: buttonPresetName(self, button),
         style,
         previewStyle: style,
-        feedbacks: isIndicator ? incomingCallIndicatorFeedbacks() : [],
+        feedbacks: [
+            dynamicButtonImageFeedback(button, page),
+            ...(isIndicator ? incomingCallIndicatorFeedbacks() : []),
+        ],
         steps: shouldTriggerSlot
             ? [
                 {

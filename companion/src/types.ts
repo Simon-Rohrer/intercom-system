@@ -11,6 +11,7 @@ export type CompanionState = {
   signalActive?: boolean;
   signalFrom?: string;
   signalMessage?: string;
+  signalStartedAt?: number;
   imageEffectMapJson?: string;
   variables?: Record<string, unknown>;
   presence?: {

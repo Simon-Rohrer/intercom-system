@@ -27,6 +27,7 @@ const allowedStreamDeckActionTypes = new Set([
     "page_home",
     "page_back",
 ]);
+const incomingCallBlinkDurationMs = 5000;
 function normalizeProfileStreamDeckSettings(raw) {
     if (!raw || typeof raw !== "object")
         return null;
@@ -149,6 +150,7 @@ export class ModuleInstance extends InstanceBase {
     signalActive = false;
     signalFrom = "";
     signalMessage = "";
+    signalStartedAt = 0;
     signalBlinkPhase = false;
     imageEffectBlinkPhase = false;
     lastCommandOK = true;
@@ -162,6 +164,7 @@ export class ModuleInstance extends InstanceBase {
     appliedProfileVersion = 0;
     lastPresetProfilesFetch = 0;
     heldDirectRoleTargets = new Map();
+    signalFingerprint = "";
     discovery = {
         username: "",
         roleId: "",
@@ -409,11 +412,15 @@ export class ModuleInstance extends InstanceBase {
             return undefined;
         return this.buttonImageEffectValues.get(page * 100 + slot);
     }
-    getCurrentPageButtonEffectValue(buttonIndex) {
-        const pageScoped = this.getButtonImageEffectValue(buttonIndex, this.currentPageNumber);
+    getButtonEffectValue(buttonIndex, pageNumber) {
+        const page = Number.isFinite(pageNumber) ? Math.trunc(pageNumber) : this.currentPageNumber;
+        const pageScoped = this.getButtonImageEffectValue(buttonIndex, page);
         if (pageScoped !== undefined)
             return pageScoped;
         return this.buttonImageEffectValues.get(buttonIndex) ?? 0;
+    }
+    getCurrentPageButtonEffectValue(buttonIndex) {
+        return this.getButtonEffectValue(buttonIndex, this.currentPageNumber);
     }
     resolveSyncedButtonLabel(button) {
         const explicitLabel = (button.label || "").trim();
@@ -555,6 +562,39 @@ export class ModuleInstance extends InstanceBase {
             ? state.imageEffectMapJson
             : "";
     }
+    updateSignalState(active, from, message, startedAt) {
+        const normalizedFrom = String(from || "").trim();
+        const normalizedMessage = String(message || "").trim();
+        if (!active) {
+            this.signalActive = false;
+            this.signalFrom = "";
+            this.signalMessage = "";
+            this.signalStartedAt = 0;
+            this.signalFingerprint = "";
+            this.signalBlinkPhase = false;
+            return;
+        }
+        const fingerprint = `${normalizedFrom}|${normalizedMessage}`;
+        const fallbackStartedAt = fingerprint === this.signalFingerprint && this.signalStartedAt > 0
+            ? this.signalStartedAt
+            : Date.now();
+        this.signalActive = true;
+        this.signalFrom = normalizedFrom;
+        this.signalMessage = normalizedMessage;
+        this.signalStartedAt = Number.isFinite(startedAt) && startedAt > 0
+            ? Math.trunc(startedAt)
+            : fallbackStartedAt;
+        this.signalFingerprint = fingerprint;
+    }
+    incomingCallBlinkActive() {
+        if (!this.signalActive)
+            return false;
+        if (this.signalMessage.trim().toLowerCase() !== "call")
+            return false;
+        if (this.signalStartedAt <= 0)
+            return true;
+        return Date.now() - this.signalStartedAt < incomingCallBlinkDurationMs;
+    }
     setButtonImageEffectValue(slotIndex, effectValue, pageNumber) {
         const slot = Number.isFinite(slotIndex) ? Math.trunc(slotIndex) : -1;
         const value = Number.isFinite(effectValue) ? Math.trunc(effectValue) : 0;
@@ -570,9 +610,9 @@ export class ModuleInstance extends InstanceBase {
         }
         this.checkFeedbacks("dynamic_button_image");
     }
-    getImageEffectRuleForSlot(slotIndex) {
+    getImageEffectRuleForSlot(slotIndex, pageNumber) {
         const slot = Number.isFinite(slotIndex) ? Math.trunc(slotIndex) : 0;
-        const effectValue = this.getCurrentPageButtonEffectValue(slot);
+        const effectValue = this.getButtonEffectValue(slot, pageNumber);
         const normalizedValue = Number.isFinite(effectValue) ? Math.trunc(effectValue) : 0;
         const mapped = this.imageEffectRules.get(normalizedValue);
         if (mapped)
@@ -1022,6 +1062,8 @@ export class ModuleInstance extends InstanceBase {
             this.signalActive = false;
             this.signalFrom = "";
             this.signalMessage = "";
+            this.signalStartedAt = 0;
+            this.signalFingerprint = "";
             this.signalBlinkPhase = false;
             this.lastCommandOK = false;
             this.pendingCommandCount = 0;
@@ -1141,9 +1183,7 @@ export class ModuleInstance extends InstanceBase {
                 this.talkRooms = payload.data.presence?.talkRooms || [];
                 this.replyDirectUserId = payload.data.replyDirectUserId || "";
                 this.replyDirectUsername = payload.data.replyDirectUsername || "";
-                this.signalActive = !!payload.data.signalActive;
-                this.signalFrom = payload.data.signalFrom || "";
-                this.signalMessage = payload.data.signalMessage || "";
+                this.updateSignalState(!!payload.data.signalActive, payload.data.signalFrom || "", payload.data.signalMessage || "", Number(payload.data.signalStartedAt || 0));
                 this.applyImageEffectMapFromJson(this.getImageEffectMapJsonFromState(payload.data));
                 this.profileVersion = Number(payload.data.profileVersion || this.profileVersion || 0);
                 if (Number.isInteger(Number(payload.data.currentPageNumber ?? NaN))) {
@@ -1179,6 +1219,8 @@ export class ModuleInstance extends InstanceBase {
             this.signalActive = false;
             this.signalFrom = "";
             this.signalMessage = "";
+            this.signalStartedAt = 0;
+            this.signalFingerprint = "";
             this.signalBlinkPhase = false;
             this.buttonImageEffectValues.clear();
             this.lastCommandOK = false;
@@ -1299,8 +1341,9 @@ export class ModuleInstance extends InstanceBase {
     /**
      * Get a stored button image by index
      */
-    getButtonImage(slotIndex) {
-        return this.imageBridge?.getImage(slotIndex, this.currentPageNumber);
+    getButtonImage(slotIndex, pageNumber) {
+        const page = Number.isFinite(pageNumber) ? Math.trunc(pageNumber) : this.currentPageNumber;
+        return this.imageBridge?.getImage(slotIndex, page);
     }
     /**
      * Connect to the Kesher image stream

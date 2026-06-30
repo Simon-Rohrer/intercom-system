@@ -63,6 +63,8 @@ type ImageEffectRule = {
   colorHex: string;
 };
 
+const incomingCallBlinkDurationMs = 5000;
+
 function normalizeProfileStreamDeckSettings(
   raw: unknown,
 ): StreamDeckSettings | null {
@@ -205,6 +207,7 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
   public signalActive = false;
   public signalFrom = "";
   public signalMessage = "";
+  public signalStartedAt = 0;
   public signalBlinkPhase = false;
   public imageEffectBlinkPhase = false;
   public lastCommandOK = true;
@@ -218,6 +221,7 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
   private appliedProfileVersion = 0;
   private lastPresetProfilesFetch = 0;
   private heldDirectRoleTargets = new Map<string, string>();
+  private signalFingerprint = "";
   public discovery: DiscoveryResponse = {
     username: "",
     roleId: "",
@@ -494,10 +498,15 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
     return this.buttonImageEffectValues.get(page * 100 + slot);
   }
 
-  getCurrentPageButtonEffectValue(buttonIndex: number): number {
-    const pageScoped = this.getButtonImageEffectValue(buttonIndex, this.currentPageNumber);
+  getButtonEffectValue(buttonIndex: number, pageNumber?: number): number {
+    const page = Number.isFinite(pageNumber) ? Math.trunc(pageNumber as number) : this.currentPageNumber;
+    const pageScoped = this.getButtonImageEffectValue(buttonIndex, page);
     if (pageScoped !== undefined) return pageScoped;
     return this.buttonImageEffectValues.get(buttonIndex) ?? 0;
+  }
+
+  getCurrentPageButtonEffectValue(buttonIndex: number): number {
+    return this.getButtonEffectValue(buttonIndex, this.currentPageNumber);
   }
 
   resolveSyncedButtonLabel(button: {
@@ -668,6 +677,40 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
       : "";
   }
 
+  private updateSignalState(active: boolean, from: string, message: string, startedAt: number): void {
+    const normalizedFrom = String(from || "").trim();
+    const normalizedMessage = String(message || "").trim();
+    if (!active) {
+      this.signalActive = false;
+      this.signalFrom = "";
+      this.signalMessage = "";
+      this.signalStartedAt = 0;
+      this.signalFingerprint = "";
+      this.signalBlinkPhase = false;
+      return;
+    }
+
+    const fingerprint = `${normalizedFrom}|${normalizedMessage}`;
+    const fallbackStartedAt =
+      fingerprint === this.signalFingerprint && this.signalStartedAt > 0
+        ? this.signalStartedAt
+        : Date.now();
+    this.signalActive = true;
+    this.signalFrom = normalizedFrom;
+    this.signalMessage = normalizedMessage;
+    this.signalStartedAt = Number.isFinite(startedAt) && startedAt > 0
+      ? Math.trunc(startedAt)
+      : fallbackStartedAt;
+    this.signalFingerprint = fingerprint;
+  }
+
+  public incomingCallBlinkActive(): boolean {
+    if (!this.signalActive) return false;
+    if (this.signalMessage.trim().toLowerCase() !== "call") return false;
+    if (this.signalStartedAt <= 0) return true;
+    return Date.now() - this.signalStartedAt < incomingCallBlinkDurationMs;
+  }
+
   setButtonImageEffectValue(slotIndex: number, effectValue: number, pageNumber?: number): void {
     const slot = Number.isFinite(slotIndex) ? Math.trunc(slotIndex) : -1;
     const value = Number.isFinite(effectValue) ? Math.trunc(effectValue) : 0;
@@ -684,9 +727,9 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
     this.checkFeedbacks("dynamic_button_image");
   }
 
-  getImageEffectRuleForSlot(slotIndex: number): ImageEffectRule {
+  getImageEffectRuleForSlot(slotIndex: number, pageNumber?: number): ImageEffectRule {
     const slot = Number.isFinite(slotIndex) ? Math.trunc(slotIndex) : 0;
-    const effectValue = this.getCurrentPageButtonEffectValue(slot);
+    const effectValue = this.getButtonEffectValue(slot, pageNumber);
     const normalizedValue = Number.isFinite(effectValue) ? Math.trunc(effectValue) : 0;
     const mapped = this.imageEffectRules.get(normalizedValue);
     if (mapped) return mapped;
@@ -1189,6 +1232,8 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
       this.signalActive = false;
       this.signalFrom = "";
       this.signalMessage = "";
+      this.signalStartedAt = 0;
+      this.signalFingerprint = "";
       this.signalBlinkPhase = false;
       this.lastCommandOK = false;
       this.pendingCommandCount = 0;
@@ -1314,9 +1359,12 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
         this.talkRooms = payload.data.presence?.talkRooms || [];
         this.replyDirectUserId = payload.data.replyDirectUserId || "";
         this.replyDirectUsername = payload.data.replyDirectUsername || "";
-        this.signalActive = !!payload.data.signalActive;
-        this.signalFrom = payload.data.signalFrom || "";
-        this.signalMessage = payload.data.signalMessage || "";
+        this.updateSignalState(
+          !!payload.data.signalActive,
+          payload.data.signalFrom || "",
+          payload.data.signalMessage || "",
+          Number(payload.data.signalStartedAt || 0),
+        );
         this.applyImageEffectMapFromJson(this.getImageEffectMapJsonFromState(payload.data));
         this.profileVersion = Number(payload.data.profileVersion || this.profileVersion || 0);
         if (Number.isInteger(Number(payload.data.currentPageNumber ?? NaN))) {
@@ -1354,6 +1402,8 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
       this.signalActive = false;
       this.signalFrom = "";
       this.signalMessage = "";
+      this.signalStartedAt = 0;
+      this.signalFingerprint = "";
       this.signalBlinkPhase = false;
       this.buttonImageEffectValues.clear();
       this.lastCommandOK = false;
@@ -1495,8 +1545,9 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
   /**
    * Get a stored button image by index
    */
-  getButtonImage(slotIndex: number): Buffer | undefined {
-    return this.imageBridge?.getImage(slotIndex, this.currentPageNumber);
+  getButtonImage(slotIndex: number, pageNumber?: number): Buffer | undefined {
+    const page = Number.isFinite(pageNumber) ? Math.trunc(pageNumber as number) : this.currentPageNumber;
+    return this.imageBridge?.getImage(slotIndex, page);
   }
 
   /**

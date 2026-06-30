@@ -24,18 +24,21 @@ func newCompanionTestServer(t *testing.T) *Server {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	hub := NewHub(store, logger)
 	return &Server{
-		cfg:                              Config{},
-		store:                            store,
-		sessions:                         NewSessionManager(time.Minute),
-		hub:                              hub,
-		companionWS:                      make(map[string]map[chan CompanionCommandResult]struct{}),
-		companionState:                   make(map[string]map[chan struct{}]struct{}),
-		companionPageByRole:              make(map[string]int),
-		companionHeldTargets:             make(map[string]string),
-		companionPendingCallScopeByUser:  make(map[string]string),
-		companionPendingCallSourceByUser: make(map[string]string),
-		companionAckedSignalByUser:       make(map[string]string),
-		companionSelectListenHoldDelay:   10 * time.Millisecond,
+		cfg:                                 Config{},
+		store:                               store,
+		sessions:                            NewSessionManager(time.Minute),
+		hub:                                 hub,
+		companionWS:                         make(map[string]map[chan CompanionCommandResult]struct{}),
+		companionState:                      make(map[string]map[chan struct{}]struct{}),
+		companionPageByRole:                 make(map[string]int),
+		companionHeldTargets:                make(map[string]string),
+		companionPendingCallByUser:          make(map[string]bool),
+		companionPendingCallerByUser:        make(map[string]string),
+		companionPendingCallScopeByUser:     make(map[string]string),
+		companionPendingCallSourceByUser:    make(map[string]string),
+		companionPendingCallStartedAtByUser: make(map[string]time.Time),
+		companionAckedSignalByUser:          make(map[string]string),
+		companionSelectListenHoldDelay:      10 * time.Millisecond,
 	}
 }
 
@@ -247,6 +250,33 @@ func TestCompanionButtonSnapshotStateIncomingCallIndicatorShowsCallerAndBlink(t 
 	}
 	if state.Subtitle != "alice (PL Main)" {
 		t.Fatalf("expected caller subtitle, got %q", state.Subtitle)
+	}
+}
+
+func TestCompanionButtonSnapshotStateIncomingCallIndicatorStopsBlinkAfterDuration(t *testing.T) {
+	s := newCompanionTestServer(t)
+	s.setCompanionPendingIncomingCall("operator", true)
+	s.setCompanionPendingIncomingCaller("operator", "alice (PL Main)")
+	s.companionMu.Lock()
+	s.companionPendingCallStartedAtByUser["operator"] = time.Now().Add(-companionIncomingCallBlinkDuration - time.Second)
+	s.companionMu.Unlock()
+
+	button := StreamDeckButtonConfig{
+		Index: 7,
+		Action: &StreamDeckButtonAction{
+			Type: StreamDeckActionTypeIncomingCall,
+		},
+	}
+
+	state := s.companionButtonSnapshotState(context.Background(), "role_a", 0, "operator", PresenceState{}, button)
+	if state.EffectValue != 0 {
+		t.Fatalf("expected expired incoming call indicator not to blink, got effectValue=%d", state.EffectValue)
+	}
+	if state.Label != "Incoming" {
+		t.Fatalf("expected incoming indicator label, got %q", state.Label)
+	}
+	if state.Subtitle != "alice (PL Main)" {
+		t.Fatalf("expected caller subtitle to remain available, got %q", state.Subtitle)
 	}
 }
 
