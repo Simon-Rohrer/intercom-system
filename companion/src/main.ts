@@ -63,7 +63,10 @@ type ImageEffectRule = {
   colorHex: string;
 };
 
-const incomingCallBlinkDurationMs = 5000;
+const signalBlinkIntervalMs = 300;
+const maxIncomingCallBlinkCycles = 6;
+const incomingCallBlinkDurationMs =
+  signalBlinkIntervalMs * maxIncomingCallBlinkCycles * 2;
 
 function normalizeProfileStreamDeckSettings(
   raw: unknown,
@@ -704,11 +707,15 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
     this.signalFingerprint = fingerprint;
   }
 
-  public incomingCallBlinkActive(): boolean {
+  public signalBlinkAttentionActive(): boolean {
     if (!this.signalActive) return false;
-    if (this.signalMessage.trim().toLowerCase() !== "call") return false;
-    if (this.signalStartedAt <= 0) return true;
+    if (this.signalStartedAt <= 0) return false;
     return Date.now() - this.signalStartedAt < incomingCallBlinkDurationMs;
+  }
+
+  public incomingCallBlinkActive(): boolean {
+    if (this.signalMessage.trim().toLowerCase() !== "call") return false;
+    return this.signalBlinkAttentionActive();
   }
 
   setButtonImageEffectValue(slotIndex: number, effectValue: number, pageNumber?: number): void {
@@ -729,8 +736,21 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
 
   getImageEffectRuleForSlot(slotIndex: number, pageNumber?: number): ImageEffectRule {
     const slot = Number.isFinite(slotIndex) ? Math.trunc(slotIndex) : 0;
+    const page = Number.isFinite(pageNumber)
+      ? Math.trunc(pageNumber as number)
+      : this.currentPageNumber;
     const effectValue = this.getButtonEffectValue(slot, pageNumber);
     const normalizedValue = Number.isFinite(effectValue) ? Math.trunc(effectValue) : 0;
+    const buttonConfig = this.getProfileButtonConfig(page, slot);
+    if (
+      buttonConfig?.action?.type === "incoming_call_indicator" &&
+      !this.incomingCallBlinkActive()
+    ) {
+      return {
+        mode: 0,
+        colorHex: "#ff2d26",
+      };
+    }
     const mapped = this.imageEffectRules.get(normalizedValue);
     if (mapped) return mapped;
     return {
@@ -1191,11 +1211,13 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
   private startSignalBlinkTimer(): void {
     if (this.signalBlinkTimer) return;
     this.signalBlinkTimer = setInterval(() => {
-      const nextBlinkPhase = this.signalActive ? !this.signalBlinkPhase : false;
+      const nextBlinkPhase = this.signalBlinkAttentionActive()
+        ? !this.signalBlinkPhase
+        : false;
       if (nextBlinkPhase === this.signalBlinkPhase) return;
       this.signalBlinkPhase = nextBlinkPhase;
       this.checkSignalFeedbacks();
-    }, 300);
+    }, signalBlinkIntervalMs);
   }
 
   private checkSignalFeedbacks(): void {

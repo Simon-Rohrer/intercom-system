@@ -120,7 +120,8 @@ const (
 	websocketPingWriteWindow              = 5 * time.Second
 	companionSelectListenHoldDelayDefault = 2 * time.Second
 	companionIncomingCallBlinkInterval    = 300 * time.Millisecond
-	companionIncomingCallBlinkDuration    = 5 * time.Second
+	companionIncomingCallBlinkMaxCycles   = 6
+	companionIncomingCallBlinkDuration    = companionIncomingCallBlinkInterval * companionIncomingCallBlinkMaxCycles * 2
 	companionIncomingCallEffectValue      = 3
 	raspberryPiHeartbeatOfflineAfter      = 12 * time.Second
 )
@@ -364,6 +365,7 @@ func (s *Server) handleCompanionWS(w http.ResponseWriter, r *http.Request) {
 	defer close(done)
 	blinkTicker := time.NewTicker(companionIncomingCallBlinkInterval)
 	defer blinkTicker.Stop()
+	incomingCallBlinkWasActive := false
 	go func() {
 		for {
 			select {
@@ -409,8 +411,17 @@ func (s *Server) handleCompanionWS(w http.ResponseWriter, r *http.Request) {
 					s.setCompanionPendingIncomingCallSource(resolvedUsername, signalSourceType, signalSourceID)
 				}
 				if !s.hasCompanionPendingIncomingCall(resolvedUsername) {
+					incomingCallBlinkWasActive = false
 					continue
 				}
+				if !s.companionIncomingCallBlinkActive(resolvedUsername) {
+					if incomingCallBlinkWasActive {
+						incomingCallBlinkWasActive = false
+						s.emitCompanionCurrentPageImages(r.Context(), resolvedRoleID, resolvedUsername)
+					}
+					continue
+				}
+				incomingCallBlinkWasActive = true
 				s.emitCompanionCurrentPageImages(r.Context(), resolvedRoleID, resolvedUsername)
 			}
 		}

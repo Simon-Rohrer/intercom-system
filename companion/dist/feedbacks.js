@@ -104,7 +104,8 @@ export function UpdateFeedbacks(self) {
                 bgcolor: combineRgb(255, 210, 0),
             },
             options: [],
-            callback: () => self.signalActive && self.signalBlinkPhase,
+            callback: () => self.signalBlinkPhase &&
+                self.signalBlinkAttentionActive(),
         },
         incoming_call_blink: {
             name: "Incoming call (blinking)",

@@ -229,14 +229,16 @@ export function RaspberryPiStationsPanel({
                   <small>CPU</small>
                   <strong>{formatPercent(station.cpuPercent)}</strong>
                 </span>
-                <span
-                  className={statusToneClass(
-                    metricTone(station.gpuPercent, 85, 70),
-                  )}
-                >
-                  <small>GPU</small>
-                  <strong>{formatPercent(station.gpuPercent)}</strong>
-                </span>
+                {hasMetricValue(station.gpuPercent) ? (
+                  <span
+                    className={statusToneClass(
+                      metricTone(station.gpuPercent, 85, 70),
+                    )}
+                  >
+                    <small>GPU</small>
+                    <strong>{formatPercent(station.gpuPercent)}</strong>
+                  </span>
+                ) : null}
                 <span
                   className={statusToneClass(
                     metricTone(station.memoryPercent, 90, 75),

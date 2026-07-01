@@ -27,7 +27,9 @@ const allowedStreamDeckActionTypes = new Set([
     "page_home",
     "page_back",
 ]);
-const incomingCallBlinkDurationMs = 5000;
+const signalBlinkIntervalMs = 300;
+const maxIncomingCallBlinkCycles = 6;
+const incomingCallBlinkDurationMs = signalBlinkIntervalMs * maxIncomingCallBlinkCycles * 2;
 function normalizeProfileStreamDeckSettings(raw) {
     if (!raw || typeof raw !== "object")
         return null;
@@ -586,14 +588,17 @@ export class ModuleInstance extends InstanceBase {
             : fallbackStartedAt;
         this.signalFingerprint = fingerprint;
     }
-    incomingCallBlinkActive() {
+    signalBlinkAttentionActive() {
         if (!this.signalActive)
             return false;
+        if (this.signalStartedAt <= 0)
+            return false;
+        return Date.now() - this.signalStartedAt < incomingCallBlinkDurationMs;
+    }
+    incomingCallBlinkActive() {
         if (this.signalMessage.trim().toLowerCase() !== "call")
             return false;
-        if (this.signalStartedAt <= 0)
-            return true;
-        return Date.now() - this.signalStartedAt < incomingCallBlinkDurationMs;
+        return this.signalBlinkAttentionActive();
     }
     setButtonImageEffectValue(slotIndex, effectValue, pageNumber) {
         const slot = Number.isFinite(slotIndex) ? Math.trunc(slotIndex) : -1;
@@ -612,8 +617,19 @@ export class ModuleInstance extends InstanceBase {
     }
     getImageEffectRuleForSlot(slotIndex, pageNumber) {
         const slot = Number.isFinite(slotIndex) ? Math.trunc(slotIndex) : 0;
+        const page = Number.isFinite(pageNumber)
+            ? Math.trunc(pageNumber)
+            : this.currentPageNumber;
         const effectValue = this.getButtonEffectValue(slot, pageNumber);
         const normalizedValue = Number.isFinite(effectValue) ? Math.trunc(effectValue) : 0;
+        const buttonConfig = this.getProfileButtonConfig(page, slot);
+        if (buttonConfig?.action?.type === "incoming_call_indicator" &&
+            !this.incomingCallBlinkActive()) {
+            return {
+                mode: 0,
+                colorHex: "#ff2d26",
+            };
+        }
         const mapped = this.imageEffectRules.get(normalizedValue);
         if (mapped)
             return mapped;
@@ -1025,12 +1041,14 @@ export class ModuleInstance extends InstanceBase {
         if (this.signalBlinkTimer)
             return;
         this.signalBlinkTimer = setInterval(() => {
-            const nextBlinkPhase = this.signalActive ? !this.signalBlinkPhase : false;
+            const nextBlinkPhase = this.signalBlinkAttentionActive()
+                ? !this.signalBlinkPhase
+                : false;
             if (nextBlinkPhase === this.signalBlinkPhase)
                 return;
             this.signalBlinkPhase = nextBlinkPhase;
             this.checkSignalFeedbacks();
-        }, 300);
+        }, signalBlinkIntervalMs);
     }
     checkSignalFeedbacks() {
         this.checkFeedbacks("signal_active_blink");

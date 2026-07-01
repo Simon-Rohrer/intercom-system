@@ -66,4 +66,18 @@ describe("RaspberryPiStationsPanel", () => {
     expect(screen.getByText("Offline")).toBeInTheDocument();
     expect(screen.getByText("Seen 1m ago")).toBeInTheDocument();
   });
+
+  it("hides the GPU metric when the Raspberry does not report a GPU value", () => {
+    render(
+      <RaspberryPiStationsPanel
+        stations={[{ ...baseStation, gpuPercent: undefined }]}
+      />,
+    );
+
+    expect(screen.queryByText("GPU")).not.toBeInTheDocument();
+    expect(screen.queryByText("n/a")).not.toBeInTheDocument();
+    expect(screen.getByText("CPU")).toBeInTheDocument();
+    expect(screen.getByText("RAM")).toBeInTheDocument();
+    expect(screen.getByText("Temp")).toBeInTheDocument();
+  });
 });
