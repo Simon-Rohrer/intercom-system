@@ -2736,18 +2736,21 @@ export function useIntercomSession({
             }
             pendingICERef.current = [];
             const answer = await pc.createAnswer();
-            const tunedAnswerSdp = tuneOpusSdpForSpeech(
-              answer.sdp || "",
-              lowPowerMode,
-            );
+            const answerSdp = answer.sdp || "";
+            const hasTransmitTrack = hasLocalTransmitTrack();
+            const tunedAnswerSdp = hasTransmitTrack
+              ? tuneOpusSdpForSpeech(answerSdp, lowPowerMode)
+              : answerSdp;
             await pc.setLocalDescription({
               type: "answer",
               sdp: tunedAnswerSdp,
             });
-            await applyOutgoingAudioSenderBitrate(
-              pc,
-              lowPowerMode ? lowPowerOpusMaxBitrateBps : opusMaxBitrateBps,
-            );
+            if (hasTransmitTrack) {
+              await applyOutgoingAudioSenderBitrate(
+                pc,
+                lowPowerMode ? lowPowerOpusMaxBitrateBps : opusMaxBitrateBps,
+              );
+            }
             wsRef.current?.send(
               JSON.stringify({
                 type: "webrtc_answer",
@@ -2756,9 +2759,14 @@ export function useIntercomSession({
             );
             pushDebugEvent("system · webrtc · answered offer");
           })().catch((err) => {
-            setAudioError(
-              `WebRTC renegotiation failed: ${err instanceof Error ? err.message : "unknown error"}`,
-            );
+            if (hasLocalTransmitTrack()) {
+              setAudioError(
+                `WebRTC renegotiation failed: ${err instanceof Error ? err.message : "unknown error"}`,
+              );
+            } else {
+              setAudioError("");
+              pushDebugEvent("system · webrtc · receive-only negotiation skipped after browser error");
+            }
           });
           return;
         }
