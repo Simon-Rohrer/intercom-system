@@ -1194,8 +1194,13 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
       const nextBlinkPhase = this.signalActive ? !this.signalBlinkPhase : false;
       if (nextBlinkPhase === this.signalBlinkPhase) return;
       this.signalBlinkPhase = nextBlinkPhase;
-      this.checkFeedbacks();
+      this.checkSignalFeedbacks();
     }, 300);
+  }
+
+  private checkSignalFeedbacks(): void {
+    this.checkFeedbacks("signal_active_blink");
+    this.checkFeedbacks("incoming_call_blink");
   }
 
   private startImageEffectBlinkTimer(): void {
@@ -1359,12 +1364,30 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
         this.talkRooms = payload.data.presence?.talkRooms || [];
         this.replyDirectUserId = payload.data.replyDirectUserId || "";
         this.replyDirectUsername = payload.data.replyDirectUsername || "";
+        const previousSignalFingerprint = this.signalFingerprint;
+        const previousSignalStartedAt = this.signalStartedAt;
+        const previousSignalBlinkPhase = this.signalBlinkPhase;
+        const previousIncomingCallActive = this.incomingCallBlinkActive();
         this.updateSignalState(
           !!payload.data.signalActive,
           payload.data.signalFrom || "",
           payload.data.signalMessage || "",
           Number(payload.data.signalStartedAt || 0),
         );
+        const incomingCallActive = this.incomingCallBlinkActive();
+        const signalChanged =
+          previousSignalFingerprint !== this.signalFingerprint ||
+          previousSignalStartedAt !== this.signalStartedAt ||
+          previousIncomingCallActive !== incomingCallActive;
+        if (incomingCallActive && signalChanged) {
+          this.signalBlinkPhase = true;
+        }
+        if (!this.signalActive) {
+          this.signalBlinkPhase = false;
+        }
+        if (signalChanged || previousSignalBlinkPhase !== this.signalBlinkPhase) {
+          this.checkSignalFeedbacks();
+        }
         this.applyImageEffectMapFromJson(this.getImageEffectMapJsonFromState(payload.data));
         this.profileVersion = Number(payload.data.profileVersion || this.profileVersion || 0);
         if (Number.isInteger(Number(payload.data.currentPageNumber ?? NaN))) {
@@ -1373,9 +1396,6 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
             this.log("info", `Companion state page changed: ${this.currentPageNumber} -> ${nextPage}`);
             this.currentPageNumber = nextPage;
           }
-        }
-        if (!this.signalActive) {
-          this.signalBlinkPhase = false;
         }
         this.updateVariableValues();
         this.checkFeedbacks();

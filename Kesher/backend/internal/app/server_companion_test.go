@@ -42,6 +42,39 @@ func newCompanionTestServer(t *testing.T) *Server {
 	}
 }
 
+func TestRouteInboundSignalPublishesCompanionStateImmediately(t *testing.T) {
+	s := newCompanionTestServer(t)
+	senderUser := User{ID: "u-sender", Username: "sender", RoleID: "audio"}
+	receiverUser := User{ID: "u-receiver", Username: "receiver", RoleID: "video"}
+	senderSession := s.sessions.Create(senderUser)
+	receiverSession := s.sessions.Create(receiverUser)
+	s.hub.Add(&client{
+		session: senderSession,
+		user:    senderUser,
+		send:    make(chan WSOutbound, 8),
+	})
+	s.hub.Add(&client{
+		session: receiverSession,
+		user:    receiverUser,
+		send:    make(chan WSOutbound, 8),
+	})
+
+	stateCh, unsubscribe := s.subscribeCompanionState(receiverUser.RoleID)
+	defer unsubscribe()
+
+	s.routeInbound(context.Background(), senderSession, WSInbound{Data: RoutedEvent{
+		Scope:    "direct",
+		TargetID: receiverUser.ID,
+		Signal:   "call",
+	}}, "signal")
+
+	select {
+	case <-stateCh:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected immediate companion state notification for incoming call signal")
+	}
+}
+
 func TestResolveCompanionTargetUserRejectsDisallowedUser(t *testing.T) {
 	s := newCompanionTestServer(t)
 	ctx := context.Background()

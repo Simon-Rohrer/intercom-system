@@ -1800,6 +1800,15 @@ func (s *Server) publishCompanionPresenceUpdate(ctx context.Context, roleID stri
 	s.publishCompanionState(roleID)
 }
 
+func (s *Server) publishCompanionSignalUpdate() {
+	if s == nil || s.sessions == nil {
+		return
+	}
+	for _, roleID := range s.sessions.ActiveRoleIDs() {
+		s.publishCompanionState(roleID)
+	}
+}
+
 func (s *Server) setCompanionPendingIncomingCall(username string, pending bool) {
 	username = strings.TrimSpace(username)
 	if username == "" {
@@ -6153,6 +6162,9 @@ func (s *Server) routeInbound(ctx context.Context, sender Session, in WSInbound,
 		return
 	}
 	s.hub.RouteEvent(sender.Token, outType, e)
+	if outType == "signal" {
+		s.publishCompanionSignalUpdate()
+	}
 }
 
 func (s *Server) resolveChatRouting(ctx context.Context, sender Session, e RoutedEvent) (RoutedEvent, *RoutingStatusEvent, bool) {
