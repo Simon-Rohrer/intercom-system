@@ -260,9 +260,68 @@ def read_gpu_percent() -> Optional[float]:
     return None
 
 
+def parse_drm_engine_time_ns(raw_value: str) -> Optional[int]:
+    fields = raw_value.strip().split()
+    if not fields:
+        return None
+    try:
+        value = float(fields[0])
+    except ValueError:
+        return None
+    unit = fields[1].lower() if len(fields) > 1 else "ns"
+    if unit in {"ns", "nsec", "nanosecond", "nanoseconds"}:
+        multiplier = 1
+    elif unit in {"us", "usec", "microsecond", "microseconds"}:
+        multiplier = 1_000
+    elif unit in {"ms", "msec", "millisecond", "milliseconds"}:
+        multiplier = 1_000_000
+    elif unit in {"s", "sec", "second", "seconds"}:
+        multiplier = 1_000_000_000
+    else:
+        return None
+    return int(value * multiplier)
+
+
+def read_gpu_engine_times() -> dict[str, int]:
+    engine_times: dict[str, int] = {}
+    for process_dir in safe_glob(Path("/proc"), "[0-9]*"):
+        fdinfo_dir = process_dir / "fdinfo"
+        for fdinfo_path in safe_glob(fdinfo_dir, "*"):
+            try:
+                lines = fdinfo_path.read_text(encoding="utf-8").splitlines()
+            except (OSError, UnicodeDecodeError):
+                continue
+            client_id = ""
+            parsed_engines: dict[str, int] = {}
+            for line in lines:
+                key, separator, value = line.partition(":")
+                if separator == "":
+                    continue
+                key = key.strip()
+                value = value.strip()
+                if key == "drm-client-id":
+                    client_id = value
+                    continue
+                if not key.startswith("drm-engine-"):
+                    continue
+                time_ns = parse_drm_engine_time_ns(value)
+                if time_ns is not None:
+                    parsed_engines[key.removeprefix("drm-engine-")] = time_ns
+            if not parsed_engines:
+                continue
+            fd_key = fdinfo_path.name
+            client_key = client_id or fd_key
+            process_key = process_dir.name
+            for engine_name, time_ns in parsed_engines.items():
+                engine_times[f"{process_key}:{client_key}:{engine_name}"] = time_ns
+    return engine_times
+
+
 class SystemMetricsSampler:
     def __init__(self) -> None:
         self._previous_cpu_times = read_cpu_times()
+        self._previous_gpu_engine_times = read_gpu_engine_times()
+        self._previous_gpu_monotonic = time.monotonic()
 
     def cpu_percent(self) -> Optional[float]:
         current = read_cpu_times()
@@ -279,10 +338,38 @@ class SystemMetricsSampler:
         busy_delta = max(0, total_delta - idle_delta)
         return max(0.0, min(100.0, (busy_delta / total_delta) * 100.0))
 
+    def gpu_percent(self) -> Optional[float]:
+        direct = read_gpu_percent()
+        if direct is not None:
+            self._previous_gpu_engine_times = read_gpu_engine_times()
+            self._previous_gpu_monotonic = time.monotonic()
+            return direct
+
+        current = read_gpu_engine_times()
+        current_monotonic = time.monotonic()
+        previous = self._previous_gpu_engine_times
+        previous_monotonic = self._previous_gpu_monotonic
+        self._previous_gpu_engine_times = current
+        self._previous_gpu_monotonic = current_monotonic
+        if not current or not previous:
+            return None
+        elapsed_ns = (current_monotonic - previous_monotonic) * 1_000_000_000.0
+        if elapsed_ns <= 0:
+            return None
+        busy_delta = 0
+        for key, value in current.items():
+            previous_value = previous.get(key)
+            if previous_value is None:
+                continue
+            busy_delta += max(0, value - previous_value)
+        if busy_delta <= 0:
+            return 0.0
+        return max(0.0, min(100.0, (busy_delta / elapsed_ns) * 100.0))
+
     def sample(self) -> dict[str, float]:
         metrics: dict[str, float] = {}
         cpu = self.cpu_percent()
-        gpu = read_gpu_percent()
+        gpu = self.gpu_percent()
         memory = read_memory_percent()
         temperature = read_temperature_c()
         if cpu is not None:

@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("kesher-pi-launcher.py")
@@ -109,6 +110,20 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(payload["gpuPercent"], 7.5)
         self.assertEqual(payload["memoryPercent"], 48.8)
         self.assertEqual(payload["temperatureC"], 53.0)
+
+    def test_gpu_percent_uses_drm_engine_delta_when_busy_file_is_missing(self):
+        with mock.patch.object(launcher, "read_gpu_percent", return_value=None), \
+            mock.patch.object(
+                launcher,
+                "read_gpu_engine_times",
+                side_effect=[
+                    {"123:7:render": 0},
+                    {"123:7:render": 250_000_000},
+                ],
+            ), \
+            mock.patch.object(launcher.time, "monotonic", side_effect=[1.0, 3.5]):
+            sampler = launcher.SystemMetricsSampler()
+            self.assertEqual(sampler.gpu_percent(), 10.0)
 
     def test_audio_runtime_ready_with_user_audio_socket_and_capture(self):
         status = {
