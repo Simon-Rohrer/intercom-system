@@ -12,7 +12,7 @@
       "audio_input_match": "Headset",
       "audio_output_match": "Headset",
       "low_power_mode": true,
-      "simple_view": true
+      "simple_view": false
     }
   ]
 }

@@ -46,6 +46,13 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("lowPower=1", url)
         self.assertIn("viewMode=simple", url)
 
+    def test_explicit_non_simple_view_forces_station_mode(self):
+        self.config["clients"][0]["simple_view"] = False
+        client = launcher.resolve_client(self.config, ["192.168.1.51"])
+        url = launcher.build_kesher_url(self.config["server_url"], client)
+        self.assertIn("viewMode=station", url)
+        self.assertNotIn("viewMode=simple", url)
+
     def test_adds_low_power_chromium_flags(self):
         client = launcher.resolve_client(self.config, ["192.168.1.51"])
         url = launcher.build_kesher_url(self.config["server_url"], client)

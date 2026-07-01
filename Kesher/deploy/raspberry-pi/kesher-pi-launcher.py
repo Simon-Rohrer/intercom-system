@@ -116,12 +116,14 @@ def resolve_client(config: dict[str, Any], addresses: list[str]) -> dict[str, An
             "name": name,
             "role_id": role_id,
             "low_power_mode": raw_client.get("low_power_mode", False),
-            "simple_view": raw_client.get("simple_view", False),
         }
         if not isinstance(client["low_power_mode"], bool):
             raise ValueError(f"clients[{index}].low_power_mode must be a boolean")
-        if not isinstance(client["simple_view"], bool):
-            raise ValueError(f"clients[{index}].simple_view must be a boolean")
+        if "simple_view" in raw_client:
+            simple_view = raw_client.get("simple_view")
+            if not isinstance(simple_view, bool):
+                raise ValueError(f"clients[{index}].simple_view must be a boolean")
+            client["simple_view"] = simple_view
         for optional_field in ("audio_input_match", "audio_output_match"):
             value = raw_client.get(optional_field)
             if isinstance(value, str) and value.strip():
@@ -152,6 +154,8 @@ def build_kesher_url(server_url: str, client: dict[str, Any]) -> str:
         params["lowPower"] = "1"
     if client.get("simple_view") is True:
         params["viewMode"] = "simple"
+    elif client.get("simple_view") is False:
+        params["viewMode"] = "station"
     return f"{server_url}/?{urlencode(params)}"
 
 
