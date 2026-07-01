@@ -15,6 +15,7 @@ const baseStation: RaspberryPiStationStatus = {
   lastSeenUnixMs: 1,
   updatedAtUnixMs: 1,
   cpuPercent: 37.4,
+  gpuPercent: 21.8,
   memoryPercent: 61.2,
   temperatureC: 54.8,
   online: true,
@@ -36,6 +37,8 @@ describe("RaspberryPiStationsPanel", () => {
     expect(screen.getByText("running")).toBeInTheDocument();
     expect(screen.getByText("CPU")).toBeInTheDocument();
     expect(screen.getByText("37%")).toBeInTheDocument();
+    expect(screen.getByText("GPU")).toBeInTheDocument();
+    expect(screen.getByText("22%")).toBeInTheDocument();
     expect(screen.getByText("RAM")).toBeInTheDocument();
     expect(screen.getByText("61%")).toBeInTheDocument();
     expect(screen.getByText("Temp")).toBeInTheDocument();

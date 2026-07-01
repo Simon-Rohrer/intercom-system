@@ -255,6 +255,7 @@ export type RaspberryPiStationStatus = {
   loginStatus: string;
   loginError?: string;
   cpuPercent?: number;
+  gpuPercent?: number;
   memoryPercent?: number;
   temperatureC?: number;
   lastSeenUnixMs: number;

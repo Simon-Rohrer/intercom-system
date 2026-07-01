@@ -735,6 +735,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		login_status TEXT NOT NULL DEFAULT '',
 		login_error TEXT NOT NULL DEFAULT '',
 		cpu_percent REAL,
+		gpu_percent REAL,
 		memory_percent REAL,
 		temperature_c REAL,
 		last_seen INTEGER NOT NULL,
@@ -752,6 +753,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		{"login_status", "TEXT NOT NULL DEFAULT ''"},
 		{"login_error", "TEXT NOT NULL DEFAULT ''"},
 		{"cpu_percent", "REAL"},
+		{"gpu_percent", "REAL"},
 		{"memory_percent", "REAL"},
 		{"temperature_c", "REAL"},
 		{"updated_at", "INTEGER NOT NULL DEFAULT 0"},
@@ -996,6 +998,7 @@ func normalizeRaspberryPiHeartbeat(req RaspberryPiHeartbeatRequest) (RaspberryPi
 		req.LoginStatus = "unknown"
 	}
 	req.CPUPercent = normalizePercentPtr(req.CPUPercent)
+	req.GPUPercent = normalizePercentPtr(req.GPUPercent)
 	req.MemoryPercent = normalizePercentPtr(req.MemoryPercent)
 	req.TemperatureC = normalizeTemperaturePtr(req.TemperatureC)
 	return req, nil
@@ -1013,9 +1016,9 @@ func (s *Store) UpsertRaspberryPiHeartbeat(ctx context.Context, req RaspberryPiH
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT INTO raspberry_pi_heartbeats (
 		device_id, name, ip_address, role_id, low_power_mode, launcher_version,
-		browser_status, login_status, login_error, cpu_percent, memory_percent,
+		browser_status, login_status, login_error, cpu_percent, gpu_percent, memory_percent,
 		temperature_c, last_seen, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(device_id) DO UPDATE SET
 		name = excluded.name,
 		ip_address = excluded.ip_address,
@@ -1026,14 +1029,15 @@ func (s *Store) UpsertRaspberryPiHeartbeat(ctx context.Context, req RaspberryPiH
 		login_status = excluded.login_status,
 		login_error = excluded.login_error,
 		cpu_percent = excluded.cpu_percent,
+		gpu_percent = excluded.gpu_percent,
 		memory_percent = excluded.memory_percent,
 		temperature_c = excluded.temperature_c,
 		last_seen = excluded.last_seen,
 		updated_at = excluded.updated_at`,
 		req.DeviceID, req.Name, req.IPAddress, req.RoleID, lowPowerMode,
 		req.LauncherVersion, req.BrowserStatus, req.LoginStatus, req.LoginError,
-		nullableFloat64(req.CPUPercent), nullableFloat64(req.MemoryPercent),
-		nullableFloat64(req.TemperatureC),
+		nullableFloat64(req.CPUPercent), nullableFloat64(req.GPUPercent),
+		nullableFloat64(req.MemoryPercent), nullableFloat64(req.TemperatureC),
 		now, now,
 	)
 	if err != nil {
@@ -1050,11 +1054,12 @@ func (s *Store) FindRaspberryPiHeartbeat(ctx context.Context, deviceID string) (
 	var record RaspberryPiHeartbeatRecord
 	var lowPowerMode int
 	var cpuPercent sql.NullFloat64
+	var gpuPercent sql.NullFloat64
 	var memoryPercent sql.NullFloat64
 	var temperatureC sql.NullFloat64
 	err := s.db.QueryRowContext(ctx, `SELECT
 		device_id, name, ip_address, role_id, low_power_mode, launcher_version,
-		browser_status, login_status, login_error, cpu_percent, memory_percent,
+		browser_status, login_status, login_error, cpu_percent, gpu_percent, memory_percent,
 		temperature_c, last_seen, updated_at
 		FROM raspberry_pi_heartbeats WHERE device_id = ?`, deviceID).Scan(
 		&record.DeviceID,
@@ -1067,6 +1072,7 @@ func (s *Store) FindRaspberryPiHeartbeat(ctx context.Context, deviceID string) (
 		&record.LoginStatus,
 		&record.LoginError,
 		&cpuPercent,
+		&gpuPercent,
 		&memoryPercent,
 		&temperatureC,
 		&record.LastSeenUnixMs,
@@ -1080,6 +1086,7 @@ func (s *Store) FindRaspberryPiHeartbeat(ctx context.Context, deviceID string) (
 	}
 	record.LowPowerMode = lowPowerMode != 0
 	record.CPUPercent = float64PtrFromNull(cpuPercent)
+	record.GPUPercent = float64PtrFromNull(gpuPercent)
 	record.MemoryPercent = float64PtrFromNull(memoryPercent)
 	record.TemperatureC = float64PtrFromNull(temperatureC)
 	return record, nil
@@ -1088,7 +1095,7 @@ func (s *Store) FindRaspberryPiHeartbeat(ctx context.Context, deviceID string) (
 func (s *Store) ListRaspberryPiHeartbeats(ctx context.Context) ([]RaspberryPiHeartbeatRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT
 		device_id, name, ip_address, role_id, low_power_mode, launcher_version,
-		browser_status, login_status, login_error, cpu_percent, memory_percent,
+		browser_status, login_status, login_error, cpu_percent, gpu_percent, memory_percent,
 		temperature_c, last_seen, updated_at
 		FROM raspberry_pi_heartbeats ORDER BY name COLLATE NOCASE, device_id`)
 	if err != nil {
@@ -1100,6 +1107,7 @@ func (s *Store) ListRaspberryPiHeartbeats(ctx context.Context) ([]RaspberryPiHea
 		var record RaspberryPiHeartbeatRecord
 		var lowPowerMode int
 		var cpuPercent sql.NullFloat64
+		var gpuPercent sql.NullFloat64
 		var memoryPercent sql.NullFloat64
 		var temperatureC sql.NullFloat64
 		if err := rows.Scan(
@@ -1113,6 +1121,7 @@ func (s *Store) ListRaspberryPiHeartbeats(ctx context.Context) ([]RaspberryPiHea
 			&record.LoginStatus,
 			&record.LoginError,
 			&cpuPercent,
+			&gpuPercent,
 			&memoryPercent,
 			&temperatureC,
 			&record.LastSeenUnixMs,
@@ -1122,6 +1131,7 @@ func (s *Store) ListRaspberryPiHeartbeats(ctx context.Context) ([]RaspberryPiHea
 		}
 		record.LowPowerMode = lowPowerMode != 0
 		record.CPUPercent = float64PtrFromNull(cpuPercent)
+		record.GPUPercent = float64PtrFromNull(gpuPercent)
 		record.MemoryPercent = float64PtrFromNull(memoryPercent)
 		record.TemperatureC = float64PtrFromNull(temperatureC)
 		records = append(records, record)

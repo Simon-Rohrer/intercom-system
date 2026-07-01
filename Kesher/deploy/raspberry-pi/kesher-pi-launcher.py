@@ -223,6 +223,43 @@ def read_temperature_c() -> Optional[float]:
     return None
 
 
+def safe_glob(root: Path, pattern: str) -> list[Path]:
+    try:
+        return sorted(root.glob(pattern))
+    except OSError:
+        return []
+
+
+def read_gpu_percent() -> Optional[float]:
+    candidates = [
+        Path("/sys/class/drm/card0/device/gpu_busy_percent"),
+        Path("/sys/class/drm/card1/device/gpu_busy_percent"),
+        Path("/sys/kernel/debug/dri/0/gpu_busy_percent"),
+        Path("/sys/kernel/debug/dri/1/gpu_busy_percent"),
+    ]
+    candidates.extend(safe_glob(Path("/sys/class/drm"), "card*/device/gpu_busy_percent"))
+    candidates.extend(safe_glob(Path("/sys/kernel/debug/dri"), "*/gpu_busy_percent"))
+    seen: set[Path] = set()
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+        try:
+            raw = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        first_token = raw.replace("%", " ").split()[0:1]
+        if not first_token:
+            continue
+        try:
+            value = float(first_token[0])
+        except ValueError:
+            continue
+        if 0.0 <= value <= 100.0:
+            return value
+    return None
+
+
 class SystemMetricsSampler:
     def __init__(self) -> None:
         self._previous_cpu_times = read_cpu_times()
@@ -245,10 +282,13 @@ class SystemMetricsSampler:
     def sample(self) -> dict[str, float]:
         metrics: dict[str, float] = {}
         cpu = self.cpu_percent()
+        gpu = read_gpu_percent()
         memory = read_memory_percent()
         temperature = read_temperature_c()
         if cpu is not None:
             metrics["cpuPercent"] = round(cpu, 1)
+        if gpu is not None:
+            metrics["gpuPercent"] = round(gpu, 1)
         if memory is not None:
             metrics["memoryPercent"] = round(memory, 1)
         if temperature is not None:

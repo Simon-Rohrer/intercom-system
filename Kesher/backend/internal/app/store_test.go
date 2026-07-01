@@ -167,6 +167,7 @@ func TestStoreUpsertRaspberryPiHeartbeatPersistsLatestStatus(t *testing.T) {
 
 	ctx := context.Background()
 	firstCPU := 22.25
+	firstGPU := 14.44
 	firstMemory := 63.8
 	firstTemperature := 55.4
 	first, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
@@ -179,6 +180,7 @@ func TestStoreUpsertRaspberryPiHeartbeatPersistsLatestStatus(t *testing.T) {
 		BrowserStatus:   "starting",
 		LoginStatus:     "waiting_for_intercom",
 		CPUPercent:      &firstCPU,
+		GPUPercent:      &firstGPU,
 		MemoryPercent:   &firstMemory,
 		TemperatureC:    &firstTemperature,
 	})
@@ -187,6 +189,7 @@ func TestStoreUpsertRaspberryPiHeartbeatPersistsLatestStatus(t *testing.T) {
 	}
 	if first.DeviceID != "pi-cam-1" || !first.LowPowerMode ||
 		first.CPUPercent == nil || *first.CPUPercent != 22.3 ||
+		first.GPUPercent == nil || *first.GPUPercent != 14.4 ||
 		first.MemoryPercent == nil || *first.MemoryPercent != 63.8 ||
 		first.TemperatureC == nil || *first.TemperatureC != 55.4 {
 		t.Fatalf("unexpected first heartbeat: %#v", first)

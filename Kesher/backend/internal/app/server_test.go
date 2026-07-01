@@ -574,7 +574,8 @@ func TestServerHandleRaspberryPiHeartbeatStoresStation(t *testing.T) {
 		"roleId":"camera",
 		"lowPowerMode":true,
 		"browserStatus":"running",
-		"loginStatus":"waiting_for_intercom"
+		"loginStatus":"waiting_for_intercom",
+		"gpuPercent":18.6
 	}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/raspberry-pi/heartbeat", body)
 	req.Header.Set("X-Kesher-Pi-Secret", "station-secret")
@@ -591,6 +592,9 @@ func TestServerHandleRaspberryPiHeartbeatStoresStation(t *testing.T) {
 	}
 	if record.Name != "Kamera-1" || record.RoleID != "camera" || !record.LowPowerMode {
 		t.Fatalf("unexpected heartbeat record: %#v", record)
+	}
+	if record.GPUPercent == nil || *record.GPUPercent != 18.6 {
+		t.Fatalf("expected GPU percent to be stored, got %#v", record.GPUPercent)
 	}
 }
 

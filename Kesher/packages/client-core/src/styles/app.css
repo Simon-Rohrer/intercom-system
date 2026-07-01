@@ -2396,7 +2396,14 @@ button {
 .admin-pi-station-checks,
 .admin-pi-station-metrics {
   display: grid;
+}
+
+.admin-pi-station-checks {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-pi-station-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .admin-pi-station-checks span,

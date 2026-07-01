@@ -119,6 +119,7 @@ type RaspberryPiHeartbeatRequest struct {
 	LoginStatus     string   `json:"loginStatus"`
 	LoginError      string   `json:"loginError"`
 	CPUPercent      *float64 `json:"cpuPercent,omitempty"`
+	GPUPercent      *float64 `json:"gpuPercent,omitempty"`
 	MemoryPercent   *float64 `json:"memoryPercent,omitempty"`
 	TemperatureC    *float64 `json:"temperatureC,omitempty"`
 }
@@ -134,6 +135,7 @@ type RaspberryPiHeartbeatRecord struct {
 	LoginStatus     string   `json:"loginStatus"`
 	LoginError      string   `json:"loginError,omitempty"`
 	CPUPercent      *float64 `json:"cpuPercent,omitempty"`
+	GPUPercent      *float64 `json:"gpuPercent,omitempty"`
 	MemoryPercent   *float64 `json:"memoryPercent,omitempty"`
 	TemperatureC    *float64 `json:"temperatureC,omitempty"`
 	LastSeenUnixMs  int64    `json:"lastSeenUnixMs"`

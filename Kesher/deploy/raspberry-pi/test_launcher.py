@@ -100,11 +100,13 @@ class LauncherTests(unittest.TestCase):
             "waiting_for_intercom",
             metrics={
                 "cpuPercent": 12.4,
+                "gpuPercent": 7.5,
                 "memoryPercent": 48.8,
                 "temperatureC": 53.0,
             },
         )
         self.assertEqual(payload["cpuPercent"], 12.4)
+        self.assertEqual(payload["gpuPercent"], 7.5)
         self.assertEqual(payload["memoryPercent"], 48.8)
         self.assertEqual(payload["temperatureC"], 53.0)
 
