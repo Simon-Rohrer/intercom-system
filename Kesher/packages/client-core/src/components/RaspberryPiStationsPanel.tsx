@@ -256,11 +256,6 @@ export function RaspberryPiStationsPanel({
                   <strong>{formatTemperature(station.temperatureC)}</strong>
                 </span>
               </div>
-              {station.loginError ? (
-                <div className="admin-pi-station-error">
-                  {station.loginError}
-                </div>
-              ) : null}
             </div>
           );
         })

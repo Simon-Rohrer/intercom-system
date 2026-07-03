@@ -2471,15 +2471,6 @@ button {
   font-size: 0.88rem;
 }
 
-.admin-pi-station-error {
-  grid-column: 1 / -1;
-  color: #ffd1d1;
-  font-size: 0.86rem;
-  line-height: 1.35;
-  padding-top: 0.3rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
-}
-
 .admin-pi-empty {
   padding: 0.75rem;
   border-radius: 10px;
@@ -3940,11 +3931,6 @@ button.secondary {
 .station-pi-monitoring .admin-pi-station-checks strong,
 .station-pi-monitoring .admin-pi-station-metrics strong {
   font-size: 0.68rem;
-}
-
-.station-pi-monitoring .admin-pi-station-error {
-  padding-top: 0.2rem;
-  font-size: 0.75rem;
 }
 
 .station-pi-monitoring .admin-pi-empty {

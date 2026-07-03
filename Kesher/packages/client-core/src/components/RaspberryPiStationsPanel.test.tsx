@@ -80,4 +80,20 @@ describe("RaspberryPiStationsPanel", () => {
     expect(screen.getByText("RAM")).toBeInTheDocument();
     expect(screen.getByText("Temp")).toBeInTheDocument();
   });
+
+  it("does not show Raspberry audio diagnostic text below the status cards", () => {
+    render(
+      <RaspberryPiStationsPanel
+        stations={[
+          {
+            ...baseStation,
+            loginError: "pulse+pipewire; soundCards=2; captureSources=0",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.queryByText(/pulse\+pipewire/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/captureSources/i)).not.toBeInTheDocument();
+  });
 });
