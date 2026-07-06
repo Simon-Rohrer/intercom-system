@@ -46,6 +46,24 @@ while [[ "$#" -gt 0 ]]; do
       COMPANION_SATELLITE_ARGS+=(--rest-port "${2:-}")
       shift
       ;;
+    --companion-satellite-work-dir)
+      if [[ "$#" -lt 2 ]]; then
+        echo "--companion-satellite-work-dir requires a value." >&2
+        exit 1
+      fi
+      INSTALL_COMPANION_SATELLITE="true"
+      COMPANION_SATELLITE_ARGS+=(--work-dir "${2:-}")
+      shift
+      ;;
+    --companion-satellite-min-free-mb)
+      if [[ "$#" -lt 2 ]]; then
+        echo "--companion-satellite-min-free-mb requires a value." >&2
+        exit 1
+      fi
+      INSTALL_COMPANION_SATELLITE="true"
+      COMPANION_SATELLITE_ARGS+=(--min-free-mb "${2:-}")
+      shift
+      ;;
     --reinstall-companion-satellite)
       INSTALL_COMPANION_SATELLITE="true"
       COMPANION_SATELLITE_ARGS+=(--reinstall)
@@ -58,6 +76,10 @@ while [[ "$#" -gt 0 ]]; do
       echo "  --companion-satellite-port PORT  override the Companion Satellite API port, default 16622"
       echo "  --companion-satellite-rest-port PORT"
       echo "                                   override Satellite web UI port, default 9999"
+      echo "  --companion-satellite-work-dir PATH"
+      echo "                                   disk-backed Satellite install temp dir, default /opt/kesher-satellite-tmp"
+      echo "  --companion-satellite-min-free-mb MB"
+      echo "                                   required free disk space before Satellite install, default 2500"
       echo "  --reinstall-companion-satellite  rerun the official Companion Satellite installer"
       exit 0
       ;;
