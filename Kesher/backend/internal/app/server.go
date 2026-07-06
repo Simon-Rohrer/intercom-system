@@ -3601,6 +3601,7 @@ func NewServer(cfg Config) (*Server, error) {
 	mux.HandleFunc("/api/admin/raspberry-pis", s.withAuth(s.handleAdminRaspberryPis))
 	mux.HandleFunc("/api/companion/discovery", s.handleCompanionDiscovery)
 	mux.HandleFunc("/api/companion/ws", s.handleCompanionWS)
+	mux.HandleFunc("/api/companion/image-stream", s.HandleImageStreamWebSocket)
 	mux.HandleFunc("/api/image-stream", s.HandleImageStreamWebSocket)
 	mux.HandleFunc("/api/debug/button-image", s.HandleDebugButtonImage)
 	mux.HandleFunc("/api/debug/button-image-preview", s.HandleDebugButtonImagePreview)

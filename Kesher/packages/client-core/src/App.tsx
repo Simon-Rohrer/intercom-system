@@ -1417,6 +1417,10 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       })
       .catch((err) => {
         if (!cancelled) {
+          if (authMode === "operator" && isUnauthorizedError(err)) {
+            recoverOperatorSession();
+            return;
+          }
           setStreamDeckSettings(localDefaultStreamDeckSettings());
           setStreamDeckError(
             err instanceof Error
@@ -1454,6 +1458,10 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         setRoomListenerCounts(status.roomListenerCounts ?? {});
       } catch (error) {
         if (cancelled) return;
+        if (authMode === "operator" && isUnauthorizedError(error)) {
+          recoverOperatorSession();
+          return;
+        }
         console.warn("Failed to load status", error);
       }
       try {
@@ -1463,6 +1471,10 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         setRaspberryPiStationsError("");
       } catch (error) {
         if (cancelled) return;
+        if (authMode === "operator" && isUnauthorizedError(error)) {
+          recoverOperatorSession();
+          return;
+        }
         setRaspberryPiStationsError(
           error instanceof Error
             ? error.message
@@ -1483,7 +1495,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [token, authMode, lowPowerMode]);
+  }, [token, authMode, lowPowerMode, recoverOperatorSession]);
 
   // ── Raspberry remote polling on login screen ──
   useEffect(() => {
