@@ -421,13 +421,19 @@ func (s *Server) handleCompanionWS(w http.ResponseWriter, r *http.Request) {
 					s.setCompanionPendingIncomingCallSource(resolvedUsername, signalSourceType, signalSourceID)
 				}
 				if !s.hasCompanionPendingIncomingCall(resolvedUsername) {
-					incomingCallBlinkWasActive = false
+					if incomingCallBlinkWasActive {
+						incomingCallBlinkWasActive = false
+						s.emitCompanionCurrentPageImages(r.Context(), resolvedRoleID, resolvedUsername)
+						writeState()
+					}
 					continue
 				}
 				if !s.companionIncomingCallBlinkActive(resolvedUsername) {
 					if incomingCallBlinkWasActive {
+						s.clearExpiredCompanionPendingIncomingCall(resolvedUsername)
 						incomingCallBlinkWasActive = false
 						s.emitCompanionCurrentPageImages(r.Context(), resolvedRoleID, resolvedUsername)
+						writeState()
 					}
 					continue
 				}
@@ -1869,18 +1875,45 @@ func (s *Server) setCompanionPendingIncomingCall(username string, pending bool) 
 		s.companionPendingCallStartedAtByUser = make(map[string]time.Time)
 	}
 	if pending {
-		if !s.companionPendingCallByUser[username] {
-			s.companionPendingCallStartedAtByUser[username] = time.Now()
+		now := time.Now()
+		startedAt := s.companionPendingCallStartedAtByUser[username]
+		if !s.companionPendingCallByUser[username] || startedAt.IsZero() || companionIncomingCallExpired(startedAt, now) {
+			s.companionPendingCallStartedAtByUser[username] = now
 		}
 		s.companionPendingCallByUser[username] = true
 	} else {
-		delete(s.companionPendingCallByUser, username)
-		delete(s.companionPendingCallerByUser, username)
-		delete(s.companionPendingCallScopeByUser, username)
-		delete(s.companionPendingCallSourceByUser, username)
-		delete(s.companionPendingCallStartedAtByUser, username)
+		s.clearCompanionPendingIncomingCallLocked(username)
 	}
 	s.companionMu.Unlock()
+}
+
+func companionIncomingCallExpired(startedAt time.Time, now time.Time) bool {
+	return !startedAt.IsZero() && now.Sub(startedAt) >= companionIncomingCallBlinkDuration
+}
+
+func (s *Server) clearCompanionPendingIncomingCallLocked(username string) {
+	delete(s.companionPendingCallByUser, username)
+	delete(s.companionPendingCallerByUser, username)
+	delete(s.companionPendingCallScopeByUser, username)
+	delete(s.companionPendingCallSourceByUser, username)
+	delete(s.companionPendingCallStartedAtByUser, username)
+}
+
+func (s *Server) clearExpiredCompanionPendingIncomingCall(username string) bool {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return false
+	}
+	s.companionMu.Lock()
+	pending := s.companionPendingCallByUser[username]
+	startedAt := s.companionPendingCallStartedAtByUser[username]
+	if !pending || !companionIncomingCallExpired(startedAt, time.Now()) {
+		s.companionMu.Unlock()
+		return false
+	}
+	s.clearCompanionPendingIncomingCallLocked(username)
+	s.companionMu.Unlock()
+	return true
 }
 
 func (s *Server) setCompanionPendingIncomingCallScope(username, scope string) {
@@ -2035,6 +2068,9 @@ func (s *Server) hasCompanionPendingIncomingCall(username string) bool {
 	if username == "" {
 		return false
 	}
+	if s.clearExpiredCompanionPendingIncomingCall(username) {
+		return false
+	}
 	s.companionMu.RLock()
 	pending := s.companionPendingCallByUser[username]
 	s.companionMu.RUnlock()
@@ -2121,6 +2157,9 @@ func (s *Server) refreshCompanionIncomingCallState(username string) bool {
 		s.setCompanionPendingIncomingCallScope(username, signalScope)
 		s.setCompanionPendingIncomingCallSource(username, signalSourceType, signalSourceID)
 		return true
+	}
+	if s.clearExpiredCompanionPendingIncomingCall(username) {
+		return false
 	}
 	return s.hasCompanionPendingIncomingCall(username)
 }

@@ -260,9 +260,6 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
 
           // Keep modern and legacy render paths in sync.
           return {
-            // Prefer string payload for broad Companion compatibility.
-            imageBuffer: imageBase64,
-            // Legacy compatibility for older renderers.
             png64: imageBase64,
             image: dataUrl,
           } as CompanionAdvancedFeedbackResult & {
@@ -273,7 +270,6 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
 
         // No image for this slot/page yet: force-clear stale image from previous page.
         return {
-          imageBuffer: TRANSPARENT_PNG_BASE64,
           png64: TRANSPARENT_PNG_BASE64,
           image: `data:image/png;base64,${TRANSPARENT_PNG_BASE64}`,
         } as CompanionAdvancedFeedbackResult & {

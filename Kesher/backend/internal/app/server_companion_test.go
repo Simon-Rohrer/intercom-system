@@ -353,8 +353,37 @@ func TestCompanionButtonSnapshotStateIncomingCallIndicatorStopsBlinkAfterDuratio
 	if state.Label != "Incoming" {
 		t.Fatalf("expected incoming indicator label, got %q", state.Label)
 	}
-	if state.Subtitle != "alice (PL Main)" {
-		t.Fatalf("expected caller subtitle to remain available, got %q", state.Subtitle)
+	if state.Subtitle != "Call" {
+		t.Fatalf("expected expired incoming call indicator to return to neutral subtitle, got %q", state.Subtitle)
+	}
+	if s.hasCompanionPendingIncomingCall("operator") {
+		t.Fatal("expected expired incoming call to be cleared")
+	}
+}
+
+func TestSetCompanionPendingIncomingCallRestartsAfterExpiredSameSource(t *testing.T) {
+	s := newCompanionTestServer(t)
+	s.setCompanionPendingIncomingCall("operator", true)
+	s.setCompanionPendingIncomingCaller("operator", "alice (PL Main)")
+	s.setCompanionPendingIncomingCallScope("operator", "room")
+	s.setCompanionPendingIncomingCallSource("operator", "room", "pl-main")
+
+	s.companionMu.Lock()
+	s.companionPendingCallStartedAtByUser["operator"] = time.Now().Add(-companionIncomingCallBlinkDuration - time.Second)
+	s.companionMu.Unlock()
+
+	before := time.Now().Add(-100 * time.Millisecond).UnixMilli()
+	s.setCompanionPendingIncomingCall("operator", true)
+	s.setCompanionPendingIncomingCaller("operator", "alice (PL Main)")
+	s.setCompanionPendingIncomingCallScope("operator", "room")
+	s.setCompanionPendingIncomingCallSource("operator", "room", "pl-main")
+
+	if !s.hasCompanionPendingIncomingCall("operator") {
+		t.Fatal("expected new incoming call to be pending after expired same-source call")
+	}
+	startedAt := s.companionPendingIncomingCallStartedAtMillis("operator")
+	if startedAt < before {
+		t.Fatalf("expected same-source incoming call to restart timer, got startedAt=%d before=%d", startedAt, before)
 	}
 }
 
