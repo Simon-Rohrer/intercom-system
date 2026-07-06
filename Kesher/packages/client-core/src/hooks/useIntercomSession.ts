@@ -30,6 +30,7 @@ import {
   sourceUserIDFromTrackID,
 } from "../app/utils";
 import type {
+  AudioState,
   Bootstrap,
   ChatAckUpdate,
   ChatTarget,
@@ -95,6 +96,10 @@ type WsMessage =
         talkRoomIds?: string[];
         brightness?: number;
         pageNumber?: number;
+        inputDeviceId?: string;
+        outputDeviceId?: string;
+        inputChannel?: string;
+        inputGain?: number;
       };
     }
   | { type: "webrtc_offer"; data: { sdp: string } }
@@ -570,6 +575,7 @@ export type UseIntercomSessionOptions = {
   onInputGainChange: (deviceId: string, gain: number) => void;
   channelAudioFeeds: ChannelAudioFeedSettings[];
   inputDevices: Array<MediaDeviceInfo & { inputChannels?: unknown }>;
+  outputDevices: MediaDeviceInfo[];
 
   // Initial room matrix from session storage
   initialListenRoomIds: string[];
@@ -583,6 +589,9 @@ export type UseIntercomSessionOptions = {
     React.SetStateAction<PublicBootstrap | null>
   >;
   onRefreshAudioDevices: () => Promise<void>;
+  onSelectInputDevice: (deviceId: string) => void;
+  onSelectOutputDevice: (deviceId: string) => Promise<void>;
+  onSelectedInputChannelChange: (channel: InputChannelSelection) => void;
   onSessionTokenRejected: () => void;
   onSessionRevoked: () => void;
   onStreamDeckHardwareCommand?: (cmd: {
@@ -712,6 +721,7 @@ export function useIntercomSession({
   onInputGainChange,
   channelAudioFeeds,
   inputDevices,
+  outputDevices,
   initialListenRoomIds,
   initialTalkRoomIds,
   hadStoredSessionSettings,
@@ -719,6 +729,9 @@ export function useIntercomSession({
   onUpdateAppData,
   onUpdatePublicData,
   onRefreshAudioDevices,
+  onSelectInputDevice,
+  onSelectOutputDevice,
+  onSelectedInputChannelChange,
   onSessionTokenRejected,
   onSessionRevoked,
   onStreamDeckHardwareCommand,
@@ -847,6 +860,10 @@ export function useIntercomSession({
   const appDataRef = useRef(appData);
   const channelAudioFeedsRef = useRef(channelAudioFeeds);
   const inputDevicesRef = useRef(inputDevices);
+  const outputDevicesRef = useRef(outputDevices);
+  const selectedInputChannelRef = useRef<InputChannelSelection>(
+    selectedInputChannel,
+  );
   const managedChannelAudioFeedsRef = useRef<
     Map<string, ManagedChannelAudioFeed>
   >(new Map());
@@ -883,6 +900,12 @@ export function useIntercomSession({
   useEffect(() => {
     inputDevicesRef.current = inputDevices;
   }, [inputDevices]);
+  useEffect(() => {
+    outputDevicesRef.current = outputDevices;
+  }, [outputDevices]);
+  useEffect(() => {
+    selectedInputChannelRef.current = selectedInputChannel;
+  }, [selectedInputChannel]);
   useEffect(() => {
     enableBackgroundAudioRecoveryRef.current = enableBackgroundAudioRecovery;
   }, [enableBackgroundAudioRecovery]);
@@ -2005,6 +2028,61 @@ export function useIntercomSession({
     );
   }
 
+  function audioDeviceToStateEntry(
+    device: MediaDeviceInfo & { inputChannels?: unknown },
+  ): AudioState["inputDevices"][number] {
+    const inputChannels =
+      typeof device.inputChannels === "number" &&
+      Number.isFinite(device.inputChannels) &&
+      device.inputChannels > 0
+        ? Math.floor(device.inputChannels)
+        : undefined;
+    return {
+      deviceId: device.deviceId,
+      label: device.label || "",
+      kind: device.kind === "audiooutput" ? "audiooutput" : "audioinput",
+      inputChannels,
+    };
+  }
+
+  const sendAudioState = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    const selectedChannel =
+      selectedInputChannelRef.current === "all"
+        ? "all"
+        : String(selectedInputChannelRef.current);
+    ws.send(
+      JSON.stringify({
+        type: "audio_state",
+        data: {
+          inputDevices: inputDevicesRef.current.map(audioDeviceToStateEntry),
+          outputDevices: outputDevicesRef.current.map(audioDeviceToStateEntry),
+          selectedInputDeviceId: selectedInputDeviceIdRef.current || "",
+          selectedOutputDeviceId: selectedOutputDeviceIdRef.current || "",
+          selectedInputChannel: selectedChannel,
+          selectedInputGain: selectedInputGainFor(
+            selectedInputDeviceIdRef.current,
+          ),
+        } satisfies AudioState,
+      }),
+    );
+    return true;
+  }, [selectedInputDeviceIdRef, selectedOutputDeviceIdRef, selectedInputGainFor]);
+
+  useEffect(() => {
+    if (connectionState !== "connected") return;
+    sendAudioState();
+  }, [
+    connectionState,
+    inputDevices,
+    outputDevices,
+    selectedInputDeviceId,
+    selectedOutputDeviceId,
+    selectedInputChannel,
+    sendAudioState,
+  ]);
+
   // ── Voice mode actions ──
   function setAlwaysOn(enabled: boolean) {
     restoreAlwaysOnAfterDirectPttRef.current = false;
@@ -2283,6 +2361,7 @@ export function useIntercomSession({
           talkRoomIdsRef.current,
           true,
         );
+        sendAudioState();
         const pc = new RTCPeerConnection({ iceServers: [] });
         pcRef.current = pc;
         pc.onconnectionstatechange = () => setWebrtcState(pc.connectionState);
@@ -2638,6 +2717,76 @@ export function useIntercomSession({
                 selectedInputGainFor(selectedInputDeviceIdRef.current),
                 delta,
               ),
+            );
+            ackSuccess();
+            return;
+          }
+          if (msg.data.command === "set_audio_input_device") {
+            const inputDeviceId = String(msg.data.inputDeviceId || "").trim();
+            if (!inputDeviceId) {
+              ackRejected("missing inputDeviceId");
+              return;
+            }
+            if (
+              !inputDevicesRef.current.some(
+                (device) => device.deviceId === inputDeviceId,
+              )
+            ) {
+              ackRejected("input device unavailable");
+              return;
+            }
+            onSelectInputDevice(inputDeviceId);
+            ackSuccess();
+            return;
+          }
+          if (msg.data.command === "set_audio_output_device") {
+            const outputDeviceId = String(msg.data.outputDeviceId || "").trim();
+            if (
+              outputDeviceId &&
+              !outputDevicesRef.current.some(
+                (device) => device.deviceId === outputDeviceId,
+              )
+            ) {
+              ackRejected("output device unavailable");
+              return;
+            }
+            void onSelectOutputDevice(outputDeviceId)
+              .then(() => {
+                ackSuccess();
+              })
+              .catch((error) => {
+                ackFailed(
+                  error instanceof Error
+                    ? error.message
+                    : "output device change failed",
+                );
+              });
+            return;
+          }
+          if (msg.data.command === "set_audio_input_channel") {
+            const rawChannel = String(msg.data.inputChannel || "").trim();
+            const nextChannel =
+              rawChannel === "all" ? "all" : Number(rawChannel);
+            if (
+              nextChannel !== "all" &&
+              (!Number.isInteger(nextChannel) || nextChannel < 1)
+            ) {
+              ackRejected("invalid inputChannel");
+              return;
+            }
+            onSelectedInputChannelChange(nextChannel as InputChannelSelection);
+            ackSuccess();
+            return;
+          }
+          if (msg.data.command === "set_input_gain") {
+            const inputGain = Number(msg.data.inputGain);
+            if (!Number.isFinite(inputGain)) {
+              ackRejected("invalid inputGain");
+              return;
+            }
+            onInputGainChange(
+              selectedInputDeviceIdRef.current,
+              clampInputGainValue(inputGain),
             );
             ackSuccess();
             return;

@@ -159,6 +159,23 @@ export type Presence = {
   voiceMode: "ptt" | "always_on";
   micEnabled: boolean;
   broadcastActive: boolean;
+  audioState?: AudioState;
+};
+
+export type RemoteAudioDeviceInfo = {
+  deviceId: string;
+  label: string;
+  kind: "audioinput" | "audiooutput";
+  inputChannels?: number;
+};
+
+export type AudioState = {
+  inputDevices: RemoteAudioDeviceInfo[];
+  outputDevices: RemoteAudioDeviceInfo[];
+  selectedInputDeviceId: string;
+  selectedOutputDeviceId: string;
+  selectedInputChannel?: string;
+  selectedInputGain?: number;
 };
 
 export type PublicBootstrap = {
@@ -294,6 +311,7 @@ export type RaspberryPiRemoteStationStatus = {
   voiceMode?: "ptt" | "always_on" | string;
   micEnabled: boolean;
   secondsSinceSeen: number;
+  audioState?: AudioState;
 };
 
 export type RaspberryPiRemoteStationsResponse = {
@@ -313,6 +331,10 @@ export type RaspberryPiRemoteCommandRequest = {
   volumeDelta?: number;
   listenRoomIds?: string[];
   talkRoomIds?: string[];
+  inputDeviceId?: string;
+  outputDeviceId?: string;
+  inputChannel?: string;
+  inputGain?: number;
 };
 
 export type RaspberryPiRemoteCommandResult = {

@@ -26,6 +26,7 @@ import type {
   UserWithOnlineStatus,
 } from "./types";
 import { toStringArray } from "./lib/normalize";
+import { normalizeAudioState } from "./lib/presence";
 
 const adminPinHeaderName = "X-Admin-Pin";
 
@@ -691,6 +692,7 @@ export async function getRaspberryPiRemoteStations(): Promise<RaspberryPiRemoteS
           Number.isFinite(entry.secondsSinceSeen)
             ? entry.secondsSinceSeen
             : 0,
+        audioState: normalizeAudioState(entry.audioState),
       };
     }),
     timestampUnixMs:

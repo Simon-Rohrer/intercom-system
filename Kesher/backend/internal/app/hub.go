@@ -5,6 +5,7 @@ import (
 	"hash"
 	"hash/fnv"
 	"log/slog"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -30,6 +31,7 @@ type client struct {
 	talkRooms        map[string]struct{}
 	voiceMode        string
 	micEnabled       bool
+	audioState       AudioState
 	broadcastGroups  map[string]struct{}
 	send             chan WSOutbound
 	sendPriority     chan WSOutbound
@@ -442,6 +444,140 @@ func (h *Hub) RoomListenerCounts() map[string]int {
 		}
 	}
 	return counts
+}
+
+func sanitizeAudioDeviceList(devices []AudioDeviceInfo, kind string) []AudioDeviceInfo {
+	if len(devices) == 0 {
+		return []AudioDeviceInfo{}
+	}
+	out := make([]AudioDeviceInfo, 0, len(devices))
+	seen := make(map[string]struct{}, len(devices))
+	for _, device := range devices {
+		deviceID := strings.TrimSpace(device.DeviceID)
+		if deviceID == "" {
+			continue
+		}
+		if _, ok := seen[deviceID]; ok {
+			continue
+		}
+		seen[deviceID] = struct{}{}
+		label := strings.TrimSpace(device.Label)
+		if len(label) > 160 {
+			label = label[:160]
+		}
+		inputChannels := device.InputChannels
+		if inputChannels < 0 {
+			inputChannels = 0
+		}
+		if inputChannels > 64 {
+			inputChannels = 64
+		}
+		out = append(out, AudioDeviceInfo{
+			DeviceID:      deviceID,
+			Label:         label,
+			Kind:          kind,
+			InputChannels: inputChannels,
+		})
+	}
+	return out
+}
+
+func sanitizeAudioState(state AudioState) AudioState {
+	selectedInputChannel := strings.TrimSpace(state.SelectedInputChannel)
+	if selectedInputChannel == "" {
+		selectedInputChannel = "all"
+	}
+	var selectedInputGain *float64
+	if state.SelectedInputGain != nil &&
+		!math.IsNaN(*state.SelectedInputGain) &&
+		!math.IsInf(*state.SelectedInputGain, 0) {
+		gain := math.Max(0, math.Min(16, *state.SelectedInputGain))
+		selectedInputGain = &gain
+	}
+	return AudioState{
+		InputDevices:           sanitizeAudioDeviceList(state.InputDevices, "audioinput"),
+		OutputDevices:          sanitizeAudioDeviceList(state.OutputDevices, "audiooutput"),
+		SelectedInputDeviceID:  strings.TrimSpace(state.SelectedInputDeviceID),
+		SelectedOutputDeviceID: strings.TrimSpace(state.SelectedOutputDeviceID),
+		SelectedInputChannel:   selectedInputChannel,
+		SelectedInputGain:      selectedInputGain,
+	}
+}
+
+func cloneAudioDeviceList(devices []AudioDeviceInfo) []AudioDeviceInfo {
+	if len(devices) == 0 {
+		return []AudioDeviceInfo{}
+	}
+	return append([]AudioDeviceInfo(nil), devices...)
+}
+
+func cloneAudioStatePtr(state AudioState) *AudioState {
+	if len(state.InputDevices) == 0 &&
+		len(state.OutputDevices) == 0 &&
+		state.SelectedInputDeviceID == "" &&
+		state.SelectedOutputDeviceID == "" &&
+		state.SelectedInputChannel == "" &&
+		state.SelectedInputGain == nil {
+		return nil
+	}
+	var selectedInputGain *float64
+	if state.SelectedInputGain != nil {
+		gain := *state.SelectedInputGain
+		selectedInputGain = &gain
+	}
+	return &AudioState{
+		InputDevices:           cloneAudioDeviceList(state.InputDevices),
+		OutputDevices:          cloneAudioDeviceList(state.OutputDevices),
+		SelectedInputDeviceID:  state.SelectedInputDeviceID,
+		SelectedOutputDeviceID: state.SelectedOutputDeviceID,
+		SelectedInputChannel:   state.SelectedInputChannel,
+		SelectedInputGain:      selectedInputGain,
+	}
+}
+
+func sameAudioDeviceList(a, b []AudioDeviceInfo) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func sameAudioState(a, b AudioState) bool {
+	return a.SelectedInputDeviceID == b.SelectedInputDeviceID &&
+		a.SelectedOutputDeviceID == b.SelectedOutputDeviceID &&
+		a.SelectedInputChannel == b.SelectedInputChannel &&
+		sameOptionalFloat64(a.SelectedInputGain, b.SelectedInputGain) &&
+		sameAudioDeviceList(a.InputDevices, b.InputDevices) &&
+		sameAudioDeviceList(a.OutputDevices, b.OutputDevices)
+}
+
+func sameOptionalFloat64(a, b *float64) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func (h *Hub) SetAudioState(token string, state AudioState) {
+	h.mu.Lock()
+	c, ok := h.clients[token]
+	if !ok {
+		h.mu.Unlock()
+		return
+	}
+	normalized := sanitizeAudioState(state)
+	if sameAudioState(c.audioState, normalized) {
+		h.mu.Unlock()
+		return
+	}
+	c.audioState = normalized
+	h.mu.Unlock()
+	h.requestPresenceBroadcast()
 }
 
 func (h *Hub) markDirectSignalIncoming(targetUserID string, fromUser User, signal string) {
@@ -1145,6 +1281,7 @@ func (h *Hub) PresenceForUsername(username string) (PresenceState, bool) {
 		VoiceMode:       selected.voiceMode,
 		MicEnabled:      selected.micEnabled,
 		BroadcastActive: len(selected.broadcastGroups) > 0,
+		AudioState:      cloneAudioStatePtr(selected.audioState),
 	}, true
 }
 
@@ -1186,6 +1323,7 @@ func (h *Hub) broadcastPresence() {
 			VoiceMode:       c.voiceMode,
 			MicEnabled:      c.micEnabled,
 			BroadcastActive: len(c.broadcastGroups) > 0,
+			AudioState:      cloneAudioStatePtr(c.audioState),
 		})
 	}
 	sort.Slice(list, func(i, j int) bool {
@@ -1237,6 +1375,7 @@ func (h *Hub) broadcastPresenceForced() {
 			VoiceMode:       c.voiceMode,
 			MicEnabled:      c.micEnabled,
 			BroadcastActive: len(c.broadcastGroups) > 0,
+			AudioState:      cloneAudioStatePtr(c.audioState),
 		})
 	}
 	sort.Slice(list, func(i, j int) bool {
@@ -1288,6 +1427,7 @@ func (h *Hub) SendPresenceSnapshot(token string) {
 			VoiceMode:       c.voiceMode,
 			MicEnabled:      c.micEnabled,
 			BroadcastActive: len(c.broadcastGroups) > 0,
+			AudioState:      cloneAudioStatePtr(c.audioState),
 		})
 	}
 	sort.Slice(list, func(i, j int) bool {

@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -1567,6 +1568,26 @@ func (s *Server) normalizeCompanionRelayCommand(ctx context.Context, sourceRoleI
 	case "input_gain_delta":
 		if command.VolumeDelta == 0 {
 			return CompanionCommand{}, errors.New("missing volumeDelta")
+		}
+		return normalized, nil
+	case "set_audio_input_device":
+		normalized.InputDeviceID = strings.TrimSpace(command.InputDeviceID)
+		if normalized.InputDeviceID == "" {
+			return CompanionCommand{}, errors.New("missing inputDeviceId")
+		}
+		return normalized, nil
+	case "set_audio_output_device":
+		normalized.OutputDeviceID = strings.TrimSpace(command.OutputDeviceID)
+		return normalized, nil
+	case "set_audio_input_channel":
+		normalized.InputChannel = strings.TrimSpace(command.InputChannel)
+		if normalized.InputChannel == "" {
+			return CompanionCommand{}, errors.New("missing inputChannel")
+		}
+		return normalized, nil
+	case "set_input_gain":
+		if command.InputGain == nil || math.IsNaN(*command.InputGain) || math.IsInf(*command.InputGain, 0) {
+			return CompanionCommand{}, errors.New("invalid inputGain")
 		}
 		return normalized, nil
 	case "navigate_to_page", "page_up", "page_down", "page_jump", "page_home", "page_back":
@@ -3856,6 +3877,10 @@ func raspberryPiRemoteStationFromStatus(
 		voiceMode = presence.VoiceMode
 		micEnabled = presence.MicEnabled
 	}
+	var audioState *AudioState
+	if presence != nil {
+		audioState = cloneAudioStatePtr(derefAudioState(presence.AudioState))
+	}
 	return RaspberryPiRemoteStationStatus{
 		DeviceID:          station.DeviceID,
 		Name:              station.Name,
@@ -3871,7 +3896,15 @@ func raspberryPiRemoteStationFromStatus(
 		VoiceMode:         voiceMode,
 		MicEnabled:        micEnabled,
 		SecondsSinceSeen:  station.SecondsSinceSeen,
+		AudioState:        audioState,
 	}
+}
+
+func derefAudioState(state *AudioState) AudioState {
+	if state == nil {
+		return AudioState{}
+	}
+	return *state
 }
 
 func (s *Server) buildRaspberryPiRemoteStationsResponse(ctx context.Context) (RaspberryPiRemoteStationsResponse, error) {
@@ -6015,6 +6048,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			}
 			// Notify Companion clients of listen-state changes so button images update immediately
 			s.publishCompanionPresenceUpdate(r.Context(), session.RoleID)
+		case "audio_state":
+			raw, _ := json.Marshal(in.Data)
+			var state AudioState
+			if err := json.Unmarshal(raw, &state); err != nil {
+				continue
+			}
+			s.hub.SetAudioState(session.Token, state)
 		case "channel_audio_feed_state":
 			raw, _ := json.Marshal(in.Data)
 			var e ChannelAudioFeedEvent

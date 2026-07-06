@@ -159,20 +159,21 @@ type RaspberryPiStationsResponse struct {
 }
 
 type RaspberryPiRemoteStationStatus struct {
-	DeviceID          string   `json:"deviceId"`
-	Name              string   `json:"name"`
-	RoleID            string   `json:"roleId"`
-	Online            bool     `json:"online"`
-	IntercomConnected bool     `json:"intercomConnected"`
-	EffectiveStatus   string   `json:"effectiveStatus"`
-	IntercomUserID    string   `json:"intercomUserId,omitempty"`
-	IntercomUsername  string   `json:"intercomUsername,omitempty"`
-	IntercomRoleID    string   `json:"intercomRoleId,omitempty"`
-	ListenRoomIDs     []string `json:"listenRoomIds"`
-	TalkRoomIDs       []string `json:"talkRoomIds"`
-	VoiceMode         string   `json:"voiceMode,omitempty"`
-	MicEnabled        bool     `json:"micEnabled"`
-	SecondsSinceSeen  int64    `json:"secondsSinceSeen"`
+	DeviceID          string      `json:"deviceId"`
+	Name              string      `json:"name"`
+	RoleID            string      `json:"roleId"`
+	Online            bool        `json:"online"`
+	IntercomConnected bool        `json:"intercomConnected"`
+	EffectiveStatus   string      `json:"effectiveStatus"`
+	IntercomUserID    string      `json:"intercomUserId,omitempty"`
+	IntercomUsername  string      `json:"intercomUsername,omitempty"`
+	IntercomRoleID    string      `json:"intercomRoleId,omitempty"`
+	ListenRoomIDs     []string    `json:"listenRoomIds"`
+	TalkRoomIDs       []string    `json:"talkRoomIds"`
+	VoiceMode         string      `json:"voiceMode,omitempty"`
+	MicEnabled        bool        `json:"micEnabled"`
+	SecondsSinceSeen  int64       `json:"secondsSinceSeen"`
+	AudioState        *AudioState `json:"audioState,omitempty"`
 }
 
 type RaspberryPiRemoteStationsResponse struct {
@@ -355,15 +356,32 @@ type ChannelAudioFeedEvent struct {
 	Active   bool   `json:"active"`
 }
 
+type AudioDeviceInfo struct {
+	DeviceID      string `json:"deviceId"`
+	Label         string `json:"label"`
+	Kind          string `json:"kind"`
+	InputChannels int    `json:"inputChannels,omitempty"`
+}
+
+type AudioState struct {
+	InputDevices           []AudioDeviceInfo `json:"inputDevices"`
+	OutputDevices          []AudioDeviceInfo `json:"outputDevices"`
+	SelectedInputDeviceID  string            `json:"selectedInputDeviceId"`
+	SelectedOutputDeviceID string            `json:"selectedOutputDeviceId"`
+	SelectedInputChannel   string            `json:"selectedInputChannel,omitempty"`
+	SelectedInputGain      *float64          `json:"selectedInputGain,omitempty"`
+}
+
 type PresenceState struct {
-	UserID          string   `json:"userId"`
-	Username        string   `json:"username"`
-	RoleID          string   `json:"roleId"`
-	ListenRooms     []string `json:"listenRooms"`
-	TalkRooms       []string `json:"talkRooms"`
-	VoiceMode       string   `json:"voiceMode"`
-	MicEnabled      bool     `json:"micEnabled"`
-	BroadcastActive bool     `json:"broadcastActive"`
+	UserID          string      `json:"userId"`
+	Username        string      `json:"username"`
+	RoleID          string      `json:"roleId"`
+	ListenRooms     []string    `json:"listenRooms"`
+	TalkRooms       []string    `json:"talkRooms"`
+	VoiceMode       string      `json:"voiceMode"`
+	MicEnabled      bool        `json:"micEnabled"`
+	BroadcastActive bool        `json:"broadcastActive"`
+	AudioState      *AudioState `json:"audioState,omitempty"`
 }
 
 type RoutedEvent struct {
@@ -453,6 +471,10 @@ type CompanionCommand struct {
 	Brightness       int      `json:"brightness,omitempty"`
 	PageNumber       int      `json:"pageNumber,omitempty"`
 	SourcePageNumber *int     `json:"sourcePageNumber,omitempty"`
+	InputDeviceID    string   `json:"inputDeviceId,omitempty"`
+	OutputDeviceID   string   `json:"outputDeviceId,omitempty"`
+	InputChannel     string   `json:"inputChannel,omitempty"`
+	InputGain        *float64 `json:"inputGain,omitempty"`
 }
 
 type CompanionCommandResult struct {

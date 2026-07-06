@@ -3,7 +3,7 @@
  */
 import { toStringArray } from "./normalize";
 import { sameStringArray } from "../app/utils";
-import type { Presence } from "../types";
+import type { AudioState, Presence, RemoteAudioDeviceInfo } from "../types";
 
 // ── Audio level constants ─────────────────────────────────────────────────────
 
@@ -32,8 +32,67 @@ export function normalizePresenceList(value: unknown): Presence[] {
       voiceMode,
       micEnabled: Boolean(record.micEnabled),
       broadcastActive: Boolean(record.broadcastActive),
+      audioState: normalizeAudioState(record.audioState),
     };
   });
+}
+
+function normalizeAudioDeviceList(
+  value: unknown,
+  kind: "audioinput" | "audiooutput",
+): RemoteAudioDeviceInfo[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      const record = (entry ?? {}) as Record<string, unknown>;
+      const deviceId = typeof record.deviceId === "string" ? record.deviceId : "";
+      if (!deviceId) return null;
+      const inputChannels =
+        typeof record.inputChannels === "number" &&
+        Number.isFinite(record.inputChannels) &&
+        record.inputChannels > 0
+          ? Math.floor(record.inputChannels)
+          : undefined;
+      const normalized: RemoteAudioDeviceInfo = {
+        deviceId,
+        label: typeof record.label === "string" ? record.label : "",
+        kind,
+      };
+      if (typeof inputChannels === "number") {
+        normalized.inputChannels = inputChannels;
+      }
+      return normalized;
+    })
+    .filter((entry): entry is RemoteAudioDeviceInfo => entry !== null);
+}
+
+export function normalizeAudioState(value: unknown): AudioState | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const inputDevices = normalizeAudioDeviceList(record.inputDevices, "audioinput");
+  const outputDevices = normalizeAudioDeviceList(record.outputDevices, "audiooutput");
+  if (inputDevices.length === 0 && outputDevices.length === 0) return undefined;
+  return {
+    inputDevices,
+    outputDevices,
+    selectedInputDeviceId:
+      typeof record.selectedInputDeviceId === "string"
+        ? record.selectedInputDeviceId
+        : "",
+    selectedOutputDeviceId:
+      typeof record.selectedOutputDeviceId === "string"
+        ? record.selectedOutputDeviceId
+        : "",
+    selectedInputChannel:
+      typeof record.selectedInputChannel === "string"
+        ? record.selectedInputChannel
+        : undefined,
+    selectedInputGain:
+      typeof record.selectedInputGain === "number" &&
+      Number.isFinite(record.selectedInputGain)
+        ? record.selectedInputGain
+        : undefined,
+  };
 }
 
 export function samePresenceList(a: Presence[], b: Presence[]): boolean {

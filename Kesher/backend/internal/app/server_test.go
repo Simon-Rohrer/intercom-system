@@ -866,6 +866,19 @@ func TestServerHandleRaspberryPiRemoteStationsReturnsAllKnownStations(t *testing
 	sessions := NewSessionManager(time.Minute)
 	session := sessions.Create(User{ID: "u-pi", Username: "Kamera-1", RoleID: "remote-cam"})
 	attachTestHubClient(hub, session, User{ID: "u-pi", Username: "Kamera-1", RoleID: "remote-cam"})
+	inputGain := 1.25
+	hub.SetAudioState(session.Token, AudioState{
+		InputDevices: []AudioDeviceInfo{
+			{DeviceID: "mic-usb", Label: "USB Headset Mic", Kind: "audioinput", InputChannels: 2},
+		},
+		OutputDevices: []AudioDeviceInfo{
+			{DeviceID: "out-usb", Label: "USB Headset Out", Kind: "audiooutput"},
+		},
+		SelectedInputDeviceID:  "mic-usb",
+		SelectedOutputDeviceID: "out-usb",
+		SelectedInputChannel:   "1",
+		SelectedInputGain:      &inputGain,
+	})
 	s := &Server{store: store, hub: hub, sessions: sessions}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/raspberry-pis/remote", nil)
@@ -887,6 +900,20 @@ func TestServerHandleRaspberryPiRemoteStationsReturnsAllKnownStations(t *testing
 	}
 	if !byID["pi-1"].IntercomConnected {
 		t.Fatalf("expected pi-1 to be joinable, got %+v", byID["pi-1"])
+	}
+	audioState := byID["pi-1"].AudioState
+	if audioState == nil {
+		t.Fatalf("expected pi-1 audio state in remote response")
+	}
+	if audioState.SelectedInputDeviceID != "mic-usb" ||
+		audioState.SelectedOutputDeviceID != "out-usb" ||
+		audioState.SelectedInputChannel != "1" ||
+		audioState.SelectedInputGain == nil ||
+		*audioState.SelectedInputGain != inputGain {
+		t.Fatalf("unexpected audio state: %+v", audioState)
+	}
+	if len(audioState.InputDevices) != 1 || audioState.InputDevices[0].Label != "USB Headset Mic" {
+		t.Fatalf("expected input device details, got %+v", audioState.InputDevices)
 	}
 	if _, ok := byID["pi-2"]; !ok {
 		t.Fatalf("expected pi-2 in response, got %+v", response.Stations)
@@ -947,6 +974,29 @@ func TestServerHandleRaspberryPiRemoteCommandQueuesCompanionCommand(t *testing.T
 		}
 	case <-time.After(time.Second):
 		t.Fatal("expected queued companion command")
+	}
+
+	body = strings.NewReader(`{"deviceId":"pi-1","command":"set_audio_input_device","inputDeviceId":"mic-usb"}`)
+	req = httptest.NewRequest(http.MethodPost, "/api/raspberry-pis/remote-command", body)
+	rec = httptest.NewRecorder()
+	s.handleRaspberryPiRemoteCommand(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for audio command, got %d: %s", rec.Code, rec.Body.String())
+	}
+	select {
+	case msg := <-priority:
+		if msg.Type != "companion_command" {
+			t.Fatalf("expected companion_command, got %s", msg.Type)
+		}
+		command, ok := msg.Data.(CompanionCommand)
+		if !ok {
+			t.Fatalf("expected CompanionCommand payload, got %T", msg.Data)
+		}
+		if command.Command != "set_audio_input_device" || command.InputDeviceID != "mic-usb" {
+			t.Fatalf("unexpected audio command payload: %+v", command)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected queued audio companion command")
 	}
 }
 

@@ -36,6 +36,7 @@ import {
   tokenStorageKey,
   sessionSettingsStorageKey,
   type ChannelAudioFeedSettings,
+  type InputChannelSelection,
   type SessionSettings,
 } from "./app/settings";
 import {
@@ -72,6 +73,7 @@ import type {
   RaspberryPiRemoteCommandRequest,
   RaspberryPiRemoteStationStatus,
   RaspberryPiStationStatus,
+  RemoteAudioDeviceInfo,
   StreamDeckButtonConfig,
   StreamDeckSettings,
 } from "./types";
@@ -139,6 +141,40 @@ function raspberryRemoteRoomIds(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string")
     : [];
+}
+
+type RemoteMediaDeviceInfo = MediaDeviceInfo & { inputChannels?: number };
+
+function remoteAudioDeviceToMediaDevice(
+  device: RemoteAudioDeviceInfo,
+): RemoteMediaDeviceInfo {
+  const label =
+    device.label ||
+    (device.kind === "audioinput" ? "Remote microphone" : "Remote output");
+  return {
+    deviceId: device.deviceId,
+    groupId: "",
+    kind: device.kind,
+    label,
+    toJSON: () => ({
+      deviceId: device.deviceId,
+      groupId: "",
+      kind: device.kind,
+      label,
+      inputChannels: device.inputChannels,
+    }),
+    ...(typeof device.inputChannels === "number" && device.inputChannels > 0
+      ? { inputChannels: device.inputChannels }
+      : {}),
+  } as RemoteMediaDeviceInfo;
+}
+
+function remoteAudioInputChannelSelection(
+  value: string | undefined,
+): InputChannelSelection {
+  if (!value || value === "all") return "all";
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : "all";
 }
 
 function matrixAnchorRoomId(listenRoomIds: string[], talkRoomIds: string[]) {
@@ -585,6 +621,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     inputDevices: audioDevices.inputDevices as Array<
       MediaDeviceInfo & { inputChannels?: unknown }
     >,
+    outputDevices: audioDevices.outputDevices,
     initialListenRoomIds: storedSession.listenRoomIds ?? [],
     initialTalkRoomIds: storedSession.talkRoomIds ?? [],
     hadStoredSessionSettings:
@@ -594,6 +631,17 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     onUpdateAppData: setAppData,
     onUpdatePublicData: setPublicData,
     onRefreshAudioDevices: audioDevices.refreshAudioDevices,
+    onSelectInputDevice: (deviceId) => {
+      settings.setSelectedInputDeviceId(deviceId);
+      settings.selectedInputDeviceIdRef.current = deviceId;
+    },
+    onSelectOutputDevice: changeOutputDevice,
+    onSelectedInputChannelChange: (channel) => {
+      settings.onInputChannelChange(
+        settings.selectedInputDeviceIdRef.current,
+        channel,
+      );
+    },
     onSessionTokenRejected: recoverOperatorSession,
     onSessionRevoked: () => {
       sessionStorage.removeItem(tokenStorageKey);
@@ -2400,6 +2448,43 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     const remoteVisibleChannelAudioFeeds = settings.channelAudioFeeds.filter(
       (feed) => feed.ownerRoleId === raspberryRemoteSession.roleId,
     );
+    const remoteAudioState = remoteStation?.audioState;
+    const remoteInputDevices = (remoteAudioState?.inputDevices ?? []).map(
+      remoteAudioDeviceToMediaDevice,
+    );
+    const remoteOutputDevices = (remoteAudioState?.outputDevices ?? []).map(
+      remoteAudioDeviceToMediaDevice,
+    );
+    const remoteSelectedInputDeviceId =
+      remoteAudioState?.selectedInputDeviceId ?? "";
+    const remoteSelectedOutputDeviceId =
+      remoteAudioState?.selectedOutputDeviceId ?? "";
+    const remoteSelectedInputChannel = remoteAudioInputChannelSelection(
+      remoteAudioState?.selectedInputChannel,
+    );
+    const remoteSelectedInputDevice = remoteInputDevices.find(
+      (device) => device.deviceId === remoteSelectedInputDeviceId,
+    );
+    const remoteSelectedInputChannelCount = Math.max(
+      1,
+      resolveInputDeviceChannelCount(remoteSelectedInputDevice) ?? 1,
+    );
+    const remoteSelectedMicLabel =
+      remoteSelectedInputDevice?.label ||
+      (remoteInputDevices.length === 0
+        ? "No microphone reported"
+        : "Select remote microphone");
+    const remoteSelectedOutputLabel =
+      !remoteSelectedOutputDeviceId
+        ? "System default"
+        : remoteOutputDevices.find(
+            (device) => device.deviceId === remoteSelectedOutputDeviceId,
+          )?.label || "Remote output unavailable";
+    const remoteSelectedInputGain =
+      typeof remoteAudioState?.selectedInputGain === "number" &&
+      Number.isFinite(remoteAudioState.selectedInputGain)
+        ? remoteAudioState.selectedInputGain
+        : settings.selectedInputGainFor(remoteSelectedInputDeviceId);
     const sendRemoteDashboardCommand = (
       command: Omit<RaspberryPiRemoteCommandRequest, "deviceId">,
     ) => {
@@ -2640,21 +2725,34 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         keyboardShortcuts={settings.keyboardShortcuts}
         onKeyboardShortcutsChange={settings.setKeyboardShortcuts}
         onRecordingShortcutChange={setIsRecordingShortcut}
-        inputDevices={audioDevices.inputDevices}
-        selectedInputDeviceId={settings.selectedInputDeviceId}
-        selectedMicLabel={selectedMicLabel}
-        setSelectedInputDeviceId={settings.setSelectedInputDeviceId}
-        selectedInputChannel={selectedInputChannel}
-        inputChannelCount={selectedInputChannelCount}
+        inputDevices={remoteInputDevices}
+        selectedInputDeviceId={remoteSelectedInputDeviceId}
+        selectedMicLabel={remoteSelectedMicLabel}
+        setSelectedInputDeviceId={(inputDeviceId) =>
+          sendRemoteDashboardCommand({
+            command: "set_audio_input_device",
+            inputDeviceId,
+          })
+        }
+        selectedInputChannel={remoteSelectedInputChannel}
+        inputChannelCount={remoteSelectedInputChannelCount}
         onSelectedInputChannelChange={(channel) =>
-          settings.onInputChannelChange(settings.selectedInputDeviceId, channel)
+          sendRemoteDashboardCommand({
+            command: "set_audio_input_channel",
+            inputChannel: channel === "all" ? "all" : String(channel),
+          })
         }
         inputLevelDbFs={0}
-        inputGain={selectedInputGain}
+        inputGain={remoteSelectedInputGain}
         inputClipping={false}
         isLocalMonitorActive={false}
         onToggleLocalMonitor={() => undefined}
-        onInputGainChange={settings.onInputGainChange}
+        onInputGainChange={(_deviceId, inputGain) =>
+          sendRemoteDashboardCommand({
+            command: "set_input_gain",
+            inputGain,
+          })
+        }
         channelAudioFeeds={remoteVisibleChannelAudioFeeds}
         channelAudioFeedStatuses={[]}
         onCreateChannelAudioFeed={createLocalChannelAudioFeed}
@@ -2666,11 +2764,16 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         onAudioGateEnabledChange={settings.setAudioGateEnabled}
         audioGateThresholdDb={settings.audioGateThresholdDb}
         onAudioGateThresholdDbChange={settings.setAudioGateThresholdDb}
-        outputDevices={audioDevices.outputDevices}
-        selectedOutputDeviceId={settings.selectedOutputDeviceId}
-        selectedOutputLabel={selectedOutputLabel}
-        outputSelectionSupported={outputSelectionSupported}
-        setSelectedOutputDeviceId={(id) => void changeOutputDevice(id)}
+        outputDevices={remoteOutputDevices}
+        selectedOutputDeviceId={remoteSelectedOutputDeviceId}
+        selectedOutputLabel={remoteSelectedOutputLabel}
+        outputSelectionSupported
+        setSelectedOutputDeviceId={(outputDeviceId) =>
+          sendRemoteDashboardCommand({
+            command: "set_audio_output_device",
+            outputDeviceId,
+          })
+        }
         streamDeckSettings={streamDeckSettings ?? localDefaultStreamDeckSettings()}
         streamDeckBusy={streamDeckBusy}
         streamDeckError={streamDeckError}
