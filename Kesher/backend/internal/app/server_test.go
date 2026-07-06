@@ -2188,3 +2188,39 @@ func TestServerHandleUserCompanionPublishSavesProvidedStreamDeckSettings(t *test
 		t.Fatalf("expected published profile to include incoming-call indicator, got %+v", publishedAction)
 	}
 }
+
+func TestServerHandleAdminCompanionPublishAllowsAdminSessionWithoutUserID(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	s := &Server{store: store, sessions: NewSessionManager(time.Minute)}
+	user, err := store.UpsertUser(context.Background(), "admin-publish-audio", "audio")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/companion/publish", bytes.NewBufferString(`{"roleId":"audio"}`))
+	req.Header.Set("X-Admin-Pin", "123456")
+	rec := httptest.NewRecorder()
+	s.handleAdminCompanionPublish(rec, req, Session{Token: "admin", Username: "admin", RoleID: "admin"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp CompanionProfileResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("expected companion profile response: %v", err)
+	}
+	if resp.RoleID != user.RoleID || resp.Username != user.Username {
+		t.Fatalf("expected published profile for %s/%s, got %s/%s", user.RoleID, user.Username, resp.RoleID, resp.Username)
+	}
+	published, err := store.GetCompanionProfileByRole(context.Background(), user.RoleID)
+	if err != nil {
+		t.Fatalf("expected stored companion profile: %v", err)
+	}
+	if published.ProfileStatus != "published" {
+		t.Fatalf("expected published status, got %q", published.ProfileStatus)
+	}
+}

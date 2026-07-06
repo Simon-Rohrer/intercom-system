@@ -1528,7 +1528,7 @@ func (s *Store) ListCompanionProfiles(ctx context.Context) ([]CompanionProfileRe
 func (s *Store) PublishCompanionProfile(ctx context.Context, roleID string, publishedByUserID string, profile CompanionProfileResponse) (CompanionProfileResponse, error) {
 	roleID = strings.TrimSpace(roleID)
 	publishedByUserID = strings.TrimSpace(publishedByUserID)
-	if roleID == "" || publishedByUserID == "" {
+	if roleID == "" {
 		return CompanionProfileResponse{}, ErrInvalidInput
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -1563,7 +1563,7 @@ func (s *Store) PublishCompanionProfile(ctx context.Context, roleID string, publ
 	_, err = tx.ExecContext(
 		ctx,
 		`INSERT INTO companion_profiles (role_id, profile_version, profile_json, published_by_user_id, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?)
+		 VALUES (?, ?, ?, NULLIF(?, ''), ?, ?)
 		 ON CONFLICT(role_id) DO UPDATE SET
 			profile_version = excluded.profile_version,
 			profile_json = excluded.profile_json,
