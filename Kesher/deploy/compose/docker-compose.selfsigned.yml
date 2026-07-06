@@ -15,6 +15,7 @@ services:
       DB_PATH: ${DB_PATH:-/app/data/intercom.db}
       ALLOW_CORS: ${ALLOW_CORS:-false}
       TRUSTED_LAN_HTTP: ${TRUSTED_LAN_HTTP:-false}
+      TLS_MODE: ${TLS_MODE:-file}
       TLS_CERT_FILE: ${TLS_CERT_FILE:-/app/certs/tls.crt}
       TLS_KEY_FILE: ${TLS_KEY_FILE:-/app/certs/tls.key}
       CERT_HOST: ${CERT_HOST:-localhost}

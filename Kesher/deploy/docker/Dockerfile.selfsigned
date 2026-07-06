@@ -34,6 +34,7 @@ ENV APP_ADDR=:8443
 ENV DB_PATH=/app/data/intercom.db
 ENV ALLOW_CORS=false
 ENV TRUSTED_LAN_HTTP=false
+ENV TLS_MODE=file
 ENV TLS_CERT_FILE=/app/certs/tls.crt
 ENV TLS_KEY_FILE=/app/certs/tls.key
 CMD ["/bin/sh", "/app/entrypoint-selfsigned.sh"]

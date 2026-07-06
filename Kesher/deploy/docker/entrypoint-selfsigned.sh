@@ -37,6 +37,7 @@ fi
 export APP_ADDR="${APP_ADDR:-:$APP_HTTPS_PORT}"
 export DB_PATH="${DB_PATH:-/app/data/intercom.db}"
 export TRUSTED_LAN_HTTP="${TRUSTED_LAN_HTTP:-false}"
+export TLS_MODE="${TLS_MODE:-file}"
 export TLS_CERT_FILE
 export TLS_KEY_FILE
 
