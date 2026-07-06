@@ -8,15 +8,57 @@ fi
 
 TARGET_USER="${SUDO_USER:-pi}"
 UPDATE_CONFIG="false"
+INSTALL_COMPANION_SATELLITE="false"
+COMPANION_SATELLITE_ARGS=()
 
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --update-config|--replace-config)
       UPDATE_CONFIG="true"
       ;;
+    --with-companion-satellite|--install-companion-satellite)
+      INSTALL_COMPANION_SATELLITE="true"
+      ;;
+    --companion-satellite-host)
+      if [[ "$#" -lt 2 ]]; then
+        echo "--companion-satellite-host requires a value." >&2
+        exit 1
+      fi
+      INSTALL_COMPANION_SATELLITE="true"
+      COMPANION_SATELLITE_ARGS+=(--host "${2:-}")
+      shift
+      ;;
+    --companion-satellite-port)
+      if [[ "$#" -lt 2 ]]; then
+        echo "--companion-satellite-port requires a value." >&2
+        exit 1
+      fi
+      INSTALL_COMPANION_SATELLITE="true"
+      COMPANION_SATELLITE_ARGS+=(--port "${2:-}")
+      shift
+      ;;
+    --companion-satellite-rest-port)
+      if [[ "$#" -lt 2 ]]; then
+        echo "--companion-satellite-rest-port requires a value." >&2
+        exit 1
+      fi
+      INSTALL_COMPANION_SATELLITE="true"
+      COMPANION_SATELLITE_ARGS+=(--rest-port "${2:-}")
+      shift
+      ;;
+    --reinstall-companion-satellite)
+      INSTALL_COMPANION_SATELLITE="true"
+      COMPANION_SATELLITE_ARGS+=(--reinstall)
+      ;;
     --help|-h)
-      echo "Usage: sudo ./install.sh [desktop-user] [--update-config]"
-      echo "  --update-config  replace /etc/kesher/raspberry-pis.json with the local file"
+      echo "Usage: sudo ./install.sh [desktop-user] [--update-config] [--with-companion-satellite]"
+      echo "  --update-config                  replace /etc/kesher/raspberry-pis.json with the local file"
+      echo "  --with-companion-satellite       install Bitfocus Companion Satellite and enable autostart"
+      echo "  --companion-satellite-host HOST  override the Companion host for Satellite"
+      echo "  --companion-satellite-port PORT  override the Companion Satellite API port, default 16622"
+      echo "  --companion-satellite-rest-port PORT"
+      echo "                                   override Satellite web UI port, default 9999"
+      echo "  --reinstall-companion-satellite  rerun the official Companion Satellite installer"
       exit 0
       ;;
     *)
@@ -75,6 +117,12 @@ sed \
 systemctl daemon-reload
 systemctl enable kesher-pi.service
 
+if [[ "${INSTALL_COMPANION_SATELLITE}" == "true" ]]; then
+  "${SCRIPT_DIR}/install-companion-satellite.sh" \
+    --config /etc/kesher/raspberry-pis.json \
+    "${COMPANION_SATELLITE_ARGS[@]}"
+fi
+
 INSTALLED_VERSION="$(python3 /opt/kesher-pi/kesher-pi-launcher.py --version)"
 echo "Installation complete."
 echo "Installed launcher version: ${INSTALLED_VERSION}"
@@ -86,3 +134,4 @@ echo "2. Test with: sudo -u ${TARGET_USER} KESHER_PI_IP=<PI-IP> /opt/kesher-pi/k
 echo "3. Check heartbeat payload with: sudo -u ${TARGET_USER} /opt/kesher-pi/kesher-pi-launcher.py --print-heartbeat"
 echo "4. Check audio runtime with: sudo -u ${TARGET_USER} XDG_RUNTIME_DIR=/run/user/${TARGET_UID} DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${TARGET_UID}/bus /opt/kesher-pi/kesher-pi-launcher.py --print-audio"
 echo "5. Start with: sudo systemctl start kesher-pi.service"
+echo "6. Optional Stream Deck Satellite: sudo ./install.sh ${TARGET_USER} --with-companion-satellite"
