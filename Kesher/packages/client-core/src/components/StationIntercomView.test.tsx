@@ -1042,6 +1042,32 @@ describe("StationIntercomView", () => {
     ).toBeDisabled();
   });
 
+  it("keeps remote audio controls active when the station shell is low-power", async () => {
+    const user = userEvent.setup();
+    const onToggleLocalMonitor = vi.fn();
+
+    render(
+      <StationIntercomView
+        {...baseProps}
+        isUserSettingsOpen
+        lowPowerMode
+        audioControlsLowPowerMode={false}
+        inputLevelDbFs={-42}
+        audioGateEnabled
+        onToggleLocalMonitor={onToggleLocalMonitor}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Sound settings/ }));
+
+    expect(screen.getByText("-42.0 dBFS")).toBeVisible();
+    const testButton = screen.getByRole("button", { name: "Test microphone" });
+    expect(testButton).toBeEnabled();
+    await user.click(testButton);
+    expect(onToggleLocalMonitor).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("checkbox", { name: "Noise gate" })).toBeEnabled();
+  });
+
   it("selects a physical USB interface input", async () => {
     const user = userEvent.setup();
     const onSelectedInputChannelChange = vi.fn();

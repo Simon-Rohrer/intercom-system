@@ -176,6 +176,7 @@ export type AudioState = {
   selectedOutputDeviceId: string;
   selectedInputChannel?: string;
   selectedInputGain?: number;
+  inputLevelDbFs?: number;
 };
 
 export type PublicBootstrap = {

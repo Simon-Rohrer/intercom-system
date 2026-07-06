@@ -43,6 +43,53 @@ func TestHubSetVoiceStatePreservesAlwaysOnAcrossTransientPTT(t *testing.T) {
 	}
 }
 
+func TestHashPresenceSnapshotIncludesAudioStateInputLevel(t *testing.T) {
+	quietLevel := -60.0
+	activeLevel := -24.0
+	base := []PresenceState{
+		{
+			UserID:      "u1",
+			Username:    "a",
+			RoleID:      "audio",
+			ListenRooms: []string{"foh"},
+			TalkRooms:   []string{"foh"},
+			VoiceMode:   "ptt",
+			MicEnabled:  true,
+			AudioState: &AudioState{
+				InputDevices:           []AudioDeviceInfo{},
+				OutputDevices:          []AudioDeviceInfo{},
+				SelectedInputDeviceID:  "mic",
+				SelectedOutputDeviceID: "speaker",
+				SelectedInputChannel:   "all",
+				InputLevelDbFS:         &quietLevel,
+			},
+		},
+	}
+	next := []PresenceState{
+		{
+			UserID:      "u1",
+			Username:    "a",
+			RoleID:      "audio",
+			ListenRooms: []string{"foh"},
+			TalkRooms:   []string{"foh"},
+			VoiceMode:   "ptt",
+			MicEnabled:  true,
+			AudioState: &AudioState{
+				InputDevices:           []AudioDeviceInfo{},
+				OutputDevices:          []AudioDeviceInfo{},
+				SelectedInputDeviceID:  "mic",
+				SelectedOutputDeviceID: "speaker",
+				SelectedInputChannel:   "all",
+				InputLevelDbFS:         &activeLevel,
+			},
+		},
+	}
+
+	if hashPresenceSnapshot(base) == hashPresenceSnapshot(next) {
+		t.Fatal("expected input level changes to change presence snapshot hash")
+	}
+}
+
 func TestHubRoomRoutingRespectsReceiverRoleRestrictions(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {

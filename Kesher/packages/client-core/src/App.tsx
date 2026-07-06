@@ -356,6 +356,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     useState<string | null>(null);
   const [raspberryRemoteDirectPttPressedUserId, setRaspberryRemoteDirectPttPressedUserId] =
     useState<string | null>(null);
+  const [raspberryRemoteLocalMonitorActive, setRaspberryRemoteLocalMonitorActive] =
+    useState(false);
   const [pendingTakeover, setPendingTakeover] = useState<
     | {
         username: string;
@@ -1735,7 +1737,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
   async function handleRaspberryRemoteCommand(
     command: RaspberryPiRemoteCommandRequest,
-  ) {
+  ): Promise<boolean> {
     setRaspberryRemoteCommandBusy(true);
     setRaspberryRemoteCommandError("");
     setRaspberryRemoteCommandStatus("Sending command...");
@@ -1749,11 +1751,13 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       if (!result.ok) {
         setRaspberryRemoteCommandError(result.error || "Command failed.");
       }
+      return result.ok;
     } catch (error) {
       setRaspberryRemoteCommandStatus("");
       setRaspberryRemoteCommandError(
         error instanceof Error ? error.message : "Command failed.",
       );
+      return false;
     } finally {
       setRaspberryRemoteCommandBusy(false);
     }
@@ -1775,6 +1779,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     setRaspberryRemotePttPressedChannelId(null);
     setRaspberryRemoteBroadcastPttPressed(null);
     setRaspberryRemoteDirectPttPressedUserId(null);
+    setRaspberryRemoteLocalMonitorActive(false);
     setRaspberryRemoteSession({
       deviceId: station.deviceId,
       stationName: station.name,
@@ -1794,6 +1799,13 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   }
 
   function handleRaspberryRemoteLeave() {
+    if (raspberryRemoteLocalMonitorActive && raspberryRemoteSession) {
+      void handleRaspberryRemoteCommand({
+        deviceId: raspberryRemoteSession.deviceId,
+        command: "set_local_monitor",
+        state: "stop",
+      });
+    }
     if (raspberryRemotePttPressed && raspberryRemoteSession) {
       const targetId = matrixAnchorRoomId(
         raspberryRemoteSession.listenRoomIds,
@@ -1814,6 +1826,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     setRaspberryRemotePttPressedChannelId(null);
     setRaspberryRemoteBroadcastPttPressed(null);
     setRaspberryRemoteDirectPttPressedUserId(null);
+    setRaspberryRemoteLocalMonitorActive(false);
   }
 
   async function handleConfirmTakeover() {
@@ -2485,6 +2498,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       Number.isFinite(remoteAudioState.selectedInputGain)
         ? remoteAudioState.selectedInputGain
         : settings.selectedInputGainFor(remoteSelectedInputDeviceId);
+    const remoteInputLevelDbFs =
+      typeof remoteAudioState?.inputLevelDbFs === "number" &&
+      Number.isFinite(remoteAudioState.inputLevelDbFs)
+        ? remoteAudioState.inputLevelDbFs
+        : -60;
     const sendRemoteDashboardCommand = (
       command: Omit<RaspberryPiRemoteCommandRequest, "deviceId">,
     ) => {
@@ -2555,6 +2573,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         token=""
         connectionState={remoteConnectionState}
         lowPowerMode={lowPowerMode}
+        audioControlsLowPowerMode={false}
         appData={remoteAppData}
         doLogout={handleRaspberryRemoteLeave}
         listenRoomIds={raspberryRemoteSession.listenRoomIds}
@@ -2742,11 +2761,23 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
             inputChannel: channel === "all" ? "all" : String(channel),
           })
         }
-        inputLevelDbFs={0}
+        inputLevelDbFs={remoteInputLevelDbFs}
         inputGain={remoteSelectedInputGain}
         inputClipping={false}
-        isLocalMonitorActive={false}
-        onToggleLocalMonitor={() => undefined}
+        isLocalMonitorActive={raspberryRemoteLocalMonitorActive}
+        onToggleLocalMonitor={() => {
+          const nextActive = !raspberryRemoteLocalMonitorActive;
+          setRaspberryRemoteLocalMonitorActive(nextActive);
+          void handleRaspberryRemoteCommand({
+            deviceId: raspberryRemoteSession.deviceId,
+            command: "set_local_monitor",
+            state: nextActive ? "start" : "stop",
+          }).then((ok) => {
+            if (!ok) {
+              setRaspberryRemoteLocalMonitorActive(!nextActive);
+            }
+          });
+        }}
         onInputGainChange={(_deviceId, inputGain) =>
           sendRemoteDashboardCommand({
             command: "set_input_gain",

@@ -3092,17 +3092,27 @@ button.secondary {
 }
 .station-header {
   position: sticky;
-  top: max(0.75rem, env(safe-area-inset-top, 0px));
+  top: env(safe-area-inset-top, 0px);
   z-index: 40;
   display: grid;
   gap: 0.75rem;
   margin-bottom: 1rem;
   padding-bottom: 0.15rem;
+  background: var(--surface);
+  box-shadow: 0 -1rem 0 1rem var(--surface);
+}
+.station-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1rem;
+  height: 1rem;
+  pointer-events: none;
   background: linear-gradient(
     180deg,
     var(--surface) 0%,
-    rgba(26, 29, 35, 0.96) 85%,
-    rgba(26, 29, 35, 0) 100%
+    rgba(15, 17, 21, 0) 100%
   );
 }
 .station-topbar {
@@ -6324,6 +6334,7 @@ button.secondary {
   }
   .station-settings-shell {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
   .station-settings-nav {
     position: sticky;
@@ -6332,7 +6343,9 @@ button.secondary {
     display: flex;
     align-items: center;
     gap: 0.45rem;
+    height: 56px;
     min-height: 56px;
+    max-height: 56px;
     padding: 0.48rem 0.7rem;
     overflow-x: auto;
     overflow-y: hidden;
@@ -6356,6 +6369,9 @@ button.secondary {
     scroll-snap-align: start;
   }
   .station-settings-nav button.active {
+    box-shadow: inset 0 -2px 0 rgba(0, 209, 255, 0.72);
+  }
+  .station-modal-backdrop-low-power .station-settings-nav button.active {
     box-shadow: inset 0 -2px 0 rgba(0, 209, 255, 0.72);
   }
   .station-modal-body {
@@ -6403,7 +6419,9 @@ button.secondary {
   }
   .station-settings-nav {
     gap: 0.34rem;
+    height: 48px;
     min-height: 48px;
+    max-height: 48px;
     padding: 0.38rem 0.58rem;
   }
   .station-settings-nav button {
@@ -6637,6 +6655,10 @@ button.secondary {
     margin-bottom: 0;
     padding-bottom: 0;
     background: none;
+    box-shadow: none;
+  }
+  .station-header::after {
+    content: none;
   }
   .station-shell-remote .station-topbar {
     gap: 0.55rem;

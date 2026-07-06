@@ -370,6 +370,7 @@ type AudioState struct {
 	SelectedOutputDeviceID string            `json:"selectedOutputDeviceId"`
 	SelectedInputChannel   string            `json:"selectedInputChannel,omitempty"`
 	SelectedInputGain      *float64          `json:"selectedInputGain,omitempty"`
+	InputLevelDbFS         *float64          `json:"inputLevelDbFs,omitempty"`
 }
 
 type PresenceState struct {

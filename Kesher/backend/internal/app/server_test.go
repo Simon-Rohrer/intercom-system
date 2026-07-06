@@ -867,6 +867,7 @@ func TestServerHandleRaspberryPiRemoteStationsReturnsAllKnownStations(t *testing
 	session := sessions.Create(User{ID: "u-pi", Username: "Kamera-1", RoleID: "remote-cam"})
 	attachTestHubClient(hub, session, User{ID: "u-pi", Username: "Kamera-1", RoleID: "remote-cam"})
 	inputGain := 1.25
+	inputLevel := -34.5
 	hub.SetAudioState(session.Token, AudioState{
 		InputDevices: []AudioDeviceInfo{
 			{DeviceID: "mic-usb", Label: "USB Headset Mic", Kind: "audioinput", InputChannels: 2},
@@ -878,6 +879,7 @@ func TestServerHandleRaspberryPiRemoteStationsReturnsAllKnownStations(t *testing
 		SelectedOutputDeviceID: "out-usb",
 		SelectedInputChannel:   "1",
 		SelectedInputGain:      &inputGain,
+		InputLevelDbFS:         &inputLevel,
 	})
 	s := &Server{store: store, hub: hub, sessions: sessions}
 
@@ -909,7 +911,9 @@ func TestServerHandleRaspberryPiRemoteStationsReturnsAllKnownStations(t *testing
 		audioState.SelectedOutputDeviceID != "out-usb" ||
 		audioState.SelectedInputChannel != "1" ||
 		audioState.SelectedInputGain == nil ||
-		*audioState.SelectedInputGain != inputGain {
+		*audioState.SelectedInputGain != inputGain ||
+		audioState.InputLevelDbFS == nil ||
+		*audioState.InputLevelDbFS != inputLevel {
 		t.Fatalf("unexpected audio state: %+v", audioState)
 	}
 	if len(audioState.InputDevices) != 1 || audioState.InputDevices[0].Label != "USB Headset Mic" {
@@ -997,6 +1001,29 @@ func TestServerHandleRaspberryPiRemoteCommandQueuesCompanionCommand(t *testing.T
 		}
 	case <-time.After(time.Second):
 		t.Fatal("expected queued audio companion command")
+	}
+
+	body = strings.NewReader(`{"deviceId":"pi-1","command":"set_local_monitor","state":"start"}`)
+	req = httptest.NewRequest(http.MethodPost, "/api/raspberry-pis/remote-command", body)
+	rec = httptest.NewRecorder()
+	s.handleRaspberryPiRemoteCommand(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for local monitor command, got %d: %s", rec.Code, rec.Body.String())
+	}
+	select {
+	case msg := <-priority:
+		if msg.Type != "companion_command" {
+			t.Fatalf("expected companion_command, got %s", msg.Type)
+		}
+		command, ok := msg.Data.(CompanionCommand)
+		if !ok {
+			t.Fatalf("expected CompanionCommand payload, got %T", msg.Data)
+		}
+		if command.Command != "set_local_monitor" || command.State != "start" {
+			t.Fatalf("unexpected local monitor command payload: %+v", command)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected queued local monitor companion command")
 	}
 }
 

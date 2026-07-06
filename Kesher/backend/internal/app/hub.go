@@ -8,6 +8,7 @@ import (
 	"math"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -494,6 +495,13 @@ func sanitizeAudioState(state AudioState) AudioState {
 		gain := math.Max(0, math.Min(16, *state.SelectedInputGain))
 		selectedInputGain = &gain
 	}
+	var inputLevelDbFS *float64
+	if state.InputLevelDbFS != nil &&
+		!math.IsNaN(*state.InputLevelDbFS) &&
+		!math.IsInf(*state.InputLevelDbFS, 0) {
+		level := math.Max(-60, math.Min(0, *state.InputLevelDbFS))
+		inputLevelDbFS = &level
+	}
 	return AudioState{
 		InputDevices:           sanitizeAudioDeviceList(state.InputDevices, "audioinput"),
 		OutputDevices:          sanitizeAudioDeviceList(state.OutputDevices, "audiooutput"),
@@ -501,6 +509,7 @@ func sanitizeAudioState(state AudioState) AudioState {
 		SelectedOutputDeviceID: strings.TrimSpace(state.SelectedOutputDeviceID),
 		SelectedInputChannel:   selectedInputChannel,
 		SelectedInputGain:      selectedInputGain,
+		InputLevelDbFS:         inputLevelDbFS,
 	}
 }
 
@@ -517,13 +526,19 @@ func cloneAudioStatePtr(state AudioState) *AudioState {
 		state.SelectedInputDeviceID == "" &&
 		state.SelectedOutputDeviceID == "" &&
 		state.SelectedInputChannel == "" &&
-		state.SelectedInputGain == nil {
+		state.SelectedInputGain == nil &&
+		state.InputLevelDbFS == nil {
 		return nil
 	}
 	var selectedInputGain *float64
 	if state.SelectedInputGain != nil {
 		gain := *state.SelectedInputGain
 		selectedInputGain = &gain
+	}
+	var inputLevelDbFS *float64
+	if state.InputLevelDbFS != nil {
+		level := *state.InputLevelDbFS
+		inputLevelDbFS = &level
 	}
 	return &AudioState{
 		InputDevices:           cloneAudioDeviceList(state.InputDevices),
@@ -532,6 +547,7 @@ func cloneAudioStatePtr(state AudioState) *AudioState {
 		SelectedOutputDeviceID: state.SelectedOutputDeviceID,
 		SelectedInputChannel:   state.SelectedInputChannel,
 		SelectedInputGain:      selectedInputGain,
+		InputLevelDbFS:         inputLevelDbFS,
 	}
 }
 
@@ -552,6 +568,7 @@ func sameAudioState(a, b AudioState) bool {
 		a.SelectedOutputDeviceID == b.SelectedOutputDeviceID &&
 		a.SelectedInputChannel == b.SelectedInputChannel &&
 		sameOptionalFloat64(a.SelectedInputGain, b.SelectedInputGain) &&
+		sameOptionalFloat64(a.InputLevelDbFS, b.InputLevelDbFS) &&
 		sameAudioDeviceList(a.InputDevices, b.InputDevices) &&
 		sameAudioDeviceList(a.OutputDevices, b.OutputDevices)
 }
@@ -1495,8 +1512,44 @@ func hashPresenceSnapshot(list []PresenceState) uint64 {
 			writePresenceHashString(h, roomID)
 		}
 		_, _ = h.Write([]byte{0xfe})
+		writePresenceHashAudioState(h, state.AudioState)
 	}
 	return h.Sum64()
+}
+
+func writePresenceHashAudioState(h hash.Hash64, state *AudioState) {
+	if state == nil {
+		_, _ = h.Write([]byte{0})
+		return
+	}
+	_, _ = h.Write([]byte{1})
+	writePresenceHashAudioDevices(h, state.InputDevices)
+	_, _ = h.Write([]byte{0xfb})
+	writePresenceHashAudioDevices(h, state.OutputDevices)
+	_, _ = h.Write([]byte{0xfa})
+	writePresenceHashString(h, state.SelectedInputDeviceID)
+	writePresenceHashString(h, state.SelectedOutputDeviceID)
+	writePresenceHashString(h, state.SelectedInputChannel)
+	writePresenceHashOptionalFloat(h, state.SelectedInputGain, 3)
+	writePresenceHashOptionalFloat(h, state.InputLevelDbFS, 1)
+}
+
+func writePresenceHashAudioDevices(h hash.Hash64, devices []AudioDeviceInfo) {
+	for _, device := range devices {
+		writePresenceHashString(h, device.DeviceID)
+		writePresenceHashString(h, device.Label)
+		writePresenceHashString(h, device.Kind)
+		writePresenceHashString(h, strconv.Itoa(device.InputChannels))
+	}
+}
+
+func writePresenceHashOptionalFloat(h hash.Hash64, value *float64, precision int) {
+	if value == nil {
+		_, _ = h.Write([]byte{0})
+		return
+	}
+	_, _ = h.Write([]byte{1})
+	writePresenceHashString(h, strconv.FormatFloat(*value, 'f', precision, 64))
 }
 
 func writePresenceHashString(h hash.Hash64, value string) {

@@ -300,12 +300,18 @@ export type UseLocalMicResult = {
     inputChannel: InputChannelSelection,
   ) => MediaStream;
   stopInputProcessing: () => void;
-  startLevelMeter: (stream: MediaStream) => void;
+  startLevelMeter: (
+    stream: MediaStream,
+    options?: { allowLowPower?: boolean },
+  ) => void;
   stopLevelMeter: () => void;
   applyVoiceModeToLocalTracks: (mode: "always_on" | "ptt") => void;
   setOutgoingMicOpen: (open: boolean) => void;
   /** Start playing mic input back to the user via the selected output device. */
-  startLocalMonitor: (outputDeviceId: string) => Promise<void>;
+  startLocalMonitor: (
+    outputDeviceId: string,
+    options?: { allowLowPower?: boolean },
+  ) => Promise<boolean>;
   /** Stop local audio monitor loopback. */
   stopLocalMonitor: () => void;
 };
@@ -352,6 +358,7 @@ export function useLocalMic({
   const audioCtxRef = useRef<AudioContext | null>(null);
   const meterMonitorStreamRef = useRef<MediaStream | null>(null);
   const meterRafRef = useRef<number | null>(null);
+  const forcedLowPowerMeterRef = useRef(false);
   const inputClippingDisplayTimeoutRef = useRef<number | null>(null);
   const micReinitGenerationRef = useRef(0);
   const localMonitorCtxRef = useRef<AudioContext | null>(null);
@@ -498,6 +505,7 @@ export function useLocalMic({
 
   // ── Level metering ──
   function stopLevelMeter() {
+    forcedLowPowerMeterRef.current = false;
     if (meterRafRef.current !== null) {
       cancelAnimationFrame(meterRafRef.current);
       meterRafRef.current = null;
@@ -516,14 +524,18 @@ export function useLocalMic({
     setInputSamplePeakClipping(false);
   }
 
-  function startLevelMeter(stream: MediaStream) {
+  function startLevelMeter(
+    stream: MediaStream,
+    options: { allowLowPower?: boolean } = {},
+  ) {
     stopLevelMeter();
-    if (lowPowerMode) return;
+    if (lowPowerMode && !options.allowLowPower) return;
     const AudioCtx = window.AudioContext;
     if (!AudioCtx) return;
     const meterSourceStream = inputMonitorStreamRef.current ?? stream;
     const sourceTrack = meterSourceStream.getAudioTracks()[0];
     if (!sourceTrack) return;
+    forcedLowPowerMeterRef.current = lowPowerMode && options.allowLowPower === true;
     const monitorTrack = sourceTrack.clone();
     monitorTrack.enabled = true;
     const monitorStream = new MediaStream([monitorTrack]);
@@ -552,6 +564,7 @@ export function useLocalMic({
 
   // ── Local audio monitor (mic loopback) ──
   function stopLocalMonitor() {
+    const shouldStopForcedMeter = forcedLowPowerMeterRef.current;
     const el = localMonitorAudioElRef.current;
     if (el) {
       el.pause();
@@ -566,18 +579,24 @@ export function useLocalMic({
       localMonitorCtxRef.current = null;
     }
     setIsLocalMonitorActive(false);
+    if (shouldStopForcedMeter) {
+      stopLevelMeter();
+    }
   }
 
-  async function startLocalMonitor(outputDeviceId: string): Promise<void> {
-    if (lowPowerMode) {
+  async function startLocalMonitor(
+    outputDeviceId: string,
+    options: { allowLowPower?: boolean } = {},
+  ): Promise<boolean> {
+    if (lowPowerMode && !options.allowLowPower) {
       stopLocalMonitor();
-      return;
+      return false;
     }
     const processedStream = localStreamRef.current;
     const monitorStream = inputMonitorStreamRef.current ?? processedStream;
-    if (!monitorStream) return;
+    if (!monitorStream) return false;
     const AudioCtx = window.AudioContext;
-    if (!AudioCtx) return;
+    if (!AudioCtx) return false;
     stopLocalMonitor();
     try {
       const ctx = new AudioCtx({ latencyHint: "interactive" });
@@ -586,7 +605,7 @@ export function useLocalMic({
       if (!monitorTrack) {
         void ctx.close();
         localMonitorCtxRef.current = null;
-        return;
+        return false;
       }
       monitorTrack.enabled = true;
       const src = ctx.createMediaStreamSource(new MediaStream([monitorTrack]));
@@ -606,8 +625,13 @@ export function useLocalMic({
       await el.play();
       localMonitorAudioElRef.current = el;
       setIsLocalMonitorActive(true);
+      if (lowPowerMode && options.allowLowPower) {
+        startLevelMeter(monitorStream, { allowLowPower: true });
+      }
+      return true;
     } catch {
       stopLocalMonitor();
+      return false;
     }
   }
 

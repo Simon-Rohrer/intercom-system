@@ -13,7 +13,11 @@ import {
   roleAllowed,
   toggleRoomSelectionState,
 } from "../lib/intercom";
-import { normalizePresenceList, samePresenceList } from "../lib/presence";
+import {
+  meterDbFsFloor,
+  normalizePresenceList,
+  samePresenceList,
+} from "../lib/presence";
 import {
   clampGainValue,
   clampInputGainValue,
@@ -473,6 +477,23 @@ export type RemoteAudioSource = {
   sourceID: string;
 };
 
+function inputDbFsToRoomLevel(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  const dbFs = Math.max(meterDbFsFloor, Math.min(0, value));
+  const normalized = Math.max(0, Math.min(1, (dbFs + 48) / 45));
+  return normalized < 0.025 ? 0 : Math.round(normalized * 12) / 12;
+}
+
+function setRoomLevel(
+  roomLevels: Record<string, number>,
+  listenRoomIDs: string[],
+  roomID: string,
+  level: number,
+) {
+  if (level <= 0 || !listenRoomIDs.includes(roomID)) return;
+  roomLevels[roomID] = Math.max(roomLevels[roomID] ?? 0, level);
+}
+
 export function aggregateRemoteRoomLevels({
   remoteLevelByKey,
   remoteSources,
@@ -516,8 +537,31 @@ export function aggregateRemoteRoomLevels({
         : fallbackRoomIDs;
 
     for (const roomID of roomIDs) {
-      if (!listenRoomIDs.includes(roomID)) continue;
-      roomLevels[roomID] = Math.max(roomLevels[roomID] ?? 0, level);
+      setRoomLevel(roomLevels, listenRoomIDs, roomID, level);
+    }
+  }
+
+  for (const entry of presence) {
+    const level = inputDbFsToRoomLevel(entry.audioState?.inputLevelDbFs);
+    if (level <= 0) continue;
+    const activeMainRoutes = routes.filter(
+      (route) =>
+        route.senderUserID === entry.userId &&
+        route.sourceID === "main",
+    );
+    const activeMainRoomRoutes = activeMainRoutes.filter(
+      (route) => route.scope === "room",
+    );
+    const roomIDs =
+      activeMainRoomRoutes.length > 0
+        ? activeMainRoomRoutes.map((route) => route.targetID)
+        : activeMainRoutes.length === 0 &&
+            entry.voiceMode === "always_on" &&
+            entry.micEnabled
+          ? entry.talkRooms ?? []
+          : [];
+    for (const roomID of roomIDs) {
+      setRoomLevel(roomLevels, listenRoomIDs, roomID, level);
     }
   }
 
@@ -1134,6 +1178,7 @@ export function useIntercomSession({
     isUserSettingsOpen ||
     voiceMode === "always_on" ||
     pttPressed ||
+    !!pttPressedChannelId ||
     !!broadcastPttPressed ||
     !!directPttPressedUserId;
   const inputMeteringActiveRef = useRef(inputMeteringActive);
@@ -1165,6 +1210,8 @@ export function useIntercomSession({
     lowPowerMode,
     enableReinit: !!(token && appData),
   });
+  const inputLevelDbFsRef = useRef(meterDbFsFloor);
+  inputLevelDbFsRef.current = mic.inputLevelDbFs;
 
   const { rtpStats, startStatsLoop, stopStatsLoop } = useRtpStats();
   const currentRtpStatsRef = useRef<RtpStats>(rtpStats);
@@ -2064,6 +2111,7 @@ export function useIntercomSession({
           selectedInputGain: selectedInputGainFor(
             selectedInputDeviceIdRef.current,
           ),
+          inputLevelDbFs: inputLevelDbFsRef.current,
         } satisfies AudioState,
       }),
     );
@@ -2080,6 +2128,22 @@ export function useIntercomSession({
     selectedInputDeviceId,
     selectedOutputDeviceId,
     selectedInputChannel,
+    sendAudioState,
+  ]);
+
+  useEffect(() => {
+    if (connectionState !== "connected") return;
+    if (!inputMeteringActive && !mic.isLocalMonitorActive) return;
+    const intervalId = window.setInterval(() => {
+      sendAudioState();
+    }, lowPowerMode ? 500 : 250);
+    sendAudioState();
+    return () => window.clearInterval(intervalId);
+  }, [
+    connectionState,
+    inputMeteringActive,
+    lowPowerMode,
+    mic.isLocalMonitorActive,
     sendAudioState,
   ]);
 
@@ -2789,6 +2853,37 @@ export function useIntercomSession({
               clampInputGainValue(inputGain),
             );
             ackSuccess();
+            return;
+          }
+          if (msg.data.command === "set_local_monitor") {
+            const desiredState = String(msg.data.state || "").trim();
+            if (desiredState !== "start" && desiredState !== "stop") {
+              ackRejected("invalid monitor state");
+              return;
+            }
+            if (desiredState === "stop") {
+              mic.stopLocalMonitor();
+              ackSuccess();
+              return;
+            }
+            void mic
+              .startLocalMonitor(selectedOutputDeviceIdRef.current, {
+                allowLowPower: true,
+              })
+              .then((started) => {
+                if (started) {
+                  ackSuccess();
+                } else {
+                  ackRejected("microphone monitor unavailable");
+                }
+              })
+              .catch((error) => {
+                ackFailed(
+                  error instanceof Error
+                    ? error.message
+                    : "microphone monitor failed",
+                );
+              });
             return;
           }
           if (

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"crypto/tls"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -234,11 +235,19 @@ func (s *Server) handleCompanionWS(w http.ResponseWriter, r *http.Request) {
 	if !s.requireCompanionSecret(w, r) {
 		return
 	}
-	if strings.TrimSpace(r.URL.Query().Get("username")) != "" {
-		http.Error(w, "username query parameter is no longer supported; use roleId", http.StatusBadRequest)
+	roleID, err := s.resolveCompanionRoleIDFromRequest(r.Context(), r)
+	if err != nil {
+		if errors.Is(err, errCompanionUserNotAllowed) {
+			http.Error(w, "role target user is not allowed for companion control", http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			http.Error(w, "unknown companion username", http.StatusNotFound)
+			return
+		}
+		s.internalErr(w, err)
 		return
 	}
-	roleID := strings.TrimSpace(r.URL.Query().Get("roleId"))
 	if roleID == "" {
 		autoRoleID, err := s.store.ResolveSinglePublishedCompanionRole(r.Context())
 		if err != nil {
@@ -1588,6 +1597,12 @@ func (s *Server) normalizeCompanionRelayCommand(ctx context.Context, sourceRoleI
 	case "set_input_gain":
 		if command.InputGain == nil || math.IsNaN(*command.InputGain) || math.IsInf(*command.InputGain, 0) {
 			return CompanionCommand{}, errors.New("invalid inputGain")
+		}
+		return normalized, nil
+	case "set_local_monitor":
+		normalized.State = strings.TrimSpace(command.State)
+		if normalized.State != "start" && normalized.State != "stop" {
+			return CompanionCommand{}, errors.New("invalid monitor state")
 		}
 		return normalized, nil
 	case "navigate_to_page", "page_up", "page_down", "page_jump", "page_home", "page_back":
@@ -3308,11 +3323,19 @@ func (s *Server) handleCompanionDiscovery(w http.ResponseWriter, r *http.Request
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if strings.TrimSpace(r.URL.Query().Get("username")) != "" {
-		http.Error(w, "username query parameter is no longer supported; use roleId", http.StatusBadRequest)
+	roleID, err := s.resolveCompanionRoleIDFromRequest(r.Context(), r)
+	if err != nil {
+		if errors.Is(err, errCompanionUserNotAllowed) {
+			http.Error(w, "role target user is not allowed for companion control", http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			http.Error(w, "unknown companion username", http.StatusNotFound)
+			return
+		}
+		s.internalErr(w, err)
 		return
 	}
-	roleID := strings.TrimSpace(r.URL.Query().Get("roleId"))
 	targetUser, err := s.resolveCompanionTargetUser(r.Context(), roleID)
 	if err != nil {
 		if errors.Is(err, ErrInvalidInput) {
@@ -4742,11 +4765,19 @@ func (s *Server) handleCompanionProfile(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if strings.TrimSpace(r.URL.Query().Get("username")) != "" {
-		http.Error(w, "username query parameter is no longer supported; use roleId", http.StatusBadRequest)
+	roleID, err := s.resolveCompanionRoleIDFromRequest(r.Context(), r)
+	if err != nil {
+		if errors.Is(err, errCompanionUserNotAllowed) {
+			http.Error(w, "role target user is not allowed for companion control", http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, ErrNotFound) {
+			http.Error(w, "unknown companion username", http.StatusNotFound)
+			return
+		}
+		s.internalErr(w, err)
 		return
 	}
-	roleID := strings.TrimSpace(r.URL.Query().Get("roleId"))
 	targetUser, err := s.resolveCompanionTargetUser(r.Context(), roleID)
 	if err != nil {
 		if errors.Is(err, ErrInvalidInput) {
@@ -4799,6 +4830,28 @@ func (s *Server) companionUsernameAllowed(username string) bool {
 		}
 	}
 	return false
+}
+
+func (s *Server) resolveCompanionRoleIDFromRequest(ctx context.Context, r *http.Request) (string, error) {
+	roleID := strings.TrimSpace(r.URL.Query().Get("roleId"))
+	if roleID != "" {
+		return roleID, nil
+	}
+	username := strings.TrimSpace(r.URL.Query().Get("username"))
+	if username == "" {
+		return "", nil
+	}
+	user, err := s.store.FindUserByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, ErrNotFound) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	if !s.companionUsernameAllowed(user.Username) {
+		return "", errCompanionUserNotAllowed
+	}
+	return strings.TrimSpace(user.RoleID), nil
 }
 
 func (s *Server) resolveCompanionTargetUser(ctx context.Context, roleID string) (User, error) {

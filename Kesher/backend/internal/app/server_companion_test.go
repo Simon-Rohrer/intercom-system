@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,6 +112,49 @@ func TestResolveCompanionTargetUserAllowsRoleWithoutUser(t *testing.T) {
 	}
 	if strings.TrimSpace(target.Username) == "" {
 		t.Fatalf("expected fallback username, got empty")
+	}
+}
+
+func TestHandleCompanionDiscoveryPrefersRoleIDOverLegacyUsername(t *testing.T) {
+	s := newCompanionTestServer(t)
+	ctx := context.Background()
+
+	if err := s.store.CreateRole(ctx, "role_a", "Role A", "", "ptt", false); err != nil {
+		t.Fatalf("CreateRole role_a failed: %v", err)
+	}
+	if err := s.store.CreateRole(ctx, "role_b", "Role B", "", "ptt", false); err != nil {
+		t.Fatalf("CreateRole role_b failed: %v", err)
+	}
+	if _, err := s.store.UpsertUser(ctx, "legacy-user", "role_b"); err != nil {
+		t.Fatalf("UpsertUser failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/companion/discovery?roleId=role_a&username=legacy-user", nil)
+	rec := httptest.NewRecorder()
+	s.handleCompanionDiscovery(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected discovery to ignore legacy username when roleId is present, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleCompanionDiscoverySupportsLegacyUsernameFallback(t *testing.T) {
+	s := newCompanionTestServer(t)
+	ctx := context.Background()
+
+	if err := s.store.CreateRole(ctx, "role_a", "Role A", "", "ptt", false); err != nil {
+		t.Fatalf("CreateRole failed: %v", err)
+	}
+	if _, err := s.store.UpsertUser(ctx, "legacy-user", "role_a"); err != nil {
+		t.Fatalf("UpsertUser failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/companion/discovery?username=legacy-user", nil)
+	rec := httptest.NewRecorder()
+	s.handleCompanionDiscovery(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected legacy username discovery to resolve role, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

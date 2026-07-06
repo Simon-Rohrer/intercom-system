@@ -883,6 +883,7 @@ type StationIntercomViewProps = {
   token: string;
   connectionState: "connecting" | "connected" | "reconnecting" | "offline";
   lowPowerMode: boolean;
+  audioControlsLowPowerMode?: boolean;
   appData: Bootstrap;
   doLogout: () => void;
   listenRoomIds: string[];
@@ -1033,6 +1034,7 @@ export function StationIntercomView({
   token,
   connectionState,
   lowPowerMode,
+  audioControlsLowPowerMode = lowPowerMode,
   appData,
   doLogout,
   listenRoomIds,
@@ -3966,14 +3968,14 @@ export function StationIntercomView({
                                 </div>
                                 <span
                                   className={`audio-status-pill ${
-                                    lowPowerMode
+                                    audioControlsLowPowerMode
                                       ? "paused"
                                       : inputClipping
                                         ? "warning"
                                         : "ok"
                                   }`}
                                 >
-                                  {lowPowerMode
+                                  {audioControlsLowPowerMode
                                     ? "Meter paused"
                                     : inputClipping
                                       ? "Clipping"
@@ -4064,7 +4066,7 @@ export function StationIntercomView({
                               </div>
 
                               <div className="audio-meter-card">
-                                {lowPowerMode ? (
+                                {audioControlsLowPowerMode ? (
                                   <div
                                     className="input-level-row input-level-row-muted"
                                     aria-live="polite"
@@ -4115,10 +4117,10 @@ export function StationIntercomView({
                                   <button
                                     type="button"
                                     className={`local-monitor-btn${isLocalMonitorActive ? " active" : ""}`}
-                                    disabled={lowPowerMode}
+                                    disabled={audioControlsLowPowerMode}
                                     onClick={onToggleLocalMonitor}
                                   >
-                                    {lowPowerMode
+                                    {audioControlsLowPowerMode
                                       ? "Audio test paused"
                                       : isLocalMonitorActive
                                         ? "Stop audio test"
@@ -4241,7 +4243,7 @@ export function StationIntercomView({
 
                             <div
                               className={`audio-gate-card ${
-                                lowPowerMode
+                                audioControlsLowPowerMode
                                   ? "disabled"
                                   : audioGateEnabled
                                     ? "active"
@@ -4258,9 +4260,11 @@ export function StationIntercomView({
                                     type="checkbox"
                                     aria-label="Noise gate"
                                     checked={
-                                      lowPowerMode ? false : audioGateEnabled
+                                      audioControlsLowPowerMode
+                                        ? false
+                                        : audioGateEnabled
                                     }
-                                    disabled={lowPowerMode}
+                                    disabled={audioControlsLowPowerMode}
                                     onChange={(event) =>
                                       onAudioGateEnabledChange(
                                         event.currentTarget.checked,
@@ -4298,7 +4302,9 @@ export function StationIntercomView({
                                   max={GATE_THRESHOLD_DBFS_MAX}
                                   step={1}
                                   value={audioGateThresholdDb}
-                                  disabled={lowPowerMode || !audioGateEnabled}
+                                  disabled={
+                                    audioControlsLowPowerMode || !audioGateEnabled
+                                  }
                                   style={
                                     {
                                       "--fill": `${gateThresholdDbToPercent(audioGateThresholdDb)}%`,
@@ -4317,7 +4323,7 @@ export function StationIntercomView({
                                 <span>Tight</span>
                               </div>
                               <small className="audio-gate-status">
-                                {lowPowerMode
+                                {audioControlsLowPowerMode
                                   ? "Low power mode keeps gate off."
                                   : audioGateEnabled
                                     ? "Gate active"

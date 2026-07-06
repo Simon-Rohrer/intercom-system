@@ -93,6 +93,120 @@ describe("aggregateRemoteRoomLevels", () => {
       }),
     ).toEqual({});
   });
+
+  it("uses sender presence input levels for active party-line routes", () => {
+    expect(
+      aggregateRemoteRoomLevels({
+        remoteLevelByKey: {},
+        remoteSources: new Map(),
+        routes: [
+          {
+            senderUserID: "u1",
+            sourceID: "main",
+            scope: "room",
+            targetID: "room-1",
+            label: "Room 1",
+          },
+        ],
+        presence: [
+          {
+            userId: "u1",
+            username: "User 1",
+            roleId: "op",
+            listenRooms: ["room-1"],
+            talkRooms: ["room-1"],
+            voiceMode: "ptt",
+            micEnabled: true,
+            broadcastActive: false,
+            audioState: {
+              inputDevices: [],
+              outputDevices: [],
+              selectedInputDeviceId: "",
+              selectedOutputDeviceId: "",
+              inputLevelDbFs: -18,
+            },
+          },
+        ],
+        listenRoomIDs: ["room-1"],
+      }),
+    ).toEqual({ "room-1": 8 / 12 });
+  });
+
+  it("does not use presence input levels for direct-only routes", () => {
+    expect(
+      aggregateRemoteRoomLevels({
+        remoteLevelByKey: {},
+        remoteSources: new Map(),
+        routes: [
+          {
+            senderUserID: "u1",
+            sourceID: "main",
+            scope: "direct",
+            targetID: "self",
+            label: "Direct",
+          },
+        ],
+        presence: [
+          {
+            userId: "u1",
+            username: "User 1",
+            roleId: "op",
+            listenRooms: ["room-1"],
+            talkRooms: ["room-1"],
+            voiceMode: "always_on",
+            micEnabled: true,
+            broadcastActive: false,
+            audioState: {
+              inputDevices: [],
+              outputDevices: [],
+              selectedInputDeviceId: "",
+              selectedOutputDeviceId: "",
+              inputLevelDbFs: -18,
+            },
+          },
+        ],
+        listenRoomIDs: ["room-1"],
+      }),
+    ).toEqual({});
+  });
+
+  it("does not use main microphone levels for channel audio feed routes", () => {
+    expect(
+      aggregateRemoteRoomLevels({
+        remoteLevelByKey: {},
+        remoteSources: new Map(),
+        routes: [
+          {
+            senderUserID: "u1",
+            sourceID: "feed-1",
+            scope: "room",
+            targetID: "room-1",
+            label: "Room 1",
+          },
+        ],
+        presence: [
+          {
+            userId: "u1",
+            username: "User 1",
+            roleId: "op",
+            listenRooms: ["room-1"],
+            talkRooms: ["room-1"],
+            voiceMode: "ptt",
+            micEnabled: true,
+            broadcastActive: false,
+            audioState: {
+              inputDevices: [],
+              outputDevices: [],
+              selectedInputDeviceId: "",
+              selectedOutputDeviceId: "",
+              inputLevelDbFs: -18,
+            },
+          },
+        ],
+        listenRoomIDs: ["room-1"],
+      }),
+    ).toEqual({});
+  });
 });
 
 describe("useIntercomSession low-latency helpers", () => {

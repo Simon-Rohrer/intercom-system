@@ -71,7 +71,17 @@ export function normalizeAudioState(value: unknown): AudioState | undefined {
   const record = value as Record<string, unknown>;
   const inputDevices = normalizeAudioDeviceList(record.inputDevices, "audioinput");
   const outputDevices = normalizeAudioDeviceList(record.outputDevices, "audiooutput");
-  if (inputDevices.length === 0 && outputDevices.length === 0) return undefined;
+  const inputLevelDbFs =
+    typeof record.inputLevelDbFs === "number" &&
+    Number.isFinite(record.inputLevelDbFs)
+      ? Math.max(meterDbFsFloor, Math.min(0, record.inputLevelDbFs))
+      : undefined;
+  if (
+    inputDevices.length === 0 &&
+    outputDevices.length === 0 &&
+    inputLevelDbFs === undefined
+  )
+    return undefined;
   return {
     inputDevices,
     outputDevices,
@@ -92,7 +102,49 @@ export function normalizeAudioState(value: unknown): AudioState | undefined {
       Number.isFinite(record.selectedInputGain)
         ? record.selectedInputGain
         : undefined,
+    inputLevelDbFs,
   };
+}
+
+function sameAudioDeviceList(
+  a: RemoteAudioDeviceInfo[],
+  b: RemoteAudioDeviceInfo[],
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (
+      left.deviceId !== right.deviceId ||
+      left.label !== right.label ||
+      left.kind !== right.kind ||
+      left.inputChannels !== right.inputChannels
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function sameOptionalNumber(a: number | undefined, b: number | undefined) {
+  if (a === undefined || b === undefined) return a === b;
+  return a === b;
+}
+
+function sameAudioState(
+  a: AudioState | undefined,
+  b: AudioState | undefined,
+): boolean {
+  if (!a || !b) return a === b;
+  return (
+    a.selectedInputDeviceId === b.selectedInputDeviceId &&
+    a.selectedOutputDeviceId === b.selectedOutputDeviceId &&
+    a.selectedInputChannel === b.selectedInputChannel &&
+    sameOptionalNumber(a.selectedInputGain, b.selectedInputGain) &&
+    sameOptionalNumber(a.inputLevelDbFs, b.inputLevelDbFs) &&
+    sameAudioDeviceList(a.inputDevices, b.inputDevices) &&
+    sameAudioDeviceList(a.outputDevices, b.outputDevices)
+  );
 }
 
 export function samePresenceList(a: Presence[], b: Presence[]): boolean {
@@ -114,6 +166,7 @@ export function samePresenceList(a: Presence[], b: Presence[]): boolean {
       !sameStringArray(left.talkRooms ?? [], right.talkRooms ?? [])
     )
       return false;
+    if (!sameAudioState(left.audioState, right.audioState)) return false;
   }
   return true;
 }
