@@ -515,10 +515,14 @@ func NewStore(dbPath string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if dbPath == ":memory:" || strings.Contains(dbPath, "mode=memory") {
-		// Keep one connection for in-memory SQLite so schema/data remain visible.
-		db.SetMaxOpenConns(1)
-		db.SetMaxIdleConns(1)
+	isMemoryDB := dbPath == ":memory:" || strings.Contains(dbPath, "mode=memory")
+	// Keep SQLite access serialized through one connection. This preserves
+	// in-memory stores and avoids SQLITE_BUSY under concurrent runtime polling.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	if err := configureSQLiteConnection(context.Background(), db, isMemoryDB); err != nil {
+		_ = db.Close()
+		return nil, err
 	}
 	s := &Store{db: db}
 	s.resetPolicyCaches()
@@ -537,6 +541,22 @@ func NewStore(dbPath string) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+func configureSQLiteConnection(ctx context.Context, db *sql.DB, isMemoryDB bool) error {
+	if _, err := db.ExecContext(ctx, `PRAGMA busy_timeout = 10000`); err != nil {
+		return err
+	}
+	if isMemoryDB {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, `PRAGMA journal_mode = WAL`); err != nil {
+		return err
+	}
+	if _, err := db.ExecContext(ctx, `PRAGMA synchronous = NORMAL`); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Store) repairDanglingRoomReferences(ctx context.Context) error {

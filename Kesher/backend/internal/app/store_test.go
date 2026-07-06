@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -628,6 +629,33 @@ func TestNewStoreDoesNotReseedDeletedDefaultsOnReopen(t *testing.T) {
 	}
 	if adminPIN != defaultAdminPIN {
 		t.Fatalf("expected admin pin to remain available, got %q", adminPIN)
+	}
+}
+
+func TestNewStoreConfiguresSQLiteForSerializedRuntimeAccess(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "runtime.sqlite")
+	store, err := NewStore(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	if got := store.db.Stats().MaxOpenConnections; got != 1 {
+		t.Fatalf("expected a single sqlite connection, got %d", got)
+	}
+	var busyTimeout int
+	if err := store.db.QueryRow(`PRAGMA busy_timeout`).Scan(&busyTimeout); err != nil {
+		t.Fatal(err)
+	}
+	if busyTimeout != 10000 {
+		t.Fatalf("expected busy_timeout 10000, got %d", busyTimeout)
+	}
+	var journalMode string
+	if err := store.db.QueryRow(`PRAGMA journal_mode`).Scan(&journalMode); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.EqualFold(journalMode, "wal") {
+		t.Fatalf("expected WAL journal mode, got %q", journalMode)
 	}
 }
 
