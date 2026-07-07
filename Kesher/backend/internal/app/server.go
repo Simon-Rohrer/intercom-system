@@ -126,6 +126,7 @@ const (
 	companionIncomingCallBlinkDuration    = companionIncomingCallBlinkInterval * companionIncomingCallBlinkMaxCycles * 2
 	companionIncomingCallEffectValue      = 3
 	raspberryPiHeartbeatOfflineAfter      = 12 * time.Second
+	raspberryPiHeartbeatHideAfter         = 24 * time.Hour
 )
 
 func refreshWebSocketReadDeadline(conn *websocket.Conn) {
@@ -3875,6 +3876,9 @@ func (s *Server) buildRaspberryPiStationsResponse(ctx context.Context) (Raspberr
 		ageMs := nowMs - record.LastSeenUnixMs
 		if ageMs < 0 {
 			ageMs = 0
+		}
+		if ageMs > raspberryPiHeartbeatHideAfter.Milliseconds() {
+			continue
 		}
 		online := ageMs <= offlineAfterMs
 		activeClient, intercomConnected := activeClients[raspberryPiActiveClientKey(record.Name, record.RoleID)]

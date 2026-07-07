@@ -741,6 +741,67 @@ func TestServerHandleRaspberryPisMarksStaleStationsOffline(t *testing.T) {
 	}
 }
 
+func TestServerHandleRaspberryPisHidesLongStaleStations(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if _, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
+		DeviceID:      "pi-old",
+		Name:          "Kamera-alt",
+		IPAddress:     "192.168.1.52",
+		RoleID:        "camera",
+		BrowserStatus: "running",
+		LoginStatus:   "waiting_for_intercom",
+	}); err != nil {
+		t.Fatalf("UpsertRaspberryPiHeartbeat old failed: %v", err)
+	}
+	if _, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
+		DeviceID:      "pi-recent",
+		Name:          "Kamera-neu",
+		IPAddress:     "192.168.1.53",
+		RoleID:        "camera",
+		BrowserStatus: "running",
+		LoginStatus:   "waiting_for_intercom",
+	}); err != nil {
+		t.Fatalf("UpsertRaspberryPiHeartbeat recent failed: %v", err)
+	}
+	oldSeenMs := time.Now().Add(-raspberryPiHeartbeatHideAfter - time.Second).UnixMilli()
+	if _, err := store.db.ExecContext(
+		ctx,
+		`UPDATE raspberry_pi_heartbeats SET last_seen = ?, updated_at = ? WHERE device_id = ?`,
+		oldSeenMs,
+		oldSeenMs,
+		"pi-old",
+	); err != nil {
+		t.Fatalf("failed to age heartbeat: %v", err)
+	}
+	s := &Server{
+		store: store,
+		hub:   NewHub(store, slog.New(slog.NewTextHandler(io.Discard, nil))),
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/raspberry-pis", nil)
+	rec := httptest.NewRecorder()
+
+	s.handleRaspberryPis(rec, req, Session{UserID: "u2", Username: "Tim", RoleID: "light"})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected ok, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response RaspberryPiStationsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if len(response.Stations) != 1 {
+		t.Fatalf("expected only recent station, got %#v", response.Stations)
+	}
+	if response.Stations[0].DeviceID != "pi-recent" {
+		t.Fatalf("expected old station to be hidden, got %#v", response.Stations)
+	}
+}
+
 func TestServerHandleRaspberryPisDedupesSameStationAliases(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {
