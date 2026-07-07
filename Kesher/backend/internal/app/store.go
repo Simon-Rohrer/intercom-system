@@ -1216,6 +1216,7 @@ func validateStreamDeckSettings(in StreamDeckSettings) (StreamDeckSettings, erro
 			seenButtonIdx[button.Index] = struct{}{}
 			button.Label = strings.TrimSpace(button.Label)
 			button.Color = strings.TrimSpace(button.Color)
+			button.PreviewImageBuffer = ""
 			if button.Action != nil {
 				action := *button.Action
 				action.RoomID = strings.TrimSpace(action.RoomID)

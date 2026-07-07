@@ -1,4 +1,5 @@
 import { combineRgb, } from "@companion-module/base";
+import { isCanvasAvailable, renderButtonImage } from "./imageRenderer.js";
 function rgbFromNumber(color) {
     return {
         r: (color >> 16) & 0xff,
@@ -107,6 +108,63 @@ function buttonPresetName(self, button) {
     const resolvedLabel = cleanLabel(self.resolveSyncedButtonLabel(button), `Key ${button.index + 1}`);
     return `Key ${button.index + 1} - ${resolvedLabel}`;
 }
+function normalizePreviewImageBase64(value) {
+    const trimmed = String(value || "").trim();
+    if (!trimmed)
+        return undefined;
+    const withoutPrefix = trimmed.replace(/^data:image\/png;base64,/i, "");
+    return /^[A-Za-z0-9+/]+={0,2}$/.test(withoutPrefix)
+        ? withoutPrefix
+        : undefined;
+}
+function previewImageSignature(value) {
+    const image = normalizePreviewImageBase64(value);
+    return image ? `${image.length}:${image.slice(0, 64)}` : "";
+}
+function splitButtonLabel(label) {
+    const lines = label
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+    return {
+        primary: lines[0] || "",
+        subtitle: lines[1] || "",
+    };
+}
+function renderPresetPreviewImage(self, button) {
+    const publishedPreview = normalizePreviewImageBase64(button.previewImageBuffer);
+    if (publishedPreview)
+        return publishedPreview;
+    if (!isCanvasAvailable())
+        return undefined;
+    const labels = splitButtonLabel(self.resolveSyncedButtonLabel(button));
+    const actionType = String(button.action?.type || "none").trim();
+    const image = renderButtonImage({
+        channel: button.action?.roomId ||
+            button.action?.broadcastGroupId ||
+            button.action?.roleId ||
+            button.action?.userId ||
+            "",
+        state: "IDLE",
+        label: labels.primary,
+        subtitle: labels.subtitle,
+        actionType,
+        color: button.color || "",
+    }, { width: 112, height: 112 });
+    return image.toString("base64");
+}
+function buildButtonStyle(label, baseBg, imageBase64) {
+    return {
+        text: imageBase64 ? "" : label,
+        size: "14",
+        color: deriveTextColor(baseBg),
+        bgcolor: baseBg,
+        alignment: "center:center",
+        pngalignment: "center:center",
+        ...(imageBase64 ? { png64: imageBase64 } : {}),
+        show_topbar: false,
+    };
+}
 function pageButtonsInGrid(settings, page) {
     const byIndex = new Map();
     for (const button of page.buttons || []) {
@@ -123,17 +181,10 @@ function buildProfileButtonPreset(self, profile, page, button) {
     const label = hasContent
         ? self.resolveSyncedButtonLabel(button) || `Key ${button.index + 1}`
         : "";
-    const imageBase64 = self.getButtonImage(button.index, page.page)?.toString("base64");
-    const style = {
-        text: imageBase64 ? "" : label,
-        size: "14",
-        color: deriveTextColor(baseBg),
-        bgcolor: baseBg,
-        alignment: "center:center",
-        pngalignment: "center:center",
-        ...(imageBase64 ? { png64: imageBase64 } : {}),
-        show_topbar: false,
-    };
+    const liveImageBase64 = self.getButtonImage(button.index, page.page)?.toString("base64");
+    const presetPreviewImageBase64 = renderPresetPreviewImage(self, button);
+    const style = buildButtonStyle(label, baseBg, liveImageBase64 || presetPreviewImageBase64);
+    const previewStyle = buildButtonStyle(label, baseBg, presetPreviewImageBase64 || liveImageBase64);
     const actionOptions = {
         roleId: profile.roleId,
         buttonIndex: button.index,
@@ -145,7 +196,7 @@ function buildProfileButtonPreset(self, profile, page, button) {
         category: profilePagePresetCategory(self, profile, page),
         name: buttonPresetName(self, button),
         style,
-        previewStyle: style,
+        previewStyle,
         feedbacks: [
             dynamicButtonImageFeedback(button, page),
             ...(isIndicator ? incomingCallIndicatorFeedbacks() : []),
@@ -219,6 +270,7 @@ export function BuildPresetSignature(self) {
                 index: button.index,
                 label: button.label || "",
                 color: button.color || "",
+                previewImageBuffer: previewImageSignature(button.previewImageBuffer),
                 action: button.action || null,
             })),
         })),

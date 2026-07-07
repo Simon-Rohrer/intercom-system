@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -4998,6 +4999,10 @@ func (s *Server) buildCompanionProfileResponse(ctx context.Context, targetUser U
 		settings = DefaultStreamDeckSettings()
 	}
 	settings = s.companionResolvedSettings(ctx, targetUser.RoleID, settings)
+	settings, err = s.companionSettingsWithPreviewImages(ctx, settings, roomDiscovery, users, activeRoleUsers, groups)
+	if err != nil {
+		return CompanionProfileResponse{}, err
+	}
 	pageNumber, err := s.store.GetCompanionRolePage(ctx, targetUser.RoleID)
 	if err != nil {
 		return CompanionProfileResponse{}, err
@@ -5014,6 +5019,214 @@ func (s *Server) buildCompanionProfileResponse(ctx context.Context, targetUser U
 		BroadcastGroups:   groups,
 		StreamDeck:        settings,
 	}, nil
+}
+
+type companionPreviewLabel struct {
+	primary  string
+	subtitle string
+}
+
+func (s *Server) companionSettingsWithPreviewImages(
+	ctx context.Context,
+	settings StreamDeckSettings,
+	rooms []CompanionRoomDiscovery,
+	users []User,
+	activeRoleUsers []CompanionRoleUser,
+	groups []BroadcastGroup,
+) (StreamDeckSettings, error) {
+	renderer, err := NewButtonImageRenderer(&ButtonImageRenderConfig{
+		Width:  112,
+		Height: 112,
+	})
+	if err != nil {
+		return StreamDeckSettings{}, err
+	}
+
+	for pageIndex := range settings.Pages {
+		for buttonIndex := range settings.Pages[pageIndex].Buttons {
+			button := &settings.Pages[pageIndex].Buttons[buttonIndex]
+			label := s.companionPreviewButtonLabel(ctx, *button, rooms, users, activeRoleUsers, groups)
+			img, renderErr := renderer.RenderButtonImage(ButtonState{
+				Channel:    companionPreviewButtonChannel(button.Action),
+				State:      "IDLE",
+				Label:      label.primary,
+				Subtitle:   label.subtitle,
+				ActionType: companionPreviewButtonActionType(button.Action),
+				Color:      strings.TrimSpace(button.Color),
+			})
+			if renderErr != nil {
+				return StreamDeckSettings{}, renderErr
+			}
+			button.PreviewImageBuffer = base64.StdEncoding.EncodeToString(img)
+		}
+	}
+
+	return settings, nil
+}
+
+func splitCompanionPreviewLabel(label string) companionPreviewLabel {
+	lines := strings.Split(strings.ReplaceAll(label, "\r\n", "\n"), "\n")
+	cleaned := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			cleaned = append(cleaned, trimmed)
+		}
+	}
+	result := companionPreviewLabel{}
+	if len(cleaned) > 0 {
+		result.primary = cleaned[0]
+	}
+	if len(cleaned) > 1 {
+		result.subtitle = cleaned[1]
+	}
+	return result
+}
+
+func companionPreviewRoomName(roomID string, rooms []CompanionRoomDiscovery) string {
+	wanted := strings.TrimSpace(roomID)
+	for _, room := range rooms {
+		if strings.TrimSpace(room.ID) == wanted {
+			return strings.TrimSpace(room.Name)
+		}
+	}
+	return wanted
+}
+
+func companionPreviewBroadcastGroupName(groupID string, groups []BroadcastGroup) string {
+	wanted := strings.TrimSpace(groupID)
+	for _, group := range groups {
+		if strings.TrimSpace(group.ID) == wanted {
+			return strings.TrimSpace(group.Name)
+		}
+	}
+	return wanted
+}
+
+func companionPreviewUserByID(userID string, users []User) (User, bool) {
+	wanted := strings.TrimSpace(userID)
+	for _, user := range users {
+		if strings.TrimSpace(user.ID) == wanted {
+			return user, true
+		}
+	}
+	return User{}, false
+}
+
+func companionPreviewActiveUserByRole(roleID string, users []CompanionRoleUser) (CompanionRoleUser, bool) {
+	wanted := strings.TrimSpace(roleID)
+	matches := make([]CompanionRoleUser, 0, 1)
+	for _, user := range users {
+		if strings.TrimSpace(user.RoleID) == wanted {
+			matches = append(matches, user)
+		}
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].Username == matches[j].Username {
+			return matches[i].UserID < matches[j].UserID
+		}
+		return matches[i].Username < matches[j].Username
+	})
+	if len(matches) == 0 {
+		return CompanionRoleUser{}, false
+	}
+	return matches[0], true
+}
+
+func (s *Server) companionPreviewRoleName(ctx context.Context, roleID string) string {
+	roleID = strings.TrimSpace(roleID)
+	if roleID == "" {
+		return ""
+	}
+	if name := strings.TrimSpace(s.roleNameByID(ctx, roleID)); name != "" {
+		return name
+	}
+	return roleID
+}
+
+func (s *Server) companionPreviewButtonLabel(
+	ctx context.Context,
+	button StreamDeckButtonConfig,
+	rooms []CompanionRoomDiscovery,
+	users []User,
+	activeRoleUsers []CompanionRoleUser,
+	groups []BroadcastGroup,
+) companionPreviewLabel {
+	if explicit := splitCompanionPreviewLabel(button.Label); explicit.primary != "" {
+		return explicit
+	}
+	if button.Action == nil {
+		return companionPreviewLabel{}
+	}
+
+	action := button.Action
+	switch action.Type {
+	case StreamDeckActionTypePTTRoom, StreamDeckActionTypeSelectTalkRoom, StreamDeckActionTypeSelectListen, StreamDeckActionTypeListenRoom, StreamDeckActionTypeCallRoom:
+		return splitCompanionPreviewLabel(companionPreviewRoomName(action.RoomID, rooms))
+	case StreamDeckActionTypePTTSelected:
+		return splitCompanionPreviewLabel("PTT")
+	case StreamDeckActionTypeDirectRole:
+		roleName := s.companionPreviewRoleName(ctx, action.RoleID)
+		if activeUser, ok := companionPreviewActiveUserByRole(action.RoleID, activeRoleUsers); ok && strings.TrimSpace(activeUser.Username) != "" {
+			return companionPreviewLabel{primary: strings.TrimSpace(activeUser.Username), subtitle: roleName}
+		}
+		return splitCompanionPreviewLabel(roleName)
+	case StreamDeckActionTypeDirectUser:
+		if user, ok := companionPreviewUserByID(action.UserID, users); ok {
+			label := companionPreviewLabel{primary: strings.TrimSpace(user.Username)}
+			if roleName := s.companionPreviewRoleName(ctx, user.RoleID); roleName != "" {
+				label.subtitle = roleName
+			}
+			return label
+		}
+		return splitCompanionPreviewLabel(action.UserID)
+	case StreamDeckActionTypeBroadcastPTT:
+		return splitCompanionPreviewLabel(companionPreviewBroadcastGroupName(action.BroadcastGroupID, groups))
+	case StreamDeckActionTypeReplyToCaller:
+		return companionPreviewLabel{primary: "Reply", subtitle: "No active caller"}
+	case StreamDeckActionTypeIncomingCall:
+		return companionPreviewLabel{primary: "Incoming", subtitle: "Call"}
+	case StreamDeckActionTypeMuteToggle:
+		return splitCompanionPreviewLabel("Mute")
+	case StreamDeckActionTypeVolumeDelta:
+		return splitCompanionPreviewLabel("Volume")
+	case StreamDeckActionTypePageUp:
+		return splitCompanionPreviewLabel("Page +")
+	case StreamDeckActionTypePageDown:
+		return splitCompanionPreviewLabel("Page -")
+	case StreamDeckActionTypePageHome:
+		return splitCompanionPreviewLabel("Home")
+	case StreamDeckActionTypePageBack:
+		return splitCompanionPreviewLabel("Back")
+	case StreamDeckActionTypePageJump:
+		return splitCompanionPreviewLabel(fmt.Sprintf("Page %d", action.TargetPage+1))
+	default:
+		return companionPreviewLabel{}
+	}
+}
+
+func companionPreviewButtonChannel(action *StreamDeckButtonAction) string {
+	if action == nil {
+		return ""
+	}
+	switch action.Type {
+	case StreamDeckActionTypePTTRoom, StreamDeckActionTypeSelectTalkRoom, StreamDeckActionTypeSelectListen, StreamDeckActionTypeListenRoom, StreamDeckActionTypeCallRoom:
+		return strings.TrimSpace(action.RoomID)
+	case StreamDeckActionTypeDirectUser:
+		return strings.TrimSpace(action.UserID)
+	case StreamDeckActionTypeDirectRole:
+		return strings.TrimSpace(action.RoleID)
+	case StreamDeckActionTypeBroadcastPTT:
+		return strings.TrimSpace(action.BroadcastGroupID)
+	default:
+		return ""
+	}
+}
+
+func companionPreviewButtonActionType(action *StreamDeckButtonAction) string {
+	if action == nil {
+		return ""
+	}
+	return string(action.Type)
 }
 
 func filterBroadcastGroupsForRole(roleID string, groups []BroadcastGroup) []BroadcastGroup {

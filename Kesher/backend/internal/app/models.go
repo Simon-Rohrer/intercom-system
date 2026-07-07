@@ -244,10 +244,11 @@ type StreamDeckButtonAction struct {
 }
 
 type StreamDeckButtonConfig struct {
-	Index  int                     `json:"index"`
-	Label  string                  `json:"label,omitempty"`
-	Color  string                  `json:"color,omitempty"`
-	Action *StreamDeckButtonAction `json:"action,omitempty"`
+	Index              int                     `json:"index"`
+	Label              string                  `json:"label,omitempty"`
+	Color              string                  `json:"color,omitempty"`
+	Action             *StreamDeckButtonAction `json:"action,omitempty"`
+	PreviewImageBuffer string                  `json:"previewImageBuffer,omitempty"`
 }
 
 type StreamDeckPageConfig struct {

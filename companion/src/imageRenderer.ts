@@ -10,6 +10,7 @@ export interface ButtonState {
   channel: string;
   state: "IDLE" | "TALK" | "LISTEN" | "BROADCAST";
   label: string;
+  subtitle?: string;
   talkCount?: number;
   listenCount?: number;
   isActive?: boolean;
@@ -17,6 +18,7 @@ export interface ButtonState {
   actionType?: string;
   color?: string;
   isListening?: boolean;
+  isPttSelected?: boolean;
 }
 
 export interface RenderOptions {
@@ -185,7 +187,48 @@ function renderWithCanvas(
     ctx.stroke();
   }
 
-  if ((actionType === "ptt_room" || actionType === "listen_room") && state.isListening) {
+  const rawLabel = String(state.label || "").trim();
+  const explicitSubtitle = String(state.subtitle || "").trim();
+  const split = explicitSubtitle
+    ? [rawLabel, explicitSubtitle].filter(Boolean)
+    : rawLabel
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+  const primary = split[0] || "";
+  const secondary = split[1] || "";
+  const actionHeader = streamDeckActionHeaderLabel(actionType);
+  const hasActionHeader = actionHeader !== "" && primary !== "";
+
+  if (
+    (
+      actionType === "select_talk_room" ||
+      actionType === "select_listen_room"
+    ) &&
+    state.isPttSelected
+  ) {
+    const stripeHeight = Math.max(6, Math.round(canvas.height * 0.075));
+    roundedRect(
+      ctx,
+      cardX + 3,
+      cardY + 2,
+      cardWidth - 6,
+      stripeHeight,
+      Math.max(3, Math.round(stripeHeight / 2)),
+    );
+    ctx.fillStyle = "#ff2d26";
+    ctx.fill();
+  }
+
+  if (
+    (
+      actionType === "ptt_room" ||
+      actionType === "select_talk_room" ||
+      actionType === "select_listen_room" ||
+      actionType === "listen_room"
+    ) &&
+    state.isListening
+  ) {
     const stripeHeight = Math.max(6, Math.round(canvas.height * 0.075));
     roundedRect(
       ctx,
@@ -199,16 +242,50 @@ function renderWithCanvas(
     ctx.fill();
   }
 
-  const rawLabel = String(state.label || "").trim();
-  const split = rawLabel
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const primary = split[0] || "";
-  const secondary = split[1] || "";
-
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+
+  if (hasActionHeader) {
+    const headerHeight = Math.max(13, Math.round(canvas.height * 0.16));
+    const headerY = cardY + Math.max(10, Math.round(canvas.height * 0.12));
+    const headerX = cardX + 6;
+    const headerWidth = cardWidth - 12;
+    if (headerWidth > 12) {
+      roundedRect(
+        ctx,
+        headerX,
+        headerY,
+        headerWidth,
+        headerHeight,
+        Math.max(5, Math.round(headerHeight / 2)),
+      );
+      ctx.fillStyle = hexToRgba(palette.border, 0.23);
+      ctx.fill();
+      roundedRect(
+        ctx,
+        headerX,
+        headerY,
+        headerWidth,
+        headerHeight,
+        Math.max(5, Math.round(headerHeight / 2)),
+      );
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = hexToRgba(palette.border, 0.57);
+      ctx.stroke();
+
+      const headerFont = fitText(
+        ctx,
+        actionHeader,
+        headerWidth - 8,
+        Math.max(8, Math.round(canvas.height * 0.1)),
+        800,
+        7,
+      );
+      ctx.fillStyle = textColor;
+      ctx.font = `800 ${headerFont}px sans-serif`;
+      ctx.fillText(actionHeader, canvas.width / 2, headerY + headerHeight / 2);
+    }
+  }
 
   if (primary) {
     if (secondary) {
@@ -218,8 +295,11 @@ function renderWithCanvas(
       const primaryLines = wrapLines(ctx, primary, canvas.width - 24, 2);
       const primaryLineHeight = Math.round(primaryFont * 1.1);
       const primaryBlockHeight = primaryLines.length * primaryLineHeight;
+      const primaryCenterY = hasActionHeader
+        ? Math.round(canvas.height * 0.53)
+        : Math.round(canvas.height * 0.38);
       const primaryStartY =
-        Math.round(canvas.height * 0.38) -
+        primaryCenterY -
         primaryBlockHeight / 2 +
         primaryLineHeight / 2;
       primaryLines.forEach((line: string, index: number) => {
@@ -230,16 +310,22 @@ function renderWithCanvas(
       ctx.fillStyle = mixColors(textColor, "#aeb6c0", 0.45);
       ctx.font = `600 ${secondaryFont}px sans-serif`;
       const secondaryLines = wrapLines(ctx, secondary, canvas.width - 26, 1);
-      ctx.fillText(secondaryLines[0] || secondary, canvas.width / 2, Math.round(canvas.height * 0.68));
+      ctx.fillText(
+        secondaryLines[0] || secondary,
+        canvas.width / 2,
+        Math.round(canvas.height * (hasActionHeader ? 0.77 : 0.68)),
+      );
     } else {
       const labelFont = fitText(ctx, primary, canvas.width - 24, Math.max(18, Math.round(canvas.width * 0.15)), 800);
       ctx.fillStyle = textColor;
       ctx.font = `800 ${labelFont}px sans-serif`;
       const labelLines = wrapLines(ctx, primary, canvas.width - 24, 2);
       const labelLineHeight = Math.round(labelFont * 1.03);
+      const labelCenterY = hasActionHeader
+        ? Math.round(canvas.height * 0.65)
+        : Math.round(canvas.height * 0.56);
       const labelStartY =
-        Math.round(canvas.height * 0.56) -
-        ((labelLines.length - 1) * labelLineHeight) / 2;
+        labelCenterY - ((labelLines.length - 1) * labelLineHeight) / 2;
       labelLines.forEach((line: string, index: number) => {
         ctx.fillText(line, canvas.width / 2, labelStartY + index * labelLineHeight);
       });
@@ -321,6 +407,8 @@ function getButtonPalette(actionType: string, color: string | undefined, pressed
       return { background: "#000000", border: "#ffc067", label: "#f6f0e8" };
     case "select_talk_room":
       return { background: "#000000", border: "#2da8ff", label: "#ecf7ff" };
+    case "select_listen_room":
+      return { background: "#000000", border: "#2db8a3", label: "#ecf9f6" };
     case "ptt_selected":
       return { background: "#000000", border: "#ff4d4d", label: "#fff1f1" };
     case "listen_room":
@@ -346,15 +434,41 @@ function getButtonPalette(actionType: string, color: string | undefined, pressed
   }
 }
 
+function streamDeckActionHeaderLabel(actionType: string): string {
+  switch (String(actionType || "").trim()) {
+    case "ptt_room":
+      return "PUSH TO TALK";
+    case "select_talk_room":
+      return "SELECT TALK";
+    case "select_listen_room":
+      return "SELECT LISTEN";
+    case "listen_room":
+      return "LISTEN";
+    case "call_room":
+      return "CALL";
+    case "direct_role":
+    case "direct_user":
+      return "DIRECT";
+    case "broadcast_ptt":
+      return "BROADCAST";
+    case "ptt_selected":
+      return "PUSH TO TALK";
+    default:
+      return "";
+  }
+}
+
 function fitText(
   ctx: any,
   text: string,
   maxWidth: number,
   initialSize: number,
   weight: number,
+  minSize = 12,
 ): number {
   let size = initialSize;
-  while (size > 12) {
+  const lowerBound = Math.max(1, minSize);
+  while (size > lowerBound) {
     ctx.font = `${weight} ${size}px sans-serif`;
     if (ctx.measureText(text).width <= maxWidth) {
       return size;

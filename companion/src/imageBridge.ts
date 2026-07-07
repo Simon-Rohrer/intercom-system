@@ -20,6 +20,7 @@ export interface ImageUpdateMessage {
   actionType?: string;
   color?: string;
   isListening?: boolean;
+  isPttSelected?: boolean;
 }
 
 /**
@@ -236,7 +237,10 @@ export class ImageBridge {
         buttonConfig?.action?.roomId || message.channel || "",
       ).trim();
       const isPartylineAction =
-        actionType === "ptt_room" || actionType === "listen_room";
+        actionType === "ptt_room" ||
+        actionType === "select_talk_room" ||
+        actionType === "select_listen_room" ||
+        actionType === "listen_room";
       const listeningFromPresence =
         isPartylineAction &&
         roomId !== "" &&
@@ -281,6 +285,7 @@ export class ImageBridge {
           actionType,
           color: String(message.color || ""),
           isListening: effectiveIsListening,
+          isPttSelected: Boolean(message.isPttSelected),
           pressed,
           isActive: pressed,
         });

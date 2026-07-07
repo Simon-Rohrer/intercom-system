@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -2240,6 +2241,9 @@ func TestServerHandleUserCompanionPublishSavesProvidedStreamDeckSettings(t *test
 	if action == nil || action.Type != StreamDeckActionTypeIncomingCall {
 		t.Fatalf("expected incoming-call indicator to be saved, got %+v", action)
 	}
+	if stored.Pages[0].Buttons[7].PreviewImageBuffer != "" {
+		t.Fatal("expected stored stream deck settings to omit companion preview image buffers")
+	}
 	published, err := store.GetCompanionProfileByRole(context.Background(), user.RoleID)
 	if err != nil {
 		t.Fatalf("expected companion profile to be published: %v", err)
@@ -2247,6 +2251,13 @@ func TestServerHandleUserCompanionPublishSavesProvidedStreamDeckSettings(t *test
 	publishedAction := published.StreamDeck.Pages[0].Buttons[7].Action
 	if publishedAction == nil || publishedAction.Type != StreamDeckActionTypeIncomingCall {
 		t.Fatalf("expected published profile to include incoming-call indicator, got %+v", publishedAction)
+	}
+	previewImage := published.StreamDeck.Pages[0].Buttons[7].PreviewImageBuffer
+	if previewImage == "" {
+		t.Fatal("expected published companion profile to include a preview image buffer")
+	}
+	if _, err := base64.StdEncoding.DecodeString(previewImage); err != nil {
+		t.Fatalf("expected valid preview image base64: %v", err)
 	}
 }
 

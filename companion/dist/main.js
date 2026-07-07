@@ -11,6 +11,7 @@ const allowedStreamDeckActionTypes = new Set([
     "none",
     "ptt_room",
     "select_talk_room",
+    "select_listen_room",
     "ptt_selected",
     "listen_room",
     "call_room",
@@ -81,6 +82,9 @@ function normalizeProfileStreamDeckSettings(raw) {
                 index,
                 label: typeof buttonData.label === "string" ? buttonData.label : undefined,
                 color: typeof buttonData.color === "string" ? buttonData.color : undefined,
+                previewImageBuffer: typeof buttonData.previewImageBuffer === "string"
+                    ? buttonData.previewImageBuffer
+                    : undefined,
                 action,
             };
         })
@@ -434,6 +438,7 @@ export class ModuleInstance extends InstanceBase {
         switch (action.type) {
             case "ptt_room":
             case "select_talk_room":
+            case "select_listen_room":
             case "listen_room":
             case "call_room":
                 return (this.discovery.rooms.find((room) => room.id === action.roomId)?.name ||

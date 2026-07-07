@@ -147,10 +147,14 @@ func (r *ButtonImageRenderer) RenderButtonImage(state ButtonState) ([]byte, erro
 	dc.Clear()
 
 	const cardInset = 2.0
+	cardX := cardInset
+	cardY := cardInset
+	cardWidth := w - cardInset*2
+	cardHeight := h - cardInset*2
 	radius := math.Max(10, math.Round(w*0.12))
 
 	dc.SetHexColor(palette.background)
-	dc.DrawRoundedRectangle(cardInset, cardInset, w-cardInset*2, h-cardInset*2, radius)
+	dc.DrawRoundedRectangle(cardX, cardY, cardWidth, cardHeight, radius)
 	dc.Fill()
 
 	dc.SetHexColor(strokeColor)
@@ -159,7 +163,7 @@ func (r *ButtonImageRenderer) RenderButtonImage(state ButtonState) ([]byte, erro
 	} else {
 		dc.SetLineWidth(3)
 	}
-	dc.DrawRoundedRectangle(cardInset, cardInset, w-cardInset*2, h-cardInset*2, radius)
+	dc.DrawRoundedRectangle(cardX, cardY, cardWidth, cardHeight, radius)
 	dc.Stroke()
 
 	if useEmergencyPressedColor {
@@ -205,6 +209,32 @@ func (r *ButtonImageRenderer) RenderButtonImage(state ButtonState) ([]byte, erro
 	label := strings.TrimSpace(state.Label)
 	subtitle := strings.TrimSpace(state.Subtitle)
 	textColor := palette.label
+	actionHeader := streamDeckActionHeaderLabel(actionType)
+	hasActionHeader := actionHeader != "" && label != ""
+
+	if hasActionHeader {
+		headerHeight := math.Max(13, math.Round(h*0.16))
+		headerY := cardY + math.Max(10, math.Round(h*0.12))
+		headerX := cardX + 6
+		headerWidth := cardWidth - 12
+		if headerWidth > 12 {
+			hr, hg, hb := hexToRGB(palette.border)
+			dc.SetRGBA255(hr, hg, hb, 58)
+			dc.DrawRoundedRectangle(headerX, headerY, headerWidth, headerHeight, math.Max(5, headerHeight/2))
+			dc.Fill()
+			dc.SetRGBA255(hr, hg, hb, 145)
+			dc.SetLineWidth(1)
+			dc.DrawRoundedRectangle(headerX, headerY, headerWidth, headerHeight, math.Max(5, headerHeight/2))
+			dc.Stroke()
+
+			headerSize := fitButtonFontSizeMin(dc, actionHeader, headerWidth-8, math.Max(8, h*0.1), 800, gobold.TTF, 7)
+			if face, err := loadButtonFontFace(gobold.TTF, headerSize); err == nil {
+				dc.SetFontFace(face)
+			}
+			dc.SetHexColor(textColor)
+			dc.DrawStringAnchored(actionHeader, w/2, headerY+headerHeight/2, 0.5, 0.5)
+		}
+	}
 
 	if label != "" {
 		if subtitle != "" {
@@ -217,7 +247,11 @@ func (r *ButtonImageRenderer) RenderButtonImage(state ButtonState) ([]byte, erro
 			primaryLines := wrapButtonLines(dc, label, w-24, 2)
 			primaryLineHeight := math.Round(primarySize * 1.1)
 			primaryBlockHeight := float64(len(primaryLines)) * primaryLineHeight
-			primaryStartY := math.Round(h*0.38) - primaryBlockHeight/2 + primaryLineHeight/2
+			primaryCenterY := math.Round(h * 0.38)
+			if hasActionHeader {
+				primaryCenterY = math.Round(h * 0.53)
+			}
+			primaryStartY := primaryCenterY - primaryBlockHeight/2 + primaryLineHeight/2
 			for i, line := range primaryLines {
 				dc.DrawStringAnchored(line, w/2, primaryStartY+float64(i)*primaryLineHeight, 0.5, 0.5)
 			}
@@ -228,7 +262,11 @@ func (r *ButtonImageRenderer) RenderButtonImage(state ButtonState) ([]byte, erro
 			}
 			dc.SetHexColor(mixColors(textColor, "#aeb6c0", 0.45))
 			secondaryLines := wrapButtonLines(dc, subtitle, w-26, 1)
-			dc.DrawStringAnchored(secondaryLines[0], w/2, math.Round(h*0.68), 0.5, 0.5)
+			secondaryY := math.Round(h * 0.68)
+			if hasActionHeader {
+				secondaryY = math.Round(h * 0.77)
+			}
+			dc.DrawStringAnchored(secondaryLines[0], w/2, secondaryY, 0.5, 0.5)
 		} else {
 			// Single-label layout: up to two wrapped lines, centered in lower half
 			labelSize := fitButtonFontSize(dc, label, w-24, math.Max(18, w*0.15), 800, gobold.TTF)
@@ -238,7 +276,11 @@ func (r *ButtonImageRenderer) RenderButtonImage(state ButtonState) ([]byte, erro
 			dc.SetHexColor(textColor)
 			labelLines := wrapButtonLines(dc, label, w-24, 2)
 			labelLineHeight := math.Round(labelSize * 1.03)
-			labelStartY := math.Round(h*0.56) - (float64(len(labelLines)-1)*labelLineHeight)/2
+			labelCenterY := math.Round(h * 0.56)
+			if hasActionHeader {
+				labelCenterY = math.Round(h * 0.65)
+			}
+			labelStartY := labelCenterY - (float64(len(labelLines)-1)*labelLineHeight)/2
 			for i, line := range labelLines {
 				dc.DrawStringAnchored(line, w/2, labelStartY+float64(i)*labelLineHeight, 0.5, 0.5)
 			}
@@ -250,6 +292,29 @@ func (r *ButtonImageRenderer) RenderButtonImage(state ButtonState) ([]byte, erro
 		return nil, fmt.Errorf("failed to encode PNG: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+func streamDeckActionHeaderLabel(actionType string) string {
+	switch strings.TrimSpace(actionType) {
+	case string(StreamDeckActionTypePTTRoom):
+		return "PUSH TO TALK"
+	case string(StreamDeckActionTypeSelectTalkRoom):
+		return "SELECT TALK"
+	case string(StreamDeckActionTypeSelectListen):
+		return "SELECT LISTEN"
+	case string(StreamDeckActionTypeListenRoom):
+		return "LISTEN"
+	case string(StreamDeckActionTypeCallRoom):
+		return "CALL"
+	case string(StreamDeckActionTypeDirectRole), string(StreamDeckActionTypeDirectUser):
+		return "DIRECT"
+	case string(StreamDeckActionTypeBroadcastPTT):
+		return "BROADCAST"
+	case string(StreamDeckActionTypePTTSelected):
+		return "PUSH TO TALK"
+	default:
+		return ""
+	}
 }
 
 func getButtonPalette(actionType, color string, pressed bool) keyPalette {
@@ -362,8 +427,15 @@ func loadButtonFontFace(ttfBytes []byte, size float64) (font.Face, error) {
 
 // fitButtonFontSize shrinks point size from initialSize down to 12 until the string fits maxWidth.
 func fitButtonFontSize(dc *gg.Context, text string, maxWidth, initialSize, _ float64, ttfBytes []byte) float64 {
+	return fitButtonFontSizeMin(dc, text, maxWidth, initialSize, 800, ttfBytes, 12)
+}
+
+func fitButtonFontSizeMin(dc *gg.Context, text string, maxWidth, initialSize, _ float64, ttfBytes []byte, minSize float64) float64 {
 	size := initialSize
-	for size > 12 {
+	if minSize < 1 {
+		minSize = 1
+	}
+	for size > minSize {
 		if face, err := loadButtonFontFace(ttfBytes, size); err == nil {
 			dc.SetFontFace(face)
 			if w, _ := dc.MeasureString(text); w <= maxWidth {

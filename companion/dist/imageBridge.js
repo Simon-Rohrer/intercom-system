@@ -184,7 +184,10 @@ export class ImageBridge {
             const state = String(message.state || "IDLE");
             const actionType = String(message.actionType || buttonConfig?.action?.type || "").trim();
             const roomId = String(buttonConfig?.action?.roomId || message.channel || "").trim();
-            const isPartylineAction = actionType === "ptt_room" || actionType === "listen_room";
+            const isPartylineAction = actionType === "ptt_room" ||
+                actionType === "select_talk_room" ||
+                actionType === "select_listen_room" ||
+                actionType === "listen_room";
             const listeningFromPresence = isPartylineAction &&
                 roomId !== "" &&
                 this.instance.listenRooms.includes(roomId);
@@ -223,6 +226,7 @@ export class ImageBridge {
                     actionType,
                     color: String(message.color || ""),
                     isListening: effectiveIsListening,
+                    isPttSelected: Boolean(message.isPttSelected),
                     pressed,
                     isActive: pressed,
                 });

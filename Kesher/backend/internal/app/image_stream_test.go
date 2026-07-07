@@ -60,6 +60,20 @@ func TestGetButtonPaletteUsesYellowPressedPaletteForCallRoom(t *testing.T) {
 	}
 }
 
+func TestStreamDeckActionHeaderLabelDifferentiatesChannelActions(t *testing.T) {
+	cases := map[StreamDeckActionType]string{
+		StreamDeckActionTypeSelectTalkRoom: "SELECT TALK",
+		StreamDeckActionTypeSelectListen:   "SELECT LISTEN",
+		StreamDeckActionTypePTTRoom:        "PUSH TO TALK",
+		StreamDeckActionTypeListenRoom:     "LISTEN",
+	}
+	for actionType, want := range cases {
+		if got := streamDeckActionHeaderLabel(string(actionType)); got != want {
+			t.Fatalf("header for %s: got %q want %q", actionType, got, want)
+		}
+	}
+}
+
 func TestButtonImageRendererRenderButtonImageRendersTopAndBottomStatusStripes(t *testing.T) {
 	renderer, err := NewButtonImageRenderer(&ButtonImageRenderConfig{Width: 112, Height: 112})
 	if err != nil {
