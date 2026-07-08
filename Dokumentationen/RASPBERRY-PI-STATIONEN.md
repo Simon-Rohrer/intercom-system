@@ -48,6 +48,8 @@ Wichtig:
 - `name` und `device_id` dürfen keine Leerzeichen enthalten.
 - `role_id` ist die Rollen-ID aus Kesher Admin.
 - `server_url` muss auf den Kesher-Server zeigen.
+- `audio_runtime_wait_seconds` kann optional auf `0` bis wenige Sekunden gesetzt werden, wenn der Browser schnell starten soll und Audio-Geräte nicht beim Systemstart blockieren dürfen.
+- `display_runtime_settle_seconds` steuert die kurze Wartezeit nach dem Start der Desktop-Sitzung. Auf Raspberry Pi OS mit Wayland/Xwayland verhindern etwa `8` Sekunden, dass Chromium während der Grafikinitialisierung hängen bleibt.
 
 ## Deploy-Paket kopieren
 

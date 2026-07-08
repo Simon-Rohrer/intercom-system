@@ -20,9 +20,11 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
-LAUNCHER_VERSION = "3"
+LAUNCHER_VERSION = "5"
 HEARTBEAT_INTERVAL_SECONDS = 4
-AUDIO_RUNTIME_WAIT_SECONDS = 20
+AUDIO_RUNTIME_WAIT_SECONDS = 3
+DISPLAY_RUNTIME_WAIT_SECONDS = 15
+DISPLAY_RUNTIME_SETTLE_SECONDS = 8
 
 
 def require_text(value: Any, field: str) -> str:
@@ -60,7 +62,26 @@ def load_config(path: Path) -> dict[str, Any]:
         raise ValueError("heartbeat_secret must be a string when set")
     if isinstance(heartbeat_secret, str):
         raw["heartbeat_secret"] = heartbeat_secret.strip()
+    for optional_field in (
+        "audio_runtime_wait_seconds",
+        "display_runtime_wait_seconds",
+        "display_runtime_settle_seconds",
+    ):
+        if optional_field in raw:
+            raw[optional_field] = read_non_negative_int(raw[optional_field], optional_field)
     return raw
+
+
+def read_non_negative_int(value: Any, field: str) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be a non-negative integer")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{field} must be a non-negative integer") from error
+    if parsed < 0:
+        raise ValueError(f"{field} must be a non-negative integer")
+    return parsed
 
 
 def detect_ipv4_addresses() -> list[str]:
@@ -523,6 +544,57 @@ def wait_for_server(server_url: str, allow_insecure_tls: bool) -> None:
         time.sleep(3)
 
 
+def display_socket_path(display: str) -> Optional[Path]:
+    display = display.strip()
+    if not display.startswith(":"):
+        return None
+    display_number = display[1:].split(".", 1)[0]
+    if not display_number.isdigit():
+        return None
+    return Path("/tmp/.X11-unix") / f"X{display_number}"
+
+
+def display_runtime_ready() -> bool:
+    display = os.environ.get("DISPLAY", "").strip()
+    if not display:
+        return False
+    socket_path = display_socket_path(display)
+    if socket_path is None:
+        return True
+    return _socket_exists(socket_path)
+
+
+def wait_for_display_runtime(
+    timeout_seconds: int = DISPLAY_RUNTIME_WAIT_SECONDS,
+    settle_seconds: int = DISPLAY_RUNTIME_SETTLE_SECONDS,
+) -> bool:
+    timeout = max(0, int(timeout_seconds))
+    deadline = time.monotonic() + timeout
+    while not display_runtime_ready():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            print(
+                "Kesher display runtime still not ready; starting Chromium anyway",
+                flush=True,
+            )
+            return False
+        display = os.environ.get("DISPLAY", "") or "unset"
+        print(
+            f"Kesher display runtime not ready (DISPLAY={display}); retrying in 0.5 seconds",
+            flush=True,
+        )
+        time.sleep(min(0.5, remaining))
+    print(f"Kesher display runtime ready: DISPLAY={os.environ.get('DISPLAY', '')}", flush=True)
+    settle = max(0, int(settle_seconds))
+    if settle > 0:
+        print(
+            f"Waiting {settle} seconds for the desktop graphics session to settle",
+            flush=True,
+        )
+        time.sleep(settle)
+    return True
+
+
 def _socket_exists(path: Path) -> bool:
     try:
         return path.exists()
@@ -663,6 +735,9 @@ def browser_command(
         "--kiosk",
         "--no-first-run",
         "--no-default-browser-check",
+        "--noerrdialogs",
+        "--disable-breakpad",
+        "--disable-crash-reporter",
         "--disable-session-crashed-bubble",
         "--autoplay-policy=no-user-gesture-required",
         "--use-fake-ui-for-media-stream",
@@ -685,11 +760,14 @@ def browser_command(
                 "--disable-extensions",
                 "--disable-print-preview",
                 "--disable-pinch",
+                "--ozone-platform=x11",
+                "--use-gl=angle",
+                "--use-angle=gl",
                 "--overscroll-history-navigation=0",
                 "--process-per-site",
                 "--renderer-process-limit=2",
                 "--js-flags=--max-old-space-size=96",
-                "--disable-features=Translate,BackForwardCache,MediaRouter,OptimizationHints,AutofillServerCommunication,CalculateNativeWinOcclusion",
+                "--disable-features=Translate,BackForwardCache,MediaRouter,OptimizationHints,AutofillServerCommunication,CalculateNativeWinOcclusion,FallbackToSWIfGLES3NotSupported,WebGPU,Vulkan,SkiaGraphite",
             ]
         )
     command.append(kesher_url)
@@ -758,6 +836,13 @@ def main() -> int:
                 config["server_url"],
                 config.get("allow_insecure_tls") is True,
             )
+            wait_for_display_runtime(
+                config.get("display_runtime_wait_seconds", DISPLAY_RUNTIME_WAIT_SECONDS),
+                config.get(
+                    "display_runtime_settle_seconds",
+                    DISPLAY_RUNTIME_SETTLE_SECONDS,
+                ),
+            )
             update_heartbeat_state(
                 heartbeat_state,
                 heartbeat_state_lock,
@@ -766,7 +851,7 @@ def main() -> int:
                 login_error="",
             )
             wait_for_audio_runtime(
-                int(config.get("audio_runtime_wait_seconds") or AUDIO_RUNTIME_WAIT_SECONDS)
+                config.get("audio_runtime_wait_seconds", AUDIO_RUNTIME_WAIT_SECONDS)
             )
             update_heartbeat_state(
                 heartbeat_state,

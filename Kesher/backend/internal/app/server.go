@@ -3886,6 +3886,10 @@ func (s *Server) buildRaspberryPiStationsResponse(ctx context.Context) (Raspberr
 		}
 		online := ageMs <= offlineAfterMs
 		activeClient, intercomConnected := activeClients[raspberryPiActiveClientKey(record.Name, record.RoleID)]
+		if !online {
+			activeClient = ActiveClient{}
+			intercomConnected = false
+		}
 		stations = append(stations, RaspberryPiStationStatus{
 			RaspberryPiHeartbeatRecord: record,
 			Online:                     online,
@@ -3908,6 +3912,7 @@ func (s *Server) handleRaspberryPis(w http.ResponseWriter, r *http.Request, _ Se
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	disableResponseCaching(w)
 	response, err := s.buildRaspberryPiStationsResponse(r.Context())
 	if err != nil {
 		s.internalErr(w, err)
@@ -3924,6 +3929,7 @@ func (s *Server) handleAdminRaspberryPis(w http.ResponseWriter, r *http.Request,
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	disableResponseCaching(w)
 	response, err := s.buildRaspberryPiStationsResponse(r.Context())
 	if err != nil {
 		s.internalErr(w, err)
@@ -4045,6 +4051,7 @@ func (s *Server) handleRaspberryPiRemoteStations(w http.ResponseWriter, r *http.
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	disableResponseCaching(w)
 	response, err := s.buildRaspberryPiRemoteStationsResponse(r.Context())
 	if err != nil {
 		s.internalErr(w, err)
@@ -4127,6 +4134,7 @@ func (s *Server) handleRealtimeStats(w http.ResponseWriter, r *http.Request, ses
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	disableResponseCaching(w)
 	hubStats := HubRealtimeStats{}
 	if s.hub != nil {
 		hubStats = s.hub.RealtimeStats()
@@ -4396,6 +4404,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request, _ Session)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	disableResponseCaching(w)
 	roomListenerCounts := map[string]int{}
 	if s.hub != nil {
 		roomListenerCounts = s.hub.RoomListenerCounts()
@@ -6814,6 +6823,12 @@ func (s *Server) writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func disableResponseCaching(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 }
 
 func (s *Server) internalErr(w http.ResponseWriter, err error) {

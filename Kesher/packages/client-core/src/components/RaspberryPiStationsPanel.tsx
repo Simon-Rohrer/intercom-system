@@ -10,7 +10,7 @@ type RaspberryPiStationsPanelProps = {
 
 function formatSecondsSinceSeen(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "n/a";
-  if (seconds < 5) return "now";
+  if (seconds < 1) return "now";
   if (seconds < 60) return `${Math.round(seconds)}s ago`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;

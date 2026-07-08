@@ -770,6 +770,67 @@ func TestServerHandleRaspberryPisMarksStaleStationsOffline(t *testing.T) {
 	}
 }
 
+func TestServerHandleRaspberryPisDoesNotKeepStaleHeartbeatConnected(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if _, err := store.UpsertRaspberryPiHeartbeat(ctx, RaspberryPiHeartbeatRequest{
+		DeviceID:      "pi-1",
+		Name:          "Kamera-1",
+		IPAddress:     "192.168.1.51",
+		RoleID:        "camera",
+		BrowserStatus: "running",
+		LoginStatus:   "connected",
+	}); err != nil {
+		t.Fatalf("UpsertRaspberryPiHeartbeat failed: %v", err)
+	}
+	staleSeenMs := time.Now().Add(-raspberryPiHeartbeatOfflineAfter - time.Second).UnixMilli()
+	if _, err := store.db.ExecContext(
+		ctx,
+		`UPDATE raspberry_pi_heartbeats SET last_seen = ?, updated_at = ? WHERE device_id = ?`,
+		staleSeenMs,
+		staleSeenMs,
+		"pi-1",
+	); err != nil {
+		t.Fatalf("failed to age heartbeat: %v", err)
+	}
+	hub := NewHub(store, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	hub.Add(&client{
+		session: Session{Token: "station-token", UserID: "u1", Username: "Kamera-1", RoleID: "camera"},
+		user:    User{ID: "u1", Username: "Kamera-1", RoleID: "camera"},
+		send:    make(chan WSOutbound, 4),
+	})
+	s := &Server{
+		store: store,
+		hub:   hub,
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/raspberry-pis", nil)
+	rec := httptest.NewRecorder()
+
+	s.handleRaspberryPis(rec, req, Session{UserID: "u2", Username: "Tim", RoleID: "light"})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected ok, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("expected no-store cache header, got %q", rec.Header().Get("Cache-Control"))
+	}
+	var response RaspberryPiStationsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if len(response.Stations) != 1 {
+		t.Fatalf("expected one station, got %#v", response.Stations)
+	}
+	station := response.Stations[0]
+	if station.Online || station.IntercomConnected || station.EffectiveStatus != "offline" {
+		t.Fatalf("expected stale heartbeat to override old intercom client, got %#v", station)
+	}
+}
+
 func TestServerHandleRaspberryPisHidesLongStaleStations(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {

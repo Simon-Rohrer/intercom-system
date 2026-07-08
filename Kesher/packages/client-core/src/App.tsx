@@ -56,6 +56,10 @@ import {
 import {
   isWebHidSupported,
 } from "./lib/streamDeckWebHid";
+import {
+  normalizeRaspberryPiOfflineAfterMs,
+  refreshRaspberryPiStationAges,
+} from "./lib/raspberryPiMonitoring";
 import { createStreamDeckDevTools } from "./lib/streamDeckDevTools";
 import {
   getStreamDeckPageButtons,
@@ -85,7 +89,9 @@ import { useNativeAudio } from "./hooks/useNativeAudio";
 const adminPathname = "/admin";
 const loginPathname = "/login";
 const normalStatusPollIntervalMs = 2000;
-const lowPowerStatusPollIntervalMs = 5000;
+const raspberryPiStatusPollIntervalMs = 5000;
+const statusRequestTimeoutMs = 8000;
+const raspberryPiSeenTickIntervalMs = 1000;
 
 type ChannelAudioFeedRoomPayload = {
   id?: string;
@@ -333,6 +339,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   const [raspberryPiStations, setRaspberryPiStations] = useState<
     RaspberryPiStationStatus[] | null
   >(null);
+  const [raspberryPiStationsOfflineAfterMs, setRaspberryPiStationsOfflineAfterMs] =
+    useState(0);
   const [raspberryPiStationsError, setRaspberryPiStationsError] = useState("");
   const [raspberryRemoteStations, setRaspberryRemoteStations] = useState<
     RaspberryPiRemoteStationStatus[] | null
@@ -1443,17 +1451,22 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   useEffect(() => {
     if (!token || authMode !== "operator") {
       setRoomListenerCounts({});
-      setRaspberryPiStations(null);
-      setRaspberryPiStationsError("");
       return;
     }
     let cancelled = false;
     let inFlight = false;
+    let activeController: AbortController | null = null;
     const pollStatus = async () => {
       if (inFlight) return;
       inFlight = true;
+      const controller = new AbortController();
+      activeController = controller;
+      const timeoutId = window.setTimeout(
+        () => controller.abort(),
+        statusRequestTimeoutMs,
+      );
       try {
-        const status = await getStatus(token);
+        const status = await getStatus(token, controller.signal);
         if (cancelled) return;
         setRoomListenerCounts(status.roomListenerCounts ?? {});
       } catch (error) {
@@ -1463,11 +1476,63 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           return;
         }
         console.warn("Failed to load status", error);
+      } finally {
+        window.clearTimeout(timeoutId);
+        if (activeController === controller) {
+          activeController = null;
+        }
+        inFlight = false;
       }
+    };
+    void pollStatus();
+    const intervalId = window.setInterval(
+      () => void pollStatus(),
+      normalStatusPollIntervalMs,
+    );
+    return () => {
+      cancelled = true;
+      activeController?.abort();
+      window.clearInterval(intervalId);
+    };
+  }, [token, authMode, recoverOperatorSession]);
+
+  // ── Raspberry Pi monitoring polling ──
+  useEffect(() => {
+    if (!token || authMode !== "operator") {
+      setRaspberryPiStations(null);
+      setRaspberryPiStationsOfflineAfterMs(0);
+      setRaspberryPiStationsError("");
+      return;
+    }
+    let cancelled = false;
+    let inFlight = false;
+    let activeController: AbortController | null = null;
+    const pollRaspberryPiStatus = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      const controller = new AbortController();
+      activeController = controller;
+      const timeoutId = window.setTimeout(
+        () => controller.abort(),
+        statusRequestTimeoutMs,
+      );
       try {
-        const piStatus = await getRaspberryPiStationStatuses(token);
+        const piStatus = await getRaspberryPiStationStatuses(
+          token,
+          controller.signal,
+        );
         if (cancelled) return;
-        setRaspberryPiStations(piStatus.stations);
+        const offlineAfterMs = normalizeRaspberryPiOfflineAfterMs(
+          piStatus.offlineAfterMs,
+        );
+        setRaspberryPiStationsOfflineAfterMs(offlineAfterMs);
+        setRaspberryPiStations(
+          refreshRaspberryPiStationAges(
+            piStatus.stations,
+            piStatus.timestampUnixMs || Date.now(),
+            offlineAfterMs,
+          ),
+        );
         setRaspberryPiStationsError("");
       } catch (error) {
         if (cancelled) return;
@@ -1481,21 +1546,42 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
             : "failed to load Raspberry Pi stations",
         );
       } finally {
+        window.clearTimeout(timeoutId);
+        if (activeController === controller) {
+          activeController = null;
+        }
         inFlight = false;
       }
     };
-    void pollStatus();
+    void pollRaspberryPiStatus();
     const intervalId = window.setInterval(
-      () => void pollStatus(),
-      lowPowerMode
-        ? lowPowerStatusPollIntervalMs
-        : normalStatusPollIntervalMs,
+      () => void pollRaspberryPiStatus(),
+      raspberryPiStatusPollIntervalMs,
     );
     return () => {
       cancelled = true;
+      activeController?.abort();
       window.clearInterval(intervalId);
     };
-  }, [token, authMode, lowPowerMode, recoverOperatorSession]);
+  }, [token, authMode, recoverOperatorSession]);
+
+  useEffect(() => {
+    if (!token || authMode !== "operator") return;
+    const intervalId = window.setInterval(() => {
+      setRaspberryPiStations((current) =>
+        current
+          ? refreshRaspberryPiStationAges(
+              current,
+              Date.now(),
+              raspberryPiStationsOfflineAfterMs,
+            )
+          : current,
+      );
+    }, raspberryPiSeenTickIntervalMs);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [token, authMode, raspberryPiStationsOfflineAfterMs]);
 
   // ── Raspberry remote polling on login screen ──
   useEffect(() => {

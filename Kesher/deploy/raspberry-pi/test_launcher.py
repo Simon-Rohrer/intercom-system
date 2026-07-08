@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import tempfile
 import unittest
 from unittest import mock
 
@@ -61,9 +62,64 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("--force-prefers-reduced-motion", command)
         self.assertIn("--enable-low-end-device-mode", command)
         self.assertIn("--disable-background-networking", command)
+        self.assertIn("--ozone-platform=x11", command)
+        self.assertIn("--use-gl=angle", command)
+        self.assertIn("--use-angle=gl", command)
         self.assertIn("--process-per-site", command)
         self.assertIn("--renderer-process-limit=2", command)
         self.assertIn("--js-flags=--max-old-space-size=96", command)
+        self.assertTrue(
+            any(
+                "FallbackToSWIfGLES3NotSupported" in argument
+                for argument in command
+            )
+        )
+
+    def test_load_config_accepts_zero_audio_wait(self):
+        config = dict(self.config)
+        config["audio_runtime_wait_seconds"] = 0
+        config["display_runtime_wait_seconds"] = "2"
+        config["display_runtime_settle_seconds"] = 0
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as file:
+            launcher.json.dump(config, file)
+            path = Path(file.name)
+        try:
+            loaded = launcher.load_config(path)
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertEqual(loaded["audio_runtime_wait_seconds"], 0)
+        self.assertEqual(loaded["display_runtime_wait_seconds"], 2)
+        self.assertEqual(loaded["display_runtime_settle_seconds"], 0)
+
+    def test_rejects_negative_audio_wait(self):
+        config = dict(self.config)
+        config["audio_runtime_wait_seconds"] = -1
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as file:
+            launcher.json.dump(config, file)
+            path = Path(file.name)
+        try:
+            with self.assertRaisesRegex(ValueError, "audio_runtime_wait_seconds"):
+                launcher.load_config(path)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_display_socket_path_uses_x11_display_number(self):
+        self.assertEqual(
+            launcher.display_socket_path(":0.0"),
+            Path("/tmp/.X11-unix/X0"),
+        )
+        self.assertIsNone(launcher.display_socket_path("wayland-0"))
+
+    def test_wait_for_display_runtime_allows_graphics_session_to_settle(self):
+        with mock.patch.object(launcher, "display_runtime_ready", return_value=True), \
+            mock.patch.object(launcher.time, "sleep") as sleep:
+            self.assertTrue(
+                launcher.wait_for_display_runtime(
+                    timeout_seconds=0,
+                    settle_seconds=8,
+                )
+            )
+        sleep.assert_called_once_with(8)
 
     def test_rejects_non_boolean_low_power_setting(self):
         self.config["clients"][0]["low_power_mode"] = "yes"

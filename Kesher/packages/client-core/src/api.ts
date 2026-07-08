@@ -617,12 +617,15 @@ export async function logout(token: string): Promise<void> {
 export async function getRealtimeStats(
   token: string,
   adminPin: string,
+  signal?: AbortSignal,
 ): Promise<RealtimeStatsResponse> {
   const res = await fetch(apiUrl("/api/realtime-stats"), {
     headers: {
       Authorization: `Bearer ${token}`,
       [adminPinHeaderName]: adminPin,
     },
+    cache: "no-store",
+    signal,
   });
   if (!res.ok) throw new Error("failed to load realtime stats");
   return res.json() as Promise<RealtimeStatsResponse>;
@@ -631,12 +634,15 @@ export async function getRealtimeStats(
 export async function getRaspberryPiStations(
   token: string,
   adminPin: string,
+  signal?: AbortSignal,
 ): Promise<RaspberryPiStationsResponse> {
   const res = await fetch(apiUrl("/api/admin/raspberry-pis"), {
     headers: {
       Authorization: `Bearer ${token}`,
       [adminPinHeaderName]: adminPin,
     },
+    cache: "no-store",
+    signal,
   });
   if (!res.ok) throw new Error("failed to load Raspberry Pi stations");
   return res.json() as Promise<RaspberryPiStationsResponse>;
@@ -644,16 +650,21 @@ export async function getRaspberryPiStations(
 
 export async function getRaspberryPiStationStatuses(
   token: string,
+  signal?: AbortSignal,
 ): Promise<RaspberryPiStationsResponse> {
   const res = await fetch(apiUrl("/api/raspberry-pis"), {
     headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+    signal,
   });
   if (!res.ok) throw new Error("failed to load Raspberry Pi stations");
   return res.json() as Promise<RaspberryPiStationsResponse>;
 }
 
 export async function getRaspberryPiRemoteStations(): Promise<RaspberryPiRemoteStationsResponse> {
-  const res = await fetch(apiUrl("/api/raspberry-pis/remote"));
+  const res = await fetch(apiUrl("/api/raspberry-pis/remote"), {
+    cache: "no-store",
+  });
   if (!res.ok) throw new Error("failed to load Raspberry Pi remote stations");
   const raw = (await res.json()) as Record<string, unknown>;
   const stations = Array.isArray(raw.stations) ? raw.stations : [];
@@ -722,9 +733,14 @@ export async function sendRaspberryPiRemoteCommand(
   return res.json() as Promise<RaspberryPiRemoteCommandResult>;
 }
 
-export async function getStatus(token: string): Promise<StatusResponse> {
+export async function getStatus(
+  token: string,
+  signal?: AbortSignal,
+): Promise<StatusResponse> {
   const res = await fetch(apiUrl("/api/status"), {
     headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+    signal,
   });
   if (!res.ok) throw new Error("failed to load status");
   return res.json() as Promise<StatusResponse>;

@@ -21,6 +21,9 @@ const baseStation: RaspberryPiStationStatus = {
   online: true,
   intercomConnected: false,
   effectiveStatus: "waiting_for_intercom",
+  listenRoomIds: [],
+  talkRoomIds: [],
+  micEnabled: false,
   secondsSinceSeen: 12,
 };
 
@@ -67,6 +70,16 @@ describe("RaspberryPiStationsPanel", () => {
     expect(screen.getByText("Raspberry not connected")).toBeInTheDocument();
     expect(screen.getByText("Offline")).toBeInTheDocument();
     expect(screen.getByText("Seen 1m ago")).toBeInTheDocument();
+  });
+
+  it("shows short heartbeat ages instead of hiding them behind now", () => {
+    render(
+      <RaspberryPiStationsPanel
+        stations={[{ ...baseStation, secondsSinceSeen: 2 }]}
+      />,
+    );
+
+    expect(screen.getByText("Seen 2s ago")).toBeInTheDocument();
   });
 
   it("hides the GPU metric when the Raspberry does not report a GPU value", () => {
