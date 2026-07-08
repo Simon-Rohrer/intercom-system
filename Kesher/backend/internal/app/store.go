@@ -2808,6 +2808,23 @@ func (s *Store) FindTelegramMappingByChatID(ctx context.Context, chatID string) 
 	return m, err
 }
 
+func (s *Store) FindTelegramMappingsByRoomID(ctx context.Context, roomID string) ([]TelegramMapping, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, chat_id, label, room_id FROM telegram_mappings WHERE room_id = ?`, roomID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var mappings []TelegramMapping
+	for rows.Next() {
+		var m TelegramMapping
+		if err := rows.Scan(&m.ID, &m.ChatID, &m.Label, &m.RoomID); err != nil {
+			return nil, err
+		}
+		mappings = append(mappings, m)
+	}
+	return mappings, nil
+}
+
 // Telegram user mapping operations (linking Telegram users to Kesher identities)
 
 func (s *Store) CreateTelegramUserMapping(ctx context.Context, id, telegramUserID, username, privateChatID string) error {

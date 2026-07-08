@@ -1054,29 +1054,40 @@ func (t *TelegramBot) onChatEvent(eventType string, e RoutedEvent) {
 
 	// Handle room-based messages
 	if e.Scope == "room" {
-		// Get all telegram users subscribed to this room
-		subscribedUserIDs, err := t.store.GetSubscribedTelegramUsersForRoom(ctx, e.TargetID)
-		if err != nil || len(subscribedUserIDs) == 0 {
-			return
-		}
-
 		text := fmt.Sprintf("[%s] %s", e.FromUser.Username, e.Body)
 
-		// For each subscribed telegram user, find their chat mapping and send the message
-		for _, telegramUserID := range subscribedUserIDs {
-			// Get the user mapping for this telegram user
-			userMapping, err := t.store.FindTelegramUserMappingByTelegramID(ctx, telegramUserID)
-			if err != nil {
-				// User mapping not found, skip
-				continue
+		// 1. Forward to mapped Telegram group chats (bi-directional sync)
+		// Only forward messages that didn't originate from Telegram itself to avoid loops
+		if e.Source != "telegram" {
+			mappings, err := t.store.FindTelegramMappingsByRoomID(ctx, e.TargetID)
+			if err == nil {
+				for _, m := range mappings {
+					if err := t.sendMessage(ctx, m.ChatID, text); err != nil {
+						t.logger.Warn("failed to forward room message to telegram group", "chatId", m.ChatID, "error", err)
+					}
+				}
 			}
+		}
 
-			if userMapping.PrivateChatID == "" {
-				continue
-			}
+		// 2. Get all telegram users subscribed to this room (private notification settings)
+		subscribedUserIDs, err := t.store.GetSubscribedTelegramUsersForRoom(ctx, e.TargetID)
+		if err == nil {
+			// For each subscribed telegram user, find their chat mapping and send the message
+			for _, telegramUserID := range subscribedUserIDs {
+				// Get the user mapping for this telegram user
+				userMapping, err := t.store.FindTelegramUserMappingByTelegramID(ctx, telegramUserID)
+				if err != nil {
+					// User mapping not found, skip
+					continue
+				}
 
-			if err := t.sendMessage(ctx, userMapping.PrivateChatID, text); err != nil {
-				t.logger.Warn("failed to forward chat to telegram", "chatId", userMapping.PrivateChatID, "error", err)
+				if userMapping.PrivateChatID == "" {
+					continue
+				}
+
+				if err := t.sendMessage(ctx, userMapping.PrivateChatID, text); err != nil {
+					t.logger.Warn("failed to forward chat to telegram user", "chatId", userMapping.PrivateChatID, "error", err)
+				}
 			}
 		}
 		return
