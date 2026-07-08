@@ -97,6 +97,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_UID="$(id -u "${TARGET_USER}")"
+TARGET_GROUP="$(id -gn "${TARGET_USER}")"
 TARGET_HOME="$(getent passwd "${TARGET_USER}" | cut -d: -f6)"
 
 EXISTING_DEVICE_GROUPS=()
@@ -137,7 +138,48 @@ sed \
   > /etc/systemd/system/kesher-pi.service
 
 systemctl daemon-reload
-systemctl enable kesher-pi.service
+
+if [[ -d /etc/xdg/labwc ]]; then
+  LABWC_CONFIG_DIR="${TARGET_HOME}/.config/labwc"
+  LABWC_AUTOSTART="${LABWC_CONFIG_DIR}/autostart"
+  USER_SYSTEMD_DIR="${TARGET_HOME}/.config/systemd/user"
+  USER_SERVICE="${USER_SYSTEMD_DIR}/kesher-pi-session.service"
+  AUTOSTART_TMP="$(mktemp)"
+
+  install -d -o "${TARGET_USER}" -g "${TARGET_GROUP}" -m 0755 \
+    "${LABWC_CONFIG_DIR}" "${USER_SYSTEMD_DIR}"
+  if [[ -f "${LABWC_AUTOSTART}" ]]; then
+    sed \
+      '/^# BEGIN KESHER PI$/,/^# END KESHER PI$/d' \
+      "${LABWC_AUTOSTART}" \
+      > "${AUTOSTART_TMP}"
+  fi
+  printf '\n' >> "${AUTOSTART_TMP}"
+  cat >> "${AUTOSTART_TMP}" <<'EOF'
+# BEGIN KESHER PI
+systemctl --user import-environment DISPLAY WAYLAND_DISPLAY XAUTHORITY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
+systemctl --user daemon-reload
+systemctl --user restart kesher-pi-session.service &
+# END KESHER PI
+EOF
+  install -o "${TARGET_USER}" -g "${TARGET_GROUP}" -m 0644 \
+    "${AUTOSTART_TMP}" "${LABWC_AUTOSTART}"
+  rm -f "${AUTOSTART_TMP}"
+
+  sed \
+    -e "s|__KESHER_UID__|${TARGET_UID}|g" \
+    -e "s|__KESHER_HOME__|${TARGET_HOME}|g" \
+    "${SCRIPT_DIR}/kesher-pi-session.service.template" \
+    > "${USER_SERVICE}"
+  chown "${TARGET_USER}:${TARGET_GROUP}" "${USER_SERVICE}"
+  chmod 0644 "${USER_SERVICE}"
+
+  systemctl disable --now kesher-pi.service 2>/dev/null || true
+  echo "Configured Kesher to start with the labwc desktop session."
+else
+  systemctl enable kesher-pi.service
+  echo "Configured Kesher as a system service."
+fi
 
 if [[ "${INSTALL_COMPANION_SATELLITE}" == "true" ]]; then
   "${SCRIPT_DIR}/install-companion-satellite.sh" \
@@ -155,5 +197,5 @@ echo "1. Edit /etc/kesher/raspberry-pis.json"
 echo "2. Test with: sudo -u ${TARGET_USER} KESHER_PI_IP=<PI-IP> /opt/kesher-pi/kesher-pi-launcher.py --print-url"
 echo "3. Check heartbeat payload with: sudo -u ${TARGET_USER} /opt/kesher-pi/kesher-pi-launcher.py --print-heartbeat"
 echo "4. Check audio runtime with: sudo -u ${TARGET_USER} XDG_RUNTIME_DIR=/run/user/${TARGET_UID} DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${TARGET_UID}/bus /opt/kesher-pi/kesher-pi-launcher.py --print-audio"
-echo "5. Start with: sudo systemctl start kesher-pi.service"
+echo "5. Reboot to start the kiosk in the graphical desktop session."
 echo "6. Optional Stream Deck Satellite: sudo ./install.sh ${TARGET_USER} --with-companion-satellite"

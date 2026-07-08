@@ -23,6 +23,9 @@ services:
       # Optional: append SAN entries like "IP:192.168.1.50,DNS:intercom.local"
       CERT_EXTRA_SAN: ${CERT_EXTRA_SAN:-}
       SESSION_TTL_MINUTES: ${SESSION_TTL_MINUTES:-720}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      TELEGRAM_MODE: ${TELEGRAM_MODE:-polling}
     volumes:
       - intercom_data:/app/data
       - intercom_certs:/app/certs

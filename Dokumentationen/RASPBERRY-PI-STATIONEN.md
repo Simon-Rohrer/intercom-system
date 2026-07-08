@@ -51,6 +51,11 @@ Wichtig:
 - `audio_runtime_wait_seconds` kann optional auf `0` bis wenige Sekunden gesetzt werden, wenn der Browser schnell starten soll und Audio-Geräte nicht beim Systemstart blockieren dürfen.
 - `display_runtime_settle_seconds` steuert die kurze Wartezeit nach dem Start der Desktop-Sitzung. Auf Raspberry Pi OS mit Wayland/Xwayland verhindern etwa `8` Sekunden, dass Chromium während der Grafikinitialisierung hängen bleibt.
 
+Auf aktuellem Raspberry Pi OS mit `labwc` installiert das Setup den Launcher als
+Benutzer-Dienst und startet ihn aus `~/.config/labwc/autostart`. Dadurch startet
+Chromium erst, wenn die grafische Sitzung vollständig bereit ist. Auf älteren
+Desktop-Systemen bleibt `kesher-pi.service` der Fallback.
+
 ## Deploy-Paket kopieren
 
 Auf dem Entwicklungsrechner:

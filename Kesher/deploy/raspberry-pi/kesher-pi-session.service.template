@@ -1,0 +1,14 @@
+[Unit]
+Description=Kesher Raspberry Pi Intercom Desktop Session
+
+[Service]
+Type=simple
+Environment=HOME=__KESHER_HOME__
+Environment=XDG_RUNTIME_DIR=/run/user/__KESHER_UID__
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/__KESHER_UID__/bus
+Environment=PIPEWIRE_RUNTIME_DIR=/run/user/__KESHER_UID__
+Environment=PULSE_RUNTIME_PATH=/run/user/__KESHER_UID__/pulse
+Environment=PULSE_SERVER=unix:/run/user/__KESHER_UID__/pulse/native
+ExecStart=/usr/bin/python3 /opt/kesher-pi/kesher-pi-launcher.py --config /etc/kesher/raspberry-pis.json
+Restart=always
+RestartSec=5

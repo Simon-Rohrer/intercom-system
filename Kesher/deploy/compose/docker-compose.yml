@@ -17,6 +17,9 @@ services:
       ALLOW_CORS: ${ALLOW_CORS:-false}
       TRUSTED_LAN_HTTP: ${TRUSTED_LAN_HTTP:-true}
       SESSION_TTL_MINUTES: ${SESSION_TTL_MINUTES:-720}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      TELEGRAM_MODE: ${TELEGRAM_MODE:-polling}
     volumes:
       - intercom_data:/app/data
     healthcheck:
