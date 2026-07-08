@@ -571,7 +571,8 @@ func (s *Store) repairDanglingRoomReferences(ctx context.Context) error {
 		 WHERE NULLIF(TRIM(default_room_id), '') IS NOT NULL
 		 AND NOT EXISTS (SELECT 1 FROM rooms WHERE rooms.id = roles.default_room_id)`,
 		`DELETE FROM telegram_mappings
-		 WHERE NOT EXISTS (SELECT 1 FROM rooms WHERE rooms.id = telegram_mappings.room_id)`,
+		 WHERE room_id != 'global'
+		 AND NOT EXISTS (SELECT 1 FROM rooms WHERE rooms.id = telegram_mappings.room_id)`,
 		`DELETE FROM telegram_user_room_subscriptions
 		 WHERE NOT EXISTS (SELECT 1 FROM rooms WHERE rooms.id = telegram_user_room_subscriptions.room_id)`,
 		`DELETE FROM broadcast_group_rooms
@@ -2715,12 +2716,14 @@ func (s *Store) CreateTelegramMapping(ctx context.Context, id, chatID, label, ro
 	if id == "" || chatID == "" || label == "" || roomID == "" {
 		return ErrInvalidInput
 	}
-	var roomExists int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM rooms WHERE id = ?`, roomID).Scan(&roomExists); err != nil {
-		return err
-	}
-	if roomExists == 0 {
-		return ErrInvalidInput
+	if roomID != "global" {
+		var roomExists int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM rooms WHERE id = ?`, roomID).Scan(&roomExists); err != nil {
+			return err
+		}
+		if roomExists == 0 {
+			return ErrInvalidInput
+		}
 	}
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO telegram_mappings (id, chat_id, label, room_id) VALUES (?, ?, ?, ?)`,
 		id, chatID, label, roomID); err != nil {
@@ -2740,12 +2743,14 @@ func (s *Store) UpdateTelegramMapping(ctx context.Context, id, chatID, label, ro
 	if id == "" || chatID == "" || label == "" || roomID == "" {
 		return ErrInvalidInput
 	}
-	var roomExists int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM rooms WHERE id = ?`, roomID).Scan(&roomExists); err != nil {
-		return err
-	}
-	if roomExists == 0 {
-		return ErrInvalidInput
+	if roomID != "global" {
+		var roomExists int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM rooms WHERE id = ?`, roomID).Scan(&roomExists); err != nil {
+			return err
+		}
+		if roomExists == 0 {
+			return ErrInvalidInput
+		}
 	}
 	res, err := s.db.ExecContext(ctx, `UPDATE telegram_mappings SET chat_id = ?, label = ?, room_id = ? WHERE id = ?`,
 		chatID, label, roomID, id)

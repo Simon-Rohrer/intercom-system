@@ -61,6 +61,10 @@ verbunden ist. Ein nach Betriebssystem-Updates hängender erster Chromium-Start
 wird nach standardmäßig `25` Sekunden automatisch neu gestartet. Die Frist kann
 mit `browser_connect_timeout_seconds` angepasst werden.
 
+Companion Satellite startet auf dem Pi standardmäßig 60 Sekunden verzögert und
+mit niedrigerer Priorität. So konkurrieren Chromium und die Node-Prozesse von
+Satellite auf Geräten mit 1 GB RAM nicht gleichzeitig um CPU, RAM und SD-Karten-I/O.
+
 ## Deploy-Paket kopieren
 
 Auf dem Entwicklungsrechner:
