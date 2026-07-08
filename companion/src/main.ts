@@ -409,10 +409,17 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
     roleId: string,
     pageNumber: number,
     buttonIndex: number,
+    username?: string,
   ) {
-    const profile = this.presetProfiles.find(
-      (entry) => entry.roleId === roleId,
+    const normalizedRoleId = String(roleId || "").trim();
+    const normalizedUsername = String(username || "").trim();
+    const matchingProfiles = this.presetProfiles.filter(
+      (entry) => entry.roleId === normalizedRoleId,
     );
+    const profile = normalizedUsername
+      ? matchingProfiles.find((entry) => entry.username === normalizedUsername) ||
+        matchingProfiles[0]
+      : matchingProfiles[0];
     const page = profile?.streamDeckSettings.pages.find(
       (entry) => entry.page === pageNumber,
     );

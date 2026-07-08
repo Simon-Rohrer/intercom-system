@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createHoldButtonProps } from "../lib/holdButton";
 import type { InputChannelSelection } from "../app/settings";
+import { BrandLogo } from "./BrandLogo";
 import { LowPowerModeBadge } from "./LowPowerModeBadge";
 
 type DirectReplyTarget = {
@@ -125,11 +126,10 @@ export function SimpleIntercomView({
 
   return (
     <div className="root app simple-shell">
-      {lowPowerMode ? (
-        <header className="simple-runtime-header">
-          <LowPowerModeBadge />
-        </header>
-      ) : null}
+      <header className="simple-runtime-header">
+        <BrandLogo compact className="simple-brand-logo" />
+        {lowPowerMode ? <LowPowerModeBadge /> : null}
+      </header>
       {connectionState !== "connected" && (
         <div className="connection-offline-banner">
           <span className="connection-offline-icon" />

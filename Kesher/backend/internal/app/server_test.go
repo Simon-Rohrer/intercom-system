@@ -599,6 +599,34 @@ func TestServerHandleRaspberryPiHeartbeatStoresStation(t *testing.T) {
 	}
 }
 
+func TestRaspberryPiEffectiveStatusKeepsProgressStatusWithStaleLoginError(t *testing.T) {
+	record := RaspberryPiHeartbeatRecord{
+		BrowserStatus: "running",
+		LoginStatus:   "waiting_for_intercom",
+		LoginError:    "previous browser exited with code 1",
+	}
+
+	status := raspberryPiEffectiveStatus(record, true, false)
+
+	if status != "waiting_for_intercom" {
+		t.Fatalf("expected waiting_for_intercom, got %q", status)
+	}
+}
+
+func TestRaspberryPiEffectiveStatusReportsExplicitLoginError(t *testing.T) {
+	record := RaspberryPiHeartbeatRecord{
+		BrowserStatus: "running",
+		LoginStatus:   "login_error",
+		LoginError:    "invalid login",
+	}
+
+	status := raspberryPiEffectiveStatus(record, true, false)
+
+	if status != "login_error" {
+		t.Fatalf("expected login_error, got %q", status)
+	}
+}
+
 func TestServerHandleAdminRaspberryPisCorrelatesIntercomConnection(t *testing.T) {
 	store, err := NewStore(":memory:")
 	if err != nil {

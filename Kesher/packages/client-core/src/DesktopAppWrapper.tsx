@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useApiBaseUrl } from "./hooks/useApiBaseUrl";
 import { App as CoreApp } from "./App";
+import { BrandLogo } from "./components/BrandLogo";
 import { DesktopConnectionSetup } from "./components/DesktopConnectionSetup";
 import "./DesktopAppWrapper.css";
 
@@ -36,7 +37,10 @@ export function DesktopAppWrapper() {
   return (
     <div className="desktop-shell">
       <header className="desktop-shell-menu">
-        <div className="desktop-shell-menu-left">Kesher Desktop</div>
+        <div className="desktop-shell-menu-left">
+          <BrandLogo compact className="desktop-shell-logo" />
+          <span>Kesher Desktop</span>
+        </div>
         <div className="desktop-shell-menu-right">
           <span className="desktop-shell-current-server">{baseUrl}</span>
           <button

@@ -19,9 +19,19 @@
 }
 
 .desktop-shell-menu-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
   font-size: 0.84rem;
   font-weight: 600;
   letter-spacing: 0.02em;
+}
+
+.desktop-shell-logo {
+  max-width: 70px;
+  height: 24px;
+  flex: 0 0 auto;
 }
 
 .desktop-shell-menu-right {

@@ -4,6 +4,7 @@ import type {
   PublicBootstrap,
   RaspberryPiRemoteStationStatus,
 } from "../types";
+import { BrandLogo } from "./BrandLogo";
 
 type LoginMode = "operator" | "raspberry" | "admin";
 
@@ -101,8 +102,11 @@ export function LoginView({
     <div className="root login">
       <div className="login-card panel">
         <div className="login-card-head">
-          <h1>Live Production Intercom</h1>
-          <p className="variant-subtitle">Station Deck</p>
+          <BrandLogo className="login-brand-logo" />
+          <div className="login-card-title">
+            <h1>Live Production Intercom</h1>
+            <p className="variant-subtitle">Station Deck</p>
+          </div>
         </div>
         <div className="login-mode-tabs" role="tablist" aria-label="Login mode">
           <button

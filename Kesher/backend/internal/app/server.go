@@ -3840,9 +3840,6 @@ func raspberryPiEffectiveStatus(record RaspberryPiHeartbeatRecord, online, inter
 	if !online {
 		return "offline"
 	}
-	if strings.TrimSpace(record.LoginError) != "" {
-		return "login_error"
-	}
 	loginStatus := strings.TrimSpace(record.LoginStatus)
 	if loginStatus != "" && !strings.EqualFold(loginStatus, "unknown") {
 		return loginStatus
@@ -3851,8 +3848,14 @@ func raspberryPiEffectiveStatus(record RaspberryPiHeartbeatRecord, online, inter
 	if strings.EqualFold(browserStatus, "running") {
 		return "waiting_for_intercom"
 	}
+	if strings.EqualFold(browserStatus, "exited") {
+		return "browser_exited"
+	}
 	if browserStatus != "" && !strings.EqualFold(browserStatus, "unknown") {
 		return browserStatus
+	}
+	if strings.TrimSpace(record.LoginError) != "" {
+		return "login_error"
 	}
 	return "launcher_online"
 }

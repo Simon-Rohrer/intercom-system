@@ -92,15 +92,6 @@ function incomingCallIndicatorFeedbacks() {
         },
     ];
 }
-function dynamicButtonImageFeedback(button, page) {
-    return {
-        feedbackId: "dynamic_button_image",
-        options: {
-            slotIndex: button.index,
-            sourcePageNumber: page.page,
-        },
-    };
-}
 function buttonPresetName(self, button) {
     if (!buttonHasContent(button)) {
         return `Key ${button.index + 1} - Empty`;
@@ -108,7 +99,7 @@ function buttonPresetName(self, button) {
     const resolvedLabel = cleanLabel(self.resolveSyncedButtonLabel(button), `Key ${button.index + 1}`);
     return `Key ${button.index + 1} - ${resolvedLabel}`;
 }
-function normalizePreviewImageBase64(value) {
+export function normalizePreviewImageBase64(value) {
     const trimmed = String(value || "").trim();
     if (!trimmed)
         return undefined;
@@ -131,7 +122,7 @@ function splitButtonLabel(label) {
         subtitle: lines[1] || "",
     };
 }
-function renderPresetPreviewImage(self, button) {
+export function renderPresetPreviewImage(self, button) {
     const publishedPreview = normalizePreviewImageBase64(button.previewImageBuffer);
     if (publishedPreview)
         return publishedPreview;
@@ -183,7 +174,7 @@ function buildProfileButtonPreset(self, profile, page, button) {
         : "";
     const liveImageBase64 = self.getButtonImage(button.index, page.page)?.toString("base64");
     const presetPreviewImageBase64 = renderPresetPreviewImage(self, button);
-    const style = buildButtonStyle(label, baseBg, liveImageBase64 || presetPreviewImageBase64);
+    const style = buildButtonStyle(label, baseBg, presetPreviewImageBase64 || liveImageBase64);
     const previewStyle = buildButtonStyle(label, baseBg, presetPreviewImageBase64 || liveImageBase64);
     const actionOptions = {
         roleId: profile.roleId,
@@ -197,10 +188,7 @@ function buildProfileButtonPreset(self, profile, page, button) {
         name: buttonPresetName(self, button),
         style,
         previewStyle,
-        feedbacks: [
-            dynamicButtonImageFeedback(button, page),
-            ...(isIndicator ? incomingCallIndicatorFeedbacks() : []),
-        ],
+        feedbacks: isIndicator ? incomingCallIndicatorFeedbacks() : [],
         steps: shouldTriggerSlot
             ? [
                 {

@@ -1,4 +1,5 @@
 import type { Bootstrap } from "../../types";
+import { BrandLogo } from "../BrandLogo";
 import { AdminMenu } from "./AdminMenu";
 
 type AdminShellProps = {
@@ -40,11 +41,14 @@ export function AdminShell({
   return (
     <div className="root admin-shell">
       <div className="admin-shell-header">
-        <div>
-          <h1>Admin console</h1>
-          <p className="admin-shell-user">
-            Signed in as {displayUsername} ({adminRoleLabel})
-          </p>
+        <div className="admin-shell-brand">
+          <BrandLogo compact className="admin-shell-logo" />
+          <div>
+            <h1>Admin console</h1>
+            <p className="admin-shell-user">
+              Signed in as {displayUsername} ({adminRoleLabel})
+            </p>
+          </div>
         </div>
         <div className="admin-shell-actions">
           <button onClick={() => void onRefresh()}>Refresh</button>

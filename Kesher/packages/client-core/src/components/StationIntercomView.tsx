@@ -22,6 +22,7 @@ import { createHoldButtonProps } from "../lib/holdButton";
 import { resolveInputDeviceChannelCount } from "../lib/audioDeviceChannels";
 import { withResolvedStreamDeckButtonLabel } from "../lib/streamDeckLabels";
 import { sortDirectUsersByRoleAndUsername } from "../lib/users";
+import { BrandLogo } from "./BrandLogo";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { LowPowerModeBadge } from "./LowPowerModeBadge";
 import { RaspberryPiStationsPanel } from "./RaspberryPiStationsPanel";
@@ -574,6 +575,25 @@ function SettingsIcon({
     <svg {...commonProps}>
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.05.05a2 2 0 1 1-2.83 2.83l-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6V20a2 2 0 1 1-4 0v-.07a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1H4a2 2 0 1 1 0-4h.07a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.05-.05A2 2 0 1 1 7.1 4.24l.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6V4a2 2 0 1 1 4 0v.07a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05A1.7 1.7 0 0 0 19.4 9c.24.34.45.69.6 1H20a2 2 0 1 1 0 4h-.07a1.7 1.7 0 0 0-.53 1z" />
+    </svg>
+  );
+}
+
+function LogoutIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.9}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M10 6H6.5A2.5 2.5 0 0 0 4 8.5v7A2.5 2.5 0 0 0 6.5 18H10" />
+      <path d="M14 8l4 4-4 4" />
+      <path d="M18 12H9" />
     </svg>
   );
 }
@@ -2356,18 +2376,21 @@ export function StationIntercomView({
           className={`station-topbar ${lowPowerMode ? "has-low-power" : ""}`.trim()}
         >
           <div className="station-live">
-            <div className="station-live-name">
-              <span
-                className={`station-live-dot ${
-                  connectionState === "connected" ? "connected" : "disconnected"
-                }`}
-              />
-              <span className="station-live-label">{stationLiveLabel}</span>
-            </div>
-            <div className="station-live-role">
-              {remoteControl?.roleName ||
-                roleNameById.get(appData.self.roleId) ||
-                appData.self.roleId}
+            <BrandLogo compact className="station-brand-logo" />
+            <div className="station-live-copy">
+              <div className="station-live-name">
+                <span
+                  className={`station-live-dot ${
+                    connectionState === "connected" ? "connected" : "disconnected"
+                  }`}
+                />
+                <span className="station-live-label">{stationLiveLabel}</span>
+              </div>
+              <div className="station-live-role">
+                {remoteControl?.roleName ||
+                  roleNameById.get(appData.self.roleId) ||
+                  appData.self.roleId}
+              </div>
             </div>
           </div>
           {lowPowerMode ? (
@@ -2375,17 +2398,26 @@ export function StationIntercomView({
           ) : null}
           <div className="station-top-actions">
             <button
+              type="button"
               className="station-top-admin"
+              aria-label="User settings"
+              title="User settings"
               onClick={() => setIsUserSettingsOpen(true)}
             >
               <SettingsIcon name="settings" className="station-top-admin-icon" />
               <span>User settings</span>
             </button>
             <button
+              type="button"
               className="station-top-logout"
+              aria-label={remoteControl ? "Leave remote" : "Logout / Lock"}
+              title={remoteControl ? "Leave remote" : "Logout / Lock"}
               onClick={remoteControl ? remoteControl.onLeave : doLogout}
             >
-              {remoteControl ? "Leave remote" : "Logout / Lock"}
+              <LogoutIcon className="station-top-logout-icon" />
+              <span className="station-top-logout-label">
+                {remoteControl ? "Leave remote" : "Logout / Lock"}
+              </span>
             </button>
           </div>
         </div>

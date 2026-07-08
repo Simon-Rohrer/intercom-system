@@ -1,8 +1,53 @@
 import { combineRgb, } from "@companion-module/base";
-import { deriveTextColor, parseButtonBgColor, } from "./presets.js";
+import { deriveTextColor, parseButtonBgColor, renderPresetPreviewImage, } from "./presets.js";
 import { applyImageEffectOverlay } from "./imageRenderer.js";
 // 1x1 transparent PNG used to explicitly clear stale button images.
 const TRANSPARENT_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z8xQAAAAASUVORK5CYII=";
+function optionValue(value) {
+    if (value &&
+        typeof value === "object" &&
+        "value" in value &&
+        "isExpression" in value) {
+        return value.value;
+    }
+    return value;
+}
+function numberOption(options, keys, fallback) {
+    for (const key of keys) {
+        const raw = optionValue(options[key]);
+        if (raw === undefined || raw === null || raw === "")
+            continue;
+        const parsed = Number(raw);
+        if (Number.isFinite(parsed))
+            return parsed;
+    }
+    return fallback;
+}
+function stringOption(options, key) {
+    return String(optionValue(options[key]) || "").trim();
+}
+function imageFeedbackResult(fallbackStyle, imageBase64) {
+    const dataUrl = `data:image/png;base64,${imageBase64}`;
+    return {
+        ...fallbackStyle,
+        text: "",
+        png64: imageBase64,
+        image: dataUrl,
+    };
+}
+function staleImageFallbackResult(fallbackStyle) {
+    const style = fallbackStyle.text
+        ? fallbackStyle
+        : {
+            color: fallbackStyle.color,
+            bgcolor: fallbackStyle.bgcolor,
+        };
+    return {
+        ...style,
+        png64: TRANSPARENT_PNG_BASE64,
+        image: `data:image/png;base64,${TRANSPARENT_PNG_BASE64}`,
+    };
+}
 export function UpdateFeedbacks(self) {
     const roomChoices = self.getRoomChoices("all");
     const feedbacks = {
@@ -221,14 +266,43 @@ export function UpdateFeedbacks(self) {
                     min: -1,
                     max: 99,
                 },
+                {
+                    id: "roleId",
+                    type: "textinput",
+                    label: "Kesher source role ID (blank = current)",
+                    default: "",
+                },
+                {
+                    id: "profileUsername",
+                    type: "textinput",
+                    label: "Kesher source profile username",
+                    default: "",
+                },
             ],
             callback: (feedback) => {
                 // Keep legacy compatibility for existing buttons that still store bankIndex.
-                const slotIndex = Number(feedback.options.slotIndex ?? feedback.options.bankIndex ?? 0);
-                const sourcePageNumber = Number(feedback.options.sourcePageNumber ?? -1);
+                const feedbackOptions = feedback.options;
+                const slotIndex = numberOption(feedbackOptions, ["slotIndex", "bankIndex"], 0);
+                const sourcePageNumber = numberOption(feedbackOptions, ["sourcePageNumber"], -1);
                 const pageNumber = Number.isFinite(sourcePageNumber) && sourcePageNumber >= 0
                     ? Math.trunc(sourcePageNumber)
                     : undefined;
+                const roleId = stringOption(feedbackOptions, "roleId");
+                const profileUsername = stringOption(feedbackOptions, "profileUsername");
+                const importedButton = pageNumber !== undefined && roleId
+                    ? self.getPresetProfileButtonConfig(roleId, pageNumber, slotIndex, profileUsername)
+                    : null;
+                const button = importedButton || (pageNumber === undefined
+                    ? self.getCurrentPageButtonConfig(slotIndex)
+                    : self.getProfileButtonConfig(pageNumber, slotIndex)) ||
+                    self.getCurrentPageButtonConfig(slotIndex) ||
+                    { index: slotIndex };
+                const bgcolor = parseButtonBgColor(button.color);
+                const fallbackStyle = {
+                    text: self.resolveSyncedButtonLabel(button),
+                    color: deriveTextColor(bgcolor),
+                    bgcolor,
+                };
                 const imageBuffer = self.getButtonImage(slotIndex, pageNumber);
                 if (imageBuffer) {
                     const effectRule = self.getImageEffectRuleForSlot(slotIndex, pageNumber);
@@ -238,18 +312,15 @@ export function UpdateFeedbacks(self) {
                         blinkOn: self.imageEffectBlinkPhase,
                     });
                     const imageBase64 = rendered.toString("base64");
-                    const dataUrl = `data:image/png;base64,${imageBase64}`;
                     // Keep modern and legacy render paths in sync.
-                    return {
-                        png64: imageBase64,
-                        image: dataUrl,
-                    };
+                    return imageFeedbackResult(fallbackStyle, imageBase64);
                 }
-                // No image for this slot/page yet: force-clear stale image from previous page.
-                return {
-                    png64: TRANSPARENT_PNG_BASE64,
-                    image: `data:image/png;base64,${TRANSPARENT_PNG_BASE64}`,
-                };
+                const previewImageBase64 = renderPresetPreviewImage(self, button);
+                if (previewImageBase64) {
+                    return imageFeedbackResult(fallbackStyle, previewImageBase64);
+                }
+                // No image or preview for this slot/page yet: force-clear stale image from previous page.
+                return staleImageFallbackResult(fallbackStyle);
             },
         },
     };

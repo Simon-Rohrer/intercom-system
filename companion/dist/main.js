@@ -333,8 +333,14 @@ export class ModuleInstance extends InstanceBase {
             return null;
         return page.buttons.find((entry) => entry.index === buttonIndex) || null;
     }
-    getPresetProfileButtonConfig(roleId, pageNumber, buttonIndex) {
-        const profile = this.presetProfiles.find((entry) => entry.roleId === roleId);
+    getPresetProfileButtonConfig(roleId, pageNumber, buttonIndex, username) {
+        const normalizedRoleId = String(roleId || "").trim();
+        const normalizedUsername = String(username || "").trim();
+        const matchingProfiles = this.presetProfiles.filter((entry) => entry.roleId === normalizedRoleId);
+        const profile = normalizedUsername
+            ? matchingProfiles.find((entry) => entry.username === normalizedUsername) ||
+                matchingProfiles[0]
+            : matchingProfiles[0];
         const page = profile?.streamDeckSettings.pages.find((entry) => entry.page === pageNumber);
         if (!page)
             return null;

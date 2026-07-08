@@ -15,6 +15,18 @@ html[data-kesher-low-power="true"] *::after {
   margin: 0 auto;
   padding: 1rem;
 }
+.app-brand-logo {
+  display: block;
+  width: auto;
+  max-width: 180px;
+  height: 64px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.34));
+}
+.app-brand-logo-compact {
+  max-width: 96px;
+  height: 34px;
+}
 .login {
   max-width: 520px;
   display: grid;
@@ -36,6 +48,20 @@ html[data-kesher-low-power="true"] *::after {
   box-shadow: 0 12px 40px rgba(2, 8, 20, 0.6);
   display: grid;
   gap: 0.85rem;
+}
+.login-card-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+.login-brand-logo {
+  flex: 0 0 auto;
+  max-width: 190px;
+  height: 78px;
+}
+.login-card-title {
+  min-width: 0;
 }
 .login-card-head h1 {
   margin: 0;
@@ -63,7 +89,8 @@ html[data-kesher-low-power="true"] *::after {
   color: var(--text-secondary);
   font-weight: 800;
   line-height: 1.15;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  white-space: normal;
   cursor: pointer;
 }
 .login-mode-tabs button.is-active {
@@ -389,6 +416,20 @@ html[data-kesher-low-power="true"] *::after {
 @media (max-width: 640px) {
   .login-card {
     padding: 0.9rem;
+  }
+  .login-card-head {
+    gap: 0.75rem;
+  }
+  .login-brand-logo {
+    max-width: 128px;
+    height: 54px;
+  }
+  .login-mode-tabs {
+    gap: 0.25rem;
+  }
+  .login-mode-tabs button {
+    padding: 0.5rem 0.35rem;
+    font-size: 0.82rem;
   }
   .login-form input,
   .login-admin-card input {
@@ -1010,6 +1051,19 @@ button {
   border-color: #8b0a16;
 }
 
+.admin-shell-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.admin-shell-logo {
+  flex: 0 0 auto;
+  max-width: 110px;
+  height: 40px;
+}
+
 /* Responsive styles for admin shell on smaller screens */
 @media (max-width: 780px) {
   .admin-shell-header {
@@ -1040,6 +1094,15 @@ button {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.7rem;
+  }
+
+  .admin-shell-brand {
+    gap: 0.65rem;
+  }
+
+  .admin-shell-logo {
+    max-width: 86px;
+    height: 32px;
   }
 
   .admin-shell-actions {
@@ -2784,8 +2847,14 @@ button.secondary {
   right: 18px;
   z-index: 40;
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 0.6rem;
   pointer-events: none;
+}
+.simple-brand-logo {
+  max-width: 92px;
+  height: 34px;
 }
 .low-power-mode-badge {
   display: inline-flex;
@@ -3130,12 +3199,21 @@ button.secondary {
 }
 .station-live {
   display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.2rem;
+  align-items: center;
+  gap: 0.65rem;
+  flex: 1 1 auto;
+  max-width: min(46vw, 540px);
   min-width: 0;
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+.station-brand-logo {
+  flex: 0 0 auto;
+}
+.station-live-copy {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
 }
 .station-live-name {
   display: inline-flex;
@@ -3146,6 +3224,9 @@ button.secondary {
 }
 .station-live-label {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .station-live-role {
   margin-left: calc(7px + 0.45rem);
@@ -3154,6 +3235,9 @@ button.secondary {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(226, 232, 240, 0.72);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .station-live-dot {
   width: 7px;
@@ -3245,6 +3329,10 @@ button.secondary {
   color: var(--station-direct-selected-text);
 }
 .station-top-logout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 0.68rem;
@@ -3252,6 +3340,12 @@ button.secondary {
   background: var(--station-direct-removed-bg);
   border-color: var(--station-direct-removed-border);
   color: var(--station-direct-removed-text);
+}
+.station-top-logout-icon {
+  display: none;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
 }
 .station-block {
   --station-section-accent: var(--accent);
@@ -6660,6 +6754,50 @@ button.secondary {
   .station-header::after {
     content: none;
   }
+  .station-topbar {
+    gap: 0.5rem;
+    min-height: 36px;
+  }
+  .station-live {
+    flex: 1 1 auto;
+    max-width: none;
+    gap: 0;
+  }
+  .station-live-copy {
+    display: none;
+  }
+  .station-brand-logo {
+    width: 28px;
+    max-width: 28px;
+    height: 28px;
+    object-fit: cover;
+    object-position: left center;
+  }
+  .station-top-actions {
+    flex: 0 0 auto;
+    gap: 0.32rem;
+  }
+  .station-top-admin,
+  .station-top-logout {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0;
+    border-radius: 8px;
+    justify-content: center;
+    letter-spacing: 0;
+  }
+  .station-top-admin span,
+  .station-top-logout-label {
+    display: none;
+  }
+  .station-top-admin-icon,
+  .station-top-logout-icon {
+    display: block;
+    width: 17px;
+    height: 17px;
+  }
   .station-shell-remote .station-topbar {
     gap: 0.55rem;
     padding: 0.45rem 0.55rem;
@@ -6667,6 +6805,9 @@ button.secondary {
   }
   .station-shell-remote .station-live {
     flex: 1 1 auto;
+    gap: 0.42rem;
+  }
+  .station-live-copy {
     gap: 0.08rem;
   }
   .station-shell-remote .station-live-name {
@@ -6725,6 +6866,16 @@ button.secondary {
   }
   .station-block {
     padding-left: 0.8rem;
+  }
+  .station-chat-panel {
+    min-height: clamp(235px, 44vh, 360px);
+  }
+  .station-chat-panel .chat {
+    flex: 0 0 auto;
+  }
+  .station-chat-panel .chat-feed {
+    flex: 1 1 auto;
+    min-height: 115px;
   }
   .station-card-actions button {
     min-height: 46px;
@@ -6795,6 +6946,11 @@ button.secondary {
   }
   .station-section-count {
     padding-inline: 0.38rem;
+  }
+}
+@media (max-width: 1199px) {
+  .station-pi-monitoring {
+    display: none;
   }
 }
 @media (min-width: 1200px) {

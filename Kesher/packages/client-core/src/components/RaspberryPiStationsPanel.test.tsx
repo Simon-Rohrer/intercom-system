@@ -28,13 +28,15 @@ describe("RaspberryPiStationsPanel", () => {
   it("shows a connected Raspberry with a missing intercom login separately", () => {
     render(<RaspberryPiStationsPanel stations={[baseStation]} />);
 
-    expect(screen.getByText("Intercom not connected")).toBeInTheDocument();
+    expect(screen.getAllByText("Waiting for intercom").length).toBeGreaterThan(
+      0,
+    );
     expect(screen.getByText("Kamera-1")).toBeInTheDocument();
     expect(screen.getByText("192.168.0.61")).toBeInTheDocument();
     expect(screen.getByText("Low power")).toBeInTheDocument();
     expect(screen.getByText("Launcher v1")).toBeInTheDocument();
     expect(screen.getByText("Browser")).toBeInTheDocument();
-    expect(screen.getByText("running")).toBeInTheDocument();
+    expect(screen.getByText("Running")).toBeInTheDocument();
     expect(screen.getByText("CPU")).toBeInTheDocument();
     expect(screen.getByText("37%")).toBeInTheDocument();
     expect(screen.getByText("GPU")).toBeInTheDocument();
@@ -95,5 +97,62 @@ describe("RaspberryPiStationsPanel", () => {
 
     expect(screen.queryByText(/pulse\+pipewire/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/captureSources/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps a stale login error from replacing an active progress status", () => {
+    render(
+      <RaspberryPiStationsPanel
+        stations={[
+          {
+            ...baseStation,
+            loginError: "previous browser exited with code 1",
+            loginStatus: "waiting_for_intercom",
+            effectiveStatus: "waiting_for_intercom",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByText("Waiting for intercom").length).toBeGreaterThan(
+      0,
+    );
+    expect(screen.queryByText("Login error")).not.toBeInTheDocument();
+  });
+
+  it("shows explicit login failures as errors", () => {
+    render(
+      <RaspberryPiStationsPanel
+        stations={[
+          {
+            ...baseStation,
+            browserStatus: "running",
+            loginStatus: "login_error",
+            loginError: "invalid login",
+            effectiveStatus: "login_error",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByText("Login error").length).toBeGreaterThan(0);
+  });
+
+  it("shows browser startup as progress instead of a login error", () => {
+    render(
+      <RaspberryPiStationsPanel
+        stations={[
+          {
+            ...baseStation,
+            browserStatus: "starting",
+            loginStatus: "starting_browser",
+            effectiveStatus: "starting_browser",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByText("Starting browser").length).toBeGreaterThan(0);
+    expect(screen.getByText("Starting")).toBeInTheDocument();
+    expect(screen.queryByText("Login error")).not.toBeInTheDocument();
   });
 });

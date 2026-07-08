@@ -761,17 +761,19 @@ def main() -> int:
             update_heartbeat_state(
                 heartbeat_state,
                 heartbeat_state_lock,
-                browser_status="starting",
+                browser_status="not_started",
                 login_status="waiting_for_audio",
+                login_error="",
             )
-            audio_status = wait_for_audio_runtime(
+            wait_for_audio_runtime(
                 int(config.get("audio_runtime_wait_seconds") or AUDIO_RUNTIME_WAIT_SECONDS)
             )
             update_heartbeat_state(
                 heartbeat_state,
                 heartbeat_state_lock,
+                browser_status="starting",
                 login_status="starting_browser",
-                login_error="" if audio_runtime_ready(audio_status) else audio_runtime_summary(audio_status),
+                login_error="",
             )
             process = subprocess.Popen(
                 browser_command(
@@ -785,6 +787,7 @@ def main() -> int:
                 heartbeat_state_lock,
                 browser_status="running",
                 login_status="waiting_for_intercom",
+                login_error="",
             )
             return_code = process.wait()
             update_heartbeat_state(

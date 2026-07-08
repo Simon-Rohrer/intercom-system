@@ -111,6 +111,26 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(payload["memoryPercent"], 48.8)
         self.assertEqual(payload["temperatureC"], 53.0)
 
+    def test_update_heartbeat_state_clears_stale_login_error(self):
+        state = {
+            "browser_status": "running",
+            "login_status": "login_error",
+            "login_error": "previous browser exited with code 1",
+        }
+        state_lock = launcher.threading.Lock()
+
+        launcher.update_heartbeat_state(
+            state,
+            state_lock,
+            browser_status="running",
+            login_status="waiting_for_intercom",
+            login_error="",
+        )
+
+        self.assertEqual(state["browser_status"], "running")
+        self.assertEqual(state["login_status"], "waiting_for_intercom")
+        self.assertEqual(state["login_error"], "")
+
     def test_gpu_percent_uses_drm_engine_delta_when_busy_file_is_missing(self):
         with mock.patch.object(launcher, "read_gpu_percent", return_value=None), \
             mock.patch.object(

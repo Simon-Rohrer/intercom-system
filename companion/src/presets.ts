@@ -135,19 +135,6 @@ function incomingCallIndicatorFeedbacks(): CompanionPresetFeedback[] {
   ];
 }
 
-function dynamicButtonImageFeedback(
-  button: StreamDeckButtonConfig,
-  page: StreamDeckPageConfig,
-): CompanionPresetFeedback {
-  return {
-    feedbackId: "dynamic_button_image",
-    options: {
-      slotIndex: button.index,
-      sourcePageNumber: page.page,
-    },
-  };
-}
-
 function buttonPresetName(
   self: ModuleInstance,
   button: StreamDeckButtonConfig,
@@ -162,7 +149,7 @@ function buttonPresetName(
   return `Key ${button.index + 1} - ${resolvedLabel}`;
 }
 
-function normalizePreviewImageBase64(value?: string): string | undefined {
+export function normalizePreviewImageBase64(value?: string): string | undefined {
   const trimmed = String(value || "").trim();
   if (!trimmed) return undefined;
   const withoutPrefix = trimmed.replace(/^data:image\/png;base64,/i, "");
@@ -187,7 +174,7 @@ function splitButtonLabel(label: string): { primary: string; subtitle: string } 
   };
 }
 
-function renderPresetPreviewImage(
+export function renderPresetPreviewImage(
   self: ModuleInstance,
   button: StreamDeckButtonConfig,
 ): string | undefined {
@@ -261,7 +248,7 @@ function buildProfileButtonPreset(
   const style = buildButtonStyle(
     label,
     baseBg,
-    liveImageBase64 || presetPreviewImageBase64,
+    presetPreviewImageBase64 || liveImageBase64,
   );
   const previewStyle = buildButtonStyle(
     label,
@@ -281,10 +268,7 @@ function buildProfileButtonPreset(
     name: buttonPresetName(self, button),
     style,
     previewStyle,
-    feedbacks: [
-      dynamicButtonImageFeedback(button, page),
-      ...(isIndicator ? incomingCallIndicatorFeedbacks() : []),
-    ],
+    feedbacks: isIndicator ? incomingCallIndicatorFeedbacks() : [],
     steps: shouldTriggerSlot
       ? [
           {

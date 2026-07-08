@@ -25,15 +25,59 @@ function formatMachineStatus(value: string): string {
     .replace(/\s+/g, " ");
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  browser_exited: "Browser exited",
+  diagnostic: "Diagnostic",
+  exited: "Browser exited",
+  intercom_connected: "Intercom connected",
+  launcher_online: "Launcher online",
+  login_error: "Login error",
+  login_pending: "Logging in",
+  login_attempting: "Logging in",
+  logging_in: "Logging in",
+  not_started: "Not started",
+  offline: "Offline",
+  running: "Running",
+  starting: "Starting",
+  starting_browser: "Starting browser",
+  unknown: "unknown",
+  waiting_for_audio: "Waiting for audio",
+  waiting_for_intercom: "Waiting for intercom",
+  waiting_for_server: "Connecting to server",
+};
+
+function normalizedStatus(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function statusValue(value: string): string {
+  const normalized = normalizedStatus(value);
+  return STATUS_LABELS[normalized] ?? (formatMachineStatus(value) || "unknown");
+}
+
+function isFailureStatus(value: string): boolean {
+  const normalized = normalizedStatus(value);
+  return (
+    normalized === "login_error" ||
+    normalized === "browser_exited" ||
+    normalized === "exited"
+  );
+}
+
 function stationStatusLabel(station: RaspberryPiStationStatus): string {
   if (!station.online) return "Raspberry not connected";
   if (station.intercomConnected) return "Intercom connected";
-  if (station.effectiveStatus === "login_error") return "Login error";
-  if (station.effectiveStatus === "waiting_for_intercom") {
-    return "Intercom not connected";
+  const effectiveStatus = normalizedStatus(station.effectiveStatus);
+  if (effectiveStatus && effectiveStatus !== "unknown") {
+    if (effectiveStatus === "running") return "Waiting for intercom";
+    if (effectiveStatus !== "launcher_online") {
+      return statusValue(station.effectiveStatus);
+    }
   }
-  if (station.browserStatus === "running") return "Intercom not connected";
-  return formatMachineStatus(station.effectiveStatus) || "Raspberry connected";
+  if (normalizedStatus(station.browserStatus) === "running") {
+    return "Waiting for intercom";
+  }
+  return statusValue(station.effectiveStatus) || "Raspberry connected";
 }
 
 function stationDetailLabel(station: RaspberryPiStationStatus): string {
@@ -65,14 +109,16 @@ type StatusTone = "ok" | "wait" | "warn";
 
 function stationStatusTone(station: RaspberryPiStationStatus): StatusTone {
   if (station.intercomConnected) return "ok";
-  if (station.online) return "wait";
-  return "warn";
+  if (!station.online) return "warn";
+  if (isFailureStatus(station.effectiveStatus)) return "warn";
+  return "wait";
 }
 
 function stationStatusClass(station: RaspberryPiStationStatus): string {
   if (station.intercomConnected) return "admin-status-ok";
-  if (station.online) return "admin-status-wait";
-  return "admin-status-warn";
+  if (!station.online) return "admin-status-warn";
+  if (isFailureStatus(station.effectiveStatus)) return "admin-status-warn";
+  return "admin-status-wait";
 }
 
 function statusToneClass(tone: StatusTone): string {
@@ -81,10 +127,11 @@ function statusToneClass(tone: StatusTone): string {
 
 function browserStatusTone(station: RaspberryPiStationStatus): StatusTone {
   if (!station.online) return "warn";
-  if (station.browserStatus === "running") return "ok";
+  if (normalizedStatus(station.browserStatus) === "running") return "ok";
+  if (isFailureStatus(station.browserStatus)) return "warn";
   if (
-    station.browserStatus === "starting" ||
-    station.browserStatus === "not_started"
+    normalizedStatus(station.browserStatus) === "starting" ||
+    normalizedStatus(station.browserStatus) === "not_started"
   ) {
     return "wait";
   }
@@ -93,13 +140,9 @@ function browserStatusTone(station: RaspberryPiStationStatus): StatusTone {
 
 function intercomStatusTone(station: RaspberryPiStationStatus): StatusTone {
   if (station.intercomConnected) return "ok";
-  if (station.effectiveStatus === "login_error") return "warn";
+  if (isFailureStatus(station.effectiveStatus)) return "warn";
   if (station.online) return "wait";
   return "warn";
-}
-
-function statusValue(value: string): string {
-  return formatMachineStatus(value) || "unknown";
 }
 
 function hasMetricValue(value: number | undefined): value is number {
