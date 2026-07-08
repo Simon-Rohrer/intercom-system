@@ -734,6 +734,27 @@ func (h *Hub) SendChatToRoom(roomID string, e RoutedEvent) {
 	h.logger.Debug("chat sent to room", "roomID", roomID, "from", e.FromUser.Username)
 }
 
+func (h *Hub) SendChatToGlobal(e RoutedEvent) {
+	e.Timestamp = time.Now().UnixMilli()
+	msg := WSOutbound{Type: "chat", Data: e}
+	h.sendToAll(msg)
+
+	// Record in chat history
+	h.recordChatHistory(nil, e)
+
+	// Trigger chat hook for further routing (e.g., to Telegram)
+	h.mu.RLock()
+	hook := h.chatHook
+	h.mu.RUnlock()
+
+	if hook != nil {
+		hook("chat", e)
+	}
+
+	h.logger.Debug("chat sent to global", "from", e.FromUser.Username)
+}
+
+
 // SendChatToUser sends a chat message to all sessions of a specific user.
 // Used by external systems (like Telegram) to deliver messages to Kesher users.
 func (h *Hub) SendChatToUser(userID string, e RoutedEvent) {

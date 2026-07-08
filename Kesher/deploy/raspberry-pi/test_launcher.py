@@ -235,6 +235,42 @@ class LauncherTests(unittest.TestCase):
             "http://192.168.1.10:8080/api/raspberry-pi/heartbeat",
         )
 
+    def test_remote_station_payload_matches_device_id(self):
+        payload = {
+            "stations": [
+                {"deviceId": "another-pi", "intercomConnected": True},
+                {"deviceId": "foh-pi", "intercomConnected": False},
+            ]
+        }
+        station = launcher.remote_station_from_payload(payload, "foh-pi")
+        self.assertIsNotNone(station)
+        self.assertFalse(station["intercomConnected"])
+
+    def test_wait_for_intercom_connection_observes_server_status(self):
+        process = mock.Mock()
+        process.poll.return_value = None
+        with mock.patch.object(
+            launcher,
+            "fetch_remote_station",
+            side_effect=[
+                {"deviceId": "foh-pi", "intercomConnected": False},
+                {"deviceId": "foh-pi", "intercomConnected": True},
+                {"deviceId": "foh-pi", "intercomConnected": True},
+            ],
+        ), mock.patch.object(
+            launcher.time,
+            "monotonic",
+            side_effect=[0.0, 0.0, 1.0, 2.0],
+        ), mock.patch.object(launcher.time, "sleep") as sleep:
+            connected = launcher.wait_for_intercom_connection(
+                process,
+                self.config,
+                self.config["clients"][0],
+                timeout_seconds=5,
+            )
+        self.assertTrue(connected)
+        self.assertEqual(sleep.call_args_list, [mock.call(2), mock.call(2)])
+
     def test_rejects_unknown_pi(self):
         with self.assertRaisesRegex(ValueError, "no client entry matches"):
             launcher.resolve_client(self.config, ["192.168.1.99"])

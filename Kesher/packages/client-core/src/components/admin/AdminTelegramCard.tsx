@@ -203,6 +203,7 @@ export function AdminTelegramCard({
                     aria-label="Party line"
                   >
                     <option value="">Select party line…</option>
+                    <option value="global">Globaler Chat (alle)</option>
                     {appData.rooms.map((room) => (
                       <option key={room.id} value={room.id}>
                         {room.name}
@@ -256,6 +257,7 @@ export function AdminTelegramCard({
                     aria-label="Party line"
                   >
                     <option value="">Select party line…</option>
+                    <option value="global">Globaler Chat (alle)</option>
                     {appData.rooms.map((room) => (
                       <option key={room.id} value={room.id}>
                         {room.name}
@@ -309,8 +311,10 @@ export function AdminTelegramCard({
                       {m.label}{" "}
                       <small>
                         (chat: {m.chatId} → room:{" "}
-                        {appData.rooms.find((r) => r.id === m.roomId)?.name ??
-                          m.roomId}
+                        {m.roomId === "global"
+                          ? "Globaler Chat"
+                          : appData.rooms.find((r) => r.id === m.roomId)?.name ??
+                            m.roomId}
                         )
                       </small>
                     </span>

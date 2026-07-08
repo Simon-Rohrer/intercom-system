@@ -1010,6 +1010,21 @@ func (t *TelegramBot) forwardMessageToRoom(ctx context.Context, msg *TelegramMes
 		Username: senderName,
 		RoleID:   telegramVirtualRoleID,
 	}
+	if roomID == "global" {
+		e := RoutedEvent{
+			Scope:      "global",
+			TargetID:   "global",
+			TargetType: "global",
+			Body:       msg.Text,
+			Source:     "telegram",
+			FromUser:   fromUser,
+			Timestamp:  time.Now().UnixMilli(),
+		}
+		t.hub.SendChatToGlobal(e)
+		t.logger.Info("telegram message forwarded to global chat", "chatId", chatID, "sender", senderName)
+		return
+	}
+
 	e := RoutedEvent{
 		Scope:     "room",
 		TargetID:  roomID,
@@ -1087,6 +1102,25 @@ func (t *TelegramBot) onChatEvent(eventType string, e RoutedEvent) {
 
 				if err := t.sendMessage(ctx, userMapping.PrivateChatID, text); err != nil {
 					t.logger.Warn("failed to forward chat to telegram user", "chatId", userMapping.PrivateChatID, "error", err)
+				}
+			}
+		}
+		return
+	}
+
+	// Handle global chat messages
+	if e.Scope == "global" {
+		text := fmt.Sprintf("[%s] %s", e.FromUser.Username, e.Body)
+
+		// Forward to mapped Telegram group chats pointing to "global"
+		// Only forward messages that didn't originate from Telegram itself
+		if e.Source != "telegram" {
+			mappings, err := t.store.FindTelegramMappingsByRoomID(ctx, "global")
+			if err == nil {
+				for _, m := range mappings {
+					if err := t.sendMessage(ctx, m.ChatID, text); err != nil {
+						t.logger.Warn("failed to forward global message to telegram group", "chatId", m.ChatID, "error", err)
+					}
 				}
 			}
 		}

@@ -20,11 +20,15 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
-LAUNCHER_VERSION = "5"
+LAUNCHER_VERSION = "6"
 HEARTBEAT_INTERVAL_SECONDS = 4
 AUDIO_RUNTIME_WAIT_SECONDS = 3
 DISPLAY_RUNTIME_WAIT_SECONDS = 15
 DISPLAY_RUNTIME_SETTLE_SECONDS = 8
+BROWSER_CONNECT_TIMEOUT_SECONDS = 25
+BROWSER_CONNECT_POLL_SECONDS = 2
+BROWSER_CONNECTED_CHECKS = 2
+BROWSER_RESTART_DELAY_SECONDS = 2
 
 
 def require_text(value: Any, field: str) -> str:
@@ -66,6 +70,8 @@ def load_config(path: Path) -> dict[str, Any]:
         "audio_runtime_wait_seconds",
         "display_runtime_wait_seconds",
         "display_runtime_settle_seconds",
+        "browser_connect_timeout_seconds",
+        "browser_restart_delay_seconds",
     ):
         if optional_field in raw:
             raw[optional_field] = read_non_negative_int(raw[optional_field], optional_field)
@@ -440,6 +446,87 @@ def diagnostic_heartbeat_payload(client: dict[str, Any]) -> dict[str, Any]:
 
 def heartbeat_endpoint_url(config: dict[str, Any]) -> str:
     return f'{config["server_url"]}/api/raspberry-pi/heartbeat'
+
+
+def raspberry_pi_remote_endpoint_url(config: dict[str, Any]) -> str:
+    return f'{config["server_url"]}/api/raspberry-pis/remote'
+
+
+def remote_station_from_payload(
+    payload: Any,
+    device_id: str,
+) -> Optional[dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return None
+    stations = payload.get("stations")
+    if not isinstance(stations, list):
+        return None
+    for station in stations:
+        if isinstance(station, dict) and station.get("deviceId") == device_id:
+            return station
+    return None
+
+
+def fetch_remote_station(
+    config: dict[str, Any],
+    client: dict[str, Any],
+) -> Optional[dict[str, Any]]:
+    status_url = raspberry_pi_remote_endpoint_url(config)
+    request = Request(
+        status_url,
+        headers={"User-Agent": f"Kesher-Pi-Launcher/{LAUNCHER_VERSION}"},
+    )
+    try:
+        with urlopen(
+            request,
+            timeout=3,
+            context=ssl_context_for_url(
+                status_url,
+                config.get("allow_insecure_tls") is True,
+            ),
+        ) as response:
+            payload = json.load(response)
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError):
+        return None
+    return remote_station_from_payload(payload, client["device_id"])
+
+
+def wait_for_intercom_connection(
+    process: subprocess.Popen[Any],
+    config: dict[str, Any],
+    client: dict[str, Any],
+    timeout_seconds: int = BROWSER_CONNECT_TIMEOUT_SECONDS,
+    poll_seconds: int = BROWSER_CONNECT_POLL_SECONDS,
+) -> bool:
+    timeout = max(0, int(timeout_seconds))
+    poll_interval = max(1, int(poll_seconds))
+    deadline = time.monotonic() + timeout
+    connected_checks = 0
+    while process.poll() is None:
+        station = fetch_remote_station(config, client)
+        if station is not None and station.get("intercomConnected") is True:
+            connected_checks += 1
+            if connected_checks >= BROWSER_CONNECTED_CHECKS:
+                return True
+        elif station is not None:
+            connected_checks = 0
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(poll_interval, remaining))
+    return False
+
+
+def stop_browser_process(process: subprocess.Popen[Any]) -> int:
+    return_code = process.poll()
+    if return_code is not None:
+        return return_code
+    process.terminate()
+    try:
+        return process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        return process.wait()
 
 
 def send_heartbeat(
@@ -860,21 +947,61 @@ def main() -> int:
                 login_status="starting_browser",
                 login_error="",
             )
-            process = subprocess.Popen(
-                browser_command(
-                    config,
-                    kesher_url,
-                    client.get("low_power_mode") is True,
+            while True:
+                process = subprocess.Popen(
+                    browser_command(
+                        config,
+                        kesher_url,
+                        client.get("low_power_mode") is True,
+                    )
                 )
-            )
-            update_heartbeat_state(
-                heartbeat_state,
-                heartbeat_state_lock,
-                browser_status="running",
-                login_status="waiting_for_intercom",
-                login_error="",
-            )
-            return_code = process.wait()
+                update_heartbeat_state(
+                    heartbeat_state,
+                    heartbeat_state_lock,
+                    browser_status="running",
+                    login_status="waiting_for_intercom",
+                    login_error="",
+                )
+                connected = wait_for_intercom_connection(
+                    process,
+                    config,
+                    client,
+                    config.get(
+                        "browser_connect_timeout_seconds",
+                        BROWSER_CONNECT_TIMEOUT_SECONDS,
+                    ),
+                )
+                if connected:
+                    update_heartbeat_state(
+                        heartbeat_state,
+                        heartbeat_state_lock,
+                        browser_status="running",
+                        login_status="intercom_connected",
+                        login_error="",
+                    )
+                    return_code = process.wait()
+                    break
+                if process.poll() is not None:
+                    return_code = process.returncode
+                    break
+                print(
+                    "Chromium did not connect to Kesher in time; restarting browser",
+                    flush=True,
+                )
+                update_heartbeat_state(
+                    heartbeat_state,
+                    heartbeat_state_lock,
+                    browser_status="restarting",
+                    login_status="restarting_browser",
+                    login_error="browser did not connect to the intercom",
+                )
+                stop_browser_process(process)
+                time.sleep(
+                    config.get(
+                        "browser_restart_delay_seconds",
+                        BROWSER_RESTART_DELAY_SECONDS,
+                    )
+                )
             update_heartbeat_state(
                 heartbeat_state,
                 heartbeat_state_lock,

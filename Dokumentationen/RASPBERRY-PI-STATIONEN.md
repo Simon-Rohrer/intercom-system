@@ -56,6 +56,11 @@ Benutzer-Dienst und startet ihn aus `~/.config/labwc/autostart`. Dadurch startet
 Chromium erst, wenn die grafische Sitzung vollständig bereit ist. Auf älteren
 Desktop-Systemen bleibt `kesher-pi.service` der Fallback.
 
+Der Launcher prüft nach dem Browserstart zusätzlich, ob die Station im Intercom
+verbunden ist. Ein nach Betriebssystem-Updates hängender erster Chromium-Start
+wird nach standardmäßig `25` Sekunden automatisch neu gestartet. Die Frist kann
+mit `browser_connect_timeout_seconds` angepasst werden.
+
 ## Deploy-Paket kopieren
 
 Auf dem Entwicklungsrechner:
