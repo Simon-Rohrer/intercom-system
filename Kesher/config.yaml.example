@@ -29,6 +29,6 @@ certmagic_propagation_timeout_seconds: 120
 certmagic_dns_resolvers:
   - "1.1.1.1:53"
   - "8.8.8.8:53"
-telegram_bot_token: ""
+telegram_bot_token: "8520998882:AAFLu6i9qQ0g1vR65W823eL4X8o6lO0oW20"
 telegram_webhook_secret: ""
-telegram_mode: "polling"
+telegram_mode: "webhook"
