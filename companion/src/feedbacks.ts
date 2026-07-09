@@ -7,13 +7,7 @@ import type { ModuleInstance } from "./main.js";
 import {
   deriveTextColor,
   parseButtonBgColor,
-  renderPresetPreviewImage,
 } from "./presets.js";
-import { applyImageEffectOverlay } from "./imageRenderer.js";
-
-// 1x1 transparent PNG used to explicitly clear stale button images.
-const TRANSPARENT_PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z8xQAAAAASUVORK5CYII=";
 
 function optionValue(value: unknown): unknown {
   if (
@@ -43,49 +37,6 @@ function numberOption(
 
 function stringOption(options: Record<string, unknown>, key: string): string {
   return String(optionValue(options[key]) || "").trim();
-}
-
-function imageFeedbackResult(
-  fallbackStyle: {
-    text: string;
-    color: number;
-    bgcolor: number;
-  },
-  imageBase64: string,
-) {
-  const dataUrl = `data:image/png;base64,${imageBase64}`;
-
-  return {
-    ...fallbackStyle,
-    text: "",
-    png64: imageBase64,
-    image: dataUrl,
-  } as CompanionAdvancedFeedbackResult & {
-    png64?: string;
-    image?: string;
-  };
-}
-
-function staleImageFallbackResult(fallbackStyle: {
-  text: string;
-  color: number;
-  bgcolor: number;
-}) {
-  const style = fallbackStyle.text
-    ? fallbackStyle
-    : {
-        color: fallbackStyle.color,
-        bgcolor: fallbackStyle.bgcolor,
-      };
-
-  return {
-    ...style,
-    png64: TRANSPARENT_PNG_BASE64,
-    image: `data:image/png;base64,${TRANSPARENT_PNG_BASE64}`,
-  } as CompanionAdvancedFeedbackResult & {
-    png64?: string;
-    image?: string;
-  };
 }
 
 export function UpdateFeedbacks(self: ModuleInstance): void {
@@ -355,33 +306,13 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
           self.getCurrentPageButtonConfig(slotIndex) ||
           { index: slotIndex };
         const bgcolor = parseButtonBgColor(button.color);
+        const liveText = self.getButtonText(slotIndex, pageNumber);
         const fallbackStyle = {
-          text: self.resolveSyncedButtonLabel(button),
+          text: liveText || self.resolveSyncedButtonLabel(button),
           color: deriveTextColor(bgcolor),
           bgcolor,
         };
-        const imageBuffer = self.getButtonImage(slotIndex, pageNumber);
-        if (imageBuffer) {
-          const effectRule = self.getImageEffectRuleForSlot(slotIndex, pageNumber);
-          const rendered = applyImageEffectOverlay(imageBuffer, {
-            mode: effectRule.mode,
-            colorHex: effectRule.colorHex,
-            blinkOn: self.imageEffectBlinkPhase,
-          });
-
-          const imageBase64 = rendered.toString("base64");
-
-          // Keep modern and legacy render paths in sync.
-          return imageFeedbackResult(fallbackStyle, imageBase64);
-        }
-
-        const previewImageBase64 = renderPresetPreviewImage(self, button);
-        if (previewImageBase64) {
-          return imageFeedbackResult(fallbackStyle, previewImageBase64);
-        }
-
-        // No image or preview for this slot/page yet: force-clear stale image from previous page.
-        return staleImageFallbackResult(fallbackStyle);
+        return fallbackStyle as CompanionAdvancedFeedbackResult;
       },
     },
   };

@@ -15,6 +15,7 @@ SATELLITE_BUILD="${SATELLITE_BUILD:-stable}"
 SATELLITE_BRANCH="${SATELLITE_BRANCH:-main}"
 REINSTALL="false"
 MIN_FREE_MB="${KESHER_SATELLITE_MIN_FREE_MB:-2500}"
+STARTUP_DELAY_SECONDS="${KESHER_SATELLITE_STARTUP_DELAY_SECONDS:-120}"
 SKIP_DISK_CHECK="false"
 SATELLITE_WORK_DIR="${KESHER_SATELLITE_WORK_DIR:-/opt/kesher-satellite-tmp}"
 
@@ -26,6 +27,8 @@ usage() {
   echo "  --config PATH    Kesher Raspberry config. Defaults to /etc/kesher/raspberry-pis.json."
   echo "  --reinstall      Run the official Bitfocus installer even if satellite.service already exists."
   echo "  --min-free-mb MB Require this much free disk space before installing. Defaults to ${MIN_FREE_MB} MB."
+  echo "  --startup-delay SECONDS"
+  echo "                   Delay Satellite at boot so the intercom browser can start first. Defaults to ${STARTUP_DELAY_SECONDS}."
   echo "  --work-dir PATH  Disk-backed temporary work directory. Defaults to ${SATELLITE_WORK_DIR}."
   echo "  --skip-disk-check"
   echo "                   Skip the free-space preflight check."
@@ -78,6 +81,14 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --skip-disk-check)
       SKIP_DISK_CHECK="true"
+      ;;
+    --startup-delay)
+      if [[ "$#" -lt 2 ]]; then
+        echo "--startup-delay requires a value." >&2
+        exit 1
+      fi
+      STARTUP_DELAY_SECONDS="${2:-}"
+      shift
       ;;
     --work-dir)
       if [[ "$#" -lt 2 ]]; then
@@ -138,6 +149,11 @@ fi
 
 if ! [[ "${MIN_FREE_MB}" =~ ^[0-9]+$ ]]; then
   echo "--min-free-mb must be numeric." >&2
+  exit 1
+fi
+
+if ! [[ "${STARTUP_DELAY_SECONDS}" =~ ^[0-9]+$ ]]; then
+  echo "--startup-delay must be numeric." >&2
   exit 1
 fi
 
@@ -253,10 +269,33 @@ REST_PORT=${REST_PORT}
 EOF
 chmod 0666 /boot/satellite-config
 
+install -d -m 0755 /etc/systemd/system/satellite.service.d
+cat > /etc/systemd/system/satellite.service.d/kesher-startup.conf <<'EOF'
+[Service]
+Nice=10
+CPUWeight=50
+IOWeight=50
+EOF
+
+cat > /etc/systemd/system/kesher-satellite.timer <<EOF
+[Unit]
+Description=Start Companion Satellite after the Kesher kiosk
+
+[Timer]
+OnBootSec=${STARTUP_DELAY_SECONDS}
+AccuracySec=1s
+Unit=satellite.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
 systemctl daemon-reload
-systemctl enable satellite.service
+systemctl disable satellite.service
+systemctl enable kesher-satellite.timer
 systemctl restart satellite.service
 
 echo "Companion Satellite is installed and running."
 echo "Target Companion server: ${COMPANION_HOST}:${COMPANION_PORT}"
+echo "Startup delay: ${STARTUP_DELAY_SECONDS} seconds"
 echo "Satellite web UI: http://$(hostname -I | awk '{print $1}'):${REST_PORT}"

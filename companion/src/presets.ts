@@ -5,7 +5,6 @@ import {
   type CompanionPresetDefinitions,
 } from "@companion-module/base";
 import type { ModuleInstance } from "./main.js";
-import { isCanvasAvailable, renderButtonImage } from "./imageRenderer.js";
 import type {
   CompanionPresetProfile,
   StreamDeckButtonConfig,
@@ -163,55 +162,14 @@ function previewImageSignature(value?: string): string {
   return image ? `${image.length}:${image.slice(0, 64)}` : "";
 }
 
-function splitButtonLabel(label: string): { primary: string; subtitle: string } {
-  const lines = label
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+function buildButtonStyle(label: string, baseBg: number) {
   return {
-    primary: lines[0] || "",
-    subtitle: lines[1] || "",
-  };
-}
-
-export function renderPresetPreviewImage(
-  self: ModuleInstance,
-  button: StreamDeckButtonConfig,
-): string | undefined {
-  const publishedPreview = normalizePreviewImageBase64(button.previewImageBuffer);
-  if (publishedPreview) return publishedPreview;
-  if (!isCanvasAvailable()) return undefined;
-
-  const labels = splitButtonLabel(self.resolveSyncedButtonLabel(button));
-  const actionType = String(button.action?.type || "none").trim();
-  const image = renderButtonImage(
-    {
-      channel:
-        button.action?.roomId ||
-        button.action?.broadcastGroupId ||
-        button.action?.roleId ||
-        button.action?.userId ||
-        "",
-      state: "IDLE",
-      label: labels.primary,
-      subtitle: labels.subtitle,
-      actionType,
-      color: button.color || "",
-    },
-    { width: 112, height: 112 },
-  );
-  return image.toString("base64");
-}
-
-function buildButtonStyle(label: string, baseBg: number, imageBase64?: string) {
-  return {
-    text: imageBase64 ? "" : label,
+    text: label,
     size: "14" as const,
     color: deriveTextColor(baseBg),
     bgcolor: baseBg,
     alignment: "center:center" as const,
     pngalignment: "center:center" as const,
-    ...(imageBase64 ? { png64: imageBase64 } : {}),
     show_topbar: false,
   };
 }
@@ -243,17 +201,13 @@ function buildProfileButtonPreset(
   const label = hasContent
     ? self.resolveSyncedButtonLabel(button) || `Key ${button.index + 1}`
     : "";
-  const liveImageBase64 = self.getButtonImage(button.index, page.page)?.toString("base64");
-  const presetPreviewImageBase64 = renderPresetPreviewImage(self, button);
   const style = buildButtonStyle(
     label,
     baseBg,
-    presetPreviewImageBase64 || liveImageBase64,
   );
   const previewStyle = buildButtonStyle(
     label,
     baseBg,
-    presetPreviewImageBase64 || liveImageBase64,
   );
   const actionOptions = {
     roleId: profile.roleId,

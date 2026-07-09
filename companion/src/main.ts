@@ -1527,7 +1527,7 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
 
     for (let slotIndex = 0; slotIndex < 100; slotIndex += 1) {
       const button = this.getCurrentPageButtonConfig(slotIndex) || { index: slotIndex };
-      const buttonLabel = this.resolveSyncedButtonLabel(button);
+      const buttonLabel = this.getButtonText(slotIndex) || this.resolveSyncedButtonLabel(button);
       const baseBg = parseButtonBgColor(button.color);
       const effectValue = this.getCurrentPageButtonEffectValue(slotIndex);
       values[`btn_${slotIndex + 1}_label`] = buttonLabel;
@@ -1603,6 +1603,14 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
   getButtonImage(slotIndex: number, pageNumber?: number): Buffer | undefined {
     const page = Number.isFinite(pageNumber) ? Math.trunc(pageNumber as number) : this.currentPageNumber;
     return this.imageBridge?.getImage(slotIndex, page);
+  }
+
+  /**
+   * Get the latest Kesher-sent editable text for a button slot.
+   */
+  getButtonText(slotIndex: number, pageNumber?: number): string {
+    const page = Number.isFinite(pageNumber) ? Math.trunc(pageNumber as number) : this.currentPageNumber;
+    return this.imageBridge?.getText(slotIndex, page) || "";
   }
 
   /**

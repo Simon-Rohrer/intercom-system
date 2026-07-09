@@ -369,6 +369,56 @@ describe("StationIntercomView", () => {
     expect(secondaryColumn).toHaveTextContent("Chat content");
   });
 
+  it("opens the existing chat in a separate window and focuses it when reopened", async () => {
+    const user = userEvent.setup();
+    const popupDocument = document.implementation.createHTMLDocument();
+    const popupWindow = {
+      closed: false,
+      close: vi.fn(),
+      focus: vi.fn(),
+      document: popupDocument,
+      addEventListener: vi.fn(),
+    } as unknown as Window;
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue(popupWindow);
+
+    render(
+      <StationIntercomView
+        {...baseProps}
+        chatAndSignalPanel={<div>Live chat content</div>}
+      />,
+    );
+
+    const openButton = screen.getByRole("button", {
+      name: "Open chat in a separate window",
+    });
+    await user.click(openButton);
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "",
+      "kesher-chat",
+      "popup=yes,width=520,height=720,resizable=yes,scrollbars=yes",
+    );
+    expect(popupWindow.focus).toHaveBeenCalledTimes(1);
+    expect(popupDocument.body.textContent).toContain("Live chat content");
+    expect(
+      screen.getByRole("button", { name: "Focus chat window" }),
+    ).toBeVisible();
+
+    await user.click(
+      screen.getByRole("button", { name: "Focus chat window" }),
+    );
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(popupWindow.focus).toHaveBeenCalledTimes(2);
+
+    const closeButton = popupDocument.body.querySelector(
+      'button[aria-label="Close chat window"]',
+    ) as HTMLButtonElement;
+    closeButton.click();
+    expect(popupWindow.close).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps hold-to-talk active when the pointer moves away before release", () => {
     const startPtt = vi.fn();
     const stopPtt = vi.fn();

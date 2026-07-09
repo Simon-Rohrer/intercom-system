@@ -20,7 +20,7 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
-LAUNCHER_VERSION = "6"
+LAUNCHER_VERSION = "8"
 HEARTBEAT_INTERVAL_SECONDS = 4
 AUDIO_RUNTIME_WAIT_SECONDS = 3
 DISPLAY_RUNTIME_WAIT_SECONDS = 15
@@ -641,7 +641,22 @@ def display_socket_path(display: str) -> Optional[Path]:
     return Path("/tmp/.X11-unix") / f"X{display_number}"
 
 
+def wayland_socket_path(
+    wayland_display: str,
+    runtime_dir: Optional[str] = None,
+) -> Optional[Path]:
+    display_name = wayland_display.strip()
+    if not display_name or "/" in display_name:
+        return None
+    root = Path(runtime_dir or os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
+    return root / display_name
+
+
 def display_runtime_ready() -> bool:
+    wayland_display = os.environ.get("WAYLAND_DISPLAY", "").strip()
+    if wayland_display:
+        socket_path = wayland_socket_path(wayland_display)
+        return socket_path is not None and _socket_exists(socket_path)
     display = os.environ.get("DISPLAY", "").strip()
     if not display:
         return False
@@ -665,13 +680,18 @@ def wait_for_display_runtime(
                 flush=True,
             )
             return False
-        display = os.environ.get("DISPLAY", "") or "unset"
+        display = (
+            os.environ.get("WAYLAND_DISPLAY")
+            or os.environ.get("DISPLAY")
+            or "unset"
+        )
         print(
             f"Kesher display runtime not ready (DISPLAY={display}); retrying in 0.5 seconds",
             flush=True,
         )
         time.sleep(min(0.5, remaining))
-    print(f"Kesher display runtime ready: DISPLAY={os.environ.get('DISPLAY', '')}", flush=True)
+    display = os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY", "")
+    print(f"Kesher display runtime ready: display={display}", flush=True)
     settle = max(0, int(settle_seconds))
     if settle > 0:
         print(
@@ -810,15 +830,30 @@ def resolve_browser(configured_binary: Any) -> str:
     raise ValueError("Chromium not found; install chromium or set browser_binary")
 
 
+def chromium_profile_dir() -> Path:
+    return Path.home() / ".local" / "share" / "kesher-kiosk"
+
+
+def cleanup_chromium_singletons(profile_dir: Optional[Path] = None) -> None:
+    root = profile_dir or chromium_profile_dir()
+    for name in ("SingletonCookie", "SingletonLock", "SingletonSocket"):
+        path = root / name
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def browser_command(
     config: dict[str, Any], kesher_url: str, low_power_mode: bool = False
 ) -> list[str]:
     server_url = config["server_url"]
     parsed = urlsplit(server_url)
     origin = urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
-    profile_dir = Path.home() / ".local" / "share" / "kesher-kiosk"
+    profile_dir = chromium_profile_dir()
     command = [
         resolve_browser(config.get("browser_binary")),
+        "--no-gl-override",
         "--kiosk",
         "--no-first-run",
         "--no-default-browser-check",
@@ -847,9 +882,7 @@ def browser_command(
                 "--disable-extensions",
                 "--disable-print-preview",
                 "--disable-pinch",
-                "--ozone-platform=x11",
-                "--use-gl=angle",
-                "--use-angle=gl",
+                "--ozone-platform=wayland",
                 "--overscroll-history-navigation=0",
                 "--process-per-site",
                 "--renderer-process-limit=2",
@@ -948,6 +981,7 @@ def main() -> int:
                 login_error="",
             )
             while True:
+                cleanup_chromium_singletons()
                 process = subprocess.Popen(
                     browser_command(
                         config,

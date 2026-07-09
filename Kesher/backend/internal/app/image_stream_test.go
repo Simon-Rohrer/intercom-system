@@ -100,6 +100,30 @@ func TestButtonImageRendererRenderButtonImageRendersTopAndBottomStatusStripes(t 
 	assertPixelNearRGB(t, img, 56, 103, 20, 198, 75)
 }
 
+func TestButtonImageRendererRenderButtonOverlayImageOmitsContentText(t *testing.T) {
+	renderer, err := NewButtonImageRenderer(&ButtonImageRenderConfig{Width: 112, Height: 112})
+	if err != nil {
+		t.Fatalf("NewButtonImageRenderer failed: %v", err)
+	}
+
+	buf, err := renderer.RenderButtonOverlayImage(ButtonState{
+		State:      "IDLE",
+		Label:      "LichtProPresenter",
+		ActionType: string(StreamDeckActionTypeSelectTalkRoom),
+	})
+	if err != nil {
+		t.Fatalf("RenderButtonOverlayImage failed: %v", err)
+	}
+
+	img, err := png.Decode(bytes.NewReader(buf))
+	if err != nil {
+		t.Fatalf("png.Decode failed: %v", err)
+	}
+
+	assertPixelHasAlpha(t, img, 56, 24)
+	assertPixelTransparent(t, img, 56, 56)
+}
+
 func assertPixelNearRGB(t *testing.T, img image.Image, x, y int, wantR, wantG, wantB uint8) {
 	t.Helper()
 	r, g, b, _ := img.At(x, y).RGBA()
@@ -117,6 +141,22 @@ func assertPixelNearRGB(t *testing.T, img image.Image, x, y int, wantR, wantG, w
 
 	if !within(gotR, wantR) || !within(gotG, wantG) || !within(gotB, wantB) {
 		t.Fatalf("unexpected pixel at (%d,%d): got rgb(%d,%d,%d), want near rgb(%d,%d,%d)", x, y, gotR, gotG, gotB, wantR, wantG, wantB)
+	}
+}
+
+func assertPixelHasAlpha(t *testing.T, img image.Image, x, y int) {
+	t.Helper()
+	_, _, _, alpha := img.At(x, y).RGBA()
+	if alpha == 0 {
+		t.Fatalf("expected non-transparent pixel at (%d,%d)", x, y)
+	}
+}
+
+func assertPixelTransparent(t *testing.T, img image.Image, x, y int) {
+	t.Helper()
+	_, _, _, alpha := img.At(x, y).RGBA()
+	if alpha != 0 {
+		t.Fatalf("expected transparent pixel at (%d,%d), got alpha %d", x, y, alpha)
 	}
 }
 

@@ -53,17 +53,22 @@ Wichtig:
 
 Auf aktuellem Raspberry Pi OS mit `labwc` installiert das Setup den Launcher als
 Benutzer-Dienst und startet ihn aus `~/.config/labwc/autostart`. Dadurch startet
-Chromium erst, wenn die grafische Sitzung vollständig bereit ist. Auf älteren
-Desktop-Systemen bleibt `kesher-pi.service` der Fallback.
+Chromium erst, wenn die grafische Sitzung vollständig bereit ist, und nutzt die
+native Wayland-Sitzung statt Xwayland. Auf älteren Desktop-Systemen bleibt
+`kesher-pi.service` der Fallback.
 
 Der Launcher prüft nach dem Browserstart zusätzlich, ob die Station im Intercom
 verbunden ist. Ein nach Betriebssystem-Updates hängender erster Chromium-Start
 wird nach standardmäßig `25` Sekunden automatisch neu gestartet. Die Frist kann
 mit `browser_connect_timeout_seconds` angepasst werden.
+Veraltete Chromium-Profilsperren (`Singleton*`) werden vor dem Start entfernt,
+damit ein sauber heruntergefahrener oder neu gestarteter Pi nicht zuerst an der
+vorherigen Browserinstanz hängen bleibt.
 
-Companion Satellite startet auf dem Pi standardmäßig 60 Sekunden verzögert und
-mit niedrigerer Priorität. So konkurrieren Chromium und die Node-Prozesse von
-Satellite auf Geräten mit 1 GB RAM nicht gleichzeitig um CPU, RAM und SD-Karten-I/O.
+Companion Satellite startet auf dem Pi über einen systemd-Timer standardmäßig
+120 Sekunden verzögert und mit niedrigerer Priorität. So konkurrieren Chromium
+und die Node-Prozesse von Satellite auf Geräten mit 1 GB RAM nicht gleichzeitig
+um CPU, RAM und SD-Karten-I/O, ohne den normalen Bootabschluss zu blockieren.
 
 ## Deploy-Paket kopieren
 

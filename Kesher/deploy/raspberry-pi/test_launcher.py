@@ -62,9 +62,10 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("--force-prefers-reduced-motion", command)
         self.assertIn("--enable-low-end-device-mode", command)
         self.assertIn("--disable-background-networking", command)
-        self.assertIn("--ozone-platform=x11", command)
-        self.assertIn("--use-gl=angle", command)
-        self.assertIn("--use-angle=gl", command)
+        self.assertIn("--no-gl-override", command)
+        self.assertIn("--ozone-platform=wayland", command)
+        self.assertNotIn("--use-gl=angle", command)
+        self.assertNotIn("--use-angle=gl", command)
         self.assertIn("--process-per-site", command)
         self.assertIn("--renderer-process-limit=2", command)
         self.assertIn("--js-flags=--max-old-space-size=96", command)
@@ -109,6 +110,21 @@ class LauncherTests(unittest.TestCase):
             Path("/tmp/.X11-unix/X0"),
         )
         self.assertIsNone(launcher.display_socket_path("wayland-0"))
+
+    def test_wayland_socket_path_uses_runtime_directory(self):
+        self.assertEqual(
+            launcher.wayland_socket_path("wayland-0", "/run/user/1000"),
+            Path("/run/user/1000/wayland-0"),
+        )
+        self.assertIsNone(launcher.wayland_socket_path("../wayland-0"))
+
+    def test_cleanup_chromium_singletons_removes_stale_locks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            profile_dir = Path(directory)
+            for name in ("SingletonCookie", "SingletonLock", "SingletonSocket"):
+                (profile_dir / name).symlink_to("stale")
+            launcher.cleanup_chromium_singletons(profile_dir)
+            self.assertFalse(any(profile_dir.iterdir()))
 
     def test_wait_for_display_runtime_allows_graphics_session_to_settle(self):
         with mock.patch.object(launcher, "display_runtime_ready", return_value=True), \

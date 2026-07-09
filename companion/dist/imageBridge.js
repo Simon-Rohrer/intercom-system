@@ -1,5 +1,5 @@
 import { WebSocket as UndiciWebSocket, } from "undici";
-import { isCanvasAvailable, renderButtonImage } from "./imageRenderer.js";
+import { isCanvasAvailable, renderButtonOverlayImage } from "./imageRenderer.js";
 /**
  * Manages WebSocket connection to Kesher backend for image streaming
  * and stores button images for use in feedbacks
@@ -21,6 +21,7 @@ export class ImageBridge {
     lastDisconnectAt = 0;
     // Store images by slot and by composite bank/slot key.
     imageStorage = new Map();
+    textStorage = new Map();
     constructor(instance, baseUrl, targetQuery = "", dispatcher) {
         this.instance = instance;
         this.baseUrl = baseUrl;
@@ -103,10 +104,39 @@ export class ImageBridge {
         return undefined;
     }
     /**
+     * Get the latest Kesher-sent text for a slot, preferring the active page/bank.
+     */
+    getText(slotIndex, pageNumber) {
+        const rawSlot = Number.isFinite(slotIndex) ? Math.trunc(slotIndex) : -1;
+        const slot = rawSlot >= 100 ? rawSlot % 100 : rawSlot;
+        if (slot < 0)
+            return undefined;
+        const page = Number.isFinite(pageNumber) ? Math.trunc(pageNumber) : -1;
+        if (page >= 0) {
+            return this.textStorage.get(page * 100 + slot);
+        }
+        const rawDirect = this.textStorage.get(rawSlot);
+        if (rawDirect)
+            return rawDirect;
+        const direct = this.textStorage.get(slot);
+        if (direct)
+            return direct;
+        const legacy = this.textStorage.get(100 + slot);
+        if (legacy)
+            return legacy;
+        for (const [key, value] of this.textStorage.entries()) {
+            if (key >= 100 && key % 100 === slot) {
+                return value;
+            }
+        }
+        return undefined;
+    }
+    /**
      * Clear all stored images
      */
     clearImages() {
         this.imageStorage.clear();
+        this.textStorage.clear();
     }
     /**
      * Is connected to image stream
@@ -196,6 +226,10 @@ export class ImageBridge {
             const label = actionType === "reply_to_caller" && this.instance.replyDirectUsername
                 ? `Reply\n${this.instance.replyDirectUsername}`
                 : String(message.label || message.channel || "").trim();
+            const subtitle = String(message.subtitle || "").trim();
+            const displayText = label.includes("\n") || !subtitle
+                ? label
+                : [label, subtitle].filter(Boolean).join("\n");
             const knownRenderableState = state === "IDLE" ||
                 state === "TALK" ||
                 state === "LISTEN" ||
@@ -219,10 +253,11 @@ export class ImageBridge {
             }
             else if (canRenderLocally) {
                 const pressed = state === "TALK" || state === "BROADCAST";
-                imageBuffer = renderButtonImage({
+                imageBuffer = renderButtonOverlayImage({
                     channel: String(message.channel || ""),
                     state,
                     label,
+                    subtitle,
                     actionType,
                     color: String(message.color || ""),
                     isListening: effectiveIsListening,
@@ -240,11 +275,29 @@ export class ImageBridge {
             // Always store page-scoped slot key to avoid cross-page overwrites.
             const compositeIndex = bankNumber * 100 + buttonIndex;
             this.imageStorage.set(compositeIndex, imageBuffer);
+            if (displayText) {
+                this.textStorage.set(compositeIndex, displayText);
+            }
+            else {
+                this.textStorage.delete(compositeIndex);
+            }
             // Keep plain slot storage only for legacy lookups where no page is known.
             this.imageStorage.set(buttonIndex, imageBuffer);
+            if (displayText) {
+                this.textStorage.set(buttonIndex, displayText);
+            }
+            else {
+                this.textStorage.delete(buttonIndex);
+            }
             // Preserve raw keys if upstream sends composite indices.
             if (rawButtonIndex !== buttonIndex) {
                 this.imageStorage.set(rawButtonIndex, imageBuffer);
+                if (displayText) {
+                    this.textStorage.set(rawButtonIndex, displayText);
+                }
+                else {
+                    this.textStorage.delete(rawButtonIndex);
+                }
             }
             this.instance.log(buttonIndex === 0 ? "info" : "debug", `Stored image for button ${bankNumber}.${message.buttonIndex} -> slot ${buttonIndex} (${imageBuffer.length} bytes)`);
             // Trigger feedback update

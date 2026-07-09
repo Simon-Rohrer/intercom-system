@@ -35,6 +35,19 @@ export function renderButtonImage(state, options = {}) {
         return generateSolidColorPNG(opts.width, opts.height, "#000000");
     }
 }
+export function renderButtonOverlayImage(state, options = {}) {
+    const opts = { ...DEFAULT_OPTIONS, ...options };
+    if (!isCanvasAvailable()) {
+        return generateSolidColorPNG(opts.width, opts.height, "#000000");
+    }
+    try {
+        return renderOverlayWithCanvas(state, opts);
+    }
+    catch (error) {
+        console.warn("Canvas overlay rendering failed, using fallback:", error);
+        return generateSolidColorPNG(opts.width, opts.height, "#000000");
+    }
+}
 export function applyImageEffectOverlay(imageBuffer, options) {
     const mode = Number.isFinite(options.mode)
         ? Math.max(0, Math.min(2, Math.trunc(options.mode)))
@@ -60,8 +73,11 @@ export function applyImageEffectOverlay(imageBuffer, options) {
         ctx.drawImage(image, 0, 0, width, height);
         const tint = normalizeHexColor(options.colorHex || "#ff2d26");
         const alpha = mode === 2 ? 0.5 : 0.62;
+        ctx.save();
+        ctx.globalCompositeOperation = "source-atop";
         ctx.fillStyle = hexToRgba(tint, alpha);
         ctx.fillRect(0, 0, width, height);
+        ctx.restore();
         if (mode === 2) {
             ctx.save();
             ctx.strokeStyle = hexToRgba(tint, 0.9);
@@ -74,6 +90,88 @@ export function applyImageEffectOverlay(imageBuffer, options) {
     catch {
         return imageBuffer;
     }
+}
+function renderOverlayWithCanvas(state, opts) {
+    const { createCanvas } = canvasModule;
+    const canvas = createCanvas(opts.width, opts.height);
+    const ctx = canvas.getContext("2d");
+    const actionType = String(state.actionType || "none");
+    const pressed = Boolean(state.pressed || state.isActive || state.state === "TALK" || state.state === "BROADCAST");
+    const useCallPressedColor = pressed && (actionType === "call_room" ||
+        actionType === "reply_to_caller" ||
+        actionType === "incoming_call_indicator");
+    const useEmergencyPressedColor = pressed &&
+        actionType !== "listen_room" &&
+        actionType !== "call_room" &&
+        actionType !== "reply_to_caller" &&
+        actionType !== "incoming_call_indicator";
+    const palette = getButtonPalette(actionType, state.color, pressed);
+    const stroke = pressed ? mixColors(palette.border, "#ffffff", 0.2) : palette.border;
+    const textColor = palette.label;
+    const radius = Math.max(10, Math.round(canvas.width * 0.12));
+    const cardInset = 2;
+    const cardX = cardInset;
+    const cardY = cardInset;
+    const cardWidth = canvas.width - cardInset * 2;
+    const cardHeight = canvas.height - cardInset * 2;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    roundedRect(ctx, cardX, cardY, cardWidth, cardHeight, radius);
+    ctx.lineWidth = useEmergencyPressedColor ? 4 : 3;
+    ctx.strokeStyle = stroke;
+    ctx.stroke();
+    if (useEmergencyPressedColor) {
+        roundedRect(ctx, cardX - 1, cardY - 1, cardWidth + 2, cardHeight + 2, radius + 1);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "rgba(255, 115, 115, 0.28)";
+        ctx.stroke();
+    }
+    if (useCallPressedColor) {
+        roundedRect(ctx, cardX - 1, cardY - 1, cardWidth + 2, cardHeight + 2, radius + 1);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "rgba(255, 214, 102, 0.35)";
+        ctx.stroke();
+    }
+    if ((actionType === "select_talk_room" ||
+        actionType === "select_listen_room") &&
+        state.isPttSelected) {
+        const stripeHeight = Math.max(6, Math.round(canvas.height * 0.075));
+        roundedRect(ctx, cardX + 3, cardY + 2, cardWidth - 6, stripeHeight, Math.max(3, Math.round(stripeHeight / 2)));
+        ctx.fillStyle = "#ff2d26";
+        ctx.fill();
+    }
+    if ((actionType === "ptt_room" ||
+        actionType === "select_talk_room" ||
+        actionType === "select_listen_room" ||
+        actionType === "listen_room") &&
+        state.isListening) {
+        const stripeHeight = Math.max(6, Math.round(canvas.height * 0.075));
+        roundedRect(ctx, cardX + 3, cardY + cardHeight - stripeHeight - 2, cardWidth - 6, stripeHeight, Math.max(3, Math.round(stripeHeight / 2)));
+        ctx.fillStyle = "#14c64b";
+        ctx.fill();
+    }
+    const actionHeader = streamDeckActionHeaderLabel(actionType);
+    if (actionHeader) {
+        const headerHeight = Math.max(13, Math.round(canvas.height * 0.16));
+        const headerY = cardY + Math.max(10, Math.round(canvas.height * 0.12));
+        const headerX = cardX + 6;
+        const headerWidth = cardWidth - 12;
+        if (headerWidth > 12) {
+            roundedRect(ctx, headerX, headerY, headerWidth, headerHeight, Math.max(5, Math.round(headerHeight / 2)));
+            ctx.fillStyle = hexToRgba(palette.border, 0.23);
+            ctx.fill();
+            roundedRect(ctx, headerX, headerY, headerWidth, headerHeight, Math.max(5, Math.round(headerHeight / 2)));
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = hexToRgba(palette.border, 0.57);
+            ctx.stroke();
+            const headerFont = fitText(ctx, actionHeader, headerWidth - 8, Math.max(8, Math.round(canvas.height * 0.1)), 800, 7);
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = textColor;
+            ctx.font = `800 ${headerFont}px sans-serif`;
+            ctx.fillText(actionHeader, canvas.width / 2, headerY + headerHeight / 2);
+        }
+    }
+    return canvas.toBuffer("image/png");
 }
 function renderWithCanvas(state, opts) {
     const { createCanvas } = canvasModule;
