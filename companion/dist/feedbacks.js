@@ -279,6 +279,14 @@ export function UpdateFeedbacks(self) {
                     color: deriveTextColor(bgcolor),
                     bgcolor,
                 };
+                // Return the stored PNG image if available – this is what actually
+                // drives the physical Stream Deck button image. Without it the button
+                // shows only the fallback text/colour and never updates visually even
+                // though new images arrive via the WebSocket.
+                const img = self.getButtonImage(slotIndex, pageNumber);
+                if (img) {
+                    return { png: img };
+                }
                 return fallbackStyle;
             },
         },
