@@ -233,7 +233,9 @@ export class ImageBridge {
             const knownRenderableState = state === "IDLE" ||
                 state === "TALK" ||
                 state === "LISTEN" ||
-                state === "BROADCAST";
+                state === "BROADCAST" ||
+                state === "PI_ONLINE" ||
+                state === "PI_OFFLINE";
             const canRenderLocally = knownRenderableState && isCanvasAvailable();
             const shouldForceReplyRender = actionType === "reply_to_caller" &&
                 canRenderLocally &&

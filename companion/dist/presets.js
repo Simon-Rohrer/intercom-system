@@ -145,6 +145,22 @@ function buildProfileButtonPreset(self, profile, page, button) {
         buttonIndex: button.index,
         sourcePageNumber: page.page,
     };
+    const shouldAddDynamicImageFeedback = hasContent && !isIndicator;
+    const feedbacks = isIndicator
+        ? incomingCallIndicatorFeedbacks()
+        : shouldAddDynamicImageFeedback
+            ? [
+                {
+                    feedbackId: "dynamic_button_image",
+                    options: {
+                        slotIndex: button.index,
+                        sourcePageNumber: page.page,
+                        roleId: profile.roleId,
+                        profileUsername: profile.username,
+                    },
+                },
+            ]
+            : [];
     const shouldTriggerSlot = hasContent && !isIndicator;
     return {
         type: "button",
@@ -152,7 +168,7 @@ function buildProfileButtonPreset(self, profile, page, button) {
         name: buttonPresetName(self, button),
         style,
         previewStyle,
-        feedbacks: isIndicator ? incomingCallIndicatorFeedbacks() : [],
+        feedbacks,
         steps: shouldTriggerSlot
             ? [
                 {

@@ -8,7 +8,7 @@
 
 export interface ButtonState {
   channel: string;
-  state: "IDLE" | "TALK" | "LISTEN" | "BROADCAST";
+  state: "IDLE" | "TALK" | "LISTEN" | "BROADCAST" | "PI_ONLINE" | "PI_OFFLINE";
   label: string;
   subtitle?: string;
   talkCount?: number;
@@ -170,6 +170,21 @@ function renderOverlayWithCanvas(
     actionType !== "incoming_call_indicator";
 
   const palette = getButtonPalette(actionType, state.color, pressed);
+  if (actionType === "raspberry_status") {
+    if (state.state === "PI_ONLINE") {
+      palette.background = "#0a2218";
+      palette.border = "#22c55e";
+      palette.label = "#bbf7d0";
+    } else if (state.state === "PI_OFFLINE") {
+      palette.background = "#220a0a";
+      palette.border = "#ef4444";
+      palette.label = "#fecaca";
+    } else {
+      palette.background = "#0d1117";
+      palette.border = "#334155";
+      palette.label = "#94a3b8";
+    }
+  }
   const stroke = pressed ? mixColors(palette.border, "#ffffff", 0.2) : palette.border;
   const textColor = palette.label;
 
@@ -314,6 +329,21 @@ function renderWithCanvas(
     actionType !== "incoming_call_indicator";
 
   const palette = getButtonPalette(actionType, state.color, pressed);
+  if (actionType === "raspberry_status") {
+    if (state.state === "PI_ONLINE") {
+      palette.background = "#0a2218";
+      palette.border = "#22c55e";
+      palette.label = "#bbf7d0";
+    } else if (state.state === "PI_OFFLINE") {
+      palette.background = "#220a0a";
+      palette.border = "#ef4444";
+      palette.label = "#fecaca";
+    } else {
+      palette.background = "#0d1117";
+      palette.border = "#334155";
+      palette.label = "#94a3b8";
+    }
+  }
   const fill = palette.background;
   const stroke = pressed ? mixColors(palette.border, "#ffffff", 0.2) : palette.border;
   const textColor = palette.label;
@@ -587,6 +617,8 @@ function getButtonPalette(actionType: string, color: string | undefined, pressed
       return { background: "#000000", border: "#ffc067", label: "#f6f0e8" };
     case "incoming_call_indicator":
       return { background: "#000000", border: "#ffd200", label: "#fff7d0" };
+    case "raspberry_status":
+      return { background: "#0d1117", border: "#334155", label: "#94a3b8" };
     case "mute_toggle":
       return { background: "#000000", border: "#f84e4e", label: "#fff1f1" };
     case "volume_delta":
