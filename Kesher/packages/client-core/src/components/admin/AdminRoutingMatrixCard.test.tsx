@@ -16,6 +16,7 @@ const appData: Bootstrap = {
     { id: "audio", name: "Audio", defaultRoomId: "foh" },
     { id: "video", name: "Video" },
   ],
+  activeRoleIds: [],
   rooms: [
     {
       id: "foh",

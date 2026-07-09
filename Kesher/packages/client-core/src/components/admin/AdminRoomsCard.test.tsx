@@ -18,6 +18,7 @@ const appData: Bootstrap = {
     { id: "op", name: "Operator" },
     { id: "admin", name: "Admin" },
   ],
+  activeRoleIds: [],
   rooms: [
     {
       id: "r1",

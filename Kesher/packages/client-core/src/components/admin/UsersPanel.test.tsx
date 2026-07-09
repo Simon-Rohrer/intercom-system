@@ -25,9 +25,10 @@ const appData: Bootstrap = {
     { id: "u2", username: "Alice", roleId: "op" },
   ],
   roles: [
-    { id: "op", name: "Operator" },
     { id: "admin", name: "Admin" },
+    { id: "user", name: "User" },
   ],
+  activeRoleIds: [],
   rooms: [],
   broadcastGroups: [],
   ackEnabled: true,

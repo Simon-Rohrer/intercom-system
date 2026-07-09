@@ -18,6 +18,7 @@ const baseProps: ComponentProps<typeof StationIntercomView> = {
     self: { id: "u1", username: "tim", roleId: "op" },
     users: [{ id: "u1", username: "tim", roleId: "op" }],
     roles: [{ id: "op", name: "Operator" }],
+    activeRoleIds: [],
     rooms: [
       {
         id: "room-1",
@@ -895,7 +896,7 @@ describe("StationIntercomView", () => {
 
     expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:streamdeck-export");
-    const exportedText = await exportedBlob?.text();
+    const exportedText = await (exportedBlob as any)?.text();
     const exportedJson = JSON.parse(exportedText || "{}");
     expect(exportedJson.settings.pages).toHaveLength(1);
 

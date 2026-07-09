@@ -28,6 +28,8 @@ const baseProps = {
   takeoverConflict: null,
   onConfirmTakeover: vi.fn(),
   onCancelTakeover: vi.fn(),
+  raspberryRemoteStations: null,
+  onRaspberryRemoteJoin: vi.fn(),
 };
 
 describe("LoginView", () => {

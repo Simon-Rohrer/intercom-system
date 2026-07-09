@@ -1333,7 +1333,7 @@ export type StreamDeckPreviewButton = {
   subtitle?: string;
   actionType?: StreamDeckActionType;
   color?: string;
-  state?: "IDLE" | "TALK" | "LISTEN" | "BROADCAST";
+  state?: "IDLE" | "TALK" | "LISTEN" | "BROADCAST" | "PI_ONLINE" | "PI_OFFLINE";
   channel?: string;
   isListening?: boolean;
   isPttSelected?: boolean;

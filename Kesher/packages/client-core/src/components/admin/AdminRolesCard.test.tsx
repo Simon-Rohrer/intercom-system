@@ -18,6 +18,7 @@ const appData: Bootstrap = {
   self: { id: "u1", username: "tim", roleId: "op" },
   users: [{ id: "u1", username: "tim", roleId: "op" }],
   roles: [{ id: "op", name: "Operator", defaultVoiceMode: "always_on" }],
+  activeRoleIds: [],
   rooms: [
     {
       id: "r1",

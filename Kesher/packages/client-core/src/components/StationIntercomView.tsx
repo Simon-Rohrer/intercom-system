@@ -1735,10 +1735,10 @@ export function StationIntercomView({
           : "IDLE";
 
       if (rawButton.action?.type === "raspberry_status" && rawButton.action.raspberryPiId) {
-        const pi = raspberryPis.find(p => p.id === rawButton.action?.raspberryPiId);
+        const pi = raspberryPis.find(p => p.deviceId === rawButton.action?.raspberryPiId);
         if (pi) {
           previewState = pi.online ? "PI_ONLINE" : "PI_OFFLINE";
-          labels.primary = pi.name || pi.id;
+          labels.primary = pi.name || pi.deviceId;
           labels.subtitle = pi.online ? "Connected" : "Disconnected";
         } else {
           labels.primary = rawButton.action.raspberryPiId;
