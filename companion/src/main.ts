@@ -535,6 +535,7 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
       userId?: string;
       roleId?: string;
       broadcastGroupId?: string;
+      raspberryPiId?: string;
     };
   }): string {
     const explicitLabel = (button.label || "").trim();
@@ -594,6 +595,8 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
         const tp = (action as { targetPage?: number }).targetPage;
         return tp !== undefined ? `Page ${tp + 1}` : "Jump";
       }
+      case "raspberry_status":
+        return action.raspberryPiId || "Raspberry PI";
       default:
         return "";
     }
