@@ -63,7 +63,8 @@ export type StreamDeckActionType =
   | "page_down"
   | "page_jump"
   | "page_home"
-  | "page_back";
+  | "page_back"
+  | "raspberry_status";
 
 export type StreamDeckPageType =
   | "manual"
@@ -75,6 +76,7 @@ export type StreamDeckButtonAction = {
   roomId?: string;
   userId?: string;
   roleId?: string;
+  raspberryPiId?: string;
   broadcastGroupId?: string;
   volumeDelta?: number;
   targetPage?: number;

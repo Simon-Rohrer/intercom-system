@@ -27,6 +27,7 @@ const allowedStreamDeckActionTypes = new Set([
     "page_jump",
     "page_home",
     "page_back",
+    "raspberry_status",
 ]);
 const signalBlinkIntervalMs = 300;
 const maxIncomingCallBlinkCycles = 6;
@@ -67,6 +68,7 @@ function normalizeProfileStreamDeckSettings(raw) {
                     roomId: typeof actionData.roomId === "string" ? actionData.roomId : undefined,
                     userId: typeof actionData.userId === "string" ? actionData.userId : undefined,
                     roleId: typeof actionData.roleId === "string" ? actionData.roleId : undefined,
+                    raspberryPiId: typeof actionData.raspberryPiId === "string" ? actionData.raspberryPiId : undefined,
                     broadcastGroupId: typeof actionData.broadcastGroupId === "string"
                         ? actionData.broadcastGroupId
                         : undefined,

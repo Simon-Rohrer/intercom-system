@@ -55,6 +55,7 @@ const allowedStreamDeckActionTypes = new Set<StreamDeckActionType>([
   "page_jump",
   "page_home",
   "page_back",
+  "raspberry_status",
 ]);
 
 type ImageEffectMode = 0 | 1 | 2;
@@ -109,6 +110,8 @@ function normalizeProfileStreamDeckSettings(
                 typeof actionData.userId === "string" ? actionData.userId : undefined,
               roleId:
                 typeof actionData.roleId === "string" ? actionData.roleId : undefined,
+              raspberryPiId:
+                typeof actionData.raspberryPiId === "string" ? actionData.raspberryPiId : undefined,
               broadcastGroupId:
                 typeof actionData.broadcastGroupId === "string"
                   ? actionData.broadcastGroupId
