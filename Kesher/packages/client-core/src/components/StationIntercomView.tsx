@@ -1626,11 +1626,19 @@ export function StationIntercomView({
     () => streamDeckCurrentButtons.filter(isConfiguredStreamDeckButton).length,
     [streamDeckCurrentButtons],
   );
-  const streamDeckNotice = streamDeckTransferError || streamDeckError
+  const streamDeckErrorNotice = streamDeckError
+    ? {
+        tone: "error" as const,
+        title: "Stream Deck error",
+        message: streamDeckError,
+      }
+    : null;
+
+  const streamDeckTransferNotice = streamDeckTransferError
     ? {
         tone: "error" as const,
         title: "Stream Deck action failed",
-        message: streamDeckTransferError || streamDeckError,
+        message: streamDeckTransferError,
       }
     : streamDeckTransferMessage
       ? {
@@ -3280,23 +3288,17 @@ export function StationIntercomView({
                           </button>
                         </div>
                       </div>
-                      {streamDeckNotice ? (
+                      {streamDeckErrorNotice ? (
                         <div
-                          className={`streamdeck-notice ${streamDeckNotice.tone}`}
-                          role={streamDeckNotice.tone === "error" ? "alert" : "status"}
+                          className={`streamdeck-notice ${streamDeckErrorNotice.tone}`}
+                          role="alert"
                         >
                           <span className="streamdeck-notice-icon">
-                            <StreamDeckUiIcon
-                              name={
-                                streamDeckNotice.tone === "error"
-                                  ? "warning"
-                                  : "check"
-                              }
-                            />
+                            <StreamDeckUiIcon name="warning" />
                           </span>
                           <span>
-                            <strong>{streamDeckNotice.title}</strong>
-                            <small>{streamDeckNotice.message}</small>
+                            <strong>{streamDeckErrorNotice.title}</strong>
+                            <small>{streamDeckErrorNotice.message}</small>
                           </span>
                         </div>
                       ) : null}
@@ -3978,6 +3980,47 @@ export function StationIntercomView({
                             {companionPublishBusy || streamDeckBusy
                               ? "Publishing..."
                               : "Save & publish"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                {streamDeckTransferNotice ? (
+                  <div
+                    className="streamdeck-confirm-backdrop"
+                    role="presentation"
+                    onMouseDown={(event) => {
+                      if (event.target === event.currentTarget) {
+                        setStreamDeckTransferError("");
+                        setStreamDeckTransferMessage("");
+                      }
+                    }}
+                  >
+                    <div
+                      className="streamdeck-confirm-dialog"
+                      role="dialog"
+                      aria-modal="true"
+                    >
+                      <div className={`streamdeck-confirm-icon ${streamDeckTransferNotice.tone}`}>
+                        <StreamDeckUiIcon name={streamDeckTransferNotice.tone === "error" ? "warning" : "check"} />
+                      </div>
+                      <div className="streamdeck-confirm-content">
+                        <span className="streamdeck-confirm-eyebrow">
+                          Status
+                        </span>
+                        <h4>{streamDeckTransferNotice.title}</h4>
+                        <p>{streamDeckTransferNotice.message}</p>
+                        <div className="streamdeck-confirm-actions" style={{ marginTop: '1.25rem', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            className="shortcut-btn shortcut-btn-primary"
+                            onClick={() => {
+                              setStreamDeckTransferError("");
+                              setStreamDeckTransferMessage("");
+                            }}
+                          >
+                            Okay
                           </button>
                         </div>
                       </div>

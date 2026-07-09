@@ -5903,6 +5903,22 @@ button.secondary {
     rgba(255, 255, 255, 0.04);
 }
 
+.streamdeck-confirm-icon.success {
+  color: #a8f3c2;
+  border-color: rgba(34, 197, 94, 0.4);
+  background:
+    linear-gradient(180deg, rgba(20, 198, 75, 0.2), rgba(11, 102, 35, 0.15)),
+    rgba(255, 255, 255, 0.04);
+}
+
+.streamdeck-confirm-icon.error {
+  color: #ffcccc;
+  border-color: rgba(239, 68, 68, 0.4);
+  background:
+    linear-gradient(180deg, rgba(239, 68, 68, 0.2), rgba(153, 27, 27, 0.15)),
+    rgba(255, 255, 255, 0.04);
+}
+
 .streamdeck-confirm-icon svg {
   width: 22px;
   height: 22px;
