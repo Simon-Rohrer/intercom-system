@@ -3347,6 +3347,11 @@ func (s *Server) resolveButtonLabel(ctx context.Context, button StreamDeckButton
 			return fmt.Sprintf("Page %d", action.TargetPage+1), ""
 		}
 		return "Jump", ""
+	case StreamDeckActionTypeRaspberryStatus:
+		if action.RaspberryPiID != "" {
+			return action.RaspberryPiID, ""
+		}
+		return "PI Status", ""
 	}
 	return fallbackButtonLabel(action.Type), ""
 }
@@ -5271,6 +5276,11 @@ func (s *Server) companionPreviewButtonLabel(
 		return splitCompanionPreviewLabel("Back")
 	case StreamDeckActionTypePageJump:
 		return splitCompanionPreviewLabel(fmt.Sprintf("Page %d", action.TargetPage+1))
+	case StreamDeckActionTypeRaspberryStatus:
+		if action.RaspberryPiID != "" {
+			return splitCompanionPreviewLabel(action.RaspberryPiID)
+		}
+		return splitCompanionPreviewLabel("PI Status")
 	default:
 		return companionPreviewLabel{}
 	}
@@ -5289,6 +5299,8 @@ func companionPreviewButtonChannel(action *StreamDeckButtonAction) string {
 		return strings.TrimSpace(action.RoleID)
 	case StreamDeckActionTypeBroadcastPTT:
 		return strings.TrimSpace(action.BroadcastGroupID)
+	case StreamDeckActionTypeRaspberryStatus:
+		return strings.TrimSpace(action.RaspberryPiID)
 	default:
 		return ""
 	}
