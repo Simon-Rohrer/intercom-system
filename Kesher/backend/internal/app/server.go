@@ -5123,11 +5123,23 @@ func (s *Server) companionSettingsWithPreviewImages(
 			if strings.TrimSpace(button.Label) == "" {
 				button.Label = companionPreviewLabelText(label)
 			}
+			previewState := "IDLE"
+			previewLabel := label.primary
+			previewSubtitle := label.subtitle
+			if button.Action != nil && button.Action.Type == StreamDeckActionTypeRaspberryStatus {
+				piLabel, piSubtitle, piState := s.resolveRaspberryStatusIndicatorLabels(ctx, *button)
+				previewState = piState
+				previewLabel = piLabel
+				previewSubtitle = piSubtitle
+				if strings.TrimSpace(button.Label) == "" {
+					button.Label = piLabel
+				}
+			}
 			img, renderErr := renderer.RenderButtonOverlayImage(ButtonState{
 				Channel:    companionPreviewButtonChannel(button.Action),
-				State:      "IDLE",
-				Label:      label.primary,
-				Subtitle:   label.subtitle,
+				State:      previewState,
+				Label:      previewLabel,
+				Subtitle:   previewSubtitle,
 				ActionType: companionPreviewButtonActionType(button.Action),
 				Color:      strings.TrimSpace(button.Color),
 			})

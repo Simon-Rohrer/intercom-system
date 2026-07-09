@@ -328,6 +328,22 @@ func (r *ButtonImageRenderer) RenderButtonOverlayImage(state ButtonState) ([]byt
 	useCallPressedColor := pressed && (actionType == string(StreamDeckActionTypeCallRoom) || actionType == string(StreamDeckActionTypeReplyToCaller) || actionType == string(StreamDeckActionTypeIncomingCall))
 	useEmergencyPressedColor := pressed && actionType != string(StreamDeckActionTypeListenRoom) && actionType != string(StreamDeckActionTypeCallRoom) && actionType != string(StreamDeckActionTypeReplyToCaller) && actionType != string(StreamDeckActionTypeIncomingCall)
 	palette := getButtonPalette(actionType, state.Color, pressed)
+	if actionType == string(StreamDeckActionTypeRaspberryStatus) {
+		switch state.State {
+		case "PI_ONLINE":
+			palette.background = "#0a2218"
+			palette.border = "#22c55e"
+			palette.label = "#bbf7d0"
+		case "PI_OFFLINE":
+			palette.background = "#220a0a"
+			palette.border = "#ef4444"
+			palette.label = "#fecaca"
+		default:
+			palette.background = "#0d1117"
+			palette.border = "#334155"
+			palette.label = "#94a3b8"
+		}
+	}
 	strokeColor := palette.border
 	if pressed {
 		strokeColor = mixColors(strokeColor, "#ffffff", 0.2)
