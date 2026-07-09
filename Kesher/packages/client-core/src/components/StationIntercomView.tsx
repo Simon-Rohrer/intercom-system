@@ -1197,14 +1197,22 @@ export function StationIntercomView({
   const [activeSettingsPage, setActiveSettingsPage] =
     useState<SettingsPageId>("layout");
 
-  const [raspberryPis, setRaspberryPis] = useState<RaspberryPiStationStatus[]>([]);
+  // Use live monitoring data from prop as primary source, fall back to API fetch.
+  // This ensures the Stream Deck preview reflects current PI status without
+  // requiring the user to open the streamdeck settings page first.
+  const [raspberryPisFetched, setRaspberryPisFetched] = useState<RaspberryPiStationStatus[]>([]);
   useEffect(() => {
     if (activeSettingsPage === "streamdeck") {
       getRaspberryPiStationStatuses(token)
-        .then((res) => setRaspberryPis(res.stations))
+        .then((res) => setRaspberryPisFetched(res.stations))
         .catch(console.error);
     }
   }, [activeSettingsPage, token]);
+  // Prefer live monitoring data from prop (updated by App.tsx poller), fall back to fetched list
+  const raspberryPis: RaspberryPiStationStatus[] =
+    (raspberryPiStations && raspberryPiStations.length > 0)
+      ? raspberryPiStations
+      : raspberryPisFetched;
   const [streamDeckPreviewPressedIndexes, setStreamDeckPreviewPressedIndexes] =
     useState<number[]>([]);
   const [activeDirectTab, setActiveDirectTab] = useState<string>("all");
@@ -1735,14 +1743,20 @@ export function StationIntercomView({
           : "IDLE";
 
       if (rawButton.action?.type === "raspberry_status" && rawButton.action.raspberryPiId) {
-        const pi = raspberryPis.find(p => p.deviceId === rawButton.action?.raspberryPiId);
+        const piId = rawButton.action.raspberryPiId;
+        // Match by name OR deviceId — the dropdown stores pi.name as value,
+        // but the backend also accepts deviceId.
+        const pi = raspberryPis.find(
+          (p) => p.name === piId || p.deviceId === piId
+        );
         if (pi) {
-          previewState = pi.online ? "PI_ONLINE" : "PI_OFFLINE";
+          const isOnline = ["intercom_connected", "waiting_for_intercom", "launcher_online"].includes(pi.effectiveStatus);
+          previewState = isOnline ? "PI_ONLINE" : "PI_OFFLINE";
           labels.primary = pi.name || pi.deviceId;
-          labels.subtitle = pi.online ? "Connected" : "Disconnected";
+          labels.subtitle = isOnline ? "Connected" : "Disconnected";
         } else {
-          labels.primary = rawButton.action.raspberryPiId;
-          labels.subtitle = "Unconfigured";
+          labels.primary = piId;
+          labels.subtitle = raspberryPis.length === 0 ? "Loading..." : "Not found";
         }
       }
 
