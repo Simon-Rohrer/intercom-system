@@ -3228,10 +3228,12 @@ func (s *Server) resolveRaspberryStatusIndicatorLabels(ctx context.Context, butt
 	if err == nil {
 		for _, pi := range resp.Stations {
 			if pi.Name == targetPi || pi.DeviceID == targetPi {
-				if pi.EffectiveStatus == "Connected" || pi.EffectiveStatus == "Online" {
+				switch pi.EffectiveStatus {
+				case "intercom_connected", "waiting_for_intercom", "launcher_online":
 					return primary, "Connected", "PI_ONLINE"
+				default:
+					return primary, "Disconnected", "PI_OFFLINE"
 				}
-				return primary, "Disconnected", "PI_OFFLINE"
 			}
 		}
 	}

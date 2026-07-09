@@ -3728,11 +3728,14 @@ export function StationIntercomView({
                               }
                             >
                               <option value="">Select PI...</option>
-                              {raspberryPis.map((pi) => (
-                                <option key={`streamdeck-pi-${pi.name}`} value={pi.name}>
-                                  {pi.name} {pi.effectiveStatus !== "Online" && pi.effectiveStatus !== "Connected" ? "(Offline)" : ""}
-                                </option>
-                              ))}
+                              {raspberryPis.map((pi) => {
+                                const isOnline = ["intercom_connected", "waiting_for_intercom", "launcher_online"].includes(pi.effectiveStatus);
+                                return (
+                                  <option key={`streamdeck-pi-${pi.name}`} value={pi.name}>
+                                    {isOnline ? "🟢" : "🔴"} {pi.name} {!isOnline ? "(Offline)" : ""}
+                                  </option>
+                                );
+                              })}
                             </select>
                           </label>
                         ) : null}

@@ -1224,6 +1224,7 @@ func validateStreamDeckSettings(in StreamDeckSettings) (StreamDeckSettings, erro
 				action.UserID = strings.TrimSpace(action.UserID)
 				action.RoleID = strings.TrimSpace(action.RoleID)
 				action.BroadcastGroupID = strings.TrimSpace(action.BroadcastGroupID)
+				action.RaspberryPiID = strings.TrimSpace(action.RaspberryPiID)
 				switch action.Type {
 				case StreamDeckActionTypeNone, StreamDeckActionTypeMuteToggle, StreamDeckActionTypeReplyToCaller, StreamDeckActionTypeIncomingCall, StreamDeckActionTypePageUp, StreamDeckActionTypePageDown, StreamDeckActionTypePTTSelected, StreamDeckActionTypePageHome, StreamDeckActionTypePageBack:
 				case StreamDeckActionTypePTTRoom:
@@ -1266,6 +1267,8 @@ func validateStreamDeckSettings(in StreamDeckSettings) (StreamDeckSettings, erro
 					if action.TargetPage < 0 {
 						return StreamDeckSettings{}, ErrInvalidInput
 					}
+				case StreamDeckActionTypeRaspberryStatus:
+					// raspberryPiId is optional — allow saving without PI selected
 				default:
 					return StreamDeckSettings{}, ErrInvalidInput
 				}

@@ -138,14 +138,19 @@ func (r *ButtonImageRenderer) RenderButtonImage(state ButtonState) ([]byte, erro
 	palette := getButtonPalette(actionType, state.Color, pressed)
 
 	if actionType == string(StreamDeckActionTypeRaspberryStatus) {
-		if state.State == "PI_ONLINE" {
-			palette.background = "#10b981" // Green
-			palette.border = "#34d399"
-			palette.label = "#ffffff"
-		} else if state.State == "PI_OFFLINE" {
-			palette.background = "#ef4444" // Red
-			palette.border = "#f87171"
-			palette.label = "#ffffff"
+		switch state.State {
+		case "PI_ONLINE":
+			palette.background = "#0a2218" // deep dark green tint
+			palette.border = "#22c55e"      // vivid green
+			palette.label = "#bbf7d0"
+		case "PI_OFFLINE":
+			palette.background = "#220a0a" // deep dark red tint
+			palette.border = "#ef4444"     // vivid red
+			palette.label = "#fecaca"
+		default:
+			palette.background = "#0d1117"
+			palette.border = "#334155"
+			palette.label = "#94a3b8"
 		}
 	}
 
