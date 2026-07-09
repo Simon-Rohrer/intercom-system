@@ -319,7 +319,10 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
         // though new images arrive via the WebSocket.
         const img = self.getButtonImage(slotIndex, pageNumber);
         if (img) {
-          return { png: img } as CompanionAdvancedFeedbackResult;
+          return {
+            ...fallbackStyle,
+            png: img,
+          } as CompanionAdvancedFeedbackResult;
         }
 
         return fallbackStyle as CompanionAdvancedFeedbackResult;

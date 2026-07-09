@@ -285,7 +285,10 @@ export function UpdateFeedbacks(self) {
                 // though new images arrive via the WebSocket.
                 const img = self.getButtonImage(slotIndex, pageNumber);
                 if (img) {
-                    return { png: img };
+                    return {
+                        ...fallbackStyle,
+                        png: img,
+                    };
                 }
                 return fallbackStyle;
             },
