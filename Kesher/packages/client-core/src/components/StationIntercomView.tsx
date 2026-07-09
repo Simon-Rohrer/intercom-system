@@ -1726,13 +1726,25 @@ export function StationIntercomView({
       const pressed = streamDeckPreviewPressedSet.has(rawButton.index);
       const signature = streamDeckPreviewSignature(button, pressed);
       const labels = splitStreamDeckLabel(resolvedButton.label);
-      const previewState: "IDLE" | "TALK" | "LISTEN" | "BROADCAST" = pressed
+      let previewState: "IDLE" | "TALK" | "LISTEN" | "BROADCAST" | "PI_ONLINE" | "PI_OFFLINE" = pressed
         ? rawButton.action?.type === "broadcast_ptt"
           ? "BROADCAST"
           : "TALK"
         : isListening
           ? "LISTEN"
           : "IDLE";
+
+      if (rawButton.action?.type === "raspberry_status" && rawButton.action.raspberryPiId) {
+        const pi = raspberryPis.find(p => p.id === rawButton.action?.raspberryPiId);
+        if (pi) {
+          previewState = pi.online ? "PI_ONLINE" : "PI_OFFLINE";
+          labels.primary = pi.name || pi.id;
+          labels.subtitle = pi.online ? "Connected" : "Disconnected";
+        } else {
+          labels.primary = rawButton.action.raspberryPiId;
+          labels.subtitle = "Unconfigured";
+        }
+      }
 
       return {
         buttonIndex: rawButton.index,
@@ -1765,6 +1777,7 @@ export function StationIntercomView({
     streamDeckLabelLookup,
     streamDeckCurrentButtons,
     streamDeckPreviewPressedSet,
+    raspberryPis,
   ]);
 
   useEffect(() => {
@@ -1776,7 +1789,7 @@ export function StationIntercomView({
       subtitle?: string;
       actionType?: StreamDeckActionType;
       color?: string;
-      state?: "IDLE" | "TALK" | "LISTEN" | "BROADCAST";
+      state?: "IDLE" | "TALK" | "LISTEN" | "BROADCAST" | "PI_ONLINE" | "PI_OFFLINE";
       channel?: string;
       isListening?: boolean;
       isPttSelected?: boolean;
