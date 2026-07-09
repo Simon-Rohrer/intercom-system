@@ -488,6 +488,8 @@ export class ModuleInstance extends InstanceBase {
                 const tp = action.targetPage;
                 return tp !== undefined ? `Page ${tp + 1}` : "Jump";
             }
+            case "raspberry_status":
+                return action.raspberryPiId || "Raspberry PI";
             default:
                 return "";
         }
