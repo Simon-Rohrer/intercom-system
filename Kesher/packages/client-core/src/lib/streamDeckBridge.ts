@@ -31,6 +31,7 @@ const streamDeckActionTypes: StreamDeckActionType[] = [
   "direct_role",
   "reply_to_caller",
   "incoming_call_indicator",
+  "raspberry_status",
   "broadcast_ptt",
   "mute_toggle",
   "volume_delta",

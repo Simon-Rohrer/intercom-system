@@ -388,6 +388,7 @@ export type StreamDeckActionType =
   | "direct_role"
   | "reply_to_caller"
   | "incoming_call_indicator"
+  | "raspberry_status"
   | "broadcast_ptt"
   | "mute_toggle"
   | "volume_delta"
@@ -407,6 +408,7 @@ export type StreamDeckButtonAction = {
   roomId?: string;
   userId?: string;
   roleId?: string;
+  raspberryPiId?: string;
   broadcastGroupId?: string;
   volumeDelta?: number;
   targetPage?: number;

@@ -32,6 +32,7 @@ type ImageStreamMessage struct {
 	ImageBuffer   string `json:"imageBuffer"` // Base64-encoded PNG
 	EffectValue   int    `json:"effectValue,omitempty"`
 	Label         string `json:"label,omitempty"`
+	Subtitle      string `json:"subtitle,omitempty"`
 	Channel       string `json:"channel,omitempty"`
 	State         string `json:"state,omitempty"` // "IDLE", "TALK", "LISTEN", "BROADCAST"
 	ActionType    string `json:"actionType,omitempty"`
@@ -135,6 +136,19 @@ func (r *ButtonImageRenderer) RenderButtonImage(state ButtonState) ([]byte, erro
 	useCallPressedColor := pressed && (actionType == string(StreamDeckActionTypeCallRoom) || actionType == string(StreamDeckActionTypeReplyToCaller) || actionType == string(StreamDeckActionTypeIncomingCall))
 	useEmergencyPressedColor := pressed && actionType != string(StreamDeckActionTypeListenRoom) && actionType != string(StreamDeckActionTypeCallRoom) && actionType != string(StreamDeckActionTypeReplyToCaller) && actionType != string(StreamDeckActionTypeIncomingCall)
 	palette := getButtonPalette(actionType, state.Color, pressed)
+
+	if actionType == string(StreamDeckActionTypeRaspberryStatus) {
+		if state.State == "PI_ONLINE" {
+			palette.background = "#10b981" // Green
+			palette.border = "#34d399"
+			palette.label = "#ffffff"
+		} else if state.State == "PI_OFFLINE" {
+			palette.background = "#ef4444" // Red
+			palette.border = "#f87171"
+			palette.label = "#ffffff"
+		}
+	}
+
 	strokeColor := palette.border
 	if pressed {
 		strokeColor = mixColors(strokeColor, "#ffffff", 0.2)
@@ -284,6 +298,117 @@ func (r *ButtonImageRenderer) RenderButtonImage(state ButtonState) ([]byte, erro
 			for i, line := range labelLines {
 				dc.DrawStringAnchored(line, w/2, labelStartY+float64(i)*labelLineHeight, 0.5, 0.5)
 			}
+		}
+	}
+
+	var buf bytes.Buffer
+	if err := dc.EncodePNG(&buf); err != nil {
+		return nil, fmt.Errorf("failed to encode PNG: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// RenderButtonOverlayImage renders only the non-editable visual chrome for a
+// Companion button: border, status stripes and the action header pill. The
+// content label is intentionally omitted so Companion can keep it as editable
+// text instead of baking it into the PNG.
+func (r *ButtonImageRenderer) RenderButtonOverlayImage(state ButtonState) ([]byte, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	w := float64(r.config.Width)
+	h := float64(r.config.Height)
+	actionType := strings.TrimSpace(state.ActionType)
+	pressed := state.IsActive || state.State == "TALK" || state.State == "BROADCAST"
+	useCallPressedColor := pressed && (actionType == string(StreamDeckActionTypeCallRoom) || actionType == string(StreamDeckActionTypeReplyToCaller) || actionType == string(StreamDeckActionTypeIncomingCall))
+	useEmergencyPressedColor := pressed && actionType != string(StreamDeckActionTypeListenRoom) && actionType != string(StreamDeckActionTypeCallRoom) && actionType != string(StreamDeckActionTypeReplyToCaller) && actionType != string(StreamDeckActionTypeIncomingCall)
+	palette := getButtonPalette(actionType, state.Color, pressed)
+	strokeColor := palette.border
+	if pressed {
+		strokeColor = mixColors(strokeColor, "#ffffff", 0.2)
+	}
+
+	dc := gg.NewContext(r.config.Width, r.config.Height)
+	dc.SetRGBA(0, 0, 0, 0)
+	dc.Clear()
+
+	const cardInset = 2.0
+	cardX := cardInset
+	cardY := cardInset
+	cardWidth := w - cardInset*2
+	cardHeight := h - cardInset*2
+	radius := math.Max(10, math.Round(w*0.12))
+
+	dc.SetHexColor(strokeColor)
+	if useEmergencyPressedColor {
+		dc.SetLineWidth(4)
+	} else {
+		dc.SetLineWidth(3)
+	}
+	dc.DrawRoundedRectangle(cardX, cardY, cardWidth, cardHeight, radius)
+	dc.Stroke()
+
+	if useEmergencyPressedColor {
+		dc.SetRGBA255(255, 115, 115, 72)
+		dc.SetLineWidth(2)
+		dc.DrawRoundedRectangle(cardInset-1, cardInset-1, w-(cardInset-1)*2, h-(cardInset-1)*2, radius+1)
+		dc.Stroke()
+	}
+	if useCallPressedColor {
+		dc.SetRGBA255(255, 214, 102, 90)
+		dc.SetLineWidth(2)
+		dc.DrawRoundedRectangle(cardInset-1, cardInset-1, w-(cardInset-1)*2, h-(cardInset-1)*2, radius+1)
+		dc.Stroke()
+	}
+
+	if (actionType == string(StreamDeckActionTypeSelectTalkRoom) || actionType == string(StreamDeckActionTypeSelectListen)) && state.IsPTTSelected {
+		stripeHeight := math.Max(6, math.Round(h*0.075))
+		dc.SetHexColor("#ff2d26")
+		dc.DrawRoundedRectangle(
+			cardInset+3,
+			cardInset+2,
+			(w-cardInset*2)-6,
+			stripeHeight,
+			math.Max(3, math.Round(stripeHeight/2)),
+		)
+		dc.Fill()
+	}
+
+	if (actionType == string(StreamDeckActionTypePTTRoom) || actionType == string(StreamDeckActionTypeListenRoom) || actionType == string(StreamDeckActionTypeSelectTalkRoom) || actionType == string(StreamDeckActionTypeSelectListen)) && state.IsListening {
+		stripeHeight := math.Max(6, math.Round(h*0.075))
+		dc.SetHexColor("#14c64b")
+		dc.DrawRoundedRectangle(
+			cardInset+3,
+			cardInset+(h-cardInset*2)-stripeHeight-2,
+			(w-cardInset*2)-6,
+			stripeHeight,
+			math.Max(3, math.Round(stripeHeight/2)),
+		)
+		dc.Fill()
+	}
+
+	actionHeader := streamDeckActionHeaderLabel(actionType)
+	if actionHeader != "" {
+		headerHeight := math.Max(13, math.Round(h*0.16))
+		headerY := cardY + math.Max(10, math.Round(h*0.12))
+		headerX := cardX + 6
+		headerWidth := cardWidth - 12
+		if headerWidth > 12 {
+			hr, hg, hb := hexToRGB(palette.border)
+			dc.SetRGBA255(hr, hg, hb, 58)
+			dc.DrawRoundedRectangle(headerX, headerY, headerWidth, headerHeight, math.Max(5, headerHeight/2))
+			dc.Fill()
+			dc.SetRGBA255(hr, hg, hb, 145)
+			dc.SetLineWidth(1)
+			dc.DrawRoundedRectangle(headerX, headerY, headerWidth, headerHeight, math.Max(5, headerHeight/2))
+			dc.Stroke()
+
+			headerSize := fitButtonFontSizeMin(dc, actionHeader, headerWidth-8, math.Max(8, h*0.1), 800, gobold.TTF, 7)
+			if face, err := loadButtonFontFace(gobold.TTF, headerSize); err == nil {
+				dc.SetFontFace(face)
+			}
+			dc.SetHexColor(palette.label)
+			dc.DrawStringAnchored(actionHeader, w/2, headerY+headerHeight/2, 0.5, 0.5)
 		}
 	}
 
@@ -673,8 +798,9 @@ func (c *ImageStreamCoordinator) BroadcastImageUpdateForTarget(roleID, username 
 		return
 	}
 
-	// Render the image
-	imageBuf, err := c.renderer.RenderButtonImage(state)
+	// Render only the Companion overlay/chrome image. The visible button label
+	// is sent separately as text so it remains editable in Companion.
+	imageBuf, err := c.renderer.RenderButtonOverlayImage(state)
 	if err != nil {
 		c.logger.Error("failed to render button image", "error", err)
 		return
@@ -690,6 +816,7 @@ func (c *ImageStreamCoordinator) BroadcastImageUpdateForTarget(roleID, username 
 		ImageBuffer:   imageBase64,
 		EffectValue:   state.EffectValue,
 		Label:         state.Label,
+		Subtitle:      state.Subtitle,
 		Channel:       state.Channel,
 		State:         state.State,
 		ActionType:    state.ActionType,
@@ -898,7 +1025,7 @@ func (s *Server) enqueueInitialImageSnapshot(ctx context.Context, client *ImageS
 		if !client.needsButtonUpdate(page.Page, button.Index, signature) {
 			continue
 		}
-		img, renderErr := s.imageStreamCoord.renderer.RenderButtonImage(state)
+		img, renderErr := s.imageStreamCoord.renderer.RenderButtonOverlayImage(state)
 		if renderErr != nil {
 			s.logger.Warn("image snapshot render failed", "roleId", roleID, "index", button.Index, "error", renderErr)
 			continue
@@ -911,6 +1038,7 @@ func (s *Server) enqueueInitialImageSnapshot(ctx context.Context, client *ImageS
 			ImageBuffer:   base64.StdEncoding.EncodeToString(img),
 			EffectValue:   state.EffectValue,
 			Label:         state.Label,
+			Subtitle:      state.Subtitle,
 			Channel:       state.Channel,
 			State:         state.State,
 			ActionType:    state.ActionType,

@@ -98,6 +98,8 @@ function resolveActionLabel(
         lookup.broadcastGroups.find((group) => group.id === action.broadcastGroupId)
           ?.name || action.broadcastGroupId
       );
+    case "raspberry_status":
+      return action.raspberryPiId || "PI Status";
     case "reply_to_caller":
       return `Reply\n${resolveReplyTargetLabel(lookup)}`;
     case "incoming_call_indicator":

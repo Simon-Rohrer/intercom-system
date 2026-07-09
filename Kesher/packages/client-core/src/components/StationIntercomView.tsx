@@ -1,4 +1,4 @@
-﻿import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Bootstrap,
   BroadcastGroup,
@@ -17,7 +17,7 @@ import type {
   KeyboardShortcutSettings,
 } from "../app/settings";
 import type { ChannelAudioFeedStatus } from "../hooks/useIntercomSession";
-import { renderStreamDeckPreviewImages } from "../api";
+import { renderStreamDeckPreviewImages, getRaspberryPiStationStatuses } from "../api";
 import { createHoldButtonProps } from "../lib/holdButton";
 import { resolveInputDeviceChannelCount } from "../lib/audioDeviceChannels";
 import { withResolvedStreamDeckButtonLabel } from "../lib/streamDeckLabels";
@@ -26,6 +26,7 @@ import { BrandLogo } from "./BrandLogo";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { LowPowerModeBadge } from "./LowPowerModeBadge";
 import { RaspberryPiStationsPanel } from "./RaspberryPiStationsPanel";
+import { ChatPopoutSection } from "./panels/ChatPopoutSection";
 
 const DB_MIN = -60;
 const OUTPUT_DB_MAX = 6; // +6 dB ~ gain 2.0
@@ -349,6 +350,8 @@ function streamDeckActionLabel(actionType: StreamDeckActionType | undefined) {
       return "Reply to caller";
     case "incoming_call_indicator":
       return "Incoming call indicator";
+    case "raspberry_status":
+      return "Raspberry PI Status";
     case "broadcast_ptt":
       return "Broadcast PTT";
     case "page_up":
@@ -1193,6 +1196,15 @@ export function StationIntercomView({
     useState(false);
   const [activeSettingsPage, setActiveSettingsPage] =
     useState<SettingsPageId>("layout");
+
+  const [raspberryPis, setRaspberryPis] = useState<RaspberryPiStationStatus[]>([]);
+  useEffect(() => {
+    if (activeSettingsPage === "streamdeck") {
+      getRaspberryPiStationStatuses(token)
+        .then((res) => setRaspberryPis(res.stations))
+        .catch(console.error);
+    }
+  }, [activeSettingsPage, token]);
   const [streamDeckPreviewPressedIndexes, setStreamDeckPreviewPressedIndexes] =
     useState<number[]>([]);
   const [activeDirectTab, setActiveDirectTab] = useState<string>("all");
@@ -2966,12 +2978,7 @@ export function StationIntercomView({
 
         {hasChatAndSignalPanel ? (
           <aside className="station-secondary-column">
-            <section className="station-block station-utility station-utility-section">
-              <h3>Chat</h3>
-              <div className="panel station-chat-panel">
-                {chatAndSignalPanel}
-              </div>
-            </section>
+            <ChatPopoutSection>{chatAndSignalPanel}</ChatPopoutSection>
             <section className="station-block station-utility station-utility-section station-pi-monitoring">
               <h3>Raspberry monitoring</h3>
               <div className="panel station-pi-monitoring-panel">
@@ -3658,6 +3665,7 @@ export function StationIntercomView({
                               <option value="direct_role">Direct role</option>
                               <option value="reply_to_caller">Reply to caller</option>
                               <option value="incoming_call_indicator">Incoming calls indicator</option>
+                              <option value="raspberry_status">Raspberry PI Status</option>
                             </optgroup>
                             <optgroup label="Broadcast and audio">
                               <option value="broadcast_ptt">Broadcast PTT</option>
@@ -3697,6 +3705,32 @@ export function StationIntercomView({
                               {appData.rooms.map((room) => (
                                 <option key={`streamdeck-room-${room.id}`} value={room.id}>
                                   {room.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+
+                        {streamDeckSelectedButton?.action?.type === "raspberry_status" ? (
+                          <label className="streamdeck-control">
+                            <span>Raspberry PI</span>
+                            <select
+                              aria-label="Stream Deck Raspberry PI target"
+                              value={streamDeckSelectedButton.action.raspberryPiId || ""}
+                              onChange={(event) =>
+                                updateStreamDeckSelectedButton((button) => ({
+                                  ...button,
+                                  action: {
+                                    type: "raspberry_status",
+                                    raspberryPiId: event.target.value,
+                                  },
+                                }))
+                              }
+                            >
+                              <option value="">Select PI...</option>
+                              {raspberryPis.map((pi) => (
+                                <option key={`streamdeck-pi-${pi.name}`} value={pi.name}>
+                                  {pi.name} {pi.effectiveStatus !== "Online" && pi.effectiveStatus !== "Connected" ? "(Offline)" : ""}
                                 </option>
                               ))}
                             </select>

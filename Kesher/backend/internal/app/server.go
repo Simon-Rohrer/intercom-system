@@ -2211,6 +2211,8 @@ func (s *Server) companionButtonSnapshotState(ctx context.Context, roleID string
 		state.Label, state.Subtitle = s.resolveReplyToCallerLabels(button, username)
 	} else if button.Action.Type == StreamDeckActionTypeIncomingCall {
 		state.Label, state.Subtitle = s.resolveIncomingCallIndicatorLabels(button, username)
+	} else if button.Action.Type == StreamDeckActionTypeRaspberryStatus {
+		state.Label, state.Subtitle, state.State = s.resolveRaspberryStatusIndicatorLabels(ctx, button)
 	}
 
 	action := button.Action
@@ -3194,6 +3196,47 @@ func (s *Server) resolveIncomingCallIndicatorLabels(button StreamDeckButtonConfi
 		return primary, caller
 	}
 	return primary, subtitle
+}
+
+func (s *Server) resolveRaspberryStatusIndicatorLabels(ctx context.Context, button StreamDeckButtonConfig) (primary, subtitle, state string) {
+	primary = "PI Status"
+	subtitle = "Unknown"
+	state = "PI_OFFLINE"
+
+	if raw := strings.TrimSpace(button.Label); raw != "" {
+		parts := strings.SplitN(raw, "\n", 2)
+		if line := strings.TrimSpace(parts[0]); line != "" {
+			primary = line
+		}
+		if len(parts) > 1 {
+			subtitle = strings.TrimSpace(parts[1])
+		}
+	}
+
+	targetPi := ""
+	if button.Action != nil {
+		targetPi = strings.TrimSpace(button.Action.RaspberryPiID)
+	}
+	if targetPi == "" {
+		return primary, "Unconfigured", "PI_OFFLINE"
+	}
+	if primary == "PI Status" || primary == "Raspberry PI Status" {
+		primary = targetPi
+	}
+
+	resp, err := s.buildRaspberryPiStationsResponse(ctx)
+	if err == nil {
+		for _, pi := range resp.Stations {
+			if pi.Name == targetPi || pi.DeviceID == targetPi {
+				if pi.EffectiveStatus == "Connected" || pi.EffectiveStatus == "Online" {
+					return primary, "Connected", "PI_ONLINE"
+				}
+				return primary, "Disconnected", "PI_OFFLINE"
+			}
+		}
+	}
+
+	return primary, "Disconnected", "PI_OFFLINE"
 }
 
 // resolveButtonLabel resolves the display label and optional subtitle for a button,
@@ -5038,6 +5081,18 @@ type companionPreviewLabel struct {
 	subtitle string
 }
 
+func companionPreviewLabelText(label companionPreviewLabel) string {
+	primary := strings.TrimSpace(label.primary)
+	subtitle := strings.TrimSpace(label.subtitle)
+	if primary == "" {
+		return ""
+	}
+	if subtitle == "" {
+		return primary
+	}
+	return primary + "\n" + subtitle
+}
+
 func (s *Server) companionSettingsWithPreviewImages(
 	ctx context.Context,
 	settings StreamDeckSettings,
@@ -5058,7 +5113,10 @@ func (s *Server) companionSettingsWithPreviewImages(
 		for buttonIndex := range settings.Pages[pageIndex].Buttons {
 			button := &settings.Pages[pageIndex].Buttons[buttonIndex]
 			label := s.companionPreviewButtonLabel(ctx, *button, rooms, users, activeRoleUsers, groups)
-			img, renderErr := renderer.RenderButtonImage(ButtonState{
+			if strings.TrimSpace(button.Label) == "" {
+				button.Label = companionPreviewLabelText(label)
+			}
+			img, renderErr := renderer.RenderButtonOverlayImage(ButtonState{
 				Channel:    companionPreviewButtonChannel(button.Action),
 				State:      "IDLE",
 				Label:      label.primary,
