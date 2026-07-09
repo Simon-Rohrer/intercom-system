@@ -427,6 +427,7 @@ export function normalizeStreamDeckSettings(data: unknown): StreamDeckSettings {
     "direct_role",
     "reply_to_caller",
     "incoming_call_indicator",
+    "raspberry_status",
     "broadcast_ptt",
     "mute_toggle",
     "volume_delta",
@@ -491,6 +492,10 @@ export function normalizeStreamDeckSettings(data: unknown): StreamDeckSettings {
                   typeof actionRaw.userId === "string" ? actionRaw.userId : undefined,
                 roleId:
                   typeof actionRaw.roleId === "string" ? actionRaw.roleId : undefined,
+                raspberryPiId:
+                  typeof actionRaw.raspberryPiId === "string"
+                    ? actionRaw.raspberryPiId
+                    : undefined,
                 broadcastGroupId:
                   typeof actionRaw.broadcastGroupId === "string"
                     ? actionRaw.broadcastGroupId
