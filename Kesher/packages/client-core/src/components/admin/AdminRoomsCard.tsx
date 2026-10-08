@@ -4,6 +4,7 @@ import { createRoom, deleteRoom, updateRoom } from "../../api";
 import { AdminCardHeader } from "./AdminCardHeader";
 import { RoleMultiSelect } from "./RoleMultiSelect";
 import { useAdminAction } from "./useAdminAction";
+import { useAdminCardOpenState } from "./adminCardOpen";
 
 type AdminRoomsCardProps = {
   token: string;
@@ -25,7 +26,7 @@ export function AdminRoomsCard({
     { value: 3, label: "Critical" },
   ] as const;
 
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useAdminCardOpenState();
   const {
     busy: adminBusy,
     error: adminError,

@@ -1,0 +1,148 @@
+/* ==========================================================
+   STATION SETTINGS MODAL (frame only)
+   Flat rack panel, condensed labels, cards on the page colour.
+   Inner editors (audio, Stream Deck, shortcuts) keep their own
+   layout rules in app.css.
+   ========================================================== */
+
+.station-modal-backdrop {
+  background: rgba(5, 6, 8, 0.78);
+}
+.station-modal.panel {
+  background: var(--k-rack);
+  border: 1px solid var(--k-line);
+  border-radius: 8px;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.6);
+}
+.station-modal-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--k-line);
+  background: var(--k-rack);
+}
+.station-modal-title > span {
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  font-size: 12px;
+  color: var(--k-ink-3);
+}
+.station-modal-header h3 {
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--k-ink);
+}
+.station-shell .station-modal-close {
+  width: 38px;
+  height: 38px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--k-line);
+  border-radius: 6px;
+  color: var(--k-ink-2);
+}
+.station-shell .station-modal-close:hover {
+  color: var(--k-ink);
+  border-color: var(--k-line-strong);
+  background: var(--k-face);
+}
+
+.station-settings-nav {
+  border-right: 1px solid var(--k-line-soft);
+  background: var(--k-rack);
+  gap: 2px;
+  padding: 12px 10px;
+}
+.station-shell .station-settings-nav button {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--k-ink-2);
+  font-size: 14px;
+  font-weight: 500;
+}
+.station-shell .station-settings-nav button:hover,
+.station-shell .station-settings-nav button:focus-visible {
+  background: var(--k-face);
+  color: var(--k-ink);
+  border-color: transparent;
+}
+.station-shell .station-settings-nav button.active {
+  background: var(--k-face-hi);
+  color: var(--k-ink);
+  box-shadow: inset 2px 0 0 var(--k-accent);
+}
+.station-settings-nav svg {
+  color: var(--k-ink-3);
+}
+.station-settings-nav button.active svg {
+  color: var(--k-accent);
+}
+
+.station-modal-body {
+  background: var(--k-bg);
+  padding: 16px;
+  gap: 14px;
+}
+.station-settings-card {
+  padding: 14px;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-panel);
+  background: var(--k-rack);
+  box-shadow: none;
+}
+.station-modal-backdrop-low-power .station-settings-card {
+  background: var(--k-rack);
+}
+.station-settings-section-head > div > span {
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  font-size: 11px;
+  color: var(--k-ink-3);
+}
+.station-settings-section-title {
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-size: 17px;
+  color: var(--k-ink);
+}
+.station-settings-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid var(--k-line);
+  background: var(--k-face);
+  color: var(--k-accent);
+}
+.station-settings-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* form controls inside the modal */
+.station-modal input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.station-modal select {
+  border-radius: 6px;
+  border: 1px solid var(--k-line);
+  background-color: var(--k-face);
+  color: var(--k-ink);
+}
+.station-modal input:focus,
+.station-modal select:focus {
+  border-color: var(--k-accent);
+  outline: none;
+}
+.station-modal input[type="checkbox"] {
+  accent-color: var(--k-accent);
+}
+
+@media (max-width: 720px) {
+  .station-modal-header h3 {
+    font-size: 19px;
+  }
+}

@@ -3,6 +3,7 @@ import type { Bootstrap, Role } from "../../types";
 import { createRole, deleteRole, duplicateRole, updateRole } from "../../api";
 import { AdminCardHeader } from "./AdminCardHeader";
 import { useAdminAction } from "./useAdminAction";
+import { useAdminCardOpenState } from "./adminCardOpen";
 
 type AdminRolesCardProps = {
   token: string;
@@ -70,7 +71,7 @@ export function AdminRolesCard({
   appData,
   refreshBootstrapData,
 }: AdminRolesCardProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useAdminCardOpenState();
   const [roleEditor, setRoleEditor] = useState<RoleEditorState | null>(null);
   const roleEditorTrigger = useRef<HTMLElement | null>(null);
   const {

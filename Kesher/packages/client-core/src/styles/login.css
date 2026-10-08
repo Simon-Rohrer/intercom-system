@@ -1,0 +1,351 @@
+/* ==========================================================
+   LOGIN
+   Centered card on the rack background; big logo, mode tabs,
+   then the form for the chosen mode.
+   ========================================================== */
+
+.root.login {
+  position: relative;
+  max-width: none;
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 32px var(--k-gutter);
+  background: var(--k-bg);
+}
+.login-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(1200px 520px at 50% -10%, #141922 0%, transparent 70%);
+}
+.login-card.panel {
+  position: relative;
+  width: min(560px, 100%);
+  display: grid;
+  gap: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.login-card-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+.login-brand-logo.app-brand-logo {
+  height: 96px;
+  max-width: none;
+  width: auto;
+  filter: none;
+  flex: none;
+}
+.login-card-title {
+  min-width: 0;
+}
+.login-card-title h1 {
+  margin: 0;
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.login-card-title .variant-subtitle {
+  margin: 6px 0 0;
+  color: var(--k-ink-2);
+  font-size: 15px;
+}
+
+/* the form box */
+.login-box {
+  display: grid;
+  gap: 18px;
+  padding: 18px 16px;
+  border: 1px solid var(--k-line);
+  border-radius: 8px;
+  background: var(--k-rack);
+}
+.login-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid var(--k-line);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.login-mode-tabs button {
+  height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 14px;
+  color: var(--k-ink-3);
+}
+.login-mode-tabs button + button {
+  border-left: 1px solid var(--k-line);
+}
+.login-mode-tabs button.is-active {
+  background: var(--k-face-hi);
+  color: var(--k-ink);
+  box-shadow: inset 0 -2px 0 var(--k-accent);
+}
+.login-form,
+.login-remote-panel,
+.login-box > .login-admin-card {
+  display: grid;
+  gap: 16px;
+}
+
+.login-field,
+.login-admin-card label {
+  display: grid;
+  gap: 8px;
+}
+.login-field label {
+  display: block;
+}
+.login-label-text {
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 12px;
+  color: var(--k-ink-3);
+}
+.login-form input,
+.login-form select,
+.login-admin-card input {
+  height: 48px;
+  padding: 0 14px;
+  border-radius: 6px;
+  border: 1px solid var(--k-line);
+  background: var(--k-face);
+  color: var(--k-ink);
+  font-size: 16px;
+}
+.login-form select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--k-ink-3) 50%),
+    linear-gradient(135deg, var(--k-ink-3) 50%, transparent 50%);
+  background-position: calc(100% - 20px) 50%, calc(100% - 15px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 36px;
+}
+.login-form select option {
+  background: var(--k-face);
+  color: var(--k-ink);
+}
+.login-form input:focus,
+.login-form select:focus,
+.login-admin-card input:focus {
+  border-color: var(--k-accent);
+  outline: none;
+}
+.login-field.is-required-missing .login-label-text {
+  color: var(--k-ink-2);
+}
+.login-required-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--k-ink-3);
+  font-size: 13px;
+}
+.login-required-hint svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.login-card .primary,
+.login-card .secondary {
+  height: 52px;
+  padding: 0 18px;
+  border-radius: 6px;
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 16px;
+}
+.login-card .primary {
+  border: 1px solid var(--k-accent);
+  background: var(--k-accent);
+  color: var(--k-accent-ink);
+}
+.login-card .primary:disabled {
+  border-color: var(--k-line);
+  background: var(--k-face);
+  color: var(--k-ink-off);
+  cursor: not-allowed;
+}
+.login-card .secondary {
+  border: 1px solid var(--k-line);
+  background: var(--k-face-hi);
+  color: var(--k-ink);
+}
+.login-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--k-talk-deep);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--k-talk) 10%, transparent);
+  color: #ffb3ad;
+  font-size: 14px;
+}
+
+/* takeover + admin */
+.login-admin-card {
+  display: grid;
+  gap: 12px;
+}
+.login-form > .login-admin-card {
+  padding: 14px;
+  border: 1px solid var(--k-call);
+  border-radius: 6px;
+  background: var(--k-call-deep);
+}
+.login-admin-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.login-admin-head h3 {
+  margin: 0;
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 18px;
+}
+.login-admin-pin-hint {
+  margin-left: auto;
+  font-family: var(--k-font-mono);
+  font-size: 11px;
+  color: var(--k-ink-3);
+}
+.login-admin-note {
+  margin: 0;
+  color: var(--k-ink-2);
+  font-size: 14px;
+}
+.login-admin-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.login-admin-actions > button {
+  flex: 1 1 160px;
+}
+
+/* raspberry remote */
+.login-remote-stations {
+  display: grid;
+  border: 1px solid var(--k-line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.login-remote-empty {
+  padding: 14px;
+  color: var(--k-ink-3);
+}
+.login-remote-station {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--k-bg);
+}
+.login-remote-station + .login-remote-station {
+  border-top: 1px solid var(--k-line-soft);
+}
+.login-remote-station > span:first-child {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+.login-remote-station strong {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.login-remote-station > span:first-child > span {
+  color: var(--k-ink-3);
+  font-size: 13px;
+}
+.login-remote-station-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+.login-remote-status {
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+.login-remote-status.is-ready {
+  color: var(--k-ok);
+}
+.login-remote-status.is-waiting {
+  color: var(--k-call);
+}
+.login-remote-status.is-offline {
+  color: var(--k-bad);
+}
+.login-remote-join {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 6px;
+  border: 1px solid var(--k-accent);
+  background: var(--k-accent);
+  color: var(--k-accent-ink);
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.login-remote-join:disabled {
+  border-color: var(--k-line);
+  background: transparent;
+  color: var(--k-ink-off);
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .root.login {
+    place-items: start center;
+    padding-top: 24px;
+  }
+  .login-card-head {
+    gap: 14px;
+  }
+  .login-brand-logo.app-brand-logo {
+    height: 70px;
+  }
+  .login-card-title h1 {
+    font-size: 26px;
+  }
+  .login-mode-tabs button {
+    font-size: 13px;
+    letter-spacing: 0.06em;
+  }
+}

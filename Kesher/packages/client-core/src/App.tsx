@@ -3124,7 +3124,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   const simpleVoiceTargetId = session.talkRoomIds[0] || "";
   const simplePttTargetLabel =
     appData.rooms.find((room) => room.id === simpleVoiceTargetId)?.name ||
-    "No party line selected";
+    "Keine Party Line gewählt";
 
   const attentionFlashOverlay = session.incomingAttention ? (
     <div

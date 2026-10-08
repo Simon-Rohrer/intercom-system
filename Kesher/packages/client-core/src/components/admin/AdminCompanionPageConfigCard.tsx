@@ -7,6 +7,7 @@ import type {
   Bootstrap,
   CompanionRolePagesResponse,
 } from "../../types";
+import { useAdminCardOpenState } from "./adminCardOpen";
 
 type AdminCompanionPageConfigCardProps = {
   token: string;
@@ -19,7 +20,7 @@ export function AdminCompanionPageConfigCard({
   adminPin,
   appData,
 }: AdminCompanionPageConfigCardProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useAdminCardOpenState();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");

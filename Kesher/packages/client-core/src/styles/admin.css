@@ -1,0 +1,442 @@
+/* ==========================================================
+   ADMIN
+   Header rail, section navigation on the left, the selected
+   section in the middle, live state + PIN on the right.
+   Card internals keep their own layout rules (app.css) and pick
+   up the palette through the legacy aliases in theme.css.
+   ========================================================== */
+
+.root.admin-shell {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: var(--k-bg);
+  color: var(--k-ink);
+}
+
+/* ---------- header ---------- */
+.admin-shell-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 6px var(--k-gutter);
+  background: var(--k-rack);
+  border-bottom: 1px solid var(--k-line-soft);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.admin-shell-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.admin-shell-logo.app-brand-logo {
+  height: 46px;
+  max-width: none;
+  width: auto;
+  filter: none;
+  flex: none;
+}
+.admin-shell-sep {
+  width: 1px;
+  height: 34px;
+  background: var(--k-line);
+  flex: none;
+}
+.admin-shell-brand h1 {
+  margin: 0;
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.admin-shell-user {
+  margin: 2px 0 0;
+  color: var(--k-ink-2);
+  font-size: 13px;
+}
+.admin-shell-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.admin-shell-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--k-line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--k-ink-2);
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+.admin-shell-actions button:hover {
+  color: var(--k-ink);
+  background: var(--k-face);
+}
+.admin-shell-actions .admin-shell-logout:hover {
+  color: #fff;
+  border-color: var(--k-talk);
+  background: var(--k-talk-deep);
+}
+
+/* ---------- layout ---------- */
+.admin-stack {
+  min-width: 0;
+}
+.admin-settings-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 320px;
+  min-height: 100%;
+  align-items: start;
+}
+.admin-nav {
+  position: sticky;
+  top: 59px;
+  align-self: start;
+  max-height: calc(100vh - 59px);
+  overflow-y: auto;
+  display: grid;
+  gap: 4px;
+  padding: 16px 10px;
+  border-right: 1px solid var(--k-line-soft);
+  background: var(--k-rack);
+  min-height: calc(100vh - 59px);
+}
+.admin-nav-group {
+  display: grid;
+  gap: 2px;
+}
+.admin-nav-label {
+  padding: 12px 10px 6px;
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 12px;
+  color: var(--k-ink-3);
+}
+.admin-shell .admin-nav-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--k-ink-2);
+  font-size: 14px;
+  text-align: left;
+}
+.admin-nav-item small {
+  font-family: var(--k-font-mono);
+  font-size: 11px;
+  color: var(--k-ink-3);
+}
+.admin-shell .admin-nav-item:hover {
+  background: var(--k-face);
+  color: var(--k-ink);
+}
+.admin-shell .admin-nav-item[aria-current="page"] {
+  background: var(--k-face-hi);
+  color: var(--k-ink);
+  box-shadow: inset 2px 0 0 var(--k-accent);
+}
+
+.admin-settings-main {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  padding: 20px var(--k-gutter) 40px;
+}
+.admin-settings-side {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 20px var(--k-gutter) 40px;
+  border-left: 1px solid var(--k-line-soft);
+  background: var(--k-rack);
+  min-height: calc(100vh - 59px);
+}
+.admin-layout-intro {
+  display: grid;
+  gap: 4px;
+}
+.admin-layout-eyebrow {
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 12px;
+  color: var(--k-ink-3);
+}
+.admin-layout-intro h2 {
+  margin: 0;
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.admin-layout-intro-compact h2 {
+  font-size: 18px;
+}
+.admin-layout-intro p {
+  margin: 4px 0 0;
+  color: var(--k-ink-3);
+  max-width: 70ch;
+}
+.admin-section-cards,
+.admin-theme-groups,
+.admin-theme-group {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* ---------- cards ---------- */
+.admin-card {
+  min-width: 0;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-r-panel);
+  background: var(--k-bg);
+}
+.admin-settings-side .admin-card {
+  background: var(--k-bg);
+}
+.admin-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.admin-card-header-clickable {
+  cursor: pointer;
+}
+.admin-card-header-clickable:hover {
+  background: var(--k-rack);
+}
+.admin-card-title {
+  min-width: 0;
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+.admin-card-subtitle {
+  color: var(--k-ink-3);
+  font-size: 13px;
+}
+.admin-card-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.admin-shell .admin-toggle-button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--k-line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--k-ink-3);
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+.admin-shell .admin-toggle-button:hover {
+  color: var(--k-ink);
+  border-color: var(--k-line-strong);
+}
+.admin-card-body {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px 12px;
+  border-top: 1px solid var(--k-line);
+}
+
+/* ---------- form controls inside admin ---------- */
+.admin-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.admin-shell select,
+.admin-shell textarea {
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--k-line);
+  background-color: var(--k-face);
+  color: var(--k-ink);
+  font: inherit;
+  font-size: 14px;
+}
+.admin-shell textarea {
+  padding: 8px 10px;
+  min-height: 90px;
+}
+.admin-shell input:focus,
+.admin-shell select:focus,
+.admin-shell textarea:focus {
+  border-color: var(--k-accent);
+  outline: none;
+}
+.admin-shell input[type="checkbox"],
+.admin-shell input[type="radio"] {
+  accent-color: var(--k-accent);
+}
+.admin-shell button {
+  font: inherit;
+  border-radius: 6px;
+}
+.admin-shell .admin-card-body button:not([class]),
+.admin-shell .admin-card-body button[class=""],
+.admin-shell .primary,
+.admin-shell .secondary,
+.admin-shell .delete {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+.admin-shell .primary {
+  border: 1px solid var(--k-accent);
+  background: var(--k-accent);
+  color: var(--k-accent-ink);
+}
+.admin-shell .admin-card-body button:not([class]),
+.admin-shell .admin-card-body button[class=""],
+.admin-shell .secondary {
+  border: 1px solid var(--k-line);
+  background: var(--k-face-hi);
+  color: var(--k-ink);
+}
+.admin-shell .secondary:hover:not(:disabled) {
+  border-color: var(--k-line-strong);
+}
+.admin-shell .delete,
+.admin-shell .secondary.danger {
+  border: 1px solid var(--k-talk-deep);
+  background: color-mix(in srgb, var(--k-talk) 14%, transparent);
+  color: #ffb3ad;
+}
+.admin-shell .delete:hover:not(:disabled),
+.admin-shell .secondary.danger:hover:not(:disabled) {
+  background: var(--k-talk);
+  border-color: var(--k-talk);
+  color: #fff;
+}
+.admin-shell .primary:disabled,
+.admin-shell .secondary:disabled,
+.admin-shell .delete:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.admin-shell table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.admin-shell th {
+  text-align: left;
+  padding: 8px 10px;
+  background: var(--k-rack);
+  border-bottom: 1px solid var(--k-line);
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  color: var(--k-ink-3);
+}
+.admin-shell td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--k-line-soft);
+  vertical-align: middle;
+}
+.admin-shell h4 {
+  margin: 0;
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: 16px;
+  text-transform: uppercase;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 1180px) {
+  .admin-settings-layout {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+  .admin-settings-side {
+    grid-column: 1 / -1;
+    border-left: 0;
+    border-top: 1px solid var(--k-line-soft);
+    min-height: 0;
+  }
+}
+@media (max-width: 760px) {
+  .admin-settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .admin-nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    min-height: 0;
+    max-height: none;
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    padding: 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--k-line-soft);
+  }
+  .admin-nav-group {
+    display: flex;
+    gap: 4px;
+  }
+  .admin-nav-label {
+    display: none;
+  }
+  .admin-shell .admin-nav-item {
+    white-space: nowrap;
+  }
+  .admin-shell-header {
+    position: static;
+    gap: 10px;
+    padding-block: 8px;
+  }
+  .admin-shell-logo.app-brand-logo {
+    height: 36px;
+  }
+  .admin-shell-sep {
+    display: none;
+  }
+  .admin-layout-intro h2 {
+    font-size: 24px;
+  }
+}

@@ -44,7 +44,7 @@ describe("ChatSignalPanel", () => {
       />,
     );
 
-    expect(screen.getByText("No chat messages yet.")).toBeVisible();
+    expect(screen.getByText("Noch keine Nachrichten.")).toBeVisible();
   });
 
   it("selects Global Chat by default and can target a party line", async () => {
@@ -69,7 +69,7 @@ describe("ChatSignalPanel", () => {
     expect(destination).not.toHaveClass("chat-target-global");
 
     await user.selectOptions(destination, "room:foh");
-    await user.click(screen.getByRole("button", { name: "Send chat" }));
+    await user.click(screen.getByRole("button", { name: "Senden" }));
 
     expect(onSendChat).toHaveBeenCalledWith(
       { scope: "room", targetType: "room", targetId: "foh" },
@@ -122,13 +122,13 @@ describe("ChatSignalPanel", () => {
       />,
     );
 
-    await user.type(screen.getByPlaceholderText("Type chat message…"), "!");
+    await user.type(screen.getByPlaceholderText("Nachricht … (@ Person, # Party Line)"), "!");
     await user.click(
       screen.getByLabelText("Gelesen-Bestätigung anfordern"),
     );
-    await user.click(screen.getByPlaceholderText("Type chat message…"));
+    await user.click(screen.getByPlaceholderText("Nachricht … (@ Person, # Party Line)"));
     await user.keyboard("{Enter}");
-    await user.click(screen.getByRole("button", { name: "Send chat" }));
+    await user.click(screen.getByRole("button", { name: "Senden" }));
 
     expect(onMessageChange).toHaveBeenCalled();
     expect(onSendChat).toHaveBeenCalledTimes(2);
@@ -163,7 +163,7 @@ describe("ChatSignalPanel", () => {
     expect(
       screen.queryByLabelText("Gelesen-Bestätigung anfordern"),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Send chat" }));
+    await user.click(screen.getByRole("button", { name: "Senden" }));
     expect(onSendChat).toHaveBeenCalledWith(
       { scope: "global", targetType: "global", targetId: "global" },
       false,
@@ -398,7 +398,7 @@ describe("ChatSignalPanel", () => {
       />,
     );
 
-    const input = screen.getByPlaceholderText("Type chat message…");
+    const input = screen.getByPlaceholderText("Nachricht … (@ Person, # Party Line)");
     
     // Autocomplete should be visible initially
     expect(screen.getByText(/👤 @Sarah/)).toBeVisible();
@@ -426,7 +426,7 @@ describe("ChatSignalPanel", () => {
       />,
     );
 
-    const input = screen.getByPlaceholderText("Type chat message…");
+    const input = screen.getByPlaceholderText("Nachricht … (@ Person, # Party Line)");
     await user.click(input);
 
     // Press Tab to select first suggestion
@@ -450,7 +450,7 @@ describe("ChatSignalPanel", () => {
       />,
     );
 
-    const input = screen.getByPlaceholderText("Type chat message…");
+    const input = screen.getByPlaceholderText("Nachricht … (@ Person, # Party Line)");
     await user.click(input);
 
     // Initially first suggestion should be active (has "active" class)

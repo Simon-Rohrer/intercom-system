@@ -1,188 +1,214 @@
+/* Fonts are bundled (no Google Fonts) so kiosks without internet render correctly. */
+@import "@fontsource/barlow/latin-400.css";
+@import "@fontsource/barlow/latin-500.css";
+@import "@fontsource/barlow/latin-600.css";
+@import "@fontsource/barlow/latin-700.css";
+@import "@fontsource/barlow-condensed/latin-500.css";
+@import "@fontsource/barlow-condensed/latin-600.css";
+@import "@fontsource/barlow-condensed/latin-700.css";
+@import "@fontsource/jetbrains-mono/latin-400.css";
+@import "@fontsource/jetbrains-mono/latin-600.css";
+
 :root {
   color-scheme: dark;
-  font-family: Inter, system-ui, sans-serif;
 
   /* ==========================================
-     THEME CUSTOMIZATION
-     To change the color scheme, modify these variables below.
-     All UI elements reference these colors.
+     KESHER DESIGN TOKENS ("Broadcast-Pult")
+     Dark equipment-rack look. Status colors carry meaning
+     (talk / listen / call / direct / broadcast); the accent is
+     only for brand, focus and selection.
      ========================================== */
 
-  /* Base Colors - Main palette */
-  --bg: #0f1115;
-  --surface: #0f1115;
-  --surface-light: #1a2030;
-  --accent: #00d1ff;
-  --talk: #ff3b30;
-  --listen: #34c759;
-  --call: #ffcc00;
-  --p2p: #af52de;
-  --text: #e2e8f0;
-  --text-dim: #94a3b8;
+  /* Surfaces: page → rack (panels) → face (keys) */
+  --k-bg: #090b0e;
+  --k-rack: #0f1217;
+  --k-face: #161a20;
+  --k-face-hi: #1d222a;
+  --k-line: #262c35;
+  --k-line-soft: #1b2028;
+  --k-line-strong: #3a4250;
 
-  /* Extended Base Colors */
+  /* Ink */
+  --k-ink: #eceff3;
+  --k-ink-2: #a9b2be;
+  --k-ink-3: #6c7581;
+  --k-ink-off: #3c434e;
+
+  /* Accent (JMS) */
+  --k-accent: #00d1ff;
+  --k-accent-ink: #001218;
+
+  /* Status */
+  --k-talk: #ff3b30;
+  --k-talk-deep: #5a1410;
+  --k-listen: #30d158;
+  --k-listen-deep: #0c3d1b;
+  --k-call: #ffb020;
+  --k-call-deep: #4a3205;
+  --k-direct: #b79bff;
+  --k-direct-deep: #241f33;
+  --k-bcast: #5b9bff;
+  --k-bcast-deep: #12264a;
+  --k-ok: #30d158;
+  --k-bad: #ff5a4f;
+
+  /* Type */
+  --k-font-label: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --k-font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --k-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Shape */
+  --k-r-key: 7px;
+  --k-r-panel: 4px;
+  --k-gutter: clamp(12px, 1.6vw, 22px);
+  --k-key-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 2px 0 #050608;
+
+  font-family: var(--k-font-body);
+
+  /* ==========================================
+     LEGACY ALIASES
+     Older stylesheet sections still use these names;
+     they now resolve to the tokens above.
+     ========================================== */
+  --bg: var(--k-bg);
+  --surface: var(--k-bg);
+  --surface-light: var(--k-face-hi);
+  --accent: var(--k-accent);
+  --talk: var(--k-talk);
+  --listen: var(--k-listen);
+  --call: var(--k-call);
+  --p2p: var(--k-direct);
+  --text: var(--k-ink);
+  --text-dim: var(--k-ink-2);
+  --muted: var(--k-ink-3);
+  --forced: var(--k-listen);
+
   --accent-dark: #00a3cc;
-  --surface-dark: #0f1115;
-  --surface-darker: #060b14;
+  --accent-primary: var(--k-accent);
+  --surface-dark: var(--k-bg);
+  --surface-darker: #060709;
 
-  /* Semantic Colors - Status indicators */
-  --color-success: #34c759;
-  --color-error: #ff3b30;
-  --color-warning: #ffcc00;
-  --color-info: #00d1ff;
+  --color-success: var(--k-ok);
+  --color-error: var(--k-bad);
+  --color-warning: var(--k-call);
+  --color-info: var(--k-accent);
 
-  /* Text Colors - Hierarchical text levels */
-  --text-primary: #e2e8f0;
-  --text-secondary: #b7c8e3;
-  --text-tertiary: #9fb0cb;
-  --text-muted: #7786a1;
-  --text-dark: #4f5b72;
-  --text-bright: #dce7f8;
-  --text-bright-alt: #dcefff;
-  --text-bright-alt2: #e4efff;
+  --text-primary: var(--k-ink);
+  --text-secondary: var(--k-ink-2);
+  --text-tertiary: var(--k-ink-2);
+  --text-muted: var(--k-ink-3);
+  --text-dark: var(--k-ink-off);
+  --text-bright: var(--k-ink);
+  --text-bright-alt: var(--k-ink);
+  --text-bright-alt2: var(--k-ink);
 
-  /* Border Colors - Various border shades */
-  --border: rgba(255, 255, 255, 0.03);
-  --border-light: #2a3547;
-  --border-medium: #2a364d;
-  --border-strong: #2b3a55;
-  --border-dim: #1b2538;
-  --border-subtle: #223148;
+  --border: var(--k-line-soft);
+  --border-light: var(--k-line);
+  --border-medium: var(--k-line);
+  --border-strong: var(--k-line-strong);
+  --border-dim: var(--k-line-soft);
+  --border-subtle: var(--k-line);
 
-  /* Panel & Card Backgrounds */
-  --panel: #1e2839;
-  --panel-2: #2a3549;
-  --card-bg: var(--surface);
+  --panel: var(--k-face);
+  --panel-2: var(--k-face-hi);
+  --card-bg: var(--k-rack);
 
-  /* Button States - Generic button colors */
-  --btn-bg: var(--surface);
-  --btn-bg-hover: #2a3751;
-  --btn-bg-active: rgba(255, 255, 255, 0.16);
-  --btn-disabled-bg: #141b28;
-  --btn-disabled-text: #8a9ab4;
+  --btn-bg: var(--k-face);
+  --btn-bg-hover: var(--k-face-hi);
+  --btn-bg-active: rgba(255, 255, 255, 0.12);
+  --btn-disabled-bg: var(--k-rack);
+  --btn-disabled-text: var(--k-ink-off);
 
-  /* Interactive Element States */
-  --hover-overlay: rgba(255, 255, 255, 0.1);
-  --active-overlay: rgba(255, 255, 255, 0.2);
+  --hover-overlay: rgba(255, 255, 255, 0.06);
+  --active-overlay: rgba(255, 255, 255, 0.12);
 
-  /* Delete Button */
   --delete-bg: #c1121f;
   --delete-bg-hover: #a70f1c;
   --delete-bg-active: #8b0a16;
   --delete-border: #a00;
 
-  /* Input Elements */
-  --input-bg: #0f1720;
-  --input-border: #2e415d;
-  --input-border-hover: #476286;
+  --input-bg: var(--k-face);
+  --input-border: var(--k-line);
+  --input-border-hover: var(--k-line-strong);
 
-  /* Multiselect Option */
-  --option-bg: var(--panel);
-  --option-border: #2e415d;
-  --option-border-hover: #476286;
+  --option-bg: var(--k-face);
+  --option-border: var(--k-line);
+  --option-border-hover: var(--k-line-strong);
 
-  /* Audio Meter */
-  --meter-bg: var(--panel);
-  --meter-low: #2ecc71;
-  --meter-med: #f1c40f;
-  --meter-high: #e74c3c;
+  --meter-bg: #232932;
+  --meter-low: var(--k-listen);
+  --meter-med: var(--k-call);
+  --meter-high: var(--k-talk);
 
-  /* Dropdown */
-  --dropdown-bg: var(--surface-dark);
-  --dropdown-hover: #2a3751;
+  --dropdown-bg: var(--k-face);
+  --dropdown-hover: var(--k-face-hi);
 
-  /* Station Specific Colors */
-  --station-pin-active-bg: #ffb43a;
-  --station-pin-active-text: #1b2230;
-  --station-card-head-active-bg: #e3222a;
-  --station-card-head-ptt-active-bg: #c41c3b;
-  --station-listen-on-bg: #16a34a;
-  --station-call-bg: #171f2c;
-  --station-call-text: #f0c95d;
-  --station-call-active-bg: #f3c337;
-  --station-call-active-text: #1a1a1a;
+  --station-pin-active-bg: var(--k-call);
+  --station-pin-active-text: #1a1205;
+  --station-card-head-active-bg: var(--k-talk);
+  --station-card-head-ptt-active-bg: var(--k-talk);
+  --station-listen-on-bg: var(--k-listen-deep);
+  --station-call-bg: var(--k-face);
+  --station-call-text: var(--k-call);
+  --station-call-active-bg: var(--k-call);
+  --station-call-active-text: #1a1205;
   --station-call-active-icon: #40330c;
-  --station-tab-bg: #141d2b;
-  --station-dock-bg: #171f2d;
-  --station-broadcast-border: #385071;
-  --station-broadcast-border-alt: #35527e;
-  --station-broadcast-bg: #13233b;
-  --station-broadcast-text: #d7e7ff;
-  --station-broadcast-active-border: #3e5b8d;
-  --station-broadcast-active-bg-from: #1a263a;
-  --station-broadcast-active-bg-to: #162031;
+  --station-tab-bg: var(--k-face);
+  --station-dock-bg: var(--k-rack);
+  --station-broadcast-border: #22365a;
+  --station-broadcast-border-alt: #22365a;
+  --station-broadcast-bg: var(--k-bcast-deep);
+  --station-broadcast-text: var(--k-ink);
+  --station-broadcast-active-border: var(--k-bcast);
+  --station-broadcast-active-bg-from: var(--k-bcast-deep);
+  --station-broadcast-active-bg-to: var(--k-face);
   --station-broadcast-active-hover-bg: #1d3c6e;
-  --station-broadcast-active-hover-border: #4e79bb;
-  --station-broadcast-active-badge: #dbe8ff;
-  --station-direct-selected-bg: #162033;
-  --station-direct-selected-border: #34486c;
-  --station-direct-selected-text: #d5e4ff;
+  --station-broadcast-active-hover-border: var(--k-bcast);
+  --station-broadcast-active-badge: var(--k-ink);
+  --station-direct-selected-bg: var(--k-face-hi);
+  --station-direct-selected-border: var(--k-direct);
+  --station-direct-selected-text: var(--k-ink);
   --station-direct-removed-bg: #221218;
   --station-direct-removed-border: #4a2632;
   --station-direct-removed-text: #ff6a6a;
-  --station-direct-reply-active-border: #425575;
-  --station-direct-reply-active-bg: #1b2433;
-  --station-direct-reply-active-badge: #9fb0cb;
-  --station-ptt-border: #2c3a54;
-  --station-reply-border: #273551;
+  --station-direct-reply-active-border: var(--k-line-strong);
+  --station-direct-reply-active-bg: var(--k-face-hi);
+  --station-direct-reply-active-badge: var(--k-ink-2);
+  --station-ptt-border: var(--k-line);
+  --station-reply-border: var(--k-line);
+  --station-section-border: var(--k-line-soft);
+  --station-section-accent: var(--k-accent);
+  --station-section-soft-bg: var(--k-rack);
 
-  /* Simple View Colors */
-  --simple-ptt-bg: #1a2231;
-  --simple-ptt-border: #2c3a54;
+  --simple-ptt-bg: var(--k-face);
+  --simple-ptt-border: var(--k-line);
 
-  /* Admin Colors */
-  --admin-title: #dcefff;
+  --admin-title: var(--k-ink);
   --admin-error: #ffb3b3;
-  --admin-pin-note: #cfe1ff;
-  --admin-status-online: #4fff5c;
-  --admin-status-offline: #ff6b6b;
+  --admin-pin-note: var(--k-ink-2);
+  --admin-status-online: var(--k-ok);
+  --admin-status-offline: var(--k-bad);
   --admin-modal-bg-from: #1b1114;
   --admin-modal-bg-to: #0f0a0c;
   --admin-modal-text: #ff6b6b;
 
-  /* Disconnected State Colors */
   --disconnected-bg: #dc3232;
   --disconnected-text-highlight: #ffe7e7;
 
-  /* Modal Backgrounds */
-  --modal-dropdown-bg-from: #0f1720;
-  --modal-dropdown-bg-to: #0b131b;
+  --modal-dropdown-bg-from: var(--k-face);
+  --modal-dropdown-bg-to: var(--k-rack);
 }
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
-  background-color: var(--surface);
-  background-image: none;
-  color: var(--text);
+  background-color: var(--k-bg);
+  color: var(--k-ink);
+  font: 500 14px/1.4 var(--k-font-body);
+  -webkit-font-smoothing: antialiased;
 }
-
-/* subtle animated sheen on large screens */
-@media (min-width: 900px) {
-  body::after {
-    content: "";
-    position: fixed;
-    left: -20%;
-    top: -30%;
-    width: 160%;
-    height: 120%;
-    pointer-events: none;
-    background: transparent;
-    transform: rotate(-10deg);
-    animation: sheen 10s linear infinite;
-    mix-blend-mode: overlay;
-  }
-
-  @keyframes sheen {
-    0% {
-      transform: translateX(-5%) rotate(-10deg);
-    }
-    50% {
-      transform: translateX(5%) rotate(-10deg);
-    }
-    100% {
-      transform: translateX(-5%) rotate(-10deg);
-    }
-  }
+:focus-visible {
+  outline: 2px solid var(--k-accent);
+  outline-offset: 2px;
 }

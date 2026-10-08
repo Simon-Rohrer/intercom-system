@@ -9,6 +9,7 @@ import { AdminCardHeader } from "./AdminCardHeader";
 import { RoleMultiSelect } from "./RoleMultiSelect";
 import { PartyLineMultiSelect } from "./PartyLineMultiSelect";
 import { useAdminAction } from "./useAdminAction";
+import { useAdminCardOpenState } from "./adminCardOpen";
 
 type AdminChannelsCardProps = {
   token: string;
@@ -30,7 +31,7 @@ export function AdminChannelsCard({
     { value: 3, label: "Critical" },
   ] as const;
 
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useAdminCardOpenState();
   const {
     busy: adminBusy,
     error: adminError,

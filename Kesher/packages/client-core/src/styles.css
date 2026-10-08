@@ -1,2 +1,8 @@
 @import "./styles/theme.css";
 @import "./styles/app.css";
+@import "./styles/station.css";
+@import "./styles/settings.css";
+@import "./styles/chat.css";
+@import "./styles/login.css";
+@import "./styles/simple.css";
+@import "./styles/admin.css";

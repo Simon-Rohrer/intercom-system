@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChatTarget } from "../../types";
 
 type ChatEntry = {
@@ -221,193 +221,144 @@ export function ChatSignalPanel({
     setSelectedSuggestion(0);
   }
 
-  function handleSenderReply(username: string) {
+  function handleSenderReply(username: string, userId?: string) {
+    if (userId && availableTargetValues.has(`direct:${userId}`)) {
+      setSelectedTarget(`direct:${userId}`);
+    }
     onMessageChange(`@${username} `);
     setCaret(username.length + 2);
+    inputRef.current?.focus();
   }
+
+  const feedRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const stickToBottomRef = useRef(true);
+  // Newest messages arrive first; the feed reads top-to-bottom like a messenger.
+  const feedMessages = useMemo(
+    () => [...visibleMessages].reverse(),
+    [visibleMessages],
+  );
+  const awaitingMyAck = showAckOption
+    ? visibleMessages.filter(
+        (entry) => !entry.self && entry.ackRequired && !entry.acked,
+      ).length
+    : 0;
+
+  useLayoutEffect(() => {
+    const feed = feedRef.current;
+    if (feed && stickToBottomRef.current) {
+      feed.scrollTop = feed.scrollHeight;
+    }
+  }, [feedMessages]);
+
+  const scopeTag = (entry: ChatEntry) => {
+    if (entry.scope === "direct") {
+      return (
+        <span className="chat-feed-room chat-tag-direct">
+          {entry.self ? "Direkt" : "an dich"}
+        </span>
+      );
+    }
+    if (entry.scope === "global") {
+      return <span className="chat-feed-room global">Global</span>;
+    }
+    return (
+      <span
+        className={`chat-feed-room ${entry.scope === "broadcast" ? "chat-tag-broadcast" : "chat-tag-line"}`}
+      >
+        {entry.room}
+      </span>
+    );
+  };
 
   const closeSuggestions = () => {
     setSelectedSuggestion(0);
   };
 
   return (
-    <>
-      <label className="chat-target-control">
-        <span>Send message to</span>
-        <select
-          aria-label="Chat destination"
-          value={selectedTarget}
-          onChange={(event) => setSelectedTarget(event.target.value)}
+    <div className="chat-panel-body">
+      {awaitingMyAck > 0 ? (
+        <button
+          type="button"
+          className="chat-awaiting-ack"
+          onClick={() =>
+            feedRef.current
+              ?.querySelector(".chat-feed-ack-required")
+              ?.scrollIntoView({ block: "center" })
+          }
         >
-          <option value="global:global">Global Chat</option>
-          {rooms.length > 0 ? (
-            <optgroup label="Party Lines">
-              {rooms.map((room) => (
-                <option key={room.id} value={`room:${room.id}`}>
-                  {room.name}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
-          {activeUsers.some((user) => user.isWebOnline !== false) ? (
-            <optgroup label="Direct Messages">
-              {activeUsers
-                .filter((user) => user.isWebOnline !== false)
-                .map((user) => (
-                  <option key={user.userId} value={`direct:${user.userId}`}>
-                    {user.username} ({user.roleName})
-                  </option>
-                ))}
-            </optgroup>
-          ) : null}
-        </select>
-      </label>
-      <div className="chat">
-        <input
-          value={message}
-          onChange={(e) => {
-            onMessageChange(e.target.value);
-            setCaret(e.target.selectionStart || 0);
-            setSelectedSuggestion(0);
-          }}
-          onClick={(e) => setCaret(e.currentTarget.selectionStart || 0)}
-          onKeyUp={(e) => setCaret(e.currentTarget.selectionStart || 0)}
-          onKeyDown={(e) => {
-            if (suggestions.length === 0) {
-              if (e.key === "Enter") {
-                submitChat();
-              }
-              return;
-            }
-
-            if (e.key === "Escape") {
-              e.preventDefault();
-              closeSuggestions();
-              return;
-            }
-
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setSelectedSuggestion((prev) =>
-                prev + 1 >= suggestions.length ? 0 : prev + 1,
-              );
-              return;
-            }
-
-            if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setSelectedSuggestion((prev) =>
-                prev - 1 < 0 ? suggestions.length - 1 : prev - 1,
-              );
-              return;
-            }
-
-            if (e.key === "Enter" || e.key === "Tab") {
-              e.preventDefault();
-              const selected = suggestions[selectedSuggestion];
-              if (selected) {
-                applySuggestion(selected);
-              }
-              return;
-            }
-          }}
-          placeholder="Type chat message…"
-        />
-        <div className="chat-actions">
-          {showAckOption ? (
-            <button
-              type="button"
-              className={`chat-ack-btn ${requiresAck ? "active" : ""}`}
-              onClick={() => setRequiresAck(!requiresAck)}
-              title={requiresAck ? "Gelesen-Bestätigung aktiv" : "Gelesen-Bestätigung anfordern"}
-              aria-label="Gelesen-Bestätigung anfordern"
-            >
-              <span className="chat-ack-indicator" />
-            </button>
-          ) : null}
-          <button type="button" onClick={submitChat}>Send chat</button>
-        </div>
-        {suggestions.length > 0 ? (
-          <ul className="chat-autocomplete" role="listbox" aria-label="chat-autocomplete">
-            {suggestions.map((item, idx) => (
-              <li key={item.key}>
-                <button
-                  className={idx === selectedSuggestion ? "active" : ""}
-                  onClick={() => applySuggestion(item)}
-                  type="button"
-                >
-                  {item.label}
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-      <div className="chat-feed" aria-live="polite">
-        {visibleMessages.length === 0 ? (
-          <p className="chat-feed-empty">No chat messages yet.</p>
+          <span className="chat-awaiting-ack-dot" aria-hidden="true" />
+          <strong>{awaitingMyAck}</strong>
+          <span className="chat-awaiting-ack-long">
+            {awaitingMyAck === 1
+              ? " Nachricht wartet auf deine Bestätigung"
+              : " Nachrichten warten auf deine Bestätigung"}
+          </span>
+        </button>
+      ) : null}
+      <div
+        className="chat-feed"
+        aria-live="polite"
+        ref={feedRef}
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          stickToBottomRef.current =
+            el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+        }}
+      >
+        {feedMessages.length === 0 ? (
+          <p className="chat-feed-empty">Noch keine Nachrichten.</p>
         ) : (
           <ul className="chat-feed-list">
-            {visibleMessages.map((entry, index) => (
-              <li
-                key={`${entry.at}-${entry.from}-${index}`}
-                className={
-                  [
+            {feedMessages.map((entry, index) => {
+              const needsMyAck =
+                showAckOption && !entry.self && entry.ackRequired && !entry.acked;
+              return (
+                <li
+                  key={`${entry.at}-${entry.from}-${index}`}
+                  className={[
                     entry.scope === "direct" ? "chat-feed-direct" : "",
                     entry.scope === "global" ? "chat-feed-global" : "",
                     entry.self ? "self" : "",
-                    showAckOption &&
-                    !entry.self &&
-                    entry.ackRequired &&
-                    !entry.acked
-                      ? "chat-feed-ack-required"
-                      : "",
+                    needsMyAck ? "chat-feed-ack-required" : "",
                   ]
                     .filter(Boolean)
-                    .join(" ")
-                }
-              >
-                <div className="chat-feed-meta">
-                  <span>{entry.at}</span>
-                  <button
-                    type="button"
-                    className="chat-feed-sender"
-                    onClick={() => handleSenderReply(entry.from)}
-                  >
-                    {entry.from}
-                  </button>
-                  {entry.source === "telegram" ? (
-                    <span className="chat-feed-source-icon" title="Message from Telegram">
-                      📱
-                    </span>
-                  ) : null}
-                  <span
-                    className={`chat-feed-room${entry.scope === "global" ? " global" : ""}`}
-                  >
-                    {entry.room}
-                  </span>
-                  {showAckOption && entry.self && entry.ackRequired ? (
-                    <span
-                      className={`chat-feed-ack-status ${entry.acked ? "acked" : "pending"}`}
-                    >
-                      {entry.acked
-                        ? `Gelesen von ${entry.ackedBy || "Empfänger"}`
-                        : "Gelesen ausstehend"}
-                    </span>
-                  ) : null}
-                </div>
-                <div className="chat-feed-message-row">
-                  <p>{entry.body}</p>
-                  {showAckOption &&
-                  !entry.self &&
-                  entry.ackRequired &&
-                  !entry.acked &&
-                  entry.messageId ? (
+                    .join(" ")}
+                >
+                  <div className="chat-feed-meta">
+                    {entry.self ? null : (
+                      <button
+                        type="button"
+                        className="chat-feed-sender"
+                        title="Antworten"
+                        onClick={() => handleSenderReply(entry.from, entry.fromUserId)}
+                      >
+                        {entry.from}
+                      </button>
+                    )}
+                    {entry.source === "telegram" ? (
+                      <span
+                        className="chat-feed-source-icon"
+                        title="Message from Telegram"
+                      >
+                        Telegram
+                      </span>
+                    ) : null}
+                    {scopeTag(entry)}
+                    <time>{entry.at}</time>
+                    {needsMyAck ? (
+                      <span className="chat-feed-ack-flag">Bestätigung erwartet</span>
+                    ) : null}
+                  </div>
+                  <div className="chat-feed-message-row">
+                    <p>{entry.body}</p>
+                  </div>
+                  {needsMyAck && entry.messageId ? (
                     <button
                       type="button"
                       className="chat-feed-ack-btn"
                       aria-label="Als gelesen markieren"
-                      title="Klicken, um die Nachricht als gelesen zu bestätigen"
+                      title="Bestätigen, dass du die Nachricht gelesen hast"
                       onClick={() =>
                         onAcknowledge(entry.messageId || "", entry.fromUserId)
                       }
@@ -415,16 +366,181 @@ export function ChatSignalPanel({
                       <svg viewBox="0 0 24 24" aria-hidden="true">
                         <path d="m5 12 4 4L19 6" />
                       </svg>
-                      <span>Gelesen</span>
-                      <small>Klicken</small>
+                      <span>Gelesen – bestätigen</span>
                     </button>
                   ) : null}
-                </div>
-              </li>
-            ))}
+                  <div className="chat-feed-foot">
+                    {showAckOption && entry.self && entry.ackRequired ? (
+                      <span
+                        className={`chat-feed-ack-status ${entry.acked ? "acked" : "pending"}`}
+                      >
+                        {entry.acked
+                          ? `Gelesen von ${entry.ackedBy || "Empfänger"}`
+                          : "Gelesen ausstehend"}
+                      </span>
+                    ) : null}
+                    {showAckOption && !entry.self && entry.ackRequired && entry.acked ? (
+                      <span className="chat-feed-ack-status acked">Bestätigt</span>
+                    ) : null}
+                    {!entry.self ? (
+                      <button
+                        type="button"
+                        className="chat-feed-reply"
+                        onClick={() => handleSenderReply(entry.from, entry.fromUserId)}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M9 14 4 9l5-5" />
+                          <path d="M4 9h10a6 6 0 0 1 6 6v5" />
+                        </svg>
+                        Antworten
+                      </button>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
-    </>
+      <div className="chat-composer">
+        <div className="chat-composer-row">
+          <label className="chat-target-control">
+            <span>An</span>
+            <select
+              aria-label="Chat destination"
+              value={selectedTarget}
+              onChange={(event) => setSelectedTarget(event.target.value)}
+            >
+              <option value="global:global">Global (alle)</option>
+              {rooms.length > 0 ? (
+                <optgroup label="Party Lines">
+                  {rooms.map((room) => (
+                    <option key={room.id} value={`room:${room.id}`}>
+                      {room.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {activeUsers.some((user) => user.isWebOnline !== false) ? (
+                <optgroup label="Direkt">
+                  {activeUsers
+                    .filter((user) => user.isWebOnline !== false)
+                    .map((user) => (
+                      <option key={user.userId} value={`direct:${user.userId}`}>
+                        {user.username} ({user.roleName})
+                      </option>
+                    ))}
+                </optgroup>
+              ) : null}
+            </select>
+          </label>
+          {showAckOption ? (
+            <button
+              type="button"
+              className={`chat-ack-btn ${requiresAck ? "active" : ""}`}
+              aria-pressed={requiresAck}
+              onClick={() => setRequiresAck(!requiresAck)}
+              title={
+                requiresAck
+                  ? "Gelesen-Bestätigung aktiv"
+                  : "Empfänger muss die Nachricht bestätigen"
+              }
+              aria-label="Gelesen-Bestätigung anfordern"
+            >
+              <span className="chat-ack-indicator" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="m5 12 4 4L19 6" />
+                </svg>
+              </span>
+              <span className="chat-ack-label">Bestätigung</span>
+            </button>
+          ) : null}
+        </div>
+        <div className="chat">
+          <input
+            ref={inputRef}
+            value={message}
+            onChange={(e) => {
+              onMessageChange(e.target.value);
+              setCaret(e.target.selectionStart || 0);
+              setSelectedSuggestion(0);
+            }}
+            onClick={(e) => setCaret(e.currentTarget.selectionStart || 0)}
+            onKeyUp={(e) => setCaret(e.currentTarget.selectionStart || 0)}
+            onKeyDown={(e) => {
+              if (suggestions.length === 0) {
+                if (e.key === "Enter") {
+                  stickToBottomRef.current = true;
+                  submitChat();
+                }
+                return;
+              }
+
+              if (e.key === "Escape") {
+                e.preventDefault();
+                closeSuggestions();
+                return;
+              }
+
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setSelectedSuggestion((prev) =>
+                  prev + 1 >= suggestions.length ? 0 : prev + 1,
+                );
+                return;
+              }
+
+              if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setSelectedSuggestion((prev) =>
+                  prev - 1 < 0 ? suggestions.length - 1 : prev - 1,
+                );
+                return;
+              }
+
+              if (e.key === "Enter" || e.key === "Tab") {
+                e.preventDefault();
+                const selected = suggestions[selectedSuggestion];
+                if (selected) {
+                  applySuggestion(selected);
+                }
+                return;
+              }
+            }}
+            placeholder="Nachricht … (@ Person, # Party Line)"
+          />
+          <button
+            type="button"
+            className="chat-send"
+            aria-label="Senden"
+            onClick={() => {
+              stickToBottomRef.current = true;
+              submitChat();
+            }}
+          >
+            <span className="chat-send-label">Senden</span>
+            <svg className="chat-send-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M22 2 11 13" />
+              <path d="m22 2-7 20-4-9-9-4z" />
+            </svg>
+          </button>
+          {suggestions.length > 0 ? (
+            <ul className="chat-autocomplete" role="listbox" aria-label="chat-autocomplete">
+              {suggestions.map((item, idx) => (
+                <li key={item.key}>
+                  <button
+                    className={idx === selectedSuggestion ? "active" : ""}
+                    onClick={() => applySuggestion(item)}
+                    type="button"
+                  >
+                    {item.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }

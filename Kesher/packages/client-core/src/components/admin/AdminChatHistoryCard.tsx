@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { clearChatHistory, updateAckSettings } from "../../api";
 import type { Bootstrap } from "../../types";
 import { AdminCardHeader } from "./AdminCardHeader";
+import { useAdminCardOpenState } from "./adminCardOpen";
 
 type AdminChatHistoryCardProps = {
   token: string;
@@ -16,7 +17,7 @@ export function AdminChatHistoryCard({
   appData,
   refreshBootstrapData,
 }: AdminChatHistoryCardProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useAdminCardOpenState();
   const [busy, setBusy] = useState(false);
   const [busyAck, setBusyAck] = useState(false);
   const [message, setMessage] = useState("");

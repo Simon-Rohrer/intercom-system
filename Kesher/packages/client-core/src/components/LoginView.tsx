@@ -53,8 +53,8 @@ function roleNameFor(publicData: PublicBootstrap, roleId: string): string {
 }
 
 function remoteStationStatusLabel(station: RaspberryPiRemoteStationStatus): string {
-  if (station.online && station.intercomConnected) return "Ready";
-  if (station.online) return "Waiting";
+  if (station.online && station.intercomConnected) return "Bereit";
+  if (station.online) return "Wartet";
   return "Offline";
 }
 
@@ -91,23 +91,25 @@ export function LoginView({
   const roleMissing = !roleId || !selectedRoleIsAvailable;
   const roleHintText =
     availableRoles.length === 0
-      ? "No roles are available right now."
+      ? "Gerade ist keine Rolle frei."
       : roleId && !selectedRoleIsAvailable
-        ? "The selected role is no longer available."
-        : "Select a role to continue.";
+        ? "Die gewählte Rolle ist nicht mehr frei."
+        : "Wähle eine Rolle, um fortzufahren.";
   const joinDisabled = usernameMissing || roleMissing;
   const remoteStations = raspberryRemoteStations ?? [];
 
   return (
     <div className="root login">
+      <div className="login-backdrop" aria-hidden="true" />
       <div className="login-card panel">
         <div className="login-card-head">
           <BrandLogo className="login-brand-logo" />
           <div className="login-card-title">
-            <h1>Live Production Intercom</h1>
-            <p className="variant-subtitle">Station Deck</p>
+            <h1>Intercom</h1>
+            <p className="variant-subtitle">Live Production · Station Deck</p>
           </div>
         </div>
+        <div className="login-box">
         <div className="login-mode-tabs" role="tablist" aria-label="Login mode">
           <button
             type="button"
@@ -125,7 +127,7 @@ export function LoginView({
             role="tab"
             aria-selected={loginMode === "raspberry"}
           >
-            Raspberry remote
+            Raspberry
           </button>
           <button
             type="button"
@@ -144,13 +146,13 @@ export function LoginView({
               className={`login-field${usernameMissing ? " is-required-missing" : ""}`}
             >
               <label htmlFor="login-username">
-                <span className="login-label-text">Display name</span>
+                <span className="login-label-text">Name</span>
               </label>
               <input
                 id="login-username"
                 value={username}
                 onChange={(e) => onUsernameChange(stripWhitespace(e.target.value))}
-                placeholder="e.g. Tim FOH"
+                placeholder="z. B. Tim FOH"
                 required
                 aria-invalid={usernameMissing ? "true" : undefined}
                 aria-describedby={
@@ -159,7 +161,7 @@ export function LoginView({
               />
               {usernameMissing ? (
                 <RequiredFieldHint id="login-username-required">
-                  Enter a display name to continue.
+                  Gib einen Namen ein, um fortzufahren.
                 </RequiredFieldHint>
               ) : null}
             </div>
@@ -167,7 +169,7 @@ export function LoginView({
               className={`login-field${roleMissing ? " is-required-missing" : ""}`}
             >
               <label htmlFor="login-role">
-                <span className="login-label-text">Role</span>
+                <span className="login-label-text">Rolle</span>
               </label>
               <select
                 id="login-role"
@@ -177,7 +179,7 @@ export function LoginView({
                 aria-invalid={roleMissing ? "true" : undefined}
                 aria-describedby={roleMissing ? "login-role-required" : undefined}
               >
-                <option value="">Select role</option>
+                <option value="">Rolle wählen</option>
                 {availableRoles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name}
@@ -185,7 +187,7 @@ export function LoginView({
                 ))}
                 {availableRoles.length === 0 ? (
                   <option value="" disabled>
-                    No roles available
+                    Keine Rolle frei
                   </option>
                 ) : null}
               </select>
@@ -200,30 +202,30 @@ export function LoginView({
               onClick={onLogin}
               disabled={joinDisabled}
             >
-              Join Intercom
+              Intercom beitreten
             </button>
             {loginError ? <p className="login-error">{loginError}</p> : null}
             {takeoverConflict ? (
               <div className="login-admin-card" role="alert">
                 <div className="login-admin-head">
-                  <h3>Role currently in use</h3>
+                  <h3>Rolle ist gerade belegt</h3>
                 </div>
                 <p className="login-admin-note">
                   {takeoverConflict.conflictRoleName ||
                     takeoverConflict.conflictRoleId}
                   {" "}
-                  is currently active
+                  ist gerade aktiv
                   {takeoverConflict.conflictUsername
-                    ? ` by ${takeoverConflict.conflictUsername}`
+                    ? ` (${takeoverConflict.conflictUsername})`
                     : ""}
-                  . Confirm takeover to replace the existing session.
+                  . Übernehmen beendet die bestehende Sitzung.
                 </p>
                 <div className="login-admin-actions">
                   <button className="primary" onClick={onConfirmTakeover}>
-                    Confirm takeover
+                    Rolle übernehmen
                   </button>
                   <button className="secondary" onClick={onCancelTakeover}>
-                    Cancel
+                    Abbrechen
                   </button>
                 </div>
               </div>
@@ -234,7 +236,7 @@ export function LoginView({
             <div className="login-remote-stations" aria-label="Active Raspberry Pis">
               {remoteStations.length === 0 ? (
                 <div className="login-remote-empty">
-                  {raspberryRemoteError || "No Raspberry Pi stations known yet."}
+                  {raspberryRemoteError || "Noch keine Raspberry Pis bekannt."}
                 </div>
               ) : (
                 remoteStations.map((station) => {
@@ -267,7 +269,7 @@ export function LoginView({
                           disabled={!canJoin}
                           onClick={() => onRaspberryRemoteJoin(station)}
                         >
-                          Join
+                          Steuern
                         </button>
                       </span>
                     </div>
@@ -280,17 +282,17 @@ export function LoginView({
           <div
             className="login-admin-card"
             role="tabpanel"
-            aria-label="Admin console"
+            aria-label="Admin-Bereich"
           >
             <div className="login-admin-head">
-              <h3>Admin console</h3>
-              <span className="login-admin-pin-hint">PIN required</span>
+              <h3>Admin-Bereich</h3>
+              <span className="login-admin-pin-hint">PIN nötig</span>
             </div>
             <p className="login-admin-note">
-              For role and channel configuration only.
+              Für Rollen, Party Lines und Einstellungen.
             </p>
             <label>
-              <span className="login-label-text">Admin PIN</span>
+              <span className="login-label-text">Admin-PIN</span>
               <input
                 type="password"
                 value={adminPin}
@@ -306,11 +308,12 @@ export function LoginView({
                 onClick={onAdminLogin}
                 disabled={!adminPin.trim()}
               >
-                Open admin console
+                Admin-Bereich öffnen
               </button>
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

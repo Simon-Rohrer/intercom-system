@@ -7,6 +7,7 @@ import {
 import type { TelegramAllowlistEntry } from "../../types";
 import { AdminCardHeader } from "./AdminCardHeader";
 import { useAdminAction } from "./useAdminAction";
+import { useAdminCardOpenState } from "./adminCardOpen";
 
 type AdminTelegramUsersCardProps = {
   token: string;
@@ -19,7 +20,7 @@ export function AdminTelegramUsersCard({
 }: AdminTelegramUsersCardProps) {
   const containsWhitespace = (value: string) => /\s/.test(value);
   const stripWhitespace = (value: string) => value.replace(/\s+/g, "");
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useAdminCardOpenState();
   const [entries, setEntries] = useState<TelegramAllowlistEntry[]>([]);
   const {
     busy,

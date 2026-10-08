@@ -121,7 +121,7 @@ export function ChatPopoutSection({ children }: ChatPopoutSectionProps) {
 
   return (
     <>
-      <section className="station-block station-utility station-utility-section">
+      <section className="station-block station-utility station-utility-section station-chat-section">
         <div className="station-utility-heading">
           <h3>Chat</h3>
           <button

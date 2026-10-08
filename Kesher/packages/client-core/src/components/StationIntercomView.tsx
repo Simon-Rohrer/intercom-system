@@ -25,6 +25,7 @@ import { sortDirectUsersByRoleAndUsername } from "../lib/users";
 import { BrandLogo } from "./BrandLogo";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { LowPowerModeBadge } from "./LowPowerModeBadge";
+import { PanelResizer, useStoredSize } from "./PanelResizer";
 import { RaspberryPiStationsPanel } from "./RaspberryPiStationsPanel";
 import { ChatPopoutSection } from "./panels/ChatPopoutSection";
 
@@ -817,19 +818,56 @@ function StationSectionHeader({
   tone,
   title,
   count,
+  hint,
 }: {
   tone: StationSectionTone;
   title: string;
   count: string;
+  hint?: string;
 }) {
   return (
-    <div className="station-section-head">
+    <div className={`station-section-head tone-${tone}`}>
       <span className="station-section-icon">
         <StationSectionIcon tone={tone} />
       </span>
       <h3>{title}</h3>
+      {hint ? <span className="station-section-hint">{hint}</span> : null}
       <span className="station-section-count">{count}</span>
     </div>
+  );
+}
+
+function LockIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  );
+}
+
+function StationMicMeter({ levelPercent }: { levelPercent: number }) {
+  const segments = 16;
+  const active = Math.round((Math.max(0, Math.min(100, levelPercent)) / 100) * segments);
+  return (
+    <span className="station-mic-meter" aria-hidden="true">
+      {Array.from({ length: segments }, (_, index) => {
+        const band =
+          index >= segments * 0.9 ? "peak" : index >= segments * 0.7 ? "warning" : "signal";
+        return (
+          <span key={index} className={`${band} ${index < active ? "active" : ""}`} />
+        );
+      })}
+    </span>
   );
 }
 
@@ -1175,6 +1213,10 @@ export function StationIntercomView({
   const [isMicMenuOpen, setIsMicMenuOpen] = useState(false);
   const [isOutputMenuOpen, setIsOutputMenuOpen] = useState(false);
   const micMenuRef = useRef<HTMLDivElement>(null);
+  const contentGridRef = useRef<HTMLDivElement>(null);
+  const secondaryColumnRef = useRef<HTMLElement>(null);
+  const [sideWidth, setSideWidth] = useStoredSize("kesher.station.sideWidth");
+  const [chatHeight, setChatHeight] = useStoredSize("kesher.station.chatHeight");
   const outputMenuRef = useRef<HTMLDivElement>(null);
   const [isAudioOpen, setIsAudioOpen] = useState(false);
   const [isPersonalAudioOpen, setIsPersonalAudioOpen] = useState(true);
@@ -2364,19 +2406,34 @@ export function StationIntercomView({
       }
     },
   });
+  const talkTargetNames = visibleRooms
+    .filter(
+      (room) =>
+        talkRoomIds.includes(room.id) &&
+        canRoleSendToRoom(room.id, appData.self.roleId),
+    )
+    .map((room) => room.name);
   const mainPttButton = (
     <button
       key="ptt"
-      className={`station-ptt hold-button ${pttPressed ? "active" : ""}`}
+      className={`station-ptt hold-button ${pttPressed ? "active" : ""} ${
+        isSendingOnTalkRooms && talkTargetNames.length > 0 ? "live" : ""
+      }`}
+      aria-label="Hold to talk"
       {...mainPttButtonProps}
     >
-      Hold to talk
+      <strong>Hold to talk</strong>
+      <small>
+        {talkTargetNames.length > 0
+          ? `Sendet auf: ${talkTargetNames.join(", ")}`
+          : "Keine Party Line vorgemerkt"}
+      </small>
     </button>
   );
   const replyButton = (
     <button
       key="reply"
-      className={`station-reply hold-button ${replyTargetUserId ? "" : "disabled"} ${
+      className={`station-reply hold-button ${replyTargetUserId ? "has-caller" : "disabled"} ${
         replyTargetUserId && directPttPressedUserId === replyTargetUserId
           ? "active"
           : ""
@@ -2384,23 +2441,120 @@ export function StationIntercomView({
       disabled={!replyTargetUserId}
       {...replyButtonProps}
     >
-      Reply to caller
+      <strong>Reply to caller</strong>
       <small>
         {replyTarget
           ? replyTarget.username
           : replyTargetUserId
-            ? "Recent caller"
-            : "No active caller"}
+            ? "Letzter Anrufer"
+            : "Kein aktiver Anrufer"}
       </small>
     </button>
   );
   const footerButtons = swapPttAndReplyButtons
     ? [mainPttButton, replyButton]
     : [replyButton, mainPttButton];
+  const renderDirectCard = (p: Presence) => {
+    const isPinned = pinnedUserIds.includes(p.userId);
+    const isTalking = directPttPressedUserId === p.userId;
+    const maxPriority = getMaxUserChannelPriority(p);
+    const priorityLabels: Record<number, string> = { 0: "L", 2: "H", 3: "C" };
+    return (
+      <article
+        key={`station-direct-${p.userId}`}
+        className="station-card station-direct-card"
+        data-talk={isTalking ? "live" : "off"}
+        data-rx={isReceivingDirect(p.userId) ? "true" : "false"}
+      >
+        <div className="station-key-top">
+          <span className="station-key-top-spacer" />
+          {maxPriority !== null && maxPriority !== 1 ? (
+            <span className={`priority-badge priority-${maxPriority}`} title="Priorität">
+              {priorityLabels[maxPriority] || "?"}
+            </span>
+          ) : null}
+          {isReceivingDirect(p.userId) ? (
+            <span className="station-receiving-badge">RX</span>
+          ) : null}
+          <button
+            type="button"
+            className={`station-pin-top ${isPinned ? "active" : ""}`}
+            aria-pressed={isPinned}
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onTogglePinnedUser(p.userId);
+            }}
+            title={isPinned ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"}
+          >
+            ★
+          </button>
+        </div>
+        <button
+          className={`station-card-head direct-ptt hold-button ${isTalking ? "active" : ""}`}
+          {...createHoldButtonProps<HTMLButtonElement>({
+            onStart: () => startDirectPtt(p.userId),
+            onStop: () => stopDirectPtt(p.userId),
+          })}
+        >
+          <span className="station-direct-avatar" aria-hidden="true">
+            {p.username.slice(0, 2).toUpperCase()}
+          </span>
+          <small>Direct</small>
+          <strong>{p.username}</strong>
+          <em>{roleNameById.get(p.roleId) || p.roleId || "Unbekannte Rolle"}</em>
+        </button>
+        {showVolumeControls ? (
+          <div className="station-gain-control">
+            <label htmlFor={`direct-gain-${p.userId}`}>
+              {gainToDbLabel(directGainByUserId[p.userId] ?? 1)}
+            </label>
+            <input
+              id={`direct-gain-${p.userId}`}
+              type="range"
+              min={MUTE_POS}
+              max={OUTPUT_DB_MAX}
+              step={1}
+              value={gainToSlider(directGainByUserId[p.userId] ?? 1)}
+              style={
+                {
+                  "--fill": `${sliderFillPercent(directGainByUserId[p.userId] ?? 1)}%`,
+                } as React.CSSProperties
+              }
+              onPointerDown={(event) => event.stopPropagation()}
+              onPointerUp={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) =>
+                onDirectGainChange(
+                  p.userId,
+                  sliderToGain(Number(event.currentTarget.value)),
+                )
+              }
+            />
+          </div>
+        ) : null}
+        <div className="station-card-actions single">
+          <button
+            className="call"
+            onClick={() => sendScopedSignal("direct", p.userId, "call")}
+            title="Person rufen"
+          >
+            Call
+          </button>
+        </div>
+      </article>
+    );
+  };
   const hasChatAndSignalPanel = Boolean(chatAndSignalPanel);
+  const stationRoleLabel =
+    remoteControl?.roleName ||
+    roleNameById.get(appData.self.roleId) ||
+    appData.self.roleId;
   const stationLiveLabel = remoteControl
     ? `Raspberry Remote: ${remoteControl.stationName}`
-    : `Live: ${appData.self.username.toUpperCase()}`;
+    : appData.self.username;
+  const micLevelPercent = lowPowerMode ? 0 : meterDbFsToPercent(inputLevelDbFs);
 
   return (
     <div
@@ -2412,9 +2566,9 @@ export function StationIntercomView({
         <div className="connection-offline-banner">
           <span className="connection-offline-icon" />
           {connectionState === "reconnecting"
-            ? "Reconnecting..."
+            ? "Verbindung wird wiederhergestellt …"
             : connectionState === "connecting"
-              ? "Connecting..."
+              ? "Verbinde …"
               : "Offline"}
         </div>
       )}
@@ -2423,23 +2577,31 @@ export function StationIntercomView({
           className={`station-topbar ${lowPowerMode ? "has-low-power" : ""}`.trim()}
         >
           <div className="station-live">
-            <BrandLogo compact className="station-brand-logo" />
+            <BrandLogo className="station-brand-logo" />
+            <span className="station-live-sep" aria-hidden="true" />
             <div className="station-live-copy">
-              <div className="station-live-name">
-                <span
-                  className={`station-live-dot ${
-                    connectionState === "connected" ? "connected" : "disconnected"
-                  }`}
-                />
-                <span className="station-live-label">{stationLiveLabel}</span>
-              </div>
-              <div className="station-live-role">
-                {remoteControl?.roleName ||
-                  roleNameById.get(appData.self.roleId) ||
-                  appData.self.roleId}
-              </div>
+              <div className="station-live-role">{stationRoleLabel}</div>
+              <div className="station-live-label">{stationLiveLabel}</div>
             </div>
+            <span
+              className={`station-live-name ${
+                connectionState === "connected" ? "connected" : "disconnected"
+              }`}
+            >
+              <span
+                className={`station-live-dot ${
+                  connectionState === "connected" ? "connected" : "disconnected"
+                }`}
+              />
+              {connectionState === "connected" ? "Live" : "Offline"}
+            </span>
           </div>
+          {!lowPowerMode ? (
+            <div className="station-top-stats">
+              <span className="station-top-stat-label">Mic</span>
+              <StationMicMeter levelPercent={micLevelPercent} />
+            </div>
+          ) : null}
           {lowPowerMode ? (
             <LowPowerModeBadge className="station-low-power-badge" />
           ) : null}
@@ -2447,23 +2609,23 @@ export function StationIntercomView({
             <button
               type="button"
               className="station-top-admin"
-              aria-label="User settings"
-              title="User settings"
+              aria-label="Einstellungen"
+              title="Einstellungen"
               onClick={() => setIsUserSettingsOpen(true)}
             >
               <SettingsIcon name="settings" className="station-top-admin-icon" />
-              <span>User settings</span>
+              <span>Einstellungen</span>
             </button>
             <button
               type="button"
               className="station-top-logout"
-              aria-label={remoteControl ? "Leave remote" : "Logout / Lock"}
-              title={remoteControl ? "Leave remote" : "Logout / Lock"}
+              aria-label={remoteControl ? "Remote verlassen" : "Abmelden"}
+              title={remoteControl ? "Remote verlassen" : "Abmelden"}
               onClick={remoteControl ? remoteControl.onLeave : doLogout}
             >
               <LogoutIcon className="station-top-logout-icon" />
               <span className="station-top-logout-label">
-                {remoteControl ? "Leave remote" : "Logout / Lock"}
+                {remoteControl ? "Remote verlassen" : "Abmelden"}
               </span>
             </button>
           </div>
@@ -2488,18 +2650,31 @@ export function StationIntercomView({
         </section>
       </div>
 
-      <div className="station-content-grid">
+      <div
+        className="station-content-grid"
+        ref={contentGridRef}
+        style={
+          sideWidth
+            ? ({ "--station-side-w": `${sideWidth}px` } as React.CSSProperties)
+            : undefined
+        }
+      >
         <div className="station-primary-column">
           <section className="station-block station-talk-section">
             <StationSectionHeader
               tone="talk"
-              title="Talk channels"
+              title="Party Lines"
+              hint={
+                enableDirectPpt
+                  ? "Gedrückt halten = auf der Leitung sprechen"
+                  : "Tippen = Talk vormerken · Hold to talk oder Always on = senden"
+              }
               count={`${visibleRooms.length} ${
-                visibleRooms.length === 1 ? "channel" : "channels"
+                visibleRooms.length === 1 ? "Leitung" : "Leitungen"
               }`}
             />
             {visibleRooms.length === 0 ? (
-              <p className="station-empty">No channels to show.</p>
+              <p className="station-empty">Keine Party Lines vorhanden.</p>
             ) : null}
             <div className="station-talk-grid">
               {visibleRooms.map((room) => {
@@ -2568,48 +2743,76 @@ export function StationIntercomView({
                     : ""
                 }`;
 
+                const talkState =
+                  canTalk &&
+                  ((enableDirectPpt && isPttPressed) ||
+                    (!enableDirectPpt && talking && isSendingOnTalkRooms))
+                    ? "live"
+                    : !enableDirectPpt && talking && canTalk
+                      ? "armed"
+                      : "off";
+                const listenState = isForced
+                  ? "locked"
+                  : listening && canListen
+                    ? "on"
+                    : "off";
+                const roomPriority = room.priorityLevel ?? 1;
+                const priorityLabels: Record<number, string> = {
+                  0: "L",
+                  2: "H",
+                  3: "C",
+                };
+
                 return (
                   <article
                     key={`station-room-${room.id}`}
                     className="station-card station-room-card"
+                    data-talk={talkState}
+                    data-listen={listenState}
+                    data-can-talk={canTalk ? "true" : "false"}
+                    data-rx={isReceivingRoom(room.id) ? "true" : "false"}
                   >
-                    {listenerCount > 0 ? (
-                      <span
-                        className="station-presence-badge"
-                        title={`${listenerCount} listener(s)`}
-                      >
-                        <span className="station-presence-dot" />
-                        {listenerCount}
-                      </span>
-                    ) : null}
-                    <div className="station-level-indicator">
-                      <span
-                        className="station-channel-meter"
-                        role="meter"
-                        aria-label={`${room.name} input level`}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={Math.round(roomLevel * 100)}
-                      >
-                        {Array.from({ length: 10 }, (_, index) => {
-                          const segmentNumber = index + 1;
-                          const activeSegments = Math.round(roomLevel * 10);
-                          const band =
-                            segmentNumber >= 9
-                              ? "peak"
-                              : segmentNumber >= 7
-                                ? "warning"
-                                : "signal";
-                          return (
-                            <span
-                              key={segmentNumber}
-                              className={`station-channel-meter-segment ${band} ${
-                                segmentNumber <= activeSegments ? "active" : ""
-                              }`}
-                            />
-                          );
-                        })}
-                      </span>
+                    <div className="station-key-top">
+                      <div className="station-level-indicator">
+                        <span
+                          className="station-channel-meter"
+                          role="meter"
+                          aria-label={`${room.name} input level`}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={Math.round(roomLevel * 100)}
+                        >
+                          {Array.from({ length: 10 }, (_, index) => {
+                            const segmentNumber = index + 1;
+                            const activeSegments = Math.round(roomLevel * 10);
+                            const band =
+                              segmentNumber >= 9
+                                ? "peak"
+                                : segmentNumber >= 7
+                                  ? "warning"
+                                  : "signal";
+                            return (
+                              <span
+                                key={segmentNumber}
+                                className={`station-channel-meter-segment ${band} ${
+                                  segmentNumber <= activeSegments ? "active" : ""
+                                }`}
+                              />
+                            );
+                          })}
+                        </span>
+                      </div>
+                      {roomPriority !== 1 ? (
+                        <span
+                          className={`priority-badge priority-${roomPriority}`}
+                          title="Priorität"
+                        >
+                          {priorityLabels[roomPriority] || "?"}
+                        </span>
+                      ) : null}
+                      {isReceivingRoom(room.id) ? (
+                        <span className="station-receiving-badge">RX</span>
+                      ) : null}
                     </div>
                     <button
                       className={talkButtonClassName}
@@ -2623,28 +2826,20 @@ export function StationIntercomView({
                       title={
                         canTalk
                           ? ""
-                          : "Your role is not allowed to send to this party line"
+                          : "Deine Rolle darf auf dieser Party Line nicht sprechen"
                       }
                     >
-                      {isReceivingRoom(room.id) ? (
-                        <span className="station-receiving-badge">RX</span>
-                      ) : null}
-                      <small>Talk</small>
+                      <small>{canTalk ? "Talk" : "Talk · nur hören"}</small>
                       <strong>{renderBreakableChannelName(room.name)}</strong>
-                      {(() => {
-                        const p = room.priorityLevel ?? 1;
-                        if (p === 1) return null;
-                        const priorityLabels: Record<number, string> = {
-                          0: "L",
-                          2: "H",
-                          3: "C",
-                        };
-                        return (
-                          <span className={`priority-badge priority-${p}`}>
-                            {priorityLabels[p] || "?"}
-                          </span>
-                        );
-                      })()}
+                      {listenerCount > 0 ? (
+                        <span
+                          className="station-presence-badge"
+                          title={`${listenerCount} Hörer`}
+                        >
+                          <span className="station-presence-dot" />
+                          {listenerCount}
+                        </span>
+                      ) : null}
                     </button>
                     {showVolumeControls ? (
                       <div className="station-gain-control">
@@ -2682,13 +2877,18 @@ export function StationIntercomView({
                         disabled={!canListen || isForced}
                         title={
                           isForced
-                            ? "Forced listen - cannot be deselected"
+                            ? "Feste Hörer-Zuweisung – kann nicht abgewählt werden"
                             : canListen
                               ? ""
-                              : "Your role is not allowed to receive from this party line"
+                              : "Deine Rolle darf diese Party Line nicht hören"
                         }
                       >
-                        {isForced ? "Locked Listen" : "Listen"}
+                        {isForced ? (
+                          <LockIcon className="station-listen-lock" />
+                        ) : (
+                          <span className="station-listen-led" aria-hidden="true" />
+                        )}
+                        Listen
                       </button>
                       <button
                         className={`call ${canTalk ? "" : "disabled"}`}
@@ -2699,7 +2899,7 @@ export function StationIntercomView({
                         title={
                           canTalk
                             ? ""
-                            : "Your role is not allowed to send to this room"
+                            : "Deine Rolle darf auf dieser Party Line nicht rufen"
                         }
                       >
                         Call
@@ -2714,7 +2914,8 @@ export function StationIntercomView({
           <section className="station-block station-direct-section">
             <StationSectionHeader
               tone="direct"
-              title="Direct communication"
+              title="Direkt"
+              hint="Gedrückt halten = direkt mit der Person sprechen"
               count={`${
                 enableDirectTabs
                   ? allDirectOnlineTargets.length
@@ -2742,200 +2943,22 @@ export function StationIntercomView({
                   ))}
                 </div>
                 {displayedDirectUsers.length === 0 ? (
-                  <p className="station-empty">No users in this tab.</p>
+                  <p className="station-empty">Niemand in diesem Tab.</p>
                 ) : (
                   <div className="station-direct-grid">
-                    {displayedDirectUsers.map((p) => (
-                      <article
-                        key={`station-direct-${p.userId}`}
-                        className="station-card station-direct-card"
-                      >
-                        <button
-                          type="button"
-                          className={`station-pin-top ${pinnedUserIds.includes(p.userId) ? "active" : ""}`}
-                          onPointerDown={(event) => event.stopPropagation()}
-                          onPointerUp={(event) => event.stopPropagation()}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onTogglePinnedUser(p.userId);
-                          }}
-                          title={
-                            pinnedUserIds.includes(p.userId)
-                              ? "Remove user from favorites"
-                              : "Add user to favorites"
-                          }
-                        >
-                          *
-                        </button>
-                        <button
-                          className={`station-card-head direct-ptt hold-button ${directPttPressedUserId === p.userId ? "active" : ""}`}
-                          {...createHoldButtonProps<HTMLButtonElement>({
-                            onStart: () => startDirectPtt(p.userId),
-                            onStop: () => stopDirectPtt(p.userId),
-                          })}
-                        >
-                          {isReceivingDirect(p.userId) ? (
-                            <span className="station-receiving-badge">RX</span>
-                          ) : null}
-                          <small>Direct</small>
-                          <strong>{p.username}</strong>
-                          {(() => {
-                            const maxP = getMaxUserChannelPriority(p);
-                            if (maxP === null || maxP === 1) return null;
-                            const priorityLabels: Record<number, string> = {
-                              0: "L",
-                              2: "H",
-                              3: "C",
-                            };
-                            return (
-                              <span className={`priority-badge priority-${maxP}`}>
-                                {priorityLabels[maxP] || "?"}
-                              </span>
-                            );
-                          })()}
-                          <em>
-                            {roleNameById.get(p.roleId) ||
-                              p.roleId ||
-                              "Unknown role"}
-                          </em>
-                        </button>
-                        {showVolumeControls ? (
-                          <div className="station-gain-control">
-                            <label htmlFor={`direct-gain-${p.userId}`}>
-                              {gainToDbLabel(directGainByUserId[p.userId] ?? 1)}
-                            </label>
-                            <input
-                              id={`direct-gain-${p.userId}`}
-                              type="range"
-                              min={MUTE_POS}
-                              max={OUTPUT_DB_MAX}
-                              step={1}
-                              value={gainToSlider(
-                                directGainByUserId[p.userId] ?? 1,
-                              )}
-                              style={
-                                {
-                                  "--fill": `${sliderFillPercent(directGainByUserId[p.userId] ?? 1)}%`,
-                                } as React.CSSProperties
-                              }
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onPointerUp={(event) => event.stopPropagation()}
-                              onClick={(event) => event.stopPropagation()}
-                              onChange={(event) =>
-                                onDirectGainChange(
-                                  p.userId,
-                                  sliderToGain(Number(event.currentTarget.value)),
-                                )
-                              }
-                            />
-                          </div>
-                        ) : null}
-                        <div className="station-card-actions single">
-                          <button
-                            className={`call ${/* disabled handled by class */ ""}`}
-                            onClick={() =>
-                              sendScopedSignal("direct", p.userId, "call")
-                            }
-                            title="Call user"
-                          >
-                            Call
-                          </button>
-                        </div>
-                      </article>
-                    ))}
+                    {displayedDirectUsers.map(renderDirectCard)}
                   </div>
                 )}
               </>
             ) : directOnlineTargets.length === 0 ? (
               <p className="station-empty">
                 {showPinnedOnly
-                  ? "No favorite users online."
-                  : "No other users online."}
+                  ? "Keine Favoriten online."
+                  : "Sonst ist niemand online."}
               </p>
             ) : (
               <div className="station-direct-grid">
-                {directOnlineTargets.map((p) => (
-                  <article
-                    key={`station-direct-${p.userId}`}
-                    className="station-card station-direct-card"
-                  >
-                    <button
-                      type="button"
-                      className={`station-pin-top ${pinnedUserIds.includes(p.userId) ? "active" : ""}`}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onPointerUp={(event) => event.stopPropagation()}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onTogglePinnedUser(p.userId);
-                      }}
-                      title={
-                        pinnedUserIds.includes(p.userId)
-                          ? "Remove user from favorites"
-                          : "Add user to favorites"
-                      }
-                    >
-                      *
-                    </button>
-                    <button
-                      className={`station-card-head direct-ptt hold-button ${directPttPressedUserId === p.userId ? "active" : ""}`}
-                      {...createHoldButtonProps<HTMLButtonElement>({
-                        onStart: () => startDirectPtt(p.userId),
-                        onStop: () => stopDirectPtt(p.userId),
-                      })}
-                    >
-                      {isReceivingDirect(p.userId) ? (
-                        <span className="station-receiving-badge">RX</span>
-                      ) : null}
-                      <small>Direct</small>
-                      <strong>{p.username}</strong>
-                      <em>
-                        {roleNameById.get(p.roleId) ||
-                          p.roleId ||
-                          "Unknown role"}
-                      </em>
-                    </button>
-                    {showVolumeControls ? (
-                      <div className="station-gain-control">
-                        <label htmlFor={`direct-gain-${p.userId}`}>
-                          {gainToDbLabel(directGainByUserId[p.userId] ?? 1)}
-                        </label>
-                        <input
-                          id={`direct-gain-${p.userId}`}
-                          type="range"
-                          min={MUTE_POS}
-                          max={OUTPUT_DB_MAX}
-                          step={1}
-                          value={gainToSlider(directGainByUserId[p.userId] ?? 1)}
-                          style={
-                            {
-                              "--fill": `${sliderFillPercent(directGainByUserId[p.userId] ?? 1)}%`,
-                            } as React.CSSProperties
-                          }
-                          onPointerDown={(event) => event.stopPropagation()}
-                          onPointerUp={(event) => event.stopPropagation()}
-                          onClick={(event) => event.stopPropagation()}
-                          onChange={(event) =>
-                            onDirectGainChange(
-                              p.userId,
-                              sliderToGain(Number(event.currentTarget.value)),
-                            )
-                          }
-                        />
-                      </div>
-                    ) : null}
-                    <div className="station-card-actions single">
-                      <button
-                        className={`call ${/* disabled handled by class */ ""}`}
-                        onClick={() =>
-                          sendScopedSignal("direct", p.userId, "call")
-                        }
-                        title="Call user"
-                      >
-                        Call
-                      </button>
-                    </div>
-                  </article>
-                ))}
+                {directOnlineTargets.map(renderDirectCard)}
               </div>
             )}
           </section>
@@ -2944,9 +2967,10 @@ export function StationIntercomView({
             <section className="station-block station-broadcast-section">
               <StationSectionHeader
                 tone="broadcast"
-                title="Broadcast channels"
+                title="Broadcast"
+                hint="Gedrückt halten = an alle in der Gruppe sprechen"
                 count={`${broadcastGroups.length} ${
-                  broadcastGroups.length === 1 ? "group" : "groups"
+                  broadcastGroups.length === 1 ? "Gruppe" : "Gruppen"
                 }`}
               />
               <div className="station-broadcast-grid">
@@ -2957,53 +2981,66 @@ export function StationIntercomView({
                   const canSend =
                     allowedRoleIds.length === 0 ||
                     allowedRoleIds.includes(appData.self.roleId);
+                  const groupPriority = group.priorityLevel ?? 1;
+                  const priorityLabels: Record<number, string> = {
+                    0: "L",
+                    2: "H",
+                    3: "C",
+                  };
+                  const isLive = broadcastPttPressed === group.id;
                   return (
-                    <button
+                    <article
                       key={group.id}
-                      className={`station-broadcast-button hold-button ${broadcastPttPressed === group.id ? "active" : ""} ${
-                        canSend ? "" : "disabled"
-                      }`}
-                      {...createHoldButtonProps<HTMLButtonElement>({
-                        disabled: !canSend,
-                        onStart: () => {
-                          if (canSend) {
-                            startBroadcastPtt(group.id);
-                          }
-                        },
-                        onStop: () => {
-                          if (canSend) {
-                            stopBroadcastPtt(group.id);
-                          }
-                        },
-                      })}
-                      disabled={!canSend}
-                      title={
-                        canSend
-                          ? ""
-                          : "Your role is not allowed to send to this broadcast channel"
-                      }
+                      className="station-card station-broadcast-card"
+                      data-talk={isLive ? "live" : "off"}
+                      data-can-talk={canSend ? "true" : "false"}
+                      data-rx={isReceivingBroadcast(group.id) ? "true" : "false"}
                     >
-                      {isReceivingBroadcast(group.id) ? (
-                        <span className="station-broadcast-receiving">RX</span>
-                      ) : null}
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "0.15rem" }}>
-                        <span>{group.name}</span>
-                        {(() => {
-                          const p = group.priorityLevel ?? 1;
-                          if (p === 1) return null;
-                          const priorityLabels: Record<number, string> = {
-                            0: "L",
-                            2: "H",
-                            3: "C",
-                          };
-                          return (
-                            <span className={`priority-badge priority-${p}`}>
-                              {priorityLabels[p] || "?"}
-                            </span>
-                          );
-                        })()}
+                      <div className="station-key-top">
+                        <span className="station-key-top-spacer" />
+                        {groupPriority !== 1 ? (
+                          <span
+                            className={`priority-badge priority-${groupPriority}`}
+                            title="Priorität"
+                          >
+                            {priorityLabels[groupPriority] || "?"}
+                          </span>
+                        ) : null}
+                        {isReceivingBroadcast(group.id) ? (
+                          <span className="station-broadcast-receiving">RX</span>
+                        ) : null}
                       </div>
-                    </button>
+                      <button
+                        className={`station-broadcast-button hold-button ${isLive ? "active" : ""} ${
+                          canSend ? "" : "disabled"
+                        }`}
+                        {...createHoldButtonProps<HTMLButtonElement>({
+                          disabled: !canSend,
+                          onStart: () => {
+                            if (canSend) {
+                              startBroadcastPtt(group.id);
+                            }
+                          },
+                          onStop: () => {
+                            if (canSend) {
+                              stopBroadcastPtt(group.id);
+                            }
+                          },
+                        })}
+                        disabled={!canSend}
+                        title={
+                          canSend
+                            ? ""
+                            : "Deine Rolle darf in diese Broadcast-Gruppe nicht senden"
+                        }
+                      >
+                        <small>
+                          <StationSectionIcon tone="broadcast" />
+                          Broadcast
+                        </small>
+                        <strong>{group.name}</strong>
+                      </button>
+                    </article>
                   );
                 })}
               </div>
@@ -3012,15 +3049,58 @@ export function StationIntercomView({
         </div>
 
         {hasChatAndSignalPanel ? (
-          <aside className="station-secondary-column">
+          <PanelResizer
+            orientation="vertical"
+            label="Breite von Chat und Seitenleiste ändern"
+            className="station-col-resizer"
+            direction={-1}
+            min={280}
+            max={() =>
+              Math.min(760, (contentGridRef.current?.clientWidth ?? 1200) * 0.6)
+            }
+            getSize={() =>
+              secondaryColumnRef.current?.getBoundingClientRect().width ?? 360
+            }
+            onResize={setSideWidth}
+            onReset={() => setSideWidth(null)}
+          />
+        ) : null}
+        {hasChatAndSignalPanel ? (
+          <aside
+            className="station-secondary-column"
+            ref={secondaryColumnRef}
+            style={
+              chatHeight
+                ? ({ "--station-chat-h": `${chatHeight}px` } as React.CSSProperties)
+                : undefined
+            }
+          >
             <ChatPopoutSection>{chatAndSignalPanel}</ChatPopoutSection>
+            <PanelResizer
+              orientation="horizontal"
+              label="Chat-Höhe ändern"
+              className="station-chat-resizer"
+              direction={1}
+              min={220}
+              max={() => {
+                const column = secondaryColumnRef.current;
+                const wide = window.matchMedia("(min-width: 1101px)").matches;
+                return wide && column ? column.clientHeight - 110 : 900;
+              }}
+              getSize={() =>
+                secondaryColumnRef.current
+                  ?.querySelector(".station-chat-section")
+                  ?.getBoundingClientRect().height ?? 420
+              }
+              onResize={setChatHeight}
+              onReset={() => setChatHeight(null)}
+            />
             <section className="station-block station-utility station-utility-section station-pi-monitoring">
-              <h3>Raspberry monitoring</h3>
               <div className="panel station-pi-monitoring-panel">
                 <RaspberryPiStationsPanel
                   stations={raspberryPiStations}
                   title="Raspberry Pis"
-                  emptyText="No Raspberry connected."
+                  emptyText="Kein Raspberry verbunden."
                   className="station-pi-stations"
                 />
                 {raspberryPiStationsError ? (
@@ -3052,8 +3132,8 @@ export function StationIntercomView({
           >
             <header className="station-modal-header">
               <div className="station-modal-title">
-                <span>User settings</span>
-                <h3 id="user-settings-title">Station setup</h3>
+                <span>Einstellungen</span>
+                <h3 id="user-settings-title">Station-Setup</h3>
               </div>
               <button
                 className="station-modal-close"

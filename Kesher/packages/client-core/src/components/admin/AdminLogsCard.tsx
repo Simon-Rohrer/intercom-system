@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { exportAdminLogsText, getAdminLogs } from "../../api";
 import type { AdminLogEntry } from "../../types";
 import { AdminCardHeader } from "./AdminCardHeader";
+import { useAdminCardOpenState } from "./adminCardOpen";
 
 type AdminLogsCardProps = {
   token: string;
@@ -23,7 +24,7 @@ function toUnixMs(datetimeLocal: string): number | undefined {
 }
 
 export function AdminLogsCard({ token, adminPin }: AdminLogsCardProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useAdminCardOpenState();
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");

@@ -42,21 +42,25 @@ export function AdminShell({
     <div className="root admin-shell">
       <div className="admin-shell-header">
         <div className="admin-shell-brand">
-          <BrandLogo compact className="admin-shell-logo" />
+          <BrandLogo className="admin-shell-logo" />
+          <span className="admin-shell-sep" aria-hidden="true" />
           <div>
-            <h1>Admin console</h1>
+            <h1>Admin</h1>
             <p className="admin-shell-user">
-              Signed in as {displayUsername} ({adminRoleLabel})
+              Angemeldet als {displayUsername} ({adminRoleLabel})
             </p>
           </div>
         </div>
         <div className="admin-shell-actions">
-          <button onClick={() => void onRefresh()}>Refresh</button>
+          <button type="button" onClick={() => void onRefresh()}>
+            Aktualisieren
+          </button>
           <button
-            className="station-top-logout"
+            type="button"
+            className="admin-shell-logout"
             onClick={() => void onLogout()}
           >
-            Logout / Lock
+            Sperren
           </button>
         </div>
       </div>

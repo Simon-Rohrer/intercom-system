@@ -1,4 +1,6 @@
+import type { ReactNode } from "react";
 import type { Bootstrap } from "../../types";
+import { ADMIN_SECTIONS, type AdminSectionId } from "./adminSections";
 import { AdminRolesCard } from "./AdminRolesCard";
 import { AdminRoomsCard } from "./AdminRoomsCard";
 import { AdminChannelsCard } from "./AdminChannelsCard";
@@ -18,6 +20,8 @@ type AdminConfigCardProps = {
   adminPin: string;
   appData: Bootstrap;
   refreshBootstrapData: () => Promise<void>;
+  /** Which section to show; without it every section is listed (legacy layout). */
+  section?: AdminSectionId;
 };
 
 export function AdminConfigCard({
@@ -25,96 +29,54 @@ export function AdminConfigCard({
   adminPin,
   appData,
   refreshBootstrapData,
+  section,
 }: AdminConfigCardProps) {
+  const shared = { token, adminPin, appData, refreshBootstrapData };
+  const cards: Record<AdminSectionId, ReactNode> = {
+    showfile: (
+      <AdminShowfileCard
+        token={token}
+        adminPin={adminPin}
+        refreshBootstrapData={refreshBootstrapData}
+      />
+    ),
+    roles: <AdminRolesCard {...shared} />,
+    users: <AdminUsersCard {...shared} />,
+    rooms: <AdminRoomsCard {...shared} />,
+    channels: <AdminChannelsCard {...shared} />,
+    routing: <AdminRoutingMatrixCard {...shared} />,
+    companion: (
+      <>
+        <AdminCompanionCard token={token} adminPin={adminPin} appData={appData} />
+        <AdminCompanionPageConfigCard token={token} adminPin={adminPin} appData={appData} />
+      </>
+    ),
+    streamdeck: <AdminStreamDeckCard token={token} adminPin={adminPin} appData={appData} />,
+    telegram: (
+      <>
+        <AdminTelegramCard token={token} adminPin={adminPin} appData={appData} />
+        <AdminTelegramUsersCard token={token} adminPin={adminPin} />
+      </>
+    ),
+    chat: <AdminChatHistoryCard {...shared} />,
+    logs: <AdminLogsCard token={token} adminPin={adminPin} />,
+  };
+
+  if (section) {
+    return (
+      <div className="admin-section-cards" key={section}>
+        {cards[section]}
+      </div>
+    );
+  }
+
   return (
     <div className="admin-theme-groups">
-      <section className="admin-theme-group" aria-label="Showfile management">
-        <div className="admin-theme-group-head">
-          <h3>Showfile</h3>
-          <p>Import and export complete configuration snapshots.</p>
-        </div>
-
-        <AdminShowfileCard
-          token={token}
-          adminPin={adminPin}
-          refreshBootstrapData={refreshBootstrapData}
-        />
-      </section>
-
-      <section className="admin-theme-group" aria-label="Configuration structure and routing">
-        <div className="admin-theme-group-head">
-          <h3>Configuration</h3>
-          <p>Core intercom structure and routing behavior.</p>
-        </div>
-
-        <AdminRolesCard
-          token={token}
-          adminPin={adminPin}
-          appData={appData}
-          refreshBootstrapData={refreshBootstrapData}
-        />
-
-        <AdminUsersCard
-          token={token}
-          adminPin={adminPin}
-          appData={appData}
-          refreshBootstrapData={refreshBootstrapData}
-        />
-
-        <AdminRoomsCard
-          token={token}
-          adminPin={adminPin}
-          appData={appData}
-          refreshBootstrapData={refreshBootstrapData}
-        />
-
-        <AdminChannelsCard
-          token={token}
-          adminPin={adminPin}
-          appData={appData}
-          refreshBootstrapData={refreshBootstrapData}
-        />
-
-        <AdminRoutingMatrixCard
-          token={token}
-          adminPin={adminPin}
-          appData={appData}
-          refreshBootstrapData={refreshBootstrapData}
-        />
-      </section>
-
-      <section className="admin-theme-group" aria-label="External integrations">
-        <div className="admin-theme-group-head">
-          <h3>Integrations</h3>
-          <p>Companion publish flow, Telegram bot mapping and access control.</p>
-        </div>
-
-        <AdminCompanionCard token={token} adminPin={adminPin} appData={appData} />
-
-        <AdminStreamDeckCard token={token} adminPin={adminPin} appData={appData} />
-
-        <AdminCompanionPageConfigCard token={token} adminPin={adminPin} appData={appData} />
-
-        <AdminTelegramCard token={token} adminPin={adminPin} appData={appData} />
-
-        <AdminTelegramUsersCard token={token} adminPin={adminPin} />
-      </section>
-
-      <section className="admin-theme-group" aria-label="Realtime behavior and diagnostics">
-        <div className="admin-theme-group-head">
-          <h3>Runtime</h3>
-          <p>Communication housekeeping and operational cleanup.</p>
-        </div>
-
-        <AdminLogsCard token={token} adminPin={adminPin} />
-
-        <AdminChatHistoryCard
-          token={token}
-          adminPin={adminPin}
-          appData={appData}
-          refreshBootstrapData={refreshBootstrapData}
-        />
-      </section>
+      {ADMIN_SECTIONS.map((info) => (
+        <section key={info.id} className="admin-theme-group" aria-label={info.label}>
+          {cards[info.id]}
+        </section>
+      ))}
     </div>
   );
 }

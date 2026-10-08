@@ -36,23 +36,23 @@ describe("LoginView", () => {
   it("disables join button until username and role are present", () => {
     const { rerender } = render(<LoginView {...baseProps} />);
     expect(
-      screen.getByRole("button", { name: "Join Intercom" }),
+      screen.getByRole("button", { name: "Intercom beitreten" }),
     ).toBeDisabled();
 
     rerender(<LoginView {...baseProps} username="Tim" roleId="op" />);
-    expect(screen.getByRole("button", { name: "Join Intercom" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Intercom beitreten" })).toBeEnabled();
   });
 
   it("marks missing display name and role as required", () => {
     const { rerender } = render(<LoginView {...baseProps} />);
 
-    expect(screen.getByText("Enter a display name to continue.")).toBeVisible();
-    expect(screen.getByText("Select a role to continue.")).toBeVisible();
-    expect(screen.getByLabelText("Display name")).toHaveAttribute(
+    expect(screen.getByText("Gib einen Namen ein, um fortzufahren.")).toBeVisible();
+    expect(screen.getByText("Wähle eine Rolle, um fortzufahren.")).toBeVisible();
+    expect(screen.getByLabelText("Name")).toHaveAttribute(
       "aria-invalid",
       "true",
     );
-    expect(screen.getByLabelText("Role")).toHaveAttribute(
+    expect(screen.getByLabelText("Rolle")).toHaveAttribute(
       "aria-invalid",
       "true",
     );
@@ -60,15 +60,15 @@ describe("LoginView", () => {
     rerender(<LoginView {...baseProps} username="Tim" roleId="op" />);
 
     expect(
-      screen.queryByText("Enter a display name to continue."),
+      screen.queryByText("Gib einen Namen ein, um fortzufahren."),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText("Select a role to continue."),
+      screen.queryByText("Wähle eine Rolle, um fortzufahren."),
     ).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Display name")).not.toHaveAttribute(
+    expect(screen.getByLabelText("Name")).not.toHaveAttribute(
       "aria-invalid",
     );
-    expect(screen.getByLabelText("Role")).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByLabelText("Rolle")).not.toHaveAttribute("aria-invalid");
   });
 
   it("explains when all roles are already active", () => {
@@ -82,9 +82,9 @@ describe("LoginView", () => {
       />,
     );
 
-    expect(screen.getByText("No roles are available right now.")).toBeVisible();
+    expect(screen.getByText("Gerade ist keine Rolle frei.")).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "Join Intercom" }),
+      screen.getByRole("button", { name: "Intercom beitreten" }),
     ).toBeDisabled();
   });
 
@@ -135,9 +135,9 @@ describe("LoginView", () => {
       />,
     );
 
-    await user.type(screen.getByLabelText("Display name"), " A");
-    await user.selectOptions(screen.getByLabelText("Role"), "admin");
-    await user.click(screen.getByRole("button", { name: "Join Intercom" }));
+    await user.type(screen.getByLabelText("Name"), " A");
+    await user.selectOptions(screen.getByLabelText("Rolle"), "admin");
+    await user.click(screen.getByRole("button", { name: "Intercom beitreten" }));
 
     expect(onUsernameChange).toHaveBeenCalled();
     expect(onRoleChange).toHaveBeenCalledWith("admin");
@@ -165,7 +165,7 @@ describe("LoginView", () => {
 
     render(<Harness />);
 
-    await user.type(screen.getByLabelText("Display name"), "Tim FOH");
+    await user.type(screen.getByLabelText("Name"), "Tim FOH");
     expect(onUsernameChange).toHaveBeenLastCalledWith("TimFOH");
   });
 
@@ -190,13 +190,13 @@ describe("LoginView", () => {
     await user.click(adminTab);
     expect(adminTab).toHaveAttribute("aria-selected", "true");
     expect(
-      screen.getByRole("tabpanel", { name: "Admin console" }),
+      screen.getByRole("tabpanel", { name: "Admin-Bereich" }),
     ).toBeVisible();
     expect(screen.getByText("Wrong PIN")).toBeVisible();
 
-    await user.type(screen.getByLabelText("Admin PIN"), "5");
+    await user.type(screen.getByLabelText("Admin-PIN"), "5");
     await user.click(
-      screen.getByRole("button", { name: "Open admin console" }),
+      screen.getByRole("button", { name: "Admin-Bereich öffnen" }),
     );
     expect(onAdminPinChange).toHaveBeenCalled();
     expect(onAdminLogin).toHaveBeenCalledTimes(1);
@@ -204,7 +204,7 @@ describe("LoginView", () => {
     await user.click(screen.getByRole("tab", { name: "Operator" }));
     expect(adminTab).toHaveAttribute("aria-selected", "false");
     expect(
-      screen.queryByRole("tabpanel", { name: "Admin console" }),
+      screen.queryByRole("tabpanel", { name: "Admin-Bereich" }),
     ).not.toBeInTheDocument();
   });
 
@@ -227,9 +227,9 @@ describe("LoginView", () => {
       />,
     );
 
-    expect(screen.getByText(/Role currently in use/i)).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Confirm takeover" }));
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByText(/Rolle ist gerade belegt/i)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Rolle übernehmen" }));
+    await user.click(screen.getByRole("button", { name: "Abbrechen" }));
 
     expect(onConfirmTakeover).toHaveBeenCalledTimes(1);
     expect(onCancelTakeover).toHaveBeenCalledTimes(1);

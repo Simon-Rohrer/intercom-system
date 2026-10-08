@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Bootstrap } from "../../types";
 import { AdminCardHeader } from "./AdminCardHeader";
 import { UsersPanel } from "./UsersPanel";
+import { useAdminCardOpenState } from "./adminCardOpen";
 
 type AdminUsersCardProps = {
   token: string;
@@ -16,7 +17,7 @@ export function AdminUsersCard({
   appData,
   refreshBootstrapData,
 }: AdminUsersCardProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useAdminCardOpenState();
 
   return (
     <div className="admin-card">

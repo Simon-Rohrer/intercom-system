@@ -88,14 +88,14 @@ export function SimpleIntercomView({
       ? String(selectedInputChannel)
       : "all";
   const allInputsLabel =
-    inputChannelCount === 1 ? "Input 1" : `All ${inputChannelCount} inputs`;
+    inputChannelCount === 1 ? "Eingang 1" : `Alle ${inputChannelCount} Eingänge`;
   const hasInputDevice = inputDevices.length > 0;
   const runtimeIssues = [
     !hasVoiceTarget
-      ? "No party line is assigned to this role. Set a default party line in the role settings."
+      ? "Dieser Rolle ist keine Party Line zugewiesen. Lege in den Rollen-Einstellungen eine Standard-Party-Line fest."
       : "",
     !hasListenTarget
-      ? "No receive party line is assigned to this role. Allow the role to receive the default party line."
+      ? "Diese Rolle darf keine Party Line hören. Erlaube der Rolle, die Standard-Party-Line zu empfangen."
       : "",
     audioError,
   ].filter(Boolean);
@@ -126,33 +126,57 @@ export function SimpleIntercomView({
 
   return (
     <div className="root app simple-shell">
-      <header className="simple-runtime-header">
-        <BrandLogo compact className="simple-brand-logo" />
-        {lowPowerMode ? <LowPowerModeBadge /> : null}
-      </header>
       {connectionState !== "connected" && (
         <div className="connection-offline-banner">
           <span className="connection-offline-icon" />
           {connectionState === "reconnecting"
-            ? "Reconnecting\u2026"
+            ? "Verbindung wird wiederhergestellt …"
             : connectionState === "connecting"
-              ? "Connecting\u2026"
+              ? "Verbinde …"
               : "Offline"}
         </div>
       )}
-      <section className="simple-controls">
-        <div className="simple-top-actions">
-          <button className="simple-logout" onClick={doLogout}>
-            Logout
-          </button>
+      <header className="simple-runtime-header">
+        <BrandLogo className="simple-brand-logo" />
+        <span className="simple-header-sep" aria-hidden="true" />
+        <div className="simple-header-copy">
+          <strong>Simple</strong>
+          <span>{simplePptTargetLabel || "Keine Party Line"}</span>
         </div>
+        <span
+          className={`simple-live ${connectionState === "connected" ? "connected" : "disconnected"}`}
+        >
+          <span className="simple-live-dot" />
+          {connectionState === "connected" ? "Live" : "Offline"}
+        </span>
+        {lowPowerMode ? <LowPowerModeBadge /> : null}
+        <button
+          type="button"
+          className="simple-logout"
+          onClick={doLogout}
+          aria-label="Abmelden"
+          title="Abmelden"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <path d="m16 17 5-5-5-5" />
+            <path d="M21 12H9" />
+          </svg>
+          <span>Abmelden</span>
+        </button>
+      </header>
+      <section className="simple-controls">
         <button
           className={`simple-ptt hold-button ${mainActive ? "active" : ""}`}
           disabled={!hasVoiceTarget || !hasInputDevice}
           {...mainPttButtonProps}
         >
-          Hold to talk
-          <small>{hasInputDevice ? simplePptTargetLabel : "No microphone"}</small>
+          <strong>Hold to talk</strong>
+          <small>
+            {hasInputDevice
+              ? `Party Line: ${simplePptTargetLabel}`
+              : "Kein Mikrofon"}
+          </small>
         </button>
         <div
           className={`simple-audio-status ${
@@ -162,142 +186,141 @@ export function SimpleIntercomView({
           aria-label="Audio runtime status"
           aria-live="polite"
         >
-          <strong>
-            {runtimeIssues.length > 0
-              ? "Audio not ready"
-              : hasInputDevice
-                ? "Audio ready"
-                : "Receive-only ready"}
-          </strong>
-          {runtimeIssues.length > 0 ? (
-            runtimeIssues.map((issue) => <span key={issue}>{issue}</span>)
-          ) : !hasInputDevice ? (
-            <span>
-              Listening stays active. Connect a microphone to enable talk.
-              {webrtcState ? ` · WebRTC: ${webrtcState}` : ""}
-            </span>
-          ) : (
-            <span>
-              Party line: {simplePptTargetLabel} · Microphone ready
-              {webrtcState ? ` · WebRTC: ${webrtcState}` : ""}
-            </span>
-          )}
+          <span className="simple-audio-status-dot" aria-hidden="true" />
+          <div>
+            <strong>
+              {runtimeIssues.length > 0
+                ? "Audio nicht bereit"
+                : hasInputDevice
+                  ? "Audio bereit"
+                  : "Nur Empfang bereit"}
+            </strong>
+            {runtimeIssues.length > 0 ? (
+              runtimeIssues.map((issue) => <span key={issue}>{issue}</span>)
+            ) : !hasInputDevice ? (
+              <span>
+                Hören bleibt aktiv. Schließe ein Mikrofon an, um zu sprechen.
+                {webrtcState ? ` · WebRTC: ${webrtcState}` : ""}
+              </span>
+            ) : (
+              <span>
+                Party Line: {simplePptTargetLabel} · Mikrofon bereit
+                {webrtcState ? ` · WebRTC: ${webrtcState}` : ""}
+              </span>
+            )}
+          </div>
         </div>
         <button
-          className={`simple-reply hold-button ${replyTarget ? "" : "disabled"} ${replyActive ? "active" : ""}`}
+          className={`simple-reply hold-button ${replyTarget ? "has-caller" : "disabled"} ${replyActive ? "active" : ""}`}
           disabled={!replyTarget}
           {...replyButtonProps}
         >
-          Reply to caller
+          <strong>Reply to caller</strong>
           <small>
-            {replyTarget ? replyTarget.username : "No active caller"}
+            {replyTarget ? replyTarget.username : "Kein aktiver Anrufer"}
           </small>
         </button>
 
-        <label className="simple-mic">
-          <span>Microphone</span>
-          <select
-            value={selectedInputDeviceId}
-            onChange={(e) => onSelectedInputDeviceIdChange(e.target.value)}
-            disabled={inputDevices.length === 0}
-          >
-            {inputDevices.length === 0 ? (
-              <option value="">No input devices</option>
+        <div className="simple-devices">
+          <label className="simple-mic">
+            <span>Mikrofon</span>
+            <select
+              value={selectedInputDeviceId}
+              onChange={(e) => onSelectedInputDeviceIdChange(e.target.value)}
+              disabled={inputDevices.length === 0}
+            >
+              {inputDevices.length === 0 ? (
+                <option value="">Kein Eingabegerät</option>
+              ) : null}
+              {inputDevices.map((d) => (
+                <option key={`simple-mic-${d.deviceId}`} value={d.deviceId}>
+                  {d.label || `Mikrofon ${d.deviceId.slice(0, 6)}`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="simple-mic">
+            <span>Interface-Eingang</span>
+            <select
+              value={selectedInputChannelValue}
+              onChange={(event) =>
+                onSelectedInputChannelChange(
+                  event.target.value === "all"
+                    ? "all"
+                    : Number(event.target.value),
+                )
+              }
+            >
+              <option value="all">{allInputsLabel}</option>
+              {inputChannelCount > 1
+                ? Array.from({ length: inputChannelCount }, (_, index) => (
+                    <option
+                      key={`simple-input-channel-${index + 1}`}
+                      value={index + 1}
+                    >
+                      Eingang {index + 1}
+                    </option>
+                  ))
+                : null}
+            </select>
+          </label>
+          <label className="simple-mic">
+            <span>Lautsprecher</span>
+            <select
+              value={selectedOutputDeviceId}
+              onChange={(e) => onSelectedOutputDeviceIdChange(e.target.value)}
+              disabled={outputDevices.length === 0}
+            >
+              <option value="">Systemstandard</option>
+              {outputDevices.length === 0 ? (
+                <option value="" disabled>
+                  Keine Ausgabegeräte
+                </option>
+              ) : null}
+              {outputDevices.map((d) => (
+                <option key={`simple-out-${d.deviceId}`} value={d.deviceId}>
+                  {d.label || `Ausgang ${d.deviceId.slice(0, 6)}`}
+                </option>
+              ))}
+            </select>
+            {!outputSelectionSupported ? (
+              <small>
+                Lautsprecher-Auswahl wird hier nicht unterstützt; es wird der
+                Systemstandard genutzt.
+              </small>
             ) : null}
-            {inputDevices.map((d) => (
-              <option key={`simple-mic-${d.deviceId}`} value={d.deviceId}>
-                {d.label || `Mic ${d.deviceId.slice(0, 6)}`}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="simple-mic">
-          <span>Interface input</span>
-          <select
-            value={selectedInputChannelValue}
-            onChange={(event) =>
-              onSelectedInputChannelChange(
-                event.target.value === "all"
-                  ? "all"
-                  : Number(event.target.value),
-              )
-            }
-          >
-            <option value="all">{allInputsLabel}</option>
-            {inputChannelCount > 1
-              ? Array.from({ length: inputChannelCount }, (_, index) => (
-                  <option
-                    key={`simple-input-channel-${index + 1}`}
-                    value={index + 1}
-                  >
-                    Input {index + 1}
-                  </option>
-                ))
-              : null}
-          </select>
-        </label>
-        <label className="simple-mic">
-          <span>Speaker output</span>
-          <select
-            value={selectedOutputDeviceId}
-            onChange={(e) => onSelectedOutputDeviceIdChange(e.target.value)}
-            disabled={outputDevices.length === 0}
-          >
-            <option value="">System default</option>
-            {outputDevices.length === 0 ? (
-              <option value="" disabled>
-                No output devices
-              </option>
-            ) : null}
-            {outputDevices.map((d) => (
-              <option key={`simple-out-${d.deviceId}`} value={d.deviceId}>
-                {d.label || `Output ${d.deviceId.slice(0, 6)}`}
-              </option>
-            ))}
-          </select>
-          {!outputSelectionSupported ? (
-            <small>
-              Explicit speaker selection is not supported; using system default
-              output.
-            </small>
-          ) : null}
-        </label>
-        <label className="simple-mic">
-          <span>
+          </label>
+          <label className="simple-check">
             <input
               type="checkbox"
               checked={enableBackgroundAudioRecovery}
               onChange={(event) =>
                 onEnableBackgroundAudioRecoveryChange(event.target.checked)
               }
-            />{" "}
-            Background audio assist
-          </span>
-        </label>
-        <label className="simple-mic">
-          <span>
+            />
+            <span>Audio im Hintergrund wiederherstellen</span>
+          </label>
+          <label className="simple-check">
             <input
               type="checkbox"
               checked={keepScreenAwake}
               disabled={!wakeLockSupported}
-              onChange={(event) =>
-                onKeepScreenAwakeChange(event.target.checked)
-              }
-            />{" "}
-            Keep device awake while connected
-          </span>
-          <small>
-            Media controls:{" "}
-            {mediaSessionSupported ? "supported" : "not supported"} · Wake lock:{" "}
+              onChange={(event) => onKeepScreenAwakeChange(event.target.checked)}
+            />
+            <span>Gerät wach halten, solange verbunden</span>
+          </label>
+          <small className="simple-capabilities">
+            Mediensteuerung:{" "}
+            {mediaSessionSupported ? "unterstützt" : "nicht unterstützt"} · Wake
+            Lock:{" "}
             {wakeLockSupported
               ? wakeLockActive
-                ? "active"
-                : "available"
-              : "not supported"}{" "}
-            · Install mode:{" "}
-            {isStandaloneDisplayMode ? "installed app" : "browser tab"}
+                ? "aktiv"
+                : "verfügbar"
+              : "nicht unterstützt"}{" "}
+            · Modus: {isStandaloneDisplayMode ? "installierte App" : "Browser-Tab"}
           </small>
-        </label>
+        </div>
       </section>
     </div>
   );

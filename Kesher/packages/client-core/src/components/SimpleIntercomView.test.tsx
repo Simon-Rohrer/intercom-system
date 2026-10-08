@@ -57,9 +57,9 @@ describe("SimpleIntercomView audio status", () => {
     const audioStatus = screen.getByRole("status", {
       name: "Audio runtime status",
     });
-    expect(audioStatus).toHaveTextContent("Audio ready");
+    expect(audioStatus).toHaveTextContent("Audio bereit");
     expect(audioStatus).toHaveTextContent(
-      "Party line: Livestream",
+      "Party Line: Livestream",
     );
     expect(screen.getByRole("button", { name: /Hold to talk/ })).toBeEnabled();
   });
@@ -76,7 +76,7 @@ describe("SimpleIntercomView audio status", () => {
     expect(
       screen.getByRole("status", { name: "Audio runtime status" }),
     ).toHaveTextContent(
-      "No party line is assigned",
+      "Dieser Rolle ist keine Party Line zugewiesen",
     );
     expect(screen.getByRole("button", { name: /Hold to talk/ })).toBeDisabled();
   });
@@ -92,8 +92,8 @@ describe("SimpleIntercomView audio status", () => {
     const audioStatus = screen.getByRole("status", {
       name: "Audio runtime status",
     });
-    expect(audioStatus).toHaveTextContent("Receive-only ready");
-    expect(audioStatus).toHaveTextContent("Listening stays active");
+    expect(audioStatus).toHaveTextContent("Nur Empfang bereit");
+    expect(audioStatus).toHaveTextContent("Hören bleibt aktiv");
     expect(screen.getByRole("button", { name: /Hold to talk/ })).toBeDisabled();
   });
 
@@ -109,7 +109,7 @@ describe("SimpleIntercomView audio status", () => {
     const audioStatus = screen.getByRole("status", {
       name: "Audio runtime status",
     });
-    expect(audioStatus).toHaveTextContent("Audio not ready");
+    expect(audioStatus).toHaveTextContent("Audio nicht bereit");
     expect(audioStatus).toHaveTextContent("Permission denied");
   });
 });

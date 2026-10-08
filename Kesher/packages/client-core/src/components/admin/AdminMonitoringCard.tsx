@@ -6,6 +6,7 @@ import type {
 } from "../../types";
 import { RaspberryPiStationsPanel } from "../RaspberryPiStationsPanel";
 import { AdminCardHeader } from "./AdminCardHeader";
+import { useAdminCardOpenState } from "./adminCardOpen";
 
 type AdminMonitoringCardProps = {
   token: string;
@@ -33,7 +34,7 @@ export function AdminMonitoringCard({
   audioStats,
   activeRoutesCount,
 }: AdminMonitoringCardProps) {
-  const [isOpen, setIsOpen] = React.useState(false);
+  const [isOpen, setIsOpen] = useAdminCardOpenState();
   const [isRaspberryOpen, setIsRaspberryOpen] = React.useState(false);
   const [stats, setStats] = React.useState<RealtimeStatsResponse | null>(null);
   const [raspberryStations, setRaspberryStations] = React.useState<

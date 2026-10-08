@@ -8,6 +8,7 @@ import type {
 	ConfigurationSection,
 } from "../../types";
 import { AdminCardHeader } from "./AdminCardHeader";
+import { useAdminCardOpenState } from "./adminCardOpen";
 
 type AdminShowfileCardProps = {
 	token: string;
@@ -98,7 +99,7 @@ export function AdminShowfileCard({
 	adminPin,
 	refreshBootstrapData,
 }: AdminShowfileCardProps) {
-	const [isOpen, setIsOpen] = useState(false);
+	const [isOpen, setIsOpen] = useAdminCardOpenState();
 	const [busy, setBusy] = useState(false);
 	const [importText, setImportText] = useState("");
 	const [message, setMessage] = useState("");

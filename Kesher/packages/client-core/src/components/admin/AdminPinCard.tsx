@@ -1,12 +1,13 @@
 import React from "react";
 import { AdminCardHeader } from "./AdminCardHeader";
+import { useAdminCardOpenState } from "./adminCardOpen";
 
 type AdminPinCardProps = {
   onUpdateAdminPin: (currentPin: string, newPin: string) => Promise<void>;
 };
 
 export function AdminPinCard({ onUpdateAdminPin }: AdminPinCardProps) {
-  const [isOpen, setIsOpen] = React.useState(false);
+  const [isOpen, setIsOpen] = useAdminCardOpenState();
   const [pinCurrentInput, setPinCurrentInput] = React.useState("");
   const [pinNewInput, setPinNewInput] = React.useState("");
   const [pinConfirmInput, setPinConfirmInput] = React.useState("");

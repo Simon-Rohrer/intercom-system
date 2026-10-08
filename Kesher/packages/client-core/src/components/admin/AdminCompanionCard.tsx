@@ -10,6 +10,7 @@ import type {
   CompanionPublishedProfileSummary,
 } from "../../types";
 import { AdminCardHeader } from "./AdminCardHeader";
+import { useAdminCardOpenState } from "./adminCardOpen";
 
 type AdminCompanionCardProps = {
   token: string;
@@ -33,7 +34,7 @@ export function AdminCompanionCard({
   adminPin,
   appData,
 }: AdminCompanionCardProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useAdminCardOpenState();
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
