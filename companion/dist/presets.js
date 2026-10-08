@@ -210,10 +210,20 @@ function fallbackCurrentProfile(self) {
         },
     ];
 }
+function connectionRoleId(self) {
+    return String(self.config.roleId || self.discovery.roleId || "").trim();
+}
 function sortedPresetProfiles(self) {
-    const profiles = self.presetProfiles.length > 0
+    const allProfiles = self.presetProfiles.length > 0
         ? self.presetProfiles
         : fallbackCurrentProfile(self);
+    // A connection only gets live state (calls, images, presence) for its own
+    // role, so only offer that role's buttons. Other roles get their own
+    // Kesher connection in Companion.
+    const roleId = connectionRoleId(self);
+    const profiles = roleId
+        ? allProfiles.filter((profile) => profile.roleId.trim() === roleId)
+        : allProfiles;
     return profiles
         .slice()
         .sort((a, b) => {

@@ -34,7 +34,7 @@ Aktuelle Kesher-Verbindungen sollen über `roleId` laufen.
 3. In Companion die Presets aus `Universal Synced Layout` einmal auf die Tasten ziehen.
 4. Spätere Änderungen nur noch in Kesher veröffentlichen.
 
-Die Presets sind pro Rolle gruppiert (`Kesher / <Rolle> / Seite <n>`). Für Tasten, die eine Person anrufen oder ansprechen sollen, `Direct role` statt `Direct user` verwenden: dann funktioniert die Taste, egal wer gerade in der Rolle angemeldet ist.
+Eine Kesher-Verbindung in Companion gehört zu genau einer Rolle (`Target role ID`) und zeigt nur die Presets dieser Rolle (`Kesher / <Rolle> / Seite <n>`). Bedient ein Companion mehrere Plätze, pro Rolle eine eigene Kesher-Verbindung anlegen (z. B. `kesher_licht` mit `lighting`, `kesher_propresenter` mit `audio`) und jedem Stream Deck die Tasten aus seiner Verbindung geben. Nur so bekommt jede Taste Calls, Bilder und Status der richtigen Rolle. Für Tasten, die eine Person anrufen oder ansprechen sollen, `Direct role` statt `Direct user` verwenden: dann funktioniert die Taste, egal wer gerade in der Rolle angemeldet ist.
 
 ## Incoming calls indicator
 
