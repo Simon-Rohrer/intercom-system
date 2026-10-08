@@ -34,29 +34,32 @@ type AckSettings struct {
 var errCompanionUserNotAllowed = errors.New("companion target user is not allowed")
 
 type Server struct {
-	cfg                                 Config
-	logger                              *slog.Logger
-	adminLogs                           *adminLogStore
-	store                               *Store
-	sessions                            *SessionManager
-	sessionMu                           sync.Mutex
-	hub                                 *Hub
-	media                               *MediaManager
-	telegram                            *TelegramBot
-	certMagic                           tlsProvider
-	httpSrv                             *http.Server
-	redirectSrv                         *http.Server
-	upgrader                            websocket.Upgrader
-	ackMu                               sync.RWMutex
-	ackEnabled                          bool
-	ackSet                              bool
-	companionMu                         sync.RWMutex
-	companionWS                         map[string]map[chan CompanionCommandResult]struct{}
-	companionState                      map[string]map[chan struct{}]struct{}
-	companionPageByRole                 map[string]int
-	companionPageButtonDown             map[string]bool
-	companionPageNavAnchorByRole        map[string]int
-	companionHeldTargets                map[string]string
+	cfg                          Config
+	logger                       *slog.Logger
+	adminLogs                    *adminLogStore
+	store                        *Store
+	sessions                     *SessionManager
+	sessionMu                    sync.Mutex
+	hub                          *Hub
+	media                        *MediaManager
+	telegram                     *TelegramBot
+	certMagic                    tlsProvider
+	httpSrv                      *http.Server
+	redirectSrv                  *http.Server
+	upgrader                     websocket.Upgrader
+	ackMu                        sync.RWMutex
+	ackEnabled                   bool
+	ackSet                       bool
+	companionMu                  sync.RWMutex
+	companionWS                  map[string]map[chan CompanionCommandResult]struct{}
+	companionState               map[string]map[chan struct{}]struct{}
+	companionPageByRole          map[string]int
+	companionPageButtonDown      map[string]bool
+	companionPageNavAnchorByRole map[string]int
+	companionHeldTargets         map[string]string
+	// companionTalkRestore remembers the talk-room selection that a
+	// "PTT fixed channel" key replaced, so releasing the key restores it.
+	companionTalkRestore                map[string][]string
 	companionPendingCallByUser          map[string]bool
 	companionPendingCallerByUser        map[string]string
 	companionPendingCallScopeByUser     map[string]string
@@ -2124,6 +2127,29 @@ func (s *Server) rememberCompanionHeldTarget(key, targetID string) {
 	s.companionMu.Unlock()
 }
 
+func (s *Server) rememberCompanionTalkRestore(key string, talkRooms []string) {
+	if key == "" {
+		return
+	}
+	s.companionMu.Lock()
+	if s.companionTalkRestore == nil {
+		s.companionTalkRestore = make(map[string][]string)
+	}
+	s.companionTalkRestore[key] = append([]string{}, talkRooms...)
+	s.companionMu.Unlock()
+}
+
+func (s *Server) consumeCompanionTalkRestore(key string) ([]string, bool) {
+	if key == "" {
+		return nil, false
+	}
+	s.companionMu.Lock()
+	talkRooms, ok := s.companionTalkRestore[key]
+	delete(s.companionTalkRestore, key)
+	s.companionMu.Unlock()
+	return talkRooms, ok
+}
+
 func (s *Server) consumeCompanionHeldTarget(key string) string {
 	if key == "" {
 		return ""
@@ -2689,6 +2715,7 @@ func (s *Server) executeCompanionButtonPress(ctx context.Context, roleID string,
 		targetID := roomID
 		if phase == "down" {
 			s.rememberCompanionHeldTarget(holdKey, roomID)
+			s.rememberCompanionTalkRestore(holdKey, presence.TalkRooms)
 			res := queueBrowserCommands(
 				CompanionCommand{
 					Command:       "set_room_matrix",
@@ -2709,6 +2736,18 @@ func (s *Server) executeCompanionButtonPress(ctx context.Context, roleID string,
 			_ = s.consumeCompanionHeldTarget(holdKey)
 		}
 		res := queueBrowserCommand(CompanionCommand{Command: "ptt", Scope: "room", TargetID: targetID, State: map[bool]string{true: "ptt_start", false: "ptt_stop"}[phase == "down"]})
+		if phase != "down" && res.OK {
+			if previousTalkRooms, ok := s.consumeCompanionTalkRestore(holdKey); ok {
+				restore := queueBrowserCommand(CompanionCommand{
+					Command:       "set_room_matrix",
+					ListenRoomIDs: append([]string(nil), presence.ListenRooms...),
+					TalkRoomIDs:   previousTalkRooms,
+				})
+				if !restore.OK && s.logger != nil {
+					s.logger.Warn("companion ptt room: restoring talk selection failed", "roleId", roleID, "error", restore.Error)
+				}
+			}
+		}
 		emitCompanionButtonImage(page.Page, button, ButtonState{State: map[bool]string{true: "TALK", false: "IDLE"}[phase == "down"], Channel: strings.TrimSpace(button.Action.RoomID)})
 		return res
 	case StreamDeckActionTypeSelectTalkRoom:

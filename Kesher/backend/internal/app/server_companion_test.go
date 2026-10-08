@@ -1505,6 +1505,20 @@ func TestExecuteCompanionButtonPressPTTRoomSelectsFixedChannelBeforePTT(t *testi
 		t.Fatalf("expected ptt_stop for original fixed room-a, got %+v", thirdCommand)
 	}
 
+	// Releasing the fixed-channel key must restore the talk selection that was
+	// active before the key was pressed (room-b), not leave room-a selected.
+	fourthOutbound := <-client.sendPriority
+	fourthCommand, ok := fourthOutbound.Data.(CompanionCommand)
+	if !ok {
+		t.Fatalf("expected CompanionCommand payload, got %T", fourthOutbound.Data)
+	}
+	if fourthCommand.Command != "set_room_matrix" {
+		t.Fatalf("expected talk selection restore after release, got %+v", fourthCommand)
+	}
+	if len(fourthCommand.TalkRoomIDs) != 1 || fourthCommand.TalkRoomIDs[0] != "room-b" {
+		t.Fatalf("expected previous talk selection [room-b] to be restored, got %+v", fourthCommand.TalkRoomIDs)
+	}
+
 	if heldTarget, ok := s.companionHeldTarget("source:0:0"); ok || strings.TrimSpace(heldTarget) != "" {
 		t.Fatalf("expected held target to be cleared after release, got %q", heldTarget)
 	}
