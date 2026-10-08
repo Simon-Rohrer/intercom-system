@@ -51,12 +51,12 @@ function rolePresetCategory(self, profile) {
         self.discovery.roleId ||
         self.config.roleId ||
         "", "Unassigned role");
-    const profileLabel = cleanLabel(profile?.username || self.discovery.username || self.config.username || "", "Default profile");
-    return `Kesher / ${roleLabel} / ${profileLabel}`;
+    // Profiles belong to a role; who published them last does not matter here.
+    return `Kesher / ${roleLabel}`;
 }
 function pageLabel(page) {
     const title = singleLine(page.title || "");
-    return title ? `Page ${page.page + 1} / ${title}` : `Page ${page.page + 1}`;
+    return title ? `Seite ${page.page + 1} / ${title}` : `Seite ${page.page + 1}`;
 }
 function profilePagePresetCategory(self, profile, page) {
     return `${rolePresetCategory(self, profile)} / ${pageLabel(page)}`;
@@ -161,7 +161,8 @@ function buildProfileButtonPreset(self, profile, page, button) {
                 },
             ]
             : [];
-    const shouldTriggerSlot = hasContent && !isIndicator;
+    // The indicator triggers too: pressing it acknowledges the call.
+    const shouldTriggerSlot = hasContent;
     return {
         type: "button",
         category: profilePagePresetCategory(self, profile, page),

@@ -77,16 +77,13 @@ function rolePresetCategory(self: ModuleInstance, profile?: CompanionPresetProfi
       "",
     "Unassigned role",
   );
-  const profileLabel = cleanLabel(
-    profile?.username || self.discovery.username || self.config.username || "",
-    "Default profile",
-  );
-  return `Kesher / ${roleLabel} / ${profileLabel}`;
+  // Profiles belong to a role; who published them last does not matter here.
+  return `Kesher / ${roleLabel}`;
 }
 
 function pageLabel(page: StreamDeckPageConfig): string {
   const title = singleLine(page.title || "");
-  return title ? `Page ${page.page + 1} / ${title}` : `Page ${page.page + 1}`;
+  return title ? `Seite ${page.page + 1} / ${title}` : `Seite ${page.page + 1}`;
 }
 
 function profilePagePresetCategory(
@@ -232,7 +229,8 @@ function buildProfileButtonPreset(
         ]
       : [];
 
-  const shouldTriggerSlot = hasContent && !isIndicator;
+  // The indicator triggers too: pressing it acknowledges the call.
+  const shouldTriggerSlot = hasContent;
 
   return {
     type: "button" as const,

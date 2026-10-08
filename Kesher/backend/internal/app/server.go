@@ -123,12 +123,16 @@ const (
 	websocketPingWriteWindow              = 5 * time.Second
 	companionSelectListenHoldDelayDefault = 2 * time.Second
 	companionIncomingCallBlinkInterval    = 300 * time.Millisecond
-	companionIncomingCallBlinkMaxCycles   = 6
-	companionIncomingCallBlinkDuration    = companionIncomingCallBlinkInterval * companionIncomingCallBlinkMaxCycles * 2
 	companionIncomingCallEffectValue      = 3
 	raspberryPiHeartbeatOfflineAfter      = 12 * time.Second
 	raspberryPiHeartbeatHideAfter         = 24 * time.Hour
 )
+
+// companionIncomingCallBlinkDuration is how long the Stream Deck incoming-call
+// indicator keeps blinking when nobody acknowledges the call (pressing the
+// indicator, reply-to-caller or the button that matches the caller). It is a
+// variable so tests can shorten it.
+var companionIncomingCallBlinkDuration = 30 * time.Second
 
 func refreshWebSocketReadDeadline(conn *websocket.Conn) {
 	_ = conn.SetReadDeadline(time.Now().Add(websocketReadTimeout))

@@ -34,6 +34,20 @@ Aktuelle Kesher-Verbindungen sollen über `roleId` laufen.
 3. In Companion die Presets aus `Universal Synced Layout` einmal auf die Tasten ziehen.
 4. Spätere Änderungen nur noch in Kesher veröffentlichen.
 
+Die Presets sind pro Rolle gruppiert (`Kesher / <Rolle> / Seite <n>`). Für Tasten, die eine Person anrufen oder ansprechen sollen, `Direct role` statt `Direct user` verwenden: dann funktioniert die Taste, egal wer gerade in der Rolle angemeldet ist.
+
+## Incoming calls indicator
+
+Die Taste blinkt, sobald die Rolle einen Call bekommt (direkt oder auf einer Party Line, auf der `Listen` an ist). Sie blinkt, bis der Call bestätigt wird, höchstens 30 Sekunden.
+
+Bestätigen:
+
+- die Indikator-Taste drücken,
+- `Reply to caller` drücken,
+- oder die Taste drücken, die zum Anrufer passt (z. B. `Direct role` der anrufenden Rolle oder die Party Line).
+
+Nach einem Update des Companion-Moduls die Indikator-Taste einmal neu aus den Presets ziehen, damit sie beim Drücken bestätigt.
+
 ## Prüfen
 
 Wichtige Variablen:

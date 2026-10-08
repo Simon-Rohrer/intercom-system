@@ -30,8 +30,9 @@ const allowedStreamDeckActionTypes = new Set([
     "raspberry_status",
 ]);
 const signalBlinkIntervalMs = 300;
-const maxIncomingCallBlinkCycles = 6;
-const incomingCallBlinkDurationMs = signalBlinkIntervalMs * maxIncomingCallBlinkCycles * 2;
+// Keep in sync with companionIncomingCallBlinkDuration in the Kesher backend:
+// the indicator blinks until the call is acknowledged, at most this long.
+const incomingCallBlinkDurationMs = 30_000;
 function normalizeProfileStreamDeckSettings(raw) {
     if (!raw || typeof raw !== "object")
         return null;
@@ -159,6 +160,10 @@ export class ModuleInstance extends InstanceBase {
     signalFrom = "";
     signalMessage = "";
     signalStartedAt = 0;
+    // Local clock time when the current call reached this module. The blink
+    // window is measured from here so clock drift between the Kesher server and
+    // the Companion host cannot cut the blink short or suppress it entirely.
+    signalReceivedAt = 0;
     signalBlinkPhase = false;
     imageEffectBlinkPhase = false;
     lastCommandOK = true;
@@ -587,6 +592,7 @@ export class ModuleInstance extends InstanceBase {
             this.signalFrom = "";
             this.signalMessage = "";
             this.signalStartedAt = 0;
+            this.signalReceivedAt = 0;
             this.signalFingerprint = "";
             this.signalBlinkPhase = false;
             return;
@@ -595,20 +601,36 @@ export class ModuleInstance extends InstanceBase {
         const fallbackStartedAt = fingerprint === this.signalFingerprint && this.signalStartedAt > 0
             ? this.signalStartedAt
             : Date.now();
+        const nextStartedAt = Number.isFinite(startedAt) && startedAt > 0
+            ? Math.trunc(startedAt)
+            : fallbackStartedAt;
+        const isNewSignal = !this.signalActive ||
+            fingerprint !== this.signalFingerprint ||
+            nextStartedAt !== this.signalStartedAt ||
+            this.signalReceivedAt <= 0;
         this.signalActive = true;
         this.signalFrom = normalizedFrom;
         this.signalMessage = normalizedMessage;
-        this.signalStartedAt = Number.isFinite(startedAt) && startedAt > 0
-            ? Math.trunc(startedAt)
-            : fallbackStartedAt;
+        this.signalStartedAt = nextStartedAt;
+        if (isNewSignal) {
+            this.signalReceivedAt = Date.now();
+        }
         this.signalFingerprint = fingerprint;
     }
     signalBlinkAttentionActive() {
         if (!this.signalActive)
             return false;
-        if (this.signalStartedAt <= 0)
+        if (this.signalReceivedAt <= 0)
             return false;
-        return Date.now() - this.signalStartedAt < incomingCallBlinkDurationMs;
+        return Date.now() - this.signalReceivedAt < incomingCallBlinkDurationMs;
+    }
+    /** Stop the incoming-call blink right away when the indicator is pressed;
+     * the server confirms with a fresh companion_state. */
+    acknowledgeIncomingCallLocally() {
+        if (!this.incomingCallBlinkActive())
+            return;
+        this.updateSignalState(false, "", "", 0);
+        this.checkSignalFeedbacks();
     }
     incomingCallBlinkActive() {
         if (this.signalMessage.trim().toLowerCase() !== "call")

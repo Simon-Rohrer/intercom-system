@@ -62,6 +62,9 @@ export function UpdateActions(self: ModuleInstance): void {
           "info",
           `Trigger slot ${buttonIndex} page=${hasSourcePage ? sourcePageNumber : self.currentPageNumber} phase=${phase} action=${actionType} label=${label}`,
         );
+        if (actionType === "incoming_call_indicator" && phase === "down") {
+          self.acknowledgeIncomingCallLocally();
+        }
         if (hasSourcePage) {
           self.dispatchBridgeCommand(
             {
