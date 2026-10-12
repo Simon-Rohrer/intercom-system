@@ -454,3 +454,63 @@
   min-height: 0;
   display: grid;
 }
+
+/* Stream Deck message: yellow border blinks inside the chat, text centred. */
+.chat-panel-body {
+  position: relative;
+}
+.chat-attention-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 1.2em;
+  pointer-events: none;
+  border-radius: inherit;
+  overflow: hidden;
+}
+.chat-attention-flash::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 clamp(8px, 3.5cqi, 16px) var(--k-call),
+    inset 0 0 clamp(18px, 8cqi, 36px) clamp(10px, 5cqi, 22px) rgba(255, 176, 32, 0.8),
+    inset 0 0 clamp(40px, 22cqi, 90px) clamp(16px, 10cqi, 40px) rgba(255, 176, 32, 0.35);
+  animation: attention-chat-border-blink 4s linear forwards;
+}
+.chat-attention-card {
+  position: relative;
+  display: grid;
+  gap: 0.3em;
+  max-width: 100%;
+  padding: 0.8em 1em;
+  text-align: center;
+  border: 1px solid var(--k-call);
+  border-radius: var(--k-r-key);
+  background: rgba(9, 11, 14, 0.94);
+  box-shadow: 0 0 24px rgba(255, 176, 32, 0.3);
+}
+.chat-attention-card strong {
+  font-family: var(--k-font-label);
+  font-size: 0.8em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--k-call);
+}
+.chat-attention-card span {
+  font-family: var(--k-font-label);
+  font-size: 1.35em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--k-ink);
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-attention-flash::before {
+    animation: attention-chat-border-steady 4s linear forwards;
+  }
+}

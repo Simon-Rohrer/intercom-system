@@ -136,6 +136,26 @@ describe("ChatSignalPanel", () => {
     expect(screen.queryByRole("button", { name: /Antworten/ })).not.toBeInTheDocument();
   });
 
+  it("flashes a Stream Deck message inside the chat", () => {
+    render(
+      <ChatSignalPanel
+        message=""
+        onMessageChange={vi.fn()}
+        onSendChat={vi.fn()}
+        onAcknowledge={vi.fn()}
+        chatMessages={[]}
+        attention={{ key: 1, title: "Stream Deck · Global", detail: "Simon · Licht 1: Lauter bitte" }}
+        {...defaultProps}
+      />,
+    );
+
+    const flash = screen.getByRole("status");
+    expect(flash).toHaveClass("chat-attention-flash");
+    expect(flash.closest(".chat-panel-body")).not.toBeNull();
+    expect(flash).toHaveTextContent("Stream Deck · Global");
+    expect(flash).toHaveTextContent("Simon · Licht 1: Lauter bitte");
+  });
+
   it("updates message and sends via button and enter", async () => {
     const user = userEvent.setup();
     const onMessageChange = vi.fn();

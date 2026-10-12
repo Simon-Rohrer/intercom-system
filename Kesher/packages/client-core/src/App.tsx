@@ -2990,6 +2990,16 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     ).values(),
   ).sort((a, b) => a.username.localeCompare(b.username));
 
+  // Stream Deck chat messages flash inside the chat on stations; only the
+  // chat display (server monitor) flashes the whole screen.
+  const chatAttention =
+    session.incomingAttention?.kind === "chat"
+      ? {
+          key: session.attentionFlashKey,
+          title: session.incomingAttention.title,
+          detail: session.incomingAttention.detail,
+        }
+      : null;
   const chatAndSignalBlock = (
     <ChatSignalPanel
       message={session.message}
@@ -3006,6 +3016,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         .map((room) => ({ id: room.id, name: room.name }))}
       roles={appData.roles.map((role) => ({ id: role.id, name: role.name }))}
       activeUsers={activeUsersForChat}
+      attention={chatAttention}
     />
   );
   const realtimeDebugBlock = <RealtimeEventsPanel events={session.events} />;
@@ -3069,7 +3080,9 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     appData.rooms.find((room) => room.id === simpleVoiceTargetId)?.name ||
     "Keine Party Line gewählt";
 
-  const attentionFlashOverlay = session.incomingAttention ? (
+  const attentionFlashOverlay =
+    session.incomingAttention &&
+    (session.incomingAttention.kind === "call" || session.viewMode === "chat") ? (
     <div
       key={session.attentionFlashKey}
       className={`attention-flash attention-flash-${session.incomingAttention.kind}${

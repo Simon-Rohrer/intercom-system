@@ -44,6 +44,8 @@ type ChatSignalPanelProps = {
     roleName: string;
     isWebOnline?: boolean;
   }>;
+  /** Stream Deck message to flash inside the chat (docked or popped out). */
+  attention?: { key: number; title: string; detail: string } | null;
 };
 
 function autocompleteContext(value: string, caret: number) {
@@ -75,6 +77,7 @@ export function ChatSignalPanel({
   rooms,
   roles,
   activeUsers,
+  attention = null,
 }: ChatSignalPanelProps) {
   const [selectedSuggestion, setSelectedSuggestion] = useState(0);
   const [caret, setCaret] = useState(message.length);
@@ -277,6 +280,19 @@ export function ChatSignalPanel({
 
   return (
     <div className="chat-panel-body">
+      {attention ? (
+        <div
+          key={attention.key}
+          className="chat-attention-flash"
+          role="status"
+          aria-live="assertive"
+        >
+          <div className="chat-attention-card">
+            <strong>{attention.title}</strong>
+            <span>{attention.detail}</span>
+          </div>
+        </div>
+      ) : null}
       {awaitingMyAck > 0 ? (
         <button
           type="button"
