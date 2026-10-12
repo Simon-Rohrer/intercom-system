@@ -12,6 +12,8 @@ const { createKesherChat } = require('./kesher-chat')
 const { createChurchTools } = require('./churchtools')
 
 const PORT = Number(process.env.PORT) || 8090
+// Hinter Caddy (HTTPS) nur lokal lauschen: HOST=127.0.0.1
+const HOST = process.env.HOST || undefined
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data')
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json')
 
@@ -919,7 +921,7 @@ app.all('/api/layout/:layout/tile/:tile/source/:source', (req, res) => {
   res.json({ ok: true, layout: layout.name, source: source.name })
 })
 
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   console.log('Multiview Builder läuft:')
   console.log(`  Webseite: http://localhost:${PORT}/`)
   for (const a of lanAddresses()) console.log(`            http://${a}:${PORT}/`)

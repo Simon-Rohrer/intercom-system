@@ -1775,7 +1775,8 @@ for (const id of ['#pp-host', '#pp-port']) {
 }
 
 function renderCompanion() {
-  const base = location.origin
+  // Companion läuft auf demselben Server: dort direkt und ohne Zertifikat über 127.0.0.1
+  const base = location.protocol === 'https:' ? `http://127.0.0.1:${location.port || 8090}` : location.origin
   const lines = [
     ...config.outputs.flatMap((o, oi) =>
       config.layouts.map((l, li) => [`${o.name} → ${l.name}`, `${base}/api/output/${oi + 1}/layout/${li + 1}`]),

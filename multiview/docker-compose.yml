@@ -1,6 +1,6 @@
 # Multiview auf dem Kesher-Server.
 #   docker compose up -d --build
-# Editor:  http://<server-ip>:8090/
+# Editor:  http://<server-ip>:8090/ (nach der HTTPS-Umstellung https://, siehe Kesher/server-config/Caddyfile.jms)
 # Monitor: http://127.0.0.1:8090/output.html?id=1 (zeigt der Kiosk auf dem HDMI-Ausgang)
 services:
   multiview:
@@ -11,6 +11,9 @@ services:
     network_mode: host
     environment:
       PORT: "8090"
+      # Erst zusammen mit Caddyfile.jms einschalten (sonst ist der Editor im Netz weg):
+      # nur lokal lauschen, von außen über Caddy als https://<server-ip>:8090
+      # HOST: "127.0.0.1"
       # Kesher läuft auf demselben Server (nur auf 127.0.0.1 erreichbar)
       KESHER_URL: "http://127.0.0.1:8080"
     volumes:

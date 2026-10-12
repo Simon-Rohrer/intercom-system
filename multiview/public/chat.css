@@ -129,7 +129,10 @@
 .kchat-msg.scope-direct { border-left-color: var(--k-direct); }
 .kchat-msg.scope-broadcast { border-left-color: var(--k-bcast); }
 .kchat-msg.is-old { opacity: 0.5; }
-.kchat-msg.is-newest { background: var(--k-face-hi); border-color: var(--k-line-strong); }
+.kchat-msg.is-newest { background: color-mix(in srgb, var(--k-accent) 10%, var(--k-face-hi)); border-color: var(--k-accent); }
+/* Die neueste Nachricht ist die, die man lesen soll: deutlich größer */
+.kchat-msg.is-newest .kchat-text { font-size: 1.9em; line-height: 1.2; }
+.kchat-msg.is-newest .kchat-meta { font-size: 0.85em; }
 .kchat-msg.is-newest.arrive { animation: kchat-arrive 1.2s ease-out; }
 .kchat-msg.needs-ack {
   border-color: var(--k-call);
