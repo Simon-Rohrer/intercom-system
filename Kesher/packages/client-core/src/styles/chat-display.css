@@ -1,0 +1,218 @@
+/* ==========================================================
+   CHAT DISPLAY (?viewMode=chat)
+   Read-only feed for a monitor/TV across the room: large type
+   that scales with the screen, newest message at the bottom.
+   ========================================================== */
+
+.root.chat-display-shell {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--k-bg);
+  color: var(--k-ink);
+  overflow: hidden;
+  cursor: none;
+  font-size: clamp(16px, 1.6vw, 34px);
+}
+
+.chat-display-header {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  padding: 0.6em 1.4em;
+  background: var(--k-rack);
+  border-bottom: 1px solid var(--k-line);
+}
+.chat-display-logo.app-brand-logo {
+  height: 2.6em;
+  max-width: none;
+  width: auto;
+  filter: none;
+  flex: none;
+}
+.chat-display-sep {
+  width: 1px;
+  height: 2em;
+  background: var(--k-line);
+  flex: none;
+}
+.chat-display-title {
+  display: grid;
+  min-width: 0;
+}
+.chat-display-title strong {
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  font-size: 1.3em;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.chat-display-title span {
+  color: var(--k-ink-3);
+  font-size: 0.75em;
+}
+.chat-display-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  margin-left: auto;
+  padding: 0.2em 0.7em 0.2em 0.55em;
+  border: 1px solid var(--k-line);
+  border-radius: 999px;
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  font-size: 0.75em;
+  text-transform: uppercase;
+}
+.chat-display-live-dot {
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: var(--k-ok);
+  box-shadow: 0 0 0.5em var(--k-ok);
+}
+.chat-display-live.disconnected {
+  border-color: var(--k-talk);
+  color: var(--k-bad);
+}
+.chat-display-live.disconnected .chat-display-live-dot {
+  background: var(--k-bad);
+  box-shadow: 0 0 0.5em var(--k-bad);
+  animation: station-blink 1s steps(2, jump-none) infinite;
+}
+.chat-display-clock {
+  font-family: var(--k-font-mono);
+  font-size: 1.1em;
+  color: var(--k-ink-2);
+}
+
+.chat-display-empty {
+  margin: 0;
+  align-self: center;
+  justify-self: center;
+  color: var(--k-ink-3);
+  font-size: 1.2em;
+}
+
+.chat-display-feed {
+  list-style: none;
+  margin: 0;
+  padding: 1em 1.4em 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8em;
+  overflow: hidden;
+}
+/* push messages to the bottom when the feed is short */
+.chat-display-feed > :first-child {
+  margin-top: auto;
+}
+
+.chat-display-message {
+  display: grid;
+  gap: 0.25em;
+  padding: 0.6em 0.9em;
+  border: 1px solid var(--k-line);
+  border-left: 0.3em solid var(--k-line-strong);
+  border-radius: var(--k-r-panel);
+  background: var(--k-rack);
+  transition: opacity 0.6s ease;
+}
+.chat-display-message.scope-global {
+  border-left-color: var(--k-accent);
+}
+.chat-display-message.scope-room {
+  border-left-color: var(--k-talk);
+}
+.chat-display-message.scope-direct {
+  border-left-color: var(--k-direct);
+}
+.chat-display-message.scope-broadcast {
+  border-left-color: var(--k-bcast);
+}
+.chat-display-message.is-old {
+  opacity: 0.5;
+}
+.chat-display-message.is-newest {
+  background: var(--k-face-hi);
+  border-color: var(--k-line-strong);
+  animation: chat-display-arrive 1.2s ease-out;
+}
+.chat-display-message.needs-ack {
+  border-color: var(--k-call);
+  background: linear-gradient(var(--k-call-deep), var(--k-rack) 80%);
+}
+@keyframes chat-display-arrive {
+  0% {
+    box-shadow: 0 0 0 0.3em color-mix(in srgb, var(--k-accent) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.chat-display-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.2em 0.6em;
+  font-size: 0.75em;
+  color: var(--k-ink-3);
+}
+.chat-display-meta strong {
+  font-size: 1.25em;
+  font-weight: 700;
+  color: var(--k-ink);
+}
+.chat-display-role {
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--k-ink-2);
+}
+.chat-display-target {
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0 0.5em;
+  border: 1px solid var(--k-line);
+  border-radius: 3px;
+  color: var(--k-ink-2);
+}
+.chat-display-target.is-telegram {
+  border-color: #1d3a52;
+  color: #6cc3ff;
+}
+.chat-display-ack {
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--k-call);
+}
+.chat-display-meta time {
+  margin-left: auto;
+  font-family: var(--k-font-mono);
+}
+.chat-display-body {
+  margin: 0;
+  font-size: 1.35em;
+  line-height: 1.25;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-display-message.is-newest {
+    animation: none;
+  }
+}

@@ -28,6 +28,7 @@ import {
 } from "./api";
 import { LoginView } from "./components/LoginView";
 import { SimpleIntercomView } from "./components/SimpleIntercomView";
+import { ChatDisplayView } from "./components/ChatDisplayView";
 import { StationIntercomView } from "./components/StationIntercomView";
 import { AdminShell } from "./components/admin/AdminShell";
 import { ChatSignalPanel } from "./components/panels/ChatSignalPanel";
@@ -456,6 +457,12 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     }
   }, []);
 
+  // useSettings() returns a new object on every render. Reading it through a
+  // ref keeps recoverOperatorSession stable; otherwise every polling effect
+  // that depends on it restarts (and fetches immediately) on each render,
+  // which turned status and Raspberry Pi polling into a request loop.
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   const recoverOperatorSession = useCallback(() => {
     if (sessionRecoveryInFlightRef.current) return;
     clearSessionRecoveryRetry();
@@ -475,12 +482,12 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         const useUsername =
           (autoLoginConfig.enabled && autoLoginConfig.username
             ? autoLoginConfig.username
-            : settings.username
+            : settingsRef.current.username
           ).trim();
         const useRoleId =
           autoLoginConfig.enabled && autoLoginConfig.roleId
             ? autoLoginConfig.roleId
-            : settings.roleId;
+            : settingsRef.current.roleId;
 
         if (!useUsername || !useRoleId) {
           sessionStorage.removeItem(tokenStorageKey);
@@ -511,8 +518,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           }
         }
 
-        settings.setUsername(useUsername);
-        settings.setRoleID(useRoleId);
+        settingsRef.current.setUsername(useUsername);
+        settingsRef.current.setRoleID(useRoleId);
         setAuthMode("operator");
         setAdminLoginError("");
         setOperatorLoginError("");
@@ -535,10 +542,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         sessionRecoveryInFlightRef.current = false;
       }
     })();
-  }, [
-    clearSessionRecoveryRetry,
-    settings,
-  ]);
+  }, [clearSessionRecoveryRetry]);
 
   useEffect(
     () => () => {
@@ -3139,6 +3143,21 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       </div>
     </div>
   ) : null;
+
+  if (session.viewMode === "chat") {
+    return (
+      <ChatDisplayView
+        connectionState={session.connectionState}
+        chatMessages={session.chatMessages}
+        listenRoomIds={session.listenRoomIds}
+        roles={appData.roles.map((role) => ({ id: role.id, name: role.name }))}
+        stationName={
+          appData.roles.find((role) => role.id === appData.self.roleId)?.name ||
+          appData.self.username
+        }
+      />
+    );
+  }
 
   if (session.viewMode === "simple") {
     return (

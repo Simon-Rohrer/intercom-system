@@ -593,7 +593,7 @@ export type UseIntercomSessionOptions = {
   /** Reduce browser rendering, metering, polling and Opus packet overhead. */
   lowPowerMode: boolean;
   /** Optional URL-level override for kiosk/runtime view selection. */
-  viewModeOverride: "simple" | "station" | null;
+  viewModeOverride: "simple" | "station" | "chat" | null;
 
   // Settings refs (stable across renders)
   selectedInputDeviceId: string;
@@ -656,6 +656,7 @@ export type UseIntercomSessionResult = {
   chatMessages: Array<{
     from: string;
     fromUserId: string;
+    fromRoleId?: string;
     body: string;
     at: string;
     room: string;
@@ -696,7 +697,7 @@ export type UseIntercomSessionResult = {
   talkRoomIds: string[];
   listenRoomIdsRef: React.RefObject<string[]>;
   talkRoomIdsRef: React.RefObject<string[]>;
-  viewMode: "station" | "simple";
+  viewMode: "station" | "simple" | "chat";
   message: string;
   setMessage: (v: string) => void;
   inputLevelDbFs: number;
@@ -797,6 +798,7 @@ export function useIntercomSession({
     Array<{
       from: string;
       fromUserId: string;
+      fromRoleId?: string;
       body: string;
       at: string;
       room: string;
@@ -846,7 +848,9 @@ export function useIntercomSession({
   const [listenRoomIds, setListenRoomIds] =
     useState<string[]>(initialListenRoomIds);
   const [talkRoomIds, setTalkRoomIds] = useState<string[]>(initialTalkRoomIds);
-  const [viewMode, setViewMode] = useState<"station" | "simple">("station");
+  const [viewMode, setViewMode] = useState<"station" | "simple" | "chat">(
+    "station",
+  );
   const [message, setMessage] = useState("");
   const [channelAudioFeedStatuses, setChannelAudioFeedStatuses] = useState<
     ChannelAudioFeedStatus[]
@@ -2348,7 +2352,16 @@ export function useIntercomSession({
         ? hadStoredSessionSettings
         : false;
       const hadStored = isInitial ? hadStoredSessionSettings : false;
-      if (hadStored) {
+      if (nextViewMode === "chat") {
+        // A chat display shows every party line the role may receive; the
+        // server only delivers room chat to clients listening to that room.
+        setListenRoomIds(
+          data.rooms
+            .filter((room) => roleAllowed(room.receiverRoleIds, data.self.roleId))
+            .map((room) => room.id),
+        );
+        setTalkRoomIds([]);
+      } else if (hadStored) {
         const restored = restoreRoomMatrixForRole(
           data.roles,
           data.rooms,
@@ -2525,39 +2538,44 @@ export function useIntercomSession({
           });
           pushDebugEvent("system · webrtc · remote audio track attached");
         };
-        try {
-          const captureStream = await mic.getMicStream(
-            selectedInputDeviceIdRef.current,
-          );
-          mic.stopInputProcessing();
-          mic.inputCaptureStreamRef.current = captureStream;
-          const stream = mic.buildOutgoingMicStream(
-            captureStream,
-            selectedInputGainFor(selectedInputDeviceIdRef.current),
-            selectedInputChannel,
-          );
-          mic.localStreamRef.current = stream;
-          if (inputMeteringActiveRef.current && !lowPowerMode) {
-            mic.startLevelMeter(stream);
-          } else {
-            mic.stopLevelMeter();
-          }
-          void onRefreshAudioDevices();
-          const initialEnabled = voiceModeRef.current === "always_on";
-          for (const track of stream.getAudioTracks()) {
-            track.enabled = initialEnabled;
-            pc.addTrack(track, stream);
-          }
-          await startConfiguredChannelAudioFeeds(pc);
-          await applyOutgoingAudioSenderBitrate(
-            pc,
-            lowPowerMode ? lowPowerOpusMaxBitrateBps : opusMaxBitrateBps,
-          );
-          mic.applyVoiceModeToLocalTracks(voiceModeRef.current);
-        } catch (e) {
+        if (viewModeOverride === "chat") {
+          // A chat display never transmits; don't ask for a microphone.
           pc.addTransceiver("audio", { direction: "recvonly" });
-          setAudioError("");
-          pushDebugEvent("system · local/mic · capture failed (receive-only)");
+        } else {
+          try {
+            const captureStream = await mic.getMicStream(
+              selectedInputDeviceIdRef.current,
+            );
+            mic.stopInputProcessing();
+            mic.inputCaptureStreamRef.current = captureStream;
+            const stream = mic.buildOutgoingMicStream(
+              captureStream,
+              selectedInputGainFor(selectedInputDeviceIdRef.current),
+              selectedInputChannel,
+            );
+            mic.localStreamRef.current = stream;
+            if (inputMeteringActiveRef.current && !lowPowerMode) {
+              mic.startLevelMeter(stream);
+            } else {
+              mic.stopLevelMeter();
+            }
+            void onRefreshAudioDevices();
+            const initialEnabled = voiceModeRef.current === "always_on";
+            for (const track of stream.getAudioTracks()) {
+              track.enabled = initialEnabled;
+              pc.addTrack(track, stream);
+            }
+            await startConfiguredChannelAudioFeeds(pc);
+            await applyOutgoingAudioSenderBitrate(
+              pc,
+              lowPowerMode ? lowPowerOpusMaxBitrateBps : opusMaxBitrateBps,
+            );
+            mic.applyVoiceModeToLocalTracks(voiceModeRef.current);
+          } catch (e) {
+            pc.addTransceiver("audio", { direction: "recvonly" });
+            setAudioError("");
+            pushDebugEvent("system · local/mic · capture failed (receive-only)");
+          }
         }
         ws.send(JSON.stringify({ type: "webrtc_ready", data: {} }));
         sendRoomMatrix(listenRoomIdsRef.current, talkRoomIdsRef.current, true);
@@ -3086,6 +3104,7 @@ export function useIntercomSession({
               const nextEntry = {
                 from: msg.data.fromUser.username,
                 fromUserId: msg.data.fromUser.id,
+                fromRoleId: msg.data.fromUser.roleId,
                 body: chatBody,
                 at: new Date(msg.data.timestamp).toLocaleTimeString(),
                 room: roomLabel,

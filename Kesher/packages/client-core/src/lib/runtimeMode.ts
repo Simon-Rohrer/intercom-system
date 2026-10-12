@@ -5,8 +5,10 @@ export function resolveLowPowerMode(search: string): boolean {
 
 export function resolveViewModeOverride(
   search: string,
-): "simple" | "station" | null {
+): "simple" | "station" | "chat" | null {
   const value = new URLSearchParams(search).get("viewMode");
-  if (value === "simple" || value === "station") return value;
+  if (value === "simple" || value === "station" || value === "chat") {
+    return value;
+  }
   return null;
 }
