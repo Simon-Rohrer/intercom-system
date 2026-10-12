@@ -60,7 +60,9 @@ exec /usr/bin/cage -s -- "${BROWSER}" \
   --noerrdialogs \
   --disable-infobars \
   --disable-session-crashed-bubble \
-  --disable-features=Translate,MediaRouter \
+  --lang=de \
+  --disable-translate \
+  --disable-features=Translate,TranslateUI,MediaRouter \
   --disable-sync \
   --disable-extensions \
   --password-store=basic \

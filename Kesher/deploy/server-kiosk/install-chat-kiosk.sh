@@ -53,7 +53,9 @@ fi
 
 if [[ "${UNINSTALL}" == "true" ]]; then
   systemctl disable --now kesher-chat-kiosk.service 2>/dev/null || true
-  rm -f "${SERVICE_FILE}" "${PAM_FILE}"
+  rm -f "${SERVICE_FILE}" "${PAM_FILE}" \
+    /etc/chromium/policies/managed/kesher-chat-kiosk.json \
+    /etc/chromium-browser/policies/managed/kesher-chat-kiosk.json
   rm -rf "${INSTALL_DIR}"
   systemctl daemon-reload
   # Give the monitor its console login back.
@@ -94,6 +96,13 @@ account  required pam_unix.so
 session  required pam_unix.so
 session  required pam_systemd.so
 EOF
+
+# Browser policy: never offer page translation on the display. The Chromium
+# snap and the deb package read different policy directories.
+for policy_dir in /etc/chromium/policies/managed /etc/chromium-browser/policies/managed; do
+  install -d -m 0755 "${policy_dir}"
+  printf '{\n  "TranslateEnabled": false\n}\n' >"${policy_dir}/kesher-chat-kiosk.json"
+done
 
 if [[ ! -f "${CONFIG_FILE}" || "${UPDATE_CONFIG}" == "true" ]]; then
   cat >"${CONFIG_FILE}" <<EOF
