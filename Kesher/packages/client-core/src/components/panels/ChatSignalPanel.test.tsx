@@ -32,6 +32,48 @@ describe("ChatSignalPanel", () => {
     ],
   };
 
+  it("highlights only the newest received message", () => {
+    const entry = (body: string, at: string, self = false) => ({
+      from: self ? "Ich" : "Sarah",
+      fromUserId: self ? "me" : "u1",
+      body,
+      at,
+      room: "Global Chat",
+      self,
+      scope: "global" as const,
+      targetId: "global",
+      targetType: "global" as const,
+    });
+    const { rerender } = render(
+      <ChatSignalPanel
+        message=""
+        onMessageChange={vi.fn()}
+        onSendChat={vi.fn()}
+        onAcknowledge={vi.fn()}
+        // newest first, as delivered by the session
+        chatMessages={[entry("Neu", "10:01"), entry("Alt", "10:00")]}
+        {...defaultProps}
+      />,
+    );
+
+    expect(screen.getByText("Neu").closest("li")).toHaveClass("chat-feed-newest");
+    expect(screen.getByText("Alt").closest("li")).not.toHaveClass("chat-feed-newest");
+
+    // An own message on top: nothing is highlighted.
+    rerender(
+      <ChatSignalPanel
+        message=""
+        onMessageChange={vi.fn()}
+        onSendChat={vi.fn()}
+        onAcknowledge={vi.fn()}
+        chatMessages={[entry("Meins", "10:02", true), entry("Neu", "10:01")]}
+        {...defaultProps}
+      />,
+    );
+    expect(screen.getByText("Meins").closest("li")).not.toHaveClass("chat-feed-newest");
+    expect(screen.getByText("Neu").closest("li")).not.toHaveClass("chat-feed-newest");
+  });
+
   it("shows empty state when no chat messages are present", () => {
     render(
       <ChatSignalPanel

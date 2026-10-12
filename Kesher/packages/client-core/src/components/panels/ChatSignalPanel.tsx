@@ -329,6 +329,8 @@ export function ChatSignalPanel({
             {feedMessages.map((entry, index) => {
               const needsMyAck =
                 showAckOption && !entry.self && entry.ackRequired && !entry.acked;
+              // The latest received message stands out (larger, highlighted).
+              const isNewest = !entry.self && index === feedMessages.length - 1;
               return (
                 <li
                   key={`${entry.at}-${entry.from}-${index}`}
@@ -337,6 +339,7 @@ export function ChatSignalPanel({
                     entry.scope === "global" ? "chat-feed-global" : "",
                     entry.self ? "self" : "",
                     needsMyAck ? "chat-feed-ack-required" : "",
+                    isNewest ? "chat-feed-newest" : "",
                   ]
                     .filter(Boolean)
                     .join(" ")}

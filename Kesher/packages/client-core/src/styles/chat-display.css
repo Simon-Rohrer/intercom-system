@@ -140,8 +140,8 @@
   opacity: 0.5;
 }
 .chat-display-message.is-newest {
-  background: var(--k-face-hi);
-  border-color: var(--k-line-strong);
+  background: color-mix(in srgb, var(--k-accent) 10%, var(--k-face-hi));
+  border-color: var(--k-accent);
   animation: chat-display-arrive 1.2s ease-out;
 }
 .chat-display-message.needs-ack {
@@ -209,6 +209,14 @@
   font-weight: 600;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+/* The latest message is the one to read: noticeably larger. */
+.chat-display-message.is-newest .chat-display-body {
+  font-size: 1.9em;
+  line-height: 1.2;
+}
+.chat-display-message.is-newest .chat-display-meta {
+  font-size: 0.85em;
 }
 
 @media (prefers-reduced-motion: reduce) {
