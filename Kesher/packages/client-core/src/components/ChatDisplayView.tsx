@@ -28,12 +28,6 @@ type ChatDisplayViewProps = {
 
 /** Messages older than this stay in the feed but are dimmed. */
 const RECENT_MS = 5 * 60 * 1000;
-/** Only Stream Deck messages this fresh flash; history after a reload does not. */
-const FLASH_MAX_AGE_MS = 15 * 1000;
-/** Matches the attention-call-multi-flash animation of the station call flash. */
-const FLASH_DURATION_MS = 3800;
-
-type DisplayFlash = { key: string; title: string; detail: string };
 
 function shortTime(entry: Pick<ChatDisplayEntry, "at" | "timestamp">): string {
   // `at` is formatted in the browser locale (e.g. "4:48:12 PM" in a kiosk
@@ -79,8 +73,6 @@ export function ChatDisplayView({
   const clock = useClock();
   const feedRef = useRef<HTMLOListElement>(null);
   const firstSeenRef = useRef(new Map<string, number>());
-  const flashedKeysRef = useRef(new Set<string>());
-  const [flash, setFlash] = useState<DisplayFlash | null>(null);
   const roleNameById = useMemo(
     () => new Map(roles.map((role) => [role.id, role.name])),
     [roles],
@@ -113,37 +105,6 @@ export function ChatDisplayView({
     const el = feedRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [feed]);
-
-  // A message sent from a Stream Deck flashes the screen like a call.
-  useEffect(() => {
-    const now = Date.now();
-    let newest: ChatDisplayEntry | undefined;
-    for (const entry of feed) {
-      if (entry.source !== "companion" || !entry.timestamp) continue;
-      if (now - entry.timestamp > FLASH_MAX_AGE_MS) continue;
-      const key = keyFor(entry);
-      if (flashedKeysRef.current.has(key)) continue;
-      flashedKeysRef.current.add(key);
-      newest = entry;
-    }
-    if (!newest) return;
-    const roleName = newest.fromRoleId
-      ? roleNameById.get(newest.fromRoleId) || newest.fromRoleId
-      : "";
-    const sender =
-      roleName && roleName !== newest.from ? `${newest.from} · ${roleName}` : newest.from;
-    setFlash({
-      key: keyFor(newest),
-      title: `Stream Deck · ${targetLabel(newest)}`,
-      detail: `${sender}: ${newest.body}`,
-    });
-  }, [feed, roleNameById]);
-
-  useEffect(() => {
-    if (!flash) return;
-    const timer = window.setTimeout(() => setFlash(null), FLASH_DURATION_MS);
-    return () => window.clearTimeout(timer);
-  }, [flash]);
 
   const live = connectionState === "connected";
 
@@ -216,20 +177,6 @@ export function ChatDisplayView({
           })}
         </ol>
       )}
-
-      {flash ? (
-        <div
-          key={flash.key}
-          className="attention-flash attention-flash-call chat-display-flash"
-          role="status"
-          aria-live="assertive"
-        >
-          <div className="attention-flash-card">
-            <strong>{flash.title}</strong>
-            <span>{flash.detail}</span>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

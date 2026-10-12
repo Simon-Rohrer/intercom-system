@@ -120,7 +120,11 @@ function options(): UseIntercomSessionOptions {
   };
 }
 
-function chatEvent(messageId: string, body: string) {
+function chatEvent(
+  messageId: string,
+  body: string,
+  overrides: Record<string, unknown> = {},
+) {
   return {
     type: "chat",
     data: {
@@ -131,8 +135,15 @@ function chatEvent(messageId: string, body: string) {
       messageId,
       timestamp: Date.UTC(2026, 9, 12, 14, 48),
       fromUser: { id: "u-light", username: "Licht", roleId: "lighting" },
+      ...overrides,
     },
   };
+}
+
+async function renderSession() {
+  const view = renderHook(() => useIntercomSession(options()));
+  await waitFor(() => expect(FakeWebSocket.instances.length).toBeGreaterThan(0));
+  return { ...view, ws: FakeWebSocket.instances[FakeWebSocket.instances.length - 1] };
 }
 
 describe("useIntercomSession chat", () => {
@@ -175,5 +186,39 @@ describe("useIntercomSession chat", () => {
       fromRoleId: "lighting",
       timestamp: Date.UTC(2026, 9, 12, 14, 48),
     });
+  });
+
+  it("flashes the screen for a new Stream Deck chat message", async () => {
+    const { result, ws } = await renderSession();
+    act(() => {
+      ws.receive(chatEvent("sd-1", "Bitte leiser", { source: "companion", timestamp: Date.now() }));
+    });
+    expect(result.current.incomingAttention).toEqual({
+      kind: "chat",
+      title: "Stream Deck · Global",
+      detail: "Licht · Lighting: Bitte leiser",
+    });
+  });
+
+  it("does not flash for history, typed messages or the sender's own Stream Deck message", async () => {
+    const { result, ws } = await renderSession();
+    act(() => {
+      // replayed history after a (re)connect
+      ws.receive(
+        chatEvent("sd-old", "Alt", { source: "companion", timestamp: Date.now() - 60_000 }),
+      );
+      // typed in a station
+      ws.receive(chatEvent("typed", "Getippt", { source: "web", timestamp: Date.now() }));
+      // own message
+      ws.receive(
+        chatEvent("own", "Eigene", {
+          source: "companion",
+          timestamp: Date.now(),
+          fromUser: { id: "u-monitor", username: "Chat-Monitor", roleId: "monitor" },
+        }),
+      );
+    });
+    expect(result.current.chatMessages).toHaveLength(3);
+    expect(result.current.incomingAttention).toBeNull();
   });
 });

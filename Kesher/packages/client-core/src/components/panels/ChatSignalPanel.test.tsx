@@ -133,6 +133,7 @@ describe("ChatSignalPanel", () => {
 
     expect(screen.getByText("Stream Deck")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Licht" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Antworten/ })).not.toBeInTheDocument();
   });
 
   it("updates message and sends via button and enter", async () => {

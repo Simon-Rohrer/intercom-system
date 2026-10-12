@@ -680,7 +680,8 @@ export type UseIntercomSessionResult = {
   webrtcState: string;
   roomLevelById: Record<string, number>;
   activeVoiceRoutes: VoiceRoute[];
-  incomingAttention: { title: string; detail: string } | null;
+  /** "call": incoming call/signal flash; "chat": Stream Deck chat message (border flash). */
+  incomingAttention: { title: string; detail: string; kind: IncomingAttentionKind } | null;
   lastCompanionCommand: {
     command: string;
     status: "executing" | "executed" | "rejected" | "failed";
@@ -739,6 +740,13 @@ export type UseIntercomSessionResult = {
 };
 
 // ── Hook ────────────────────────────────────────────────────────────────────────────────
+
+/** Only Stream Deck chat messages this fresh flash; older ones are history. */
+const STREAM_DECK_CHAT_FLASH_MAX_AGE_MS = 15 * 1000;
+/** Matches the attention-chat-border-blink animation. */
+const STREAM_DECK_CHAT_FLASH_DURATION_MS = 4000;
+
+export type IncomingAttentionKind = "call" | "chat";
 
 export function useIntercomSession({
   token,
@@ -805,10 +813,8 @@ export function useIntercomSession({
     [],
   );
   const [activeVoiceRoutes, setActiveVoiceRoutes] = useState<VoiceRoute[]>([]);
-  const [incomingAttention, setIncomingAttention] = useState<{
-    title: string;
-    detail: string;
-  } | null>(null);
+  const [incomingAttention, setIncomingAttention] =
+    useState<UseIntercomSessionResult["incomingAttention"]>(null);
   const [lastCompanionCommand, setLastCompanionCommand] = useState<{
     command: string;
     status: "executing" | "executed" | "rejected" | "failed";
@@ -1610,13 +1616,49 @@ export function useIntercomSession({
         ? `${event.fromUser.username} · ${event.signal}`
         : event.fromUser.username;
     }
-    setIncomingAttention({ title, detail });
+    showIncomingAttention(title, detail);
+  }
+
+  function showIncomingAttention(
+    title: string,
+    detail: string,
+    kind: IncomingAttentionKind = "call",
+  ) {
+    setIncomingAttention({ title, detail, kind });
     setAttentionFlashKey((prev) => prev + 1);
     clearIncomingAttentionTimer();
-    incomingAttentionTimeoutRef.current = window.setTimeout(() => {
-      incomingAttentionTimeoutRef.current = null;
-      setIncomingAttention(null);
-    }, 2200);
+    incomingAttentionTimeoutRef.current = window.setTimeout(
+      () => {
+        incomingAttentionTimeoutRef.current = null;
+        setIncomingAttention(null);
+      },
+      // The chat text stays a little longer so it can be read.
+      kind === "chat" ? STREAM_DECK_CHAT_FLASH_DURATION_MS : 2200,
+    );
+  }
+
+  /**
+   * A chat message sent from a Stream Deck key flashes every receiving view
+   * like an incoming call. History replayed on (re)connect and the sender's
+   * own message do not flash.
+   */
+  function triggerStreamDeckChatAttention(event: RoutedEvent, body: string) {
+    const ad = appDataRef.current;
+    if (event.source !== "companion" || event.fromUser.id === ad?.self.id) return;
+    if (Date.now() - event.timestamp > STREAM_DECK_CHAT_FLASH_MAX_AGE_MS) return;
+    const target =
+      event.scope === "global"
+        ? "Global"
+        : event.scope === "room"
+          ? ad?.rooms.find((room) => room.id === event.targetId)?.name || event.targetId
+          : "Direkt";
+    const roleName =
+      ad?.roles.find((role) => role.id === event.fromUser.roleId)?.name || "";
+    const sender =
+      roleName && roleName !== event.fromUser.username
+        ? `${event.fromUser.username} · ${roleName}`
+        : event.fromUser.username;
+    showIncomingAttention(`Stream Deck · ${target}`, `${sender}: ${body}`, "chat");
   }
 
   // ── Room permission helpers ──
@@ -3130,6 +3172,7 @@ export function useIntercomSession({
             // (StrictMode), which previously dropped every message.
             if (!seenChatKeysRef.current.has(stableKey)) {
               seenChatKeysRef.current.add(stableKey);
+              triggerStreamDeckChatAttention(msg.data, chatBody);
               setChatMessages((old) => {
                 const alreadyPresent = old.some((entry) => {
                   if (nextEntry.messageId && entry.messageId) {

@@ -1210,7 +1210,9 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   ]);
 
   useEffect(() => {
-    const hasIncomingAttention = !!session.incomingAttention;
+    // Only calls pulse the incoming-call keys; a Stream Deck chat message is
+    // shown on screen only.
+    const hasIncomingAttention = session.incomingAttention?.kind === "call";
     incomingAttentionRef.current = hasIncomingAttention;
 
     if (!hasIncomingAttention) {
@@ -3145,7 +3147,9 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   const attentionFlashOverlay = session.incomingAttention ? (
     <div
       key={session.attentionFlashKey}
-      className="attention-flash attention-flash-call"
+      className={`attention-flash attention-flash-${session.incomingAttention.kind}${
+        session.viewMode === "chat" ? " chat-display-flash" : ""
+      }`}
       role="status"
       aria-live="assertive"
     >
@@ -3158,16 +3162,19 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
   if (session.viewMode === "chat") {
     return (
-      <ChatDisplayView
-        connectionState={session.connectionState}
-        chatMessages={session.chatMessages}
-        listenRoomIds={session.listenRoomIds}
-        roles={appData.roles.map((role) => ({ id: role.id, name: role.name }))}
-        stationName={
-          appData.roles.find((role) => role.id === appData.self.roleId)?.name ||
-          appData.self.username
-        }
-      />
+      <>
+        <ChatDisplayView
+          connectionState={session.connectionState}
+          chatMessages={session.chatMessages}
+          listenRoomIds={session.listenRoomIds}
+          roles={appData.roles.map((role) => ({ id: role.id, name: role.name }))}
+          stationName={
+            appData.roles.find((role) => role.id === appData.self.roleId)?.name ||
+            appData.self.username
+          }
+        />
+        {attentionFlashOverlay}
+      </>
     );
   }
 

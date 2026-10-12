@@ -393,7 +393,7 @@ export function ChatSignalPanel({
                     {showAckOption && !entry.self && entry.ackRequired && entry.acked ? (
                       <span className="chat-feed-ack-status acked">Bestätigt</span>
                     ) : null}
-                    {!entry.self ? (
+                    {!entry.self && !entry.fromUserId.startsWith("role:") ? (
                       <button
                         type="button"
                         className="chat-feed-reply"

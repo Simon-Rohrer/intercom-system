@@ -58,7 +58,7 @@ Eine Taste kann einen festen Satz (z. B. „Bitte leiser“) in den Chat schicke
 4. Bei `Senden an` `Global (alle)` oder eine Party Line wählen. Angeboten werden nur Party Lines, auf denen die Rolle sprechen darf.
 5. `Save` und danach `Publish to Companion`.
 
-Als Absender erscheint die angemeldete Station mit ihrer Rolle. Ist für die Rolle gerade niemand angemeldet, erscheint die Rolle selbst als Absender. Im Chat und auf der Chat-Anzeige sind solche Nachrichten mit `Stream Deck` markiert. Auf der Chat-Anzeige am Server-Bildschirm blinkt bei jeder neuen Stream-Deck-Nachricht der Bildschirm gelb wie bei einem Call (etwa 4 Sekunden); ältere Nachrichten nach einem Neustart blinken nicht. Die Nachricht wird nur beim Drücken gesendet, nicht beim Loslassen.
+Als Absender erscheint die angemeldete Station mit ihrer Rolle. Ist für die Rolle gerade niemand angemeldet, erscheint die Rolle selbst als Absender. Im Chat und auf der Chat-Anzeige sind solche Nachrichten mit `Stream Deck` markiert. Bei jeder neuen Stream-Deck-Nachricht blinkt auf allen Stationen, die sie empfangen, und auf der Chat-Anzeige ein dicker gelber Rahmen am Bildschirmrand; die Nachricht steht etwa 4 Sekunden groß in der Mitte. Beim Absender selbst und bei älteren Nachrichten nach einem Neustart blinkt nichts. Die Nachricht wird nur beim Drücken gesendet, nicht beim Loslassen.
 
 ## Prüfen
 
