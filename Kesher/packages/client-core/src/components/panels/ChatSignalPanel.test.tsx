@@ -106,6 +106,35 @@ describe("ChatSignalPanel", () => {
     );
   });
 
+  it("marks Stream Deck messages and does not offer a reply to a role sender", () => {
+    render(
+      <ChatSignalPanel
+        message=""
+        onMessageChange={vi.fn()}
+        onSendChat={vi.fn()}
+        onAcknowledge={vi.fn()}
+        chatMessages={[
+          {
+            from: "Licht",
+            fromUserId: "role:lights",
+            body: "Bitte leiser",
+            at: "10:00",
+            room: "Global Chat",
+            self: false,
+            scope: "global",
+            targetId: "global",
+            targetType: "global",
+            source: "companion",
+          },
+        ]}
+        {...defaultProps}
+      />,
+    );
+
+    expect(screen.getByText("Stream Deck")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Licht" })).not.toBeInTheDocument();
+  });
+
   it("updates message and sends via button and enter", async () => {
     const user = userEvent.setup();
     const onMessageChange = vi.fn();

@@ -3377,7 +3377,8 @@ button.secondary {
 }
 
 .streamdeck-control input,
-.streamdeck-control select {
+.streamdeck-control select,
+.streamdeck-control textarea {
   width: 100%;
   min-height: 34px;
   border-radius: 7px;
@@ -3387,8 +3388,20 @@ button.secondary {
   padding: 0.45rem 0.55rem;
 }
 
-.streamdeck-control input::placeholder {
+.streamdeck-control textarea {
+  resize: vertical;
+  font: inherit;
+}
+
+.streamdeck-control input::placeholder,
+.streamdeck-control textarea::placeholder {
   color: rgba(255, 255, 255, 0.45);
+}
+
+.streamdeck-control-hint {
+  color: var(--call);
+  font-size: 0.78rem;
+  font-style: normal;
 }
 
 /* ── Keyboard shortcuts settings ────────────────────────────────── */

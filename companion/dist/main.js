@@ -22,6 +22,7 @@ const allowedStreamDeckActionTypes = new Set([
     "broadcast_ptt",
     "mute_toggle",
     "volume_delta",
+    "chat_message",
     "page_up",
     "page_down",
     "page_jump",
@@ -79,6 +80,7 @@ function normalizeProfileStreamDeckSettings(raw) {
                     targetPage: typeof actionData.targetPage === "number"
                         ? actionData.targetPage
                         : undefined,
+                    message: typeof actionData.message === "string" ? actionData.message : undefined,
                 };
             }
             return {
@@ -483,6 +485,8 @@ export class ModuleInstance extends InstanceBase {
                 return "Mute";
             case "volume_delta":
                 return "Volume";
+            case "chat_message":
+                return action.message?.trim() || "Chat";
             case "page_up":
                 return "Page +";
             case "page_down":

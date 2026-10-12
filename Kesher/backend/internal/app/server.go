@@ -3119,6 +3119,33 @@ func (s *Server) executeCompanionButtonPress(ctx context.Context, roleID string,
 		res := queueBrowserCommand(CompanionCommand{Command: "ptt", Scope: "broadcast", TargetID: groupID, State: map[bool]string{true: "ptt_start", false: "ptt_stop"}[phase == "down"]})
 		emitCompanionButtonImage(page.Page, button, ButtonState{State: map[bool]string{true: "BROADCAST", false: "IDLE"}[phase == "down"], Channel: strings.TrimSpace(button.Action.BroadcastGroupID)})
 		return res
+	case StreamDeckActionTypeChatMessage:
+		roomID := strings.TrimSpace(button.Action.RoomID)
+		if roomID != "" {
+			allowed, err := isRoomTalkAllowed(roomID)
+			if err != nil {
+				result.Error = err.Error()
+				return result
+			}
+			if !allowed {
+				return rejectUnauthorized("not allowed to chat in room")
+			}
+		}
+		if phase != "down" {
+			emitCompanionButtonImage(page.Page, button, ButtonState{State: "IDLE", Channel: roomID})
+			result.OK = true
+			result.Status = "executed"
+			return result
+		}
+		if err := s.sendCompanionChatMessage(ctx, roleID, username, *button.Action); err != nil {
+			result.Error = err.Error()
+			return result
+		}
+		// Lit while pressed as send confirmation.
+		emitCompanionButtonImage(page.Page, button, ButtonState{State: "TALK", Channel: roomID})
+		result.OK = true
+		result.Status = "executed"
+		return result
 	case StreamDeckActionTypeVolumeDelta:
 		if phase != "down" {
 			emitCompanionButtonImage(page.Page, button, ButtonState{State: "IDLE"})
@@ -3373,6 +3400,8 @@ func (s *Server) resolveButtonLabel(ctx context.Context, button StreamDeckButton
 	case StreamDeckActionTypeIncomingCall:
 		return s.resolveIncomingCallIndicatorLabels(button, "")
 
+	case StreamDeckActionTypeChatMessage:
+		return strings.TrimSpace(action.Message), "Chat"
 	case StreamDeckActionTypePTTSelected:
 		return "PTT", ""
 	case StreamDeckActionTypeMuteToggle:
@@ -3397,6 +3426,48 @@ func (s *Server) resolveButtonLabel(ctx context.Context, button StreamDeckButton
 		return "PI Status", ""
 	}
 	return fallbackButtonLabel(action.Type), ""
+}
+
+// sendCompanionChatMessage posts the preset text of a Stream Deck chat button
+// to the global chat or a party line. The role's online station is the sender
+// (shown with its username and role); without one the role itself is shown.
+// Callers check the party-line permission.
+func (s *Server) sendCompanionChatMessage(ctx context.Context, roleID, username string, action StreamDeckButtonAction) error {
+	body := strings.TrimSpace(action.Message)
+	if body == "" {
+		return errors.New("message is required")
+	}
+	roomID := strings.TrimSpace(action.RoomID)
+	e := RoutedEvent{
+		Scope:      "global",
+		TargetType: "global",
+		TargetID:   "global",
+		Body:       body,
+		MessageID:  newID(),
+		Source:     "companion",
+	}
+	if roomID != "" {
+		e.Scope = "room"
+		e.TargetType = "room"
+		e.TargetID = roomID
+	}
+	if username = strings.TrimSpace(username); username != "" {
+		if token, ok := s.hub.LatestTokenForUsernameRole(username, roleID); ok {
+			s.hub.RouteEvent(token, "chat", e)
+			return nil
+		}
+	}
+	roleName := s.roleNameByID(ctx, roleID)
+	if roleName == "" {
+		roleName = roleID
+	}
+	e.FromUser = User{ID: "role:" + roleID, Username: roleName, RoleID: roleID}
+	if roomID != "" {
+		s.hub.SendChatToRoom(roomID, e)
+	} else {
+		s.hub.SendChatToGlobal(e)
+	}
+	return nil
 }
 
 func fallbackButtonLabel(actionType StreamDeckActionType) string {
@@ -5317,6 +5388,8 @@ func (s *Server) companionPreviewButtonLabel(
 		return companionPreviewLabel{primary: "Reply", subtitle: "No active caller"}
 	case StreamDeckActionTypeIncomingCall:
 		return companionPreviewLabel{primary: "Incoming", subtitle: "Call"}
+	case StreamDeckActionTypeChatMessage:
+		return companionPreviewLabel{primary: strings.TrimSpace(action.Message), subtitle: "Chat"}
 	case StreamDeckActionTypeMuteToggle:
 		return splitCompanionPreviewLabel("Mute")
 	case StreamDeckActionTypeVolumeDelta:

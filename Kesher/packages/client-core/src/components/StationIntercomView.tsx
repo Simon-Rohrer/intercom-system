@@ -21,6 +21,7 @@ import { renderStreamDeckPreviewImages, getRaspberryPiStationStatuses } from "..
 import { createHoldButtonProps } from "../lib/holdButton";
 import { resolveInputDeviceChannelCount } from "../lib/audioDeviceChannels";
 import { withResolvedStreamDeckButtonLabel } from "../lib/streamDeckLabels";
+import { roleAllowed } from "../lib/intercom";
 import { sortDirectUsersByRoleAndUsername } from "../lib/users";
 import { BrandLogo } from "./BrandLogo";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
@@ -126,6 +127,7 @@ function normalizeImportedStreamDeckSettings(input: unknown): StreamDeckSettings
     "broadcast_ptt",
     "mute_toggle",
     "volume_delta",
+    "chat_message",
     "page_up",
     "page_down",
     "page_jump",
@@ -184,6 +186,7 @@ function normalizeImportedStreamDeckSettings(input: unknown): StreamDeckSettings
             typeof actionRaw.targetPage === "number" && Number.isFinite(actionRaw.targetPage)
               ? actionRaw.targetPage
               : undefined,
+          message: typeof actionRaw.message === "string" ? actionRaw.message : undefined,
         },
       };
     });
@@ -329,6 +332,9 @@ function compactStreamDeckSettings(settings: StreamDeckSettings): StreamDeckSett
   };
 }
 
+/** Mirrors StreamDeckChatMessageMaxLength in the backend. */
+const STREAM_DECK_CHAT_MESSAGE_MAX_LENGTH = 200;
+
 function streamDeckActionLabel(actionType: StreamDeckActionType | undefined) {
   switch (actionType) {
     case "ptt_room":
@@ -365,6 +371,8 @@ function streamDeckActionLabel(actionType: StreamDeckActionType | undefined) {
       return "Open page / folder";
     case "volume_delta":
       return "Volume step";
+    case "chat_message":
+      return "Chat-Nachricht";
     case "none":
     case undefined:
       return "Empty";
@@ -391,6 +399,7 @@ function streamDeckPreviewSignature(
     action?.roleId || "",
     action?.broadcastGroupId || "",
     action?.volumeDelta ?? "",
+    action?.message ?? "",
     button.isListening ? "1" : "0",
     button.isPttSelected ? "1" : "0",
     pressed ? "1" : "0",
@@ -1999,6 +2008,7 @@ export function StationIntercomView({
         broadcastGroupId?: string;
         volumeDelta?: number;
         targetPage?: number;
+        message?: string;
       };
     },
   ) => {
@@ -2216,6 +2226,18 @@ export function StationIntercomView({
               button.action?.type === "volume_delta"
                 ? button.action.volumeDelta || 1
                 : 1,
+          },
+        };
+      }
+      if (type === "chat_message") {
+        const previous =
+          button.action?.type === "chat_message" ? button.action : undefined;
+        return {
+          ...button,
+          action: {
+            type,
+            message: previous?.message ?? "",
+            roomId: previous?.roomId,
           },
         };
       }
@@ -3788,6 +3810,9 @@ export function StationIntercomView({
                             <optgroup label="Volume">
                               <option value="volume_delta">Volume +/-</option>
                             </optgroup>
+                            <optgroup label="Chat">
+                              <option value="chat_message">Chat-Nachricht senden</option>
+                            </optgroup>
                           </select>
                         </label>
 
@@ -3957,6 +3982,65 @@ export function StationIntercomView({
                               <option value="2">+2</option>
                             </select>
                           </label>
+                        ) : null}
+
+                        {streamDeckSelectedButton?.action?.type === "chat_message" ? (
+                          <>
+                            <label className="streamdeck-control">
+                              <span>Nachricht *</span>
+                              <textarea
+                                aria-label="Stream Deck chat message"
+                                rows={2}
+                                maxLength={STREAM_DECK_CHAT_MESSAGE_MAX_LENGTH}
+                                placeholder="z. B. Bitte leiser"
+                                value={streamDeckSelectedButton.action.message || ""}
+                                aria-invalid={!streamDeckSelectedButton.action.message?.trim()}
+                                onChange={(event) =>
+                                  updateStreamDeckSelectedButton((button) => ({
+                                    ...button,
+                                    action: {
+                                      type: "chat_message",
+                                      message: event.target.value,
+                                      roomId: button.action?.roomId,
+                                    },
+                                  }))
+                                }
+                              />
+                              {!streamDeckSelectedButton.action.message?.trim() ? (
+                                <em className="streamdeck-control-hint">
+                                  Pflichtfeld – ohne Text kann nicht gespeichert werden.
+                                </em>
+                              ) : null}
+                            </label>
+                            <label className="streamdeck-control">
+                              <span>Senden an</span>
+                              <select
+                                aria-label="Stream Deck chat target"
+                                value={streamDeckSelectedButton.action.roomId || ""}
+                                onChange={(event) =>
+                                  updateStreamDeckSelectedButton((button) => ({
+                                    ...button,
+                                    action: {
+                                      type: "chat_message",
+                                      message: button.action?.message,
+                                      roomId: event.target.value || undefined,
+                                    },
+                                  }))
+                                }
+                              >
+                                <option value="">Global (alle)</option>
+                                {appData.rooms
+                                  .filter((room) =>
+                                    roleAllowed(room.senderRoleIds, appData.self.roleId),
+                                  )
+                                  .map((room) => (
+                                    <option key={`streamdeck-chat-room-${room.id}`} value={room.id}>
+                                      {room.name}
+                                    </option>
+                                  ))}
+                              </select>
+                            </label>
+                          </>
                         ) : null}
 
                         {streamDeckSelectedButton?.action?.type === "page_jump" ? (

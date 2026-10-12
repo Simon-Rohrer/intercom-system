@@ -433,6 +433,8 @@ function getButtonPalette(actionType, color, pressed) {
         case "page_up":
         case "page_down":
             return { background: "#000000", border: "#58ccf6", label: "#effbff" };
+        case "chat_message":
+            return { background: "#000000", border: "#00d1ff", label: "#ecfbff" };
         default:
             return { background: "#000000", border: "#1a1f26", label: "#edf2f8" };
     }
@@ -456,6 +458,8 @@ function streamDeckActionHeaderLabel(actionType) {
             return "BROADCAST";
         case "ptt_selected":
             return "PUSH TO TALK";
+        case "chat_message":
+            return "CHAT";
         default:
             return "";
     }

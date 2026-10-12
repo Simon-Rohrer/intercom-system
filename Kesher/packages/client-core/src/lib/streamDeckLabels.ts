@@ -108,6 +108,8 @@ function resolveActionLabel(
       return "Mute";
     case "volume_delta":
       return "Volume";
+    case "chat_message":
+      return action.message?.trim() ? `${action.message.trim()}\nChat` : "Chat";
     case "page_up":
       return "Page +";
     case "page_down":

@@ -458,6 +458,8 @@ func streamDeckActionHeaderLabel(actionType string) string {
 		return "BROADCAST"
 	case string(StreamDeckActionTypePTTSelected):
 		return "PUSH TO TALK"
+	case string(StreamDeckActionTypeChatMessage):
+		return "CHAT"
 	default:
 		return ""
 	}
@@ -521,6 +523,8 @@ func getButtonPalette(actionType, color string, pressed bool) keyPalette {
 		return keyPalette{background: "#000000", border: "#9d8cff", label: "#f2f0ff"}
 	case string(StreamDeckActionTypePageUp), string(StreamDeckActionTypePageDown):
 		return keyPalette{background: "#000000", border: "#58ccf6", label: "#effbff"}
+	case string(StreamDeckActionTypeChatMessage):
+		return keyPalette{background: "#000000", border: "#00d1ff", label: "#ecfbff"}
 	default:
 		return keyPalette{background: "#000000", border: "#1a1f26", label: "#edf2f8"}
 	}

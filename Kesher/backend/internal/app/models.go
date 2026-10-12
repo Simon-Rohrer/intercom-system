@@ -215,6 +215,7 @@ const (
 	StreamDeckActionTypeBroadcastPTT   StreamDeckActionType = "broadcast_ptt"
 	StreamDeckActionTypeMuteToggle     StreamDeckActionType = "mute_toggle"
 	StreamDeckActionTypeVolumeDelta    StreamDeckActionType = "volume_delta"
+	StreamDeckActionTypeChatMessage    StreamDeckActionType = "chat_message"
 	StreamDeckActionTypePageUp         StreamDeckActionType = "page_up"
 	StreamDeckActionTypePageDown       StreamDeckActionType = "page_down"
 	StreamDeckActionTypePageJump       StreamDeckActionType = "page_jump"
@@ -243,7 +244,13 @@ type StreamDeckButtonAction struct {
 	BroadcastGroupID string               `json:"broadcastGroupId,omitempty"`
 	VolumeDelta      int                  `json:"volumeDelta,omitempty"`
 	TargetPage       int                  `json:"targetPage,omitempty"`
+	// Message is the preset text of a chat_message button; RoomID then
+	// selects the party line (empty = global chat).
+	Message string `json:"message,omitempty"`
 }
+
+// StreamDeckChatMessageMaxLength limits preset chat texts on Stream Deck buttons.
+const StreamDeckChatMessageMaxLength = 200
 
 type StreamDeckButtonConfig struct {
 	Index              int                     `json:"index"`

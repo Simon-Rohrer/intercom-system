@@ -728,6 +728,8 @@ export type UseIntercomSessionResult = {
     signal: string,
   ) => void;
   sendChat: (target: ChatTarget, ackRequired?: boolean) => void;
+  /** Sends a fixed text (e.g. a Stream Deck preset) without touching the chat input. */
+  sendChatText: (target: ChatTarget, body: string) => boolean;
   acknowledgeChatMessage: (messageId: string, senderUserId: string) => void;
   handleChannelPttStart: (channelId: string) => void;
   handleChannelPttStop: (channelId: string) => void;
@@ -2264,13 +2266,14 @@ export function useIntercomSession({
   }
 
   // ── Chat ──
-  function sendChat(target: ChatTarget, ackRequired = false) {
+  function sendChatText(target: ChatTarget, body: string, ackRequired = false) {
+    const text = body.trim();
     if (
       !wsRef.current ||
       wsRef.current.readyState !== WebSocket.OPEN ||
-      !message.trim()
+      !text
     )
-      return;
+      return false;
     wsRef.current.send(
       JSON.stringify({
         type: "chat",
@@ -2278,12 +2281,18 @@ export function useIntercomSession({
           scope: target.scope,
           targetType: target.targetType,
           targetId: target.targetId,
-          body: message.trim(),
+          body: text,
           ackRequired: ackRequired && (appDataRef.current?.ackEnabled ?? true),
         },
       }),
     );
-    setMessage("");
+    return true;
+  }
+
+  function sendChat(target: ChatTarget, ackRequired = false) {
+    if (sendChatText(target, message, ackRequired)) {
+      setMessage("");
+    }
   }
 
   function acknowledgeChatMessage(messageId: string, senderUserId: string) {
@@ -3483,6 +3492,7 @@ export function useIntercomSession({
     handleEnableDirectPptChange,
     sendScopedSignal,
     sendChat,
+    sendChatText,
     acknowledgeChatMessage,
     handleChannelPttStart,
     handleChannelPttStop,

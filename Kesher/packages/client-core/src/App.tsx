@@ -2116,6 +2116,18 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         }
         return;
       }
+      if (action.type === "chat_message") {
+        if (payload.state === "down" && action.message?.trim()) {
+          const roomId = action.roomId?.trim();
+          session.sendChatText(
+            roomId
+              ? { scope: "room", targetType: "room", targetId: roomId }
+              : { scope: "global", targetType: "global", targetId: "global" },
+            action.message,
+          );
+        }
+        return;
+      }
       if (action.type === "volume_delta") {
         if (payload.state === "down") {
           const delta = action.volumeDelta || 0;

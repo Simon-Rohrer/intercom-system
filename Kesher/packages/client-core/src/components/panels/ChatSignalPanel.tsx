@@ -326,7 +326,11 @@ export function ChatSignalPanel({
                     .join(" ")}
                 >
                   <div className="chat-feed-meta">
-                    {entry.self ? null : (
+                    {entry.self ? null : entry.fromUserId.startsWith("role:") ? (
+                      // Stream Deck message without an online station: the
+                      // role is the sender and has no user to reply to.
+                      <span className="chat-feed-sender">{entry.from}</span>
+                    ) : (
                       <button
                         type="button"
                         className="chat-feed-sender"
@@ -342,6 +346,13 @@ export function ChatSignalPanel({
                         title="Message from Telegram"
                       >
                         Telegram
+                      </span>
+                    ) : entry.source === "companion" ? (
+                      <span
+                        className="chat-feed-source-icon"
+                        title="Über Stream Deck gesendet"
+                      >
+                        Stream Deck
                       </span>
                     ) : null}
                     {scopeTag(entry)}

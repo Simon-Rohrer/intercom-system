@@ -431,6 +431,7 @@ export function normalizeStreamDeckSettings(data: unknown): StreamDeckSettings {
     "broadcast_ptt",
     "mute_toggle",
     "volume_delta",
+    "chat_message",
     "page_up",
     "page_down",
     "page_jump",
@@ -507,6 +508,10 @@ export function normalizeStreamDeckSettings(data: unknown): StreamDeckSettings {
                 targetPage:
                   typeof actionRaw.targetPage === "number"
                     ? actionRaw.targetPage
+                    : undefined,
+                message:
+                  typeof actionRaw.message === "string"
+                    ? actionRaw.message
                     : undefined,
               }
             : undefined;

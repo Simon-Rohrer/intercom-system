@@ -35,6 +35,7 @@ const streamDeckActionTypes: StreamDeckActionType[] = [
   "broadcast_ptt",
   "mute_toggle",
   "volume_delta",
+  "chat_message",
   "page_up",
   "page_down",
   "page_jump",
@@ -101,6 +102,7 @@ export function resolveStreamDeckButtonAction(
   broadcastGroupId?: string;
   volumeDelta?: number;
   targetPage?: number;
+  message?: string;
 } | null {
   const selectedPage = settings.pages.find((entry) => entry.page === page);
   if (!selectedPage) return null;

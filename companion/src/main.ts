@@ -50,6 +50,7 @@ const allowedStreamDeckActionTypes = new Set<StreamDeckActionType>([
   "broadcast_ptt",
   "mute_toggle",
   "volume_delta",
+  "chat_message",
   "page_up",
   "page_down",
   "page_jump",
@@ -124,6 +125,8 @@ function normalizeProfileStreamDeckSettings(
                 typeof actionData.targetPage === "number"
                   ? actionData.targetPage
                   : undefined,
+              message:
+                typeof actionData.message === "string" ? actionData.message : undefined,
             };
           }
 
@@ -540,6 +543,7 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
       roleId?: string;
       broadcastGroupId?: string;
       raspberryPiId?: string;
+      message?: string;
     };
   }): string {
     const explicitLabel = (button.label || "").trim();
@@ -589,6 +593,8 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
         return "Mute";
       case "volume_delta":
         return "Volume";
+      case "chat_message":
+        return action.message?.trim() || "Chat";
       case "page_up":
         return "Page +";
       case "page_down":

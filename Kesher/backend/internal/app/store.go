@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	_ "modernc.org/sqlite"
 )
@@ -1225,6 +1226,7 @@ func validateStreamDeckSettings(in StreamDeckSettings) (StreamDeckSettings, erro
 				action.RoleID = strings.TrimSpace(action.RoleID)
 				action.BroadcastGroupID = strings.TrimSpace(action.BroadcastGroupID)
 				action.RaspberryPiID = strings.TrimSpace(action.RaspberryPiID)
+				action.Message = strings.TrimSpace(action.Message)
 				switch action.Type {
 				case StreamDeckActionTypeNone, StreamDeckActionTypeMuteToggle, StreamDeckActionTypeReplyToCaller, StreamDeckActionTypeIncomingCall, StreamDeckActionTypePageUp, StreamDeckActionTypePageDown, StreamDeckActionTypePTTSelected, StreamDeckActionTypePageHome, StreamDeckActionTypePageBack:
 				case StreamDeckActionTypePTTRoom:
@@ -1269,6 +1271,10 @@ func validateStreamDeckSettings(in StreamDeckSettings) (StreamDeckSettings, erro
 					}
 				case StreamDeckActionTypeRaspberryStatus:
 					// raspberryPiId is optional — allow saving without PI selected
+				case StreamDeckActionTypeChatMessage:
+					if action.Message == "" || utf8.RuneCountInString(action.Message) > StreamDeckChatMessageMaxLength {
+						return StreamDeckSettings{}, ErrInvalidInput
+					}
 				default:
 					return StreamDeckSettings{}, ErrInvalidInput
 				}

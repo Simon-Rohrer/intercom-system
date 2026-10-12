@@ -59,6 +59,7 @@ export type StreamDeckActionType =
   | "broadcast_ptt"
   | "mute_toggle"
   | "volume_delta"
+  | "chat_message"
   | "page_up"
   | "page_down"
   | "page_jump"
@@ -80,6 +81,7 @@ export type StreamDeckButtonAction = {
   broadcastGroupId?: string;
   volumeDelta?: number;
   targetPage?: number;
+  message?: string;
 };
 
 export type StreamDeckButtonConfig = {

@@ -135,4 +135,29 @@ describe("streamDeckBridge", () => {
     );
     expect(action).toEqual({ type: "page_up" });
   });
+
+  it("resolves chat message presets with text and party line", () => {
+    const action = resolveStreamDeckButtonAction(
+      {
+        version: 1,
+        gridColumns: 5,
+        gridRows: 3,
+        selectedPage: 0,
+        pages: [
+          {
+            page: 0,
+            buttons: [
+              {
+                index: 0,
+                action: { type: "chat_message", message: "Bitte leiser", roomId: "foh" },
+              },
+            ],
+          },
+        ],
+      },
+      0,
+      0,
+    );
+    expect(action).toEqual({ type: "chat_message", message: "Bitte leiser", roomId: "foh" });
+  });
 });
