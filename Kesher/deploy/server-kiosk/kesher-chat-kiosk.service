@@ -1,0 +1,35 @@
+[Unit]
+Description=Kesher Chat-Anzeige auf dem angeschlossenen Bildschirm
+# Takes over tty1 (the console login on the monitor) only. SSH, Docker, Caddy,
+# Companion and Kesher are not touched; other consoles stay on Ctrl+Alt+F2..F6.
+After=systemd-user-sessions.service network-online.target docker.service kesher.service
+Wants=network-online.target dbus.socket systemd-logind.service
+After=dbus.socket systemd-logind.service
+Conflicts=getty@tty1.service
+After=getty@tty1.service
+ConditionPathExists=/dev/tty1
+
+[Service]
+Type=simple
+User=kesher-kiosk
+PAMName=kesher-chat-kiosk
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty1
+UtmpMode=user
+ExecStart=/opt/kesher-chat-kiosk/kesher-chat-kiosk-launch.sh
+Restart=always
+RestartSec=10
+# The intercom services have priority: the display yields CPU and memory.
+Nice=10
+CPUWeight=20
+MemoryHigh=1G
+MemoryMax=1536M
+
+[Install]
+WantedBy=multi-user.target

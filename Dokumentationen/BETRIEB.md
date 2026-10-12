@@ -80,6 +80,32 @@ Wenn direkt auf die Datenbank zugegriffen werden muss, liegt sie im Container un
 /app/data/intercom.db
 ```
 
+## Chat-Anzeige auf dem Server-Bildschirm
+
+Ein am Server angeschlossener Bildschirm kann den Kesher-Chat dauerhaft anzeigen (nur lesen, kein Mikrofon, Ton stumm). Statt der Konsolen-Anmeldung auf `tty1` startet dann `cage` mit Chromium im Vollbild als eigener Benutzer `kesher-kiosk`.
+
+Andere Dienste bleiben unberührt: Docker, Kesher, Caddy, Companion und SSH werden weder geändert noch neu gestartet. Die Anzeige läuft mit niedriger Priorität und höchstens 1,5 GB Arbeitsspeicher. Eine Konsole bleibt am Server über `Strg+Alt+F2` erreichbar.
+
+1. In Kesher im Admin-Bereich eine Rolle mit der ID `chat-monitor` anlegen und auf allen Party Lines als Empfänger eintragen. Ohne Empfangsrecht zeigt die Anzeige nur globale und direkte Nachrichten.
+2. Auf dem Server installieren:
+
+```sh
+cd ~/intercom-system/Kesher/deploy/server-kiosk
+sudo ./install-chat-kiosk.sh
+```
+
+Optionen: `--role-id`, `--username` (ohne Leerzeichen) und `--url` (Standard `http://127.0.0.1:8080`). Die Einstellungen liegen in `/etc/kesher/chat-kiosk.env`.
+
+Prüfen und entfernen:
+
+```sh
+sudo systemctl status kesher-chat-kiosk
+journalctl -u kesher-chat-kiosk -f
+sudo ./install-chat-kiosk.sh --uninstall
+```
+
+Die Anzeige wartet nach dem Start, bis `/api/healthz` antwortet, und startet sich bei Fehlern selbst neu.
+
 ## Wichtig im Fehlerfall
 
 1. Läuft der Container?
