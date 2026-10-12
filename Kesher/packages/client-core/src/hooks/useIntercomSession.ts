@@ -659,6 +659,8 @@ export type UseIntercomSessionResult = {
     fromRoleId?: string;
     body: string;
     at: string;
+    /** Server time in epoch milliseconds. */
+    timestamp?: number;
     room: string;
     self: boolean;
     scope: "direct" | "room" | "broadcast" | "global";
@@ -795,24 +797,7 @@ export function useIntercomSession({
   const [webrtcState, setWebrtcState] = useState("");
   const [presence, setPresence] = useState<Presence[]>([]);
   const [chatMessages, setChatMessages] = useState<
-    Array<{
-      from: string;
-      fromUserId: string;
-      fromRoleId?: string;
-      body: string;
-      at: string;
-      room: string;
-      self: boolean;
-      scope: "direct" | "room" | "broadcast" | "global";
-      targetId: string;
-      targetType?: "room" | "user" | "role" | "global";
-      messageId?: string;
-      ackRequired?: boolean;
-      acked?: boolean;
-      ackedBy?: string;
-      ackedAt?: string;
-      source?: string;
-    }>
+    UseIntercomSessionResult["chatMessages"]
   >([]);
   const [events, setEvents] = useState<Array<{ label: string; at: string }>>(
     [],
@@ -3100,67 +3085,59 @@ export function useIntercomSession({
                       (group) => group.id === chatTargetId,
                     )?.name || chatTargetId
                   : "Direct";
-            setChatMessages((old) => {
-              const nextEntry = {
-                from: msg.data.fromUser.username,
-                fromUserId: msg.data.fromUser.id,
-                fromRoleId: msg.data.fromUser.roleId,
-                body: chatBody,
-                at: new Date(msg.data.timestamp).toLocaleTimeString(),
-                room: roomLabel,
-                self: msg.data.fromUser.id === ad?.self.id,
-                scope: chatScope,
-                targetId: chatTargetId,
-                targetType: msg.data.targetType,
-                messageId: msg.data.messageId,
-                ackRequired: !!msg.data.ackRequired,
-                acked: !!msg.data.acked,
-                ackedBy: msg.data.ackedBy?.username,
-                ackedAt: msg.data.ackedAt
-                  ? new Date(msg.data.ackedAt).toLocaleTimeString()
-                  : undefined,
-                source: msg.data.source,
-              };
-              const stableKey = nextEntry.messageId
-                ? `id:${nextEntry.messageId}`
-                : [
-                    "fallback",
-                    nextEntry.at,
-                    nextEntry.fromUserId,
-                    nextEntry.scope,
-                    nextEntry.targetId,
-                    nextEntry.body,
-                  ].join("|");
-              if (seenChatKeysRef.current.has(stableKey)) {
-                return old;
-              }
-              const nextIdentity = [
-                nextEntry.at,
-                nextEntry.fromUserId,
-                nextEntry.scope,
-                nextEntry.targetId,
-                nextEntry.body,
-              ].join("|");
-              const alreadyPresent = old.some((entry) => {
-                if (nextEntry.messageId && entry.messageId) {
-                  return entry.messageId === nextEntry.messageId;
-                }
-                const entryIdentity = [
-                  entry.at,
-                  entry.fromUserId,
-                  entry.scope,
-                  entry.targetId,
-                  entry.body,
-                ].join("|");
-                return entryIdentity === nextIdentity;
-              });
-              if (alreadyPresent) {
-                seenChatKeysRef.current.add(stableKey);
-                return old;
-              }
+            const nextEntry = {
+              from: msg.data.fromUser.username,
+              fromUserId: msg.data.fromUser.id,
+              fromRoleId: msg.data.fromUser.roleId,
+              body: chatBody,
+              at: new Date(msg.data.timestamp).toLocaleTimeString(),
+              timestamp: msg.data.timestamp,
+              room: roomLabel,
+              self: msg.data.fromUser.id === ad?.self.id,
+              scope: chatScope,
+              targetId: chatTargetId,
+              targetType: msg.data.targetType,
+              messageId: msg.data.messageId,
+              ackRequired: !!msg.data.ackRequired,
+              acked: !!msg.data.acked,
+              ackedBy: msg.data.ackedBy?.username,
+              ackedAt: msg.data.ackedAt
+                ? new Date(msg.data.ackedAt).toLocaleTimeString()
+                : undefined,
+              source: msg.data.source,
+            };
+            const nextIdentity = [
+              nextEntry.at,
+              nextEntry.fromUserId,
+              nextEntry.scope,
+              nextEntry.targetId,
+              nextEntry.body,
+            ].join("|");
+            const stableKey = nextEntry.messageId
+              ? `id:${nextEntry.messageId}`
+              : `fallback|${nextIdentity}`;
+            // Deduplicate here, once per received message: the state updater
+            // below must stay pure because React may invoke it twice
+            // (StrictMode), which previously dropped every message.
+            if (!seenChatKeysRef.current.has(stableKey)) {
               seenChatKeysRef.current.add(stableKey);
-              return [nextEntry, ...old].slice(0, 120);
-            });
+              setChatMessages((old) => {
+                const alreadyPresent = old.some((entry) => {
+                  if (nextEntry.messageId && entry.messageId) {
+                    return entry.messageId === nextEntry.messageId;
+                  }
+                  const entryIdentity = [
+                    entry.at,
+                    entry.fromUserId,
+                    entry.scope,
+                    entry.targetId,
+                    entry.body,
+                  ].join("|");
+                  return entryIdentity === nextIdentity;
+                });
+                return alreadyPresent ? old : [nextEntry, ...old].slice(0, 120);
+              });
+            }
           }
         }
         if (msg.type === "chat_ack") {

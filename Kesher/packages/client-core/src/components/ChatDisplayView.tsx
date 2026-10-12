@@ -7,6 +7,7 @@ type ChatDisplayEntry = {
   fromRoleId?: string;
   body: string;
   at: string;
+  timestamp?: number;
   room: string;
   self: boolean;
   scope: "direct" | "room" | "broadcast" | "global";
@@ -28,9 +29,17 @@ type ChatDisplayViewProps = {
 /** Messages older than this stay in the feed but are dimmed. */
 const RECENT_MS = 5 * 60 * 1000;
 
-function shortTime(at: string): string {
-  const match = at.match(/^(\d{1,2}):(\d{2})/);
-  return match ? `${match[1].padStart(2, "0")}:${match[2]}` : at;
+function shortTime(entry: Pick<ChatDisplayEntry, "at" | "timestamp">): string {
+  // `at` is formatted in the browser locale (e.g. "4:48:12 PM" in a kiosk
+  // without German locale); prefer the server timestamp for a 24h clock.
+  if (entry.timestamp) {
+    return new Date(entry.timestamp).toLocaleTimeString("de-DE", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  const match = entry.at.match(/^(\d{1,2}):(\d{2})/);
+  return match ? `${match[1].padStart(2, "0")}:${match[2]}` : entry.at;
 }
 
 function useClock(): string {
@@ -155,7 +164,7 @@ export function ChatDisplayView({
                   {needsAck ? (
                     <span className="chat-display-ack">Bestätigung erwartet</span>
                   ) : null}
-                  <time>{shortTime(entry.at)}</time>
+                  <time>{shortTime(entry)}</time>
                 </div>
                 <p className="chat-display-body">{entry.body}</p>
               </li>
