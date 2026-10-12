@@ -95,4 +95,82 @@ describe("ChatDisplayView", () => {
     );
     expect(screen.getByText("Bestätigung erwartet")).toBeInTheDocument();
   });
+
+  it("flashes like a call for a new Stream Deck message, but not for history or typed messages", () => {
+    const now = Date.now();
+    render(
+      <ChatDisplayView
+        connectionState="connected"
+        listenRoomIds={[]}
+        roles={roles}
+        stationName="Chat-Monitor"
+        chatMessages={[
+          {
+            ...baseEntry,
+            from: "simon",
+            fromRoleId: "lighting",
+            body: "Bitte leiser",
+            at: "19:05:00",
+            timestamp: now,
+            scope: "global",
+            messageId: "sd-new",
+            source: "companion",
+          },
+          {
+            ...baseEntry,
+            from: "simon",
+            fromRoleId: "lighting",
+            body: "Alte Taste",
+            at: "18:00:00",
+            timestamp: now - 60 * 60 * 1000,
+            scope: "global",
+            messageId: "sd-old",
+            source: "companion",
+          },
+          {
+            ...baseEntry,
+            from: "anna",
+            fromRoleId: "sound1",
+            body: "Getippt",
+            at: "19:05:01",
+            timestamp: now,
+            scope: "global",
+            messageId: "typed",
+            source: "web",
+          },
+        ]}
+      />,
+    );
+
+    const flash = screen.getByRole("status");
+    expect(flash).toHaveClass("attention-flash-call");
+    expect(flash).toHaveTextContent("Stream Deck · Global");
+    expect(flash).toHaveTextContent("simon · Licht 1: Bitte leiser");
+    expect(flash).not.toHaveTextContent("Alte Taste");
+  });
+
+  it("does not flash when only older Stream Deck messages are loaded", () => {
+    render(
+      <ChatDisplayView
+        connectionState="connected"
+        listenRoomIds={[]}
+        roles={roles}
+        stationName="Chat-Monitor"
+        chatMessages={[
+          {
+            ...baseEntry,
+            from: "simon",
+            fromRoleId: "lighting",
+            body: "Alte Taste",
+            at: "18:00:00",
+            timestamp: Date.now() - 60 * 60 * 1000,
+            scope: "global",
+            messageId: "sd-old",
+            source: "companion",
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
 });
