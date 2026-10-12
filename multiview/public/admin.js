@@ -3,6 +3,9 @@ import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } fr
 import { createChatView } from './chat.js'
 import { createAgendaView } from './agenda.js'
 import {
+  createProPresenterView, createPlaylistView, createPreacherView, ppOptions, playlistOptions, preacherOptions,
+} from './propresenter.js'
+import {
   attachDevice, attachNetworkStream, makeVideo, makeTestPattern, mediaKey,
   listVideoDevices, permissionGranted, releaseUnusedStreams, mediaAvailable,
 } from './media.js'
@@ -60,6 +63,7 @@ let page = 'uebersicht'
 let serverDevices = []
 let server = { addresses: [], ports: {}, mediamtx: { status: 'unknown', message: '' } }
 let lastLevels = { inputs: {}, master: null }
+let propresenter = { connected: false }
 let localDevices = []
 let layoutId = null
 let selectedTileId = null
@@ -106,6 +110,10 @@ function onMessage(msg) {
       if (view.el.isConnected) view.update(chat)
       else chatViews.delete(view)
     }
+  } else if (msg.type === 'propresenter') {
+    propresenter = msg
+    for (const el of canvas.querySelectorAll('.etile')) el.ppView?.update(propresenter)
+    renderProPresenter()
   } else if (msg.type === 'levels') {
     setLevels(msg)
     lastLevels = msg
@@ -204,6 +212,7 @@ function renderAll() {
   renderAtem()
   renderChat()
   renderChurchTools()
+  renderProPresenter()
   renderCompanion()
   renderAtemPill()
   renderDatalists()
@@ -742,6 +751,7 @@ function renderCanvas() {
     applyBox(el, tile, layout)
     syncTileMedia(el, tile)
     syncTileMeter(el, tile)
+    syncTileProPresenter(el, tile)
     return el
   })
   existing.forEach((el) => el.remove())
@@ -779,6 +789,33 @@ function syncTileMeter(el, tile) {
   el.dataset.meterKey = signature
   el.querySelector('.meter, .meter-bank')?.remove()
   if (signature) el.append(createMeter(key, tile.meter))
+}
+
+/** ProPresenter-Kachel im Editor – zeigt live, was ProPresenter gerade zeigt. */
+function syncTileProPresenter(el, tile) {
+  const signature =
+    tile.kind === 'propresenter'
+      ? JSON.stringify(['pp', ppOptions(tile.pp)])
+      : tile.kind === 'playlist'
+        ? JSON.stringify(['playlist', playlistOptions(tile.playlist)])
+        : tile.kind === 'preacher'
+          ? JSON.stringify(['preacher', preacherOptions(tile.preacher)])
+          : ''
+  if (el.dataset.ppKey === signature) return
+  el.dataset.ppKey = signature
+  el.querySelector('.pp-view, .pl-view, .pr-view')?.remove()
+  el.ppView = null
+  el.classList.toggle('covered', Boolean(signature))
+  if (!signature) return
+  // Im Editor nur Vorschau: Tasten und Folien lösen hier nichts aus
+  el.ppView =
+    tile.kind === 'playlist'
+      ? createPlaylistView(tile.playlist)
+      : tile.kind === 'preacher'
+        ? createPreacherView(tile.preacher)
+        : createProPresenterView(tile.pp)
+  el.ppView.update(propresenter)
+  el.append(el.ppView.el)
 }
 
 function syncTileMedia(el, tile) {
@@ -845,6 +882,9 @@ function describeTile(tile) {
     const day = tile.ctDate ? new Date(`${tile.ctDate}T12:00:00Z`).toLocaleDateString('de-DE', { timeZone: 'UTC' }) : 'heute'
     return { title: 'ChurchTools-Ablauf', sub: [day, tile.ctFilter].filter(Boolean).join(' · ') }
   }
+  if (tile.kind === 'propresenter') return { title: 'ProPresenter', sub: 'Folien' }
+  if (tile.kind === 'playlist') return { title: 'Playlist', sub: 'ProPresenter' }
+  if (tile.kind === 'preacher') return { title: 'Prediger', sub: 'ProPresenter-Steuerung' }
   const source = config.sources.find((s) => s.id === tile.sourceId)
   if (!source) return { title: 'Keine Quelle', sub: '' }
   const atemPart = source.atemInput !== '' && source.atemInput != null ? ` · ATEM ${source.atemInput}` : ''
@@ -1099,11 +1139,81 @@ function meterSection(tile) {
         <label class="field"><span>Darstellung</span><select data-m="style">${options([['bar', 'Balken'], ['segments', 'LED-Segmente']], m.style)}</select></label>
       </div>
       <label class="field"><span>Dicke <output>${Math.round(m.size * 100)} %</output></span>
-        <input type="range" min="0.5" max="4" step="0.25" data-m="size" value="${m.size}"></label>
+        <input type="range" min="0.5" max="8" step="0.25" data-m="size" value="${m.size}"></label>
       <label class="field"><span>Länge <output>${m.length} %</output></span>
         <input type="range" min="15" max="100" step="5" data-m="length" value="${m.length}"></label>
       <label class="check"><input type="checkbox" data-m="scale" ${m.scale ? 'checked' : ''}> dB-Skala anzeigen</label>
       <button class="btn small" data-action="meter-all">Für alle Videokacheln im Layout übernehmen</button>
+    </div>`
+}
+
+/** Playlist-Kachel: Vorschaubilder und Schriftgröße. */
+function playlistSection(tile) {
+  const o = playlistOptions(tile.playlist)
+  return `
+    <div class="meter-settings">
+      <h4>Playlist</h4>
+      <p class="muted" style="margin:0;font-size:12px">Zeigt die aktive Playlist von ProPresenter. Das laufende Lied ist rot, das nächste grün markiert, gespielte sind abgeblendet.</p>
+      <label class="check"><input type="checkbox" data-pl="thumbs" ${o.thumbs ? 'checked' : ''}> Hintergrund-Vorschau anzeigen</label>
+      <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+        <input type="range" min="0.6" max="2" step="0.1" data-pl="size" value="${o.size}"></label>
+    </div>`
+}
+
+/** ProPresenter-Kachel: was angezeigt wird. */
+function ppSection(tile) {
+  const o = ppOptions(tile.pp)
+  const options = (list, value) =>
+    list.map(([k, label]) => `<option value="${k}" ${k === value ? 'selected' : ''}>${label}</option>`).join('')
+  return `
+    <div class="meter-settings">
+      <h4>ProPresenter</h4>
+      <label class="field"><span>Folien</span><select data-p="show">${options(
+        [
+          ['both', 'Aktuelle und nächste Folie'],
+          ['current', 'Nur aktuelle Folie'],
+          ['next', 'Nur nächste Folie'],
+          ['backgrounds', 'Hintergrund jetzt und nächster'],
+          ['nextBackground', 'Nur nächster Hintergrund'],
+        ],
+        o.show,
+      )}</select></label>
+      <label class="field"><span>Inhalt</span><select data-p="content">${options(
+        [['image', 'Folienbild'], ['text', 'Nur Text (groß)'], ['both', 'Bild und Text']],
+        o.content,
+      )}</select></label>
+      <label class="field"><span>Als „nächste Folie“ zeigen</span><select data-p="nextMode">${options(
+        [['background', 'Nächste Folie mit Hintergrund'], ['direct', 'Direkt folgende Folie']],
+        o.nextMode,
+      )}</select></label>
+      <label class="check"><input type="checkbox" data-p="showName" ${o.showName ? 'checked' : ''}> Name der Präsentation anzeigen</label>
+      <label class="check"><input type="checkbox" data-p="showControls" ${o.showControls ? 'checked' : ''}> Steuer-Tasten einblenden (Zurück / Ausblenden / Weiter)</label>
+      ${o.showControls ? blankModeField('data-p', o.blankMode) : ''}
+      <p class="muted" style="margin:0;font-size:12px">„Mit Hintergrund“ springt zur nächsten Folie, die einen anderen Hintergrund startet (Video, Bild, PDF …) – nie zu reinem Text. Hat der Bediener in ProPresenter schon ein anderes Lied angeklickt (z. B. eins übersprungen), kommt sie aus diesem Lied.</p>
+      ${propresenter.connected ? '' : '<p class="muted" style="margin:0;font-size:12px">ProPresenter ist nicht verbunden – Adresse unter <a href="#/einstellungen">Einstellungen</a> prüfen.</p>'}
+    </div>`
+}
+
+/** Auswahl, was „Ausblenden“ bei ProPresenter wegnimmt. */
+function blankModeField(attr, value) {
+  return `<label class="field"><span>„Ausblenden“ blendet aus</span><select ${attr}="blankMode">
+    <option value="clear" ${value === 'clear' ? 'selected' : ''}>Nur die Folie (Hintergrund bleibt)</option>
+    <option value="clearAll" ${value === 'clearAll' ? 'selected' : ''}>Folie und Hintergrund</option>
+  </select></label>`
+}
+
+/** Prediger-Kachel: Größe der Folien, Ausblenden-Art, Tasten. */
+function preacherSection(tile) {
+  const o = preacherOptions(tile.preacher)
+  return `
+    <div class="meter-settings">
+      <h4>Prediger</h4>
+      <p class="muted" style="margin:0;font-size:12px">Zeigt alle Folien der laufenden Präsentation (Predigt oder Lied) wie in ProPresenter. Auf dem Monitor löst Antippen einer Folie sie in ProPresenter aus; die Tasten schalten weiter, zurück oder blenden aus. Hier im Editor ist alles nur Vorschau.</p>
+      <label class="field"><span>Foliengröße <output>${Math.round(o.size * 100)} %</output></span>
+        <input type="range" min="0.5" max="2.5" step="0.1" data-pr="size" value="${o.size}"></label>
+      <label class="check"><input type="checkbox" data-pr="showControls" ${o.showControls ? 'checked' : ''}> Tasten Zurück / Ausblenden / Weiter</label>
+      ${blankModeField('data-pr', o.blankMode)}
+      ${propresenter.connected ? '' : '<p class="muted" style="margin:0;font-size:12px">ProPresenter ist nicht verbunden – Adresse unter <a href="#/einstellungen">Einstellungen</a> prüfen.</p>'}
     </div>`
 }
 
@@ -1142,8 +1252,16 @@ function bankSection(tile) {
         <label class="field"><span>Anordnung</span><select data-b="orientation">${options([['vertical', 'Nebeneinander (senkrecht)'], ['horizontal', 'Untereinander (quer)']], b.orientation)}</select></label>
         <label class="field"><span>Darstellung</span><select data-b="style">${options([['bar', 'Balken'], ['segments', 'LED-Segmente']], b.style)}</select></label>
       </div>
-      <label class="field"><span>Dicke <output>${Math.round(b.size * 100)} %</output></span>
-        <input type="range" min="0.5" max="3" step="0.25" data-b="size" value="${b.size}"></label>
+      <label class="check"><input type="checkbox" data-b="fill" ${b.fill ? 'checked' : ''}> Ganzes Feld ausfüllen</label>
+      ${
+        b.fill
+          ? ''
+          : `<label class="field"><span>Dicke <output>${Math.round(b.size * 100)} %</output></span>
+        <input type="range" min="0.5" max="8" step="0.25" data-b="size" value="${b.size}"></label>`
+      }
+      <label class="field"><span>Abstand zwischen den Pegeln <output>${Math.round(b.gap * 100)} %</output></span>
+        <input type="range" min="0" max="4" step="0.25" data-b="gap" value="${b.gap}"></label>
+      <label class="check"><input type="checkbox" data-b="labels" ${b.labels ? 'checked' : ''}> Namen anzeigen</label>
       <label class="check"><input type="checkbox" data-b="scale" ${b.scale ? 'checked' : ''}> dB-Skala anzeigen</label>
     </div>`
 }
@@ -1164,6 +1282,9 @@ function tileInspector(tile, layout) {
         <option value="audio" ${kind === 'audio' ? 'selected' : ''}>Pegel-Fenster (Audio)</option>
         <option value="chat" ${kind === 'chat' ? 'selected' : ''}>Kesher-Chat</option>
         <option value="churchtools" ${kind === 'churchtools' ? 'selected' : ''}>ChurchTools-Ablauf</option>
+        <option value="propresenter" ${kind === 'propresenter' ? 'selected' : ''}>ProPresenter (Folien / Hintergründe)</option>
+        <option value="playlist" ${kind === 'playlist' ? 'selected' : ''}>ProPresenter-Playlist</option>
+        <option value="preacher" ${kind === 'preacher' ? 'selected' : ''}>ProPresenter-Prediger (Folien steuern)</option>
       </select>
     </label>
     ${
@@ -1196,11 +1317,10 @@ function tileInspector(tile, layout) {
         : ''
     }
     ${kind === 'chat' ? `<p class="muted">Zeigt den Kesher-Chat, auf allen Monitoren und Vorschauen gleich. Der Server ist dafür einmal bei Kesher angemeldet. Adresse und Rolle unter <a href="#einstellungen">Einstellungen</a>.</p>` : ''}
-    ${
-      kind === 'audio'
-        ? bankSection(tile)
-        : ''
-    }
+    ${kind === 'audio' ? bankSection(tile) : ''}
+    ${kind === 'propresenter' ? ppSection(tile) : ''}
+    ${kind === 'playlist' ? playlistSection(tile) : ''}
+    ${kind === 'preacher' ? preacherSection(tile) : ''}
     <hr class="divider">
     <div class="row4">
       <label class="field"><span>X</span><input type="number" min="0" max="${layout.cols - 1}" data-t="x" value="${tile.x}"></label>
@@ -1225,6 +1345,40 @@ function onInspectorField(e) {
   const layout = currentLayout()
   if (!layout) return
 
+  if (el.dataset.pr) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const value = el.type === 'checkbox' ? el.checked : el.type === 'range' ? Number(el.value) : el.value
+    tile.preacher = { ...preacherOptions(tile.preacher), [el.dataset.pr]: value }
+    const out = el.closest('label').querySelector('output')
+    if (out) out.textContent = `${Math.round(value * 100)} %`
+    renderCanvas()
+    changed()
+    return
+  }
+
+  if (el.dataset.pl) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const value = el.type === 'checkbox' ? el.checked : el.type === 'range' ? Number(el.value) : el.value
+    tile.playlist = { ...playlistOptions(tile.playlist), [el.dataset.pl]: value }
+    const out = el.closest('label').querySelector('output')
+    if (out) out.textContent = `${Math.round(value * 100)} %`
+    renderCanvas()
+    changed()
+    return
+  }
+
+  if (el.dataset.p) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    tile.pp = { ...ppOptions(tile.pp), [el.dataset.p]: el.type === 'checkbox' ? el.checked : el.value }
+    if (el.dataset.p === 'showControls') renderInspector()
+    renderCanvas()
+    changed()
+    return
+  }
+
   if (el.dataset.b || el.dataset.ch) {
     const tile = layout.tiles.find((t) => t.id === selectedTileId)
     if (!tile) return
@@ -1232,6 +1386,7 @@ function onInspectorField(e) {
       const key = el.dataset.b
       const value = el.type === 'checkbox' ? el.checked : el.type === 'range' ? Number(el.value) : el.value
       tile.bank = { ...bankOptions(tile.bank), [key]: value }
+      if (key === 'fill') renderInspector()
       const out = el.closest('label').querySelector('output')
       if (out) out.textContent = `${Math.round(value * 100)} %`
     } else {
@@ -1489,6 +1644,22 @@ function renderChat() {
   renderChatStatus()
 }
 
+function renderProPresenter() {
+  if (!config) return
+  $('#pp-preacher-url').textContent = `${location.origin}/prediger.html`
+  const host = $('#pp-host')
+  const port = $('#pp-port')
+  if (document.activeElement !== host) host.value = config.propresenter?.host ?? ''
+  if (document.activeElement !== port) port.value = config.propresenter?.port ?? 1025
+  const p = propresenter
+  $('#pp-status').innerHTML = !config.propresenter?.host
+    ? '<span class="muted">Keine Adresse eingetragen.</span>'
+    : p.connected
+      ? `<span style="color:var(--green)">●</span> Verbunden mit <b>${esc(p.version || 'ProPresenter')}</b>` +
+        (p.presentation ? ` · läuft: <b>${esc(p.presentation.name)}</b>, Folie ${p.index + 1}` : ' · keine Präsentation aktiv')
+      : `<span style="color:var(--red)">●</span> Nicht erreichbar – ist in ProPresenter unter Einstellungen → Netzwerk „Netzwerk aktivieren“ an?`
+}
+
 /** Heutiges Datum als YYYY-MM-DD in der Zeitzone der Veranstaltungen. */
 function localDay() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: churchtools.timeZone || 'Europe/Berlin' }).format(new Date())
@@ -1595,9 +1766,16 @@ for (const key of ['url', 'username', 'roleId']) {
   })
 }
 
+for (const id of ['#pp-host', '#pp-port']) {
+  $(id).addEventListener('change', () => {
+    config.propresenter = { host: $('#pp-host').value.trim(), port: Number($('#pp-port').value) || 1025 }
+    renderProPresenter()
+    changed(0)
+  })
+}
+
 function renderCompanion() {
-  // Companion läuft auf demselben Server: dort direkt und ohne Zertifikat über 127.0.0.1
-  const base = location.protocol === 'https:' ? `http://127.0.0.1:${location.port || 8090}` : location.origin
+  const base = location.origin
   const lines = [
     ...config.outputs.flatMap((o, oi) =>
       config.layouts.map((l, li) => [`${o.name} → ${l.name}`, `${base}/api/output/${oi + 1}/layout/${li + 1}`]),

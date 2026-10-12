@@ -159,3 +159,22 @@ body.embedded .controls-hint { display: none; }
 
 /* Platz für die Beschriftung, wenn der Pegel unten quer liegt */
 .tile.meter-at-bottom .label { bottom: calc(clamp(4px, 3cqh, 16px) + var(--meter-space, 0px)); }
+
+/* ---- Tablet und Handy ---------------------------------------------------- */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;          /* kein Menü bei langem Drücken */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;           /* kein Zoom bei Doppeltippen */
+  overscroll-behavior: none;
+}
+/* Abstand zu Notch, Dynamic Island und Home-Leiste (am Monitor ist das 0) */
+#stage {
+  top: env(safe-area-inset-top);
+  right: env(safe-area-inset-right);
+  bottom: env(safe-area-inset-bottom);
+  left: env(safe-area-inset-left);
+}
+.controls { top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); }
+#badges { top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right)); }

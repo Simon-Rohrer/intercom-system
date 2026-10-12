@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="meters.css">
   <link rel="stylesheet" href="chat.css">
   <link rel="stylesheet" href="agenda.css">
+  <link rel="stylesheet" href="propresenter.css">
 </head>
 <body>
   <header class="site-header">
@@ -151,7 +152,7 @@
       <div class="page-head">
         <div>
           <h1>Einstellungen</h1>
-          <p class="lead">Verbindung zum ATEM, Kesher-Chat, ChurchTools und Steuerung über Companion.</p>
+          <p class="lead">Verbindung zum ATEM, ProPresenter, Kesher-Chat, ChurchTools und Steuerung über Companion.</p>
         </div>
       </div>
 
@@ -178,6 +179,28 @@
             <tbody id="atem-inputs-rows"></tbody>
           </table>
         </div>
+      </div>
+
+      <div class="card">
+        <h2>ProPresenter</h2>
+        <p class="muted">Zeigt aktuelle und nächste Folie in einer Kachel („ProPresenter (Folien)“). Nur lesend – am ProPresenter wird nichts ausgelöst.
+          In ProPresenter muss unter <b>Einstellungen → Netzwerk</b> „Netzwerk aktivieren“ eingeschaltet sein.</p>
+        <div class="form-grid">
+          <label class="field"><span>Adresse des ProPresenter-Rechners</span>
+            <input id="pp-host" type="text" placeholder="z. B. 192.168.0.101" spellcheck="false">
+          </label>
+          <label class="field"><span>Port</span>
+            <input id="pp-port" type="number" min="1" max="65535" placeholder="1025">
+          </label>
+          <div id="pp-status" class="atem-status"></div>
+        </div>
+        <p class="muted" style="margin-top:14px">
+          <b>Prediger-Seite fürs iPad/iPhone:</b> alle Folien antippen, Weiter/Zurück/Ausblenden – ohne Layout.
+          Im Safari öffnen und über <i>Teilen → „Zum Home-Bildschirm“</i> als App ablegen (dann ohne Safari-Leisten).
+          Clicker und Pfeiltasten schalten weiter, „B“ blendet aus.<br>
+          <a id="pp-preacher-link" href="prediger.html" target="_blank" rel="noopener"><code id="pp-preacher-url">/prediger.html</code></a>
+          · größere Folien: <code>?groesse=1.5</code> · Hintergrund mit ausblenden: <code>?ausblenden=alles</code>
+        </p>
       </div>
 
       <div class="card">
@@ -225,7 +248,7 @@
 
       <div class="card">
         <h2>Companion</h2>
-        <p class="muted">Im Companion-Modul <b>Generic HTTP</b> eine GET-Anfrage auf diese Adressen legen. Multiviews, Layouts und Quellen gehen per Nummer, Name oder ID. Läuft Companion auf diesem Server, gilt die Adresse mit <code>127.0.0.1</code> (ohne Zertifikat).</p>
+        <p class="muted">Im Companion-Modul <b>Generic HTTP</b> eine GET-Anfrage auf diese Adressen legen. Multiviews, Layouts und Quellen gehen per Nummer, Name oder ID.</p>
         <div id="companion-help"></div>
       </div>
     </section>

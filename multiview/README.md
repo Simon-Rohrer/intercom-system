@@ -50,12 +50,40 @@ Die Webseite hat vier Bereiche:
    - **Pegel-Fenster (Audio)**: eine eigene Kachel mit beliebig vielen Pegeln. Für jeden Pegel
      wählst du die Quelle (Summe, ein ATEM-Eingang oder ein reiner Audioeingang wie XLR) und
      optional einen Namen. „+ Alle mit Ton“ legt alle Eingänge an, an denen gerade Ton anliegt.
-     Anordnung nebeneinander oder untereinander, Balken oder LED-Segmente, Dicke und dB-Skala
-     sind einstellbar. Die Namen zeigen Tally (rot = Program, grün = Preview).
+     Anordnung nebeneinander oder untereinander, Balken oder LED-Segmente, Dicke (bis 800 %),
+     Abstand, Namen und dB-Skala sind einstellbar. **„Ganzes Feld ausfüllen“** verteilt die Pegel
+     über die komplette Kachel – die Balken werden so breit bzw. hoch wie möglich. Die Namen zeigen Tally (rot = Program, grün = Preview).
      Die Pegel kommen über das Netzwerk vom ATEM (Fairlight-Audio), gemessen vor dem Fader.
    - Optional kann eine Videokachel zusätzlich einen eigenen Pegel zeigen („Audiopegel in dieser
      Kachel“), mit Position, Dicke, Länge und Darstellung. Ist die Quelle ein **Ausgang** des ATEM
      (z. B. `10010` = Programm 1, `8001`… = Aux), zeigt dieser Pegel die **Summe**.
+   - **ProPresenter (Folien / Hintergründe)**: aktuelle und nächste Folie als Bild (über ihrem
+     Hintergrund, so wie sie auf der Leinwand aussehen), als Text oder beides. Alternativ
+     „Hintergrund jetzt und nächster“: Der nächste Hintergrund kommt aus dem laufenden Lied
+     oder, wenn dort keiner mehr folgt, aus dem nächsten Lied der Playlist. Am Liedende zeigt
+     „nächste Folie“ den Anfang des nächsten Lieds.
+   - **ProPresenter-Prediger (Folien steuern)**: alle Folien der laufenden Präsentation (Predigt
+     oder Lied) nebeneinander wie in ProPresenter, mit Gruppen-Farben. Auf dem Monitor löst
+     Antippen einer Folie sie in ProPresenter aus; darunter die Tasten **Zurück**, **Ausblenden**
+     (danach **Einblenden**) und **Weiter**. Im Editor ist alles nur Vorschau.
+   - **Prediger-Seite fürs iPad/iPhone:** `http://<server-ip>:8090/prediger.html` – dieselbe
+     Ansicht ohne Layout, bildschirmfüllend, für Hoch- und Querformat. In Safari über
+     *Teilen → „Zum Home-Bildschirm“* als App ablegen, dann öffnet sie ohne Safari-Leisten.
+     Presenter-Clicker und Tastatur: Pfeil rechts / Bild↓ / Leertaste = Weiter, Pfeil links /
+     Bild↑ = Zurück, „B“ = Aus-/Einblenden. Optionen: `?groesse=1.5`, `?ausblenden=alles`,
+     `?tasten=aus`. Tipp: In den iOS-Einstellungen „Automatische Sperre“ auf „Nie“ stellen –
+     ohne HTTPS darf die Seite das Display nicht selbst anlassen.
+   - Die normale ProPresenter-Kachel kann dieselben drei Tasten einblenden („Steuer-Tasten“).
+     „Ausblenden“ nimmt wahlweise nur die Folie weg oder Folie und Hintergrund.
+   - Gesteuert wird nur über diese Befehle: Weiter, Zurück, Ausblenden, Einblenden und Folie wählen.
+   - **ProPresenter-Playlist**: die ganze aktive Playlist mit den farbigen Abschnitten. Das
+     laufende Lied ist rot, das nächste grün markiert, gespielte sind abgeblendet, optional mit
+     Hintergrund-Vorschau. Die Liste scrollt automatisch mit.
+   - Die ProPresenter-Verbindung (Adresse und Port) stellst du unter *Einstellungen* ein. Der
+     Zugriff ist nur lesend: Es werden keine Adressen aufgerufen, die in ProPresenter etwas
+     auslösen.
+   - Hintergründe erkennt die Software an der Folien-Beschriftung, die ProPresenter liefert.
+     Bei einer Folie mit Hintergrund-Aktion ist das der Name des Mediums, z. B. „illuminate-11“.
    - **Live-Bilder im Editor** zeigt die echten Bilder in den Kacheln
 4. **Einstellungen**: IP-Adresse des ATEM und die fertigen Companion-Adressen.
 

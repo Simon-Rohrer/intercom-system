@@ -12,8 +12,6 @@ const { createKesherChat } = require('./kesher-chat')
 const { createChurchTools } = require('./churchtools')
 
 const PORT = Number(process.env.PORT) || 8090
-// Hinter Caddy (HTTPS) nur lokal lauschen: HOST=127.0.0.1
-const HOST = process.env.HOST || undefined
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data')
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json')
 
@@ -86,10 +84,15 @@ function normalizeChat(c) {
 function normalizeConfig(c) {
   const base = defaultConfig()
   const me = Number(c?.atem?.me)
+  const ppPort = Number(c?.propresenter?.port)
   return {
     atem: {
       ip: String(c?.atem?.ip ?? base.atem.ip).trim(),
       me: Number.isInteger(me) && me >= 0 && me <= 3 ? me : 0,
+    },
+    propresenter: {
+      host: String(c?.propresenter?.host ?? '').trim(),
+      port: Number.isInteger(ppPort) && ppPort > 0 && ppPort < 65536 ? ppPort : 1025,
     },
     sources: Array.isArray(c?.sources) ? c.sources : base.sources,
     layouts: Array.isArray(c?.layouts) ? c.layouts : base.layouts,
@@ -242,6 +245,314 @@ setInterval(() => {
   const master = audioLevels.master && audioLevels.master.map((v) => v / 100)
   broadcast({ type: 'levels', inputs, master })
 }, 66)
+
+// ---------------------------------------------------------------------------
+// ProPresenter: aktuelle/nächste Folie, Hintergründe und Playlist über die Netzwerk-Schnittstelle
+// (ProPresenter → Einstellungen → Netzwerk → „Netzwerk aktivieren“).
+// NUR LESEND: Viele Adressen der Schnittstelle lösen bei ProPresenter etwas aus
+// (…/trigger, …/focus, /v1/clear/…) – die werden hier nie aufgerufen.
+//
+// Hintergründe: ProPresenter liefert bei jeder Folie, die einen Hintergrund (Medien-Aktion)
+// startet, dessen Namen als Beschriftung (z. B. „illuminate-11“) – auch bei Folien mit Text.
+// Ab so einer Folie gilt dieser Hintergrund; Textfolien ohne Beschriftung liegen transparent
+// darüber. Als Bild des Hintergrunds dient möglichst eine Folie ohne Text mit diesem Namen.
+// ---------------------------------------------------------------------------
+
+const PP_POLL_MS = 400
+const PP_PRESENTATION_TTL = 60_000
+const PP_PLAYLIST_TTL = 15_000
+
+let ppState = emptyProPresenterState()
+let ppTimer = null
+let ppTarget = ''
+const ppPresentations = new Map() // UUID -> { at, name, cues: [{ text, label }], bg: [Cue-Nummern] }
+let ppPlaylistCache = null // { uuid, at, name, items }
+
+function emptyProPresenterState() {
+  return {
+    connected: false,
+    host: '',
+    version: null,
+    presentation: null, // { uuid, name }
+    index: null,
+    current: null, // Folientext { text, notes }
+    next: null,
+    currentSlide: null, // { presentation, cue } – für das Folienbild
+    nextSlide: null,
+    currentSlideBg: null, // Hintergrund unter der Folie { presentation, cue, label }
+    nextSlideBg: null,
+    nextBgSlide: null, // nächste Folie, die einen Hintergrund startet { presentation, cue, label, song, text }
+    focused: null, // angeklicktes Lied, falls es vom laufenden abweicht { presentation, name, playlistIndex }
+    background: { current: null, next: null }, // { presentation, cue, label, song }
+    playlist: null, // { name, activeIndex, nextIndex, items: [...] }
+    cues: [], // alle Folien der laufenden Präsentation { group, color, label, enabled } – für die Prediger-Ansicht
+    layers: null, // was gerade sichtbar ist { slide, media } – „ausgeblendet“ = slide false
+  }
+}
+
+function ppBase() {
+  const { host, port } = config.propresenter
+  return host ? `http://${host}:${port}` : ''
+}
+
+async function ppGet(path) {
+  const res = await fetch(`${ppBase()}${path}`, { signal: AbortSignal.timeout(2500) })
+  if (res.status === 204) return null
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const text = await res.text()
+  return text ? JSON.parse(text) : null
+}
+
+const startsBackground = (cue) => Boolean(cue.label.trim())
+
+/** Folien einer Präsentation (zwischengespeichert) samt Liste der Hintergrund-Cues. */
+async function ppPresentation(uuid) {
+  const hit = ppPresentations.get(uuid)
+  if (hit && Date.now() - hit.at < PP_PRESENTATION_TTL) return hit
+  try {
+    const data = await ppGet(`/v1/presentation/${encodeURIComponent(uuid)}`)
+    const cues = (data?.presentation?.groups ?? []).flatMap((g) =>
+      (g.slides ?? []).map((s) => ({
+        text: s.text ?? '',
+        label: s.label ?? '',
+        group: g.name ?? '',
+        color: headerColor(g.color),
+        enabled: s.enabled !== false,
+      })),
+    )
+    const entry = {
+      at: Date.now(),
+      name: data?.presentation?.id?.name ?? '',
+      cues,
+      bg: cues.map((c, i) => (startsBackground(c) ? i : -1)).filter((i) => i >= 0),
+    }
+    ppPresentations.set(uuid, entry)
+    return entry
+  } catch {
+    return hit ?? null
+  }
+}
+
+const headerColor = (c) =>
+  c ? `rgb(${Math.round(c.red * 255)}, ${Math.round(c.green * 255)}, ${Math.round(c.blue * 255)})` : null
+
+/** Einträge der Playlist (zwischengespeichert), Lieder mit ihrem ersten Hintergrund. */
+async function ppPlaylist(uuid) {
+  if (ppPlaylistCache?.uuid === uuid && Date.now() - ppPlaylistCache.at < PP_PLAYLIST_TTL) return ppPlaylistCache
+  const data = await ppGet(`/v1/playlist/${encodeURIComponent(uuid)}`)
+  const items = []
+  for (const it of data?.items ?? []) {
+    const presentation = it.presentation_info?.presentation_uuid ?? null
+    let bg = null
+    if (presentation) {
+      const info = await ppPresentation(presentation)
+      if (info?.bg.length) bg = backgroundRef(presentation, info, info.bg[0])
+    }
+    items.push({
+      index: it.id?.index,
+      name: it.id?.name ?? '',
+      type: it.type,
+      hidden: Boolean(it.is_hidden),
+      color: headerColor(it.header_color),
+      presentation,
+      bg,
+    })
+  }
+  ppPlaylistCache = { uuid, at: Date.now(), name: data?.id?.name ?? '', items }
+  return ppPlaylistCache
+}
+
+/**
+ * Hintergrund, der mit Cue `start` beginnt. `cue` ist das Bild dafür: möglichst eine Folie
+ * ohne Text mit demselben Hintergrund, sonst die Startfolie selbst. `start` = wo er beginnt.
+ */
+function backgroundRef(uuid, info, start) {
+  const label = info.cues[start].label.trim()
+  const clean = info.cues.findIndex((c) => c.label.trim() === label && !c.text.trim())
+  return { presentation: uuid, cue: clean >= 0 ? clean : start, start, label, song: info.name }
+}
+
+/** Der Hintergrund, der bei Cue `index` wirkt (letzte Folie davor, die einen startet). */
+function backgroundAt(uuid, info, index) {
+  let start = null
+  for (const c of info?.bg ?? []) if (c <= index) start = c
+  return start === null ? null : backgroundRef(uuid, info, start)
+}
+
+/** Folie, die einen Hintergrund startet – ihr Vorschaubild enthält den Hintergrund schon. */
+function slideRef(uuid, info, cue) {
+  return { presentation: uuid, cue, label: info.cues[cue].label.trim(), song: info.name, text: info.cues[cue].text.trim() }
+}
+
+/** Hintergrund unter einer Folie – nur nötig, wenn die Folie ihn nicht selbst startet. */
+function backgroundUnder(uuid, info, index) {
+  if (info?.cues[index] && startsBackground(info.cues[index])) return null
+  const bg = backgroundAt(uuid, info, index)
+  return bg && bg.cue !== index ? bg : null
+}
+
+let ppBusy = false
+let ppAgain = false
+
+/** Sofort neu abfragen (z. B. nach einem Tastendruck) – ohne eine zweite Abfrage-Schleife zu starten. */
+function requestProPresenterPoll() {
+  if (ppBusy) {
+    ppAgain = true
+    return
+  }
+  clearTimeout(ppTimer)
+  pollProPresenter()
+}
+
+async function pollProPresenter() {
+  ppTimer = null
+  const target = ppBase()
+  if (!target) return
+  ppBusy = true
+  try {
+    await pollProPresenterOnce(target)
+  } finally {
+    ppBusy = false
+  }
+  if (target !== ppBase()) return // Adresse wurde inzwischen geändert
+  const delay = ppAgain ? 0 : ppState.connected ? PP_POLL_MS : 3000
+  ppAgain = false
+  clearTimeout(ppTimer)
+  ppTimer = setTimeout(pollProPresenter, delay)
+}
+
+async function pollProPresenterOnce(target) {
+  const next = emptyProPresenterState()
+  next.host = config.propresenter.host
+  try {
+    next.version = ppState.connected ? ppState.version : ((await ppGet('/version'))?.host_description ?? null)
+    const [slide, slideIndex, active, focusedItem, focusedPresentation, layers] = await Promise.all([
+      ppGet('/v1/status/slide'),
+      ppGet('/v1/presentation/slide_index'),
+      ppGet('/v1/playlist/active'),
+      ppGet('/v1/playlist/focused').catch(() => null),
+      ppGet('/v1/presentation/focused').catch(() => null),
+      ppGet('/v1/status/layers').catch(() => null),
+    ])
+    next.connected = true
+    next.layers = layers ? { slide: Boolean(layers.slide), media: Boolean(layers.media) } : null
+    next.current = slide?.current?.uuid || slide?.current?.text ? slide.current : null
+    next.next = slide?.next?.uuid || slide?.next?.text ? slide.next : null
+
+    // Playlist mit dem gerade laufenden Eintrag
+    const activePlaylist = active?.presentation?.playlist
+    if (activePlaylist?.uuid) {
+      const playlist = await ppPlaylist(activePlaylist.uuid)
+      next.playlist = {
+        name: playlist.name || activePlaylist.name,
+        activeIndex: active.presentation.item?.index ?? null,
+        nextIndex: null,
+        focusedIndex: null,
+        items: playlist.items,
+      }
+    }
+    const items = next.playlist?.items ?? []
+    const songsAfter = (i) => items.filter((it) => it.index > i && it.presentation && !it.hidden).map((it) => it.presentation)
+
+    // Laufende Präsentation
+    const pi = slideIndex?.presentation_index
+    const liveUuid = pi?.presentation_id?.uuid ?? null
+    let info = null
+    let index = null
+    let total = 0
+    if (liveUuid) {
+      index = pi.index
+      info = await ppPresentation(liveUuid)
+      total = pi.total_cues ?? info?.cues.length ?? 0
+      next.presentation = { uuid: liveUuid, name: pi.presentation_id.name }
+      next.index = index
+      next.currentSlide = { presentation: liveUuid, cue: index }
+      next.background.current = backgroundAt(liveUuid, info, index)
+      next.currentSlideBg = backgroundUnder(liveUuid, info, index)
+      next.cues = (info?.cues ?? []).map((c) => ({
+        group: c.group,
+        color: c.color,
+        label: c.label.trim(),
+        blank: !c.text.trim(), // Folie ohne Text (z. B. reiner Hintergrund)
+        enabled: c.enabled,
+      }))
+    }
+
+    // Angeklicktes Lied: Klickt der Bediener ein anderes Lied an (z. B. weil eins übersprungen
+    // wird), geht es dort weiter – auch wenn davon noch keine Folie läuft.
+    const focusedUuid =
+      focusedItem?.playlist_item?.presentation_info?.presentation_uuid ?? focusedPresentation?.uuid ?? null
+    const focusedIndex =
+      focusedItem?.playlist?.uuid && focusedItem.playlist.uuid === activePlaylist?.uuid ? (focusedItem.item?.index ?? null) : null
+    const jump = focusedUuid && focusedUuid !== liveUuid ? focusedUuid : null
+
+    // Lieder, in denen es nach dem laufenden weitergeht (in dieser Reihenfolge durchsucht)
+    const activeItem = items.find((it) => it.index === next.playlist?.activeIndex)
+    let upcoming = []
+    if (jump) {
+      upcoming = [jump, ...(focusedIndex != null ? songsAfter(focusedIndex) : [])]
+      next.focused = { presentation: jump, name: (await ppPresentation(jump))?.name ?? '', playlistIndex: focusedIndex }
+      if (next.playlist) next.playlist.focusedIndex = focusedIndex
+    } else if (activeItem && activeItem.presentation === liveUuid) {
+      upcoming = songsAfter(activeItem.index)
+    }
+    if (next.playlist) {
+      next.playlist.nextIndex = jump
+        ? focusedIndex
+        : (items.find((it) => it.index > (next.playlist.activeIndex ?? -1) && it.type !== 'header' && !it.hidden)?.index ?? null)
+    }
+
+    // Direkt folgende Folie: im laufenden Lied, sonst Anfang des nächsten bzw. angeklickten Lieds
+    if (!jump && liveUuid && index + 1 < total) {
+      next.nextSlide = { presentation: liveUuid, cue: index + 1 }
+      next.nextSlideBg = backgroundUnder(liveUuid, info, index + 1)
+    } else if (upcoming.length) {
+      next.nextSlide = { presentation: upcoming[0], cue: 0 }
+      next.next = null
+      next.nextSlideBg = backgroundUnder(upcoming[0], await ppPresentation(upcoming[0]), 0)
+    }
+
+    // Nächste Folie mit Hintergrund (Video, Bild, PDF …) und nächster Hintergrund:
+    // im laufenden Lied der nächste andere, sonst der erste im nächsten bzw. angeklickten Lied
+    const currentLabel = next.background.current?.label
+    const inSong =
+      !jump && info ? info.bg.find((c) => c > index && info.cues[c].label.trim() !== currentLabel) : undefined
+    if (inSong !== undefined) {
+      next.nextBgSlide = slideRef(liveUuid, info, inSong)
+      next.background.next = backgroundRef(liveUuid, info, inSong)
+    } else {
+      for (const uuid of upcoming) {
+        const songInfo = await ppPresentation(uuid)
+        if (songInfo?.bg.length) {
+          next.nextBgSlide = slideRef(uuid, songInfo, songInfo.bg[0])
+          next.background.next = backgroundRef(uuid, songInfo, songInfo.bg[0])
+          break
+        }
+      }
+    }
+  } catch (err) {
+    if (ppState.connected) console.log(`ProPresenter: Verbindung verloren (${err.message})`)
+    next.connected = false
+  }
+  if (target !== ppBase()) return // Adresse wurde inzwischen geändert
+  if (next.connected && !ppState.connected) console.log(`ProPresenter: verbunden (${next.version ?? next.host})`)
+  if (JSON.stringify(next) !== JSON.stringify(ppState)) {
+    ppState = next
+    broadcast({ type: 'propresenter', ...ppState })
+  }
+}
+
+function applyProPresenter() {
+  const target = ppBase()
+  if (target === ppTarget) return
+  ppTarget = target
+  clearTimeout(ppTimer)
+  ppPresentations.clear()
+  ppPlaylistCache = null
+  ppState = emptyProPresenterState()
+  broadcast({ type: 'propresenter', ...ppState })
+  if (target) pollProPresenter()
+}
 
 // ---------------------------------------------------------------------------
 // MediaMTX: empfängt Netzwerk-Streams (RTSP/RTMP/SRT) und gibt sie als WebRTC
@@ -415,6 +726,7 @@ function configChanged(origin = null) {
   refreshAtemState()
   applyAtemIp()
   kesherChat.reconfigure()
+  applyProPresenter()
   churchTools.datesChanged()
   if (mediamtx.proc) writeMediamtxConfig()
 }
@@ -426,6 +738,7 @@ wss.on('connection', (ws) => {
   send(ws, serverInfo())
   send(ws, kesherChat.snapshot())
   send(ws, churchTools.snapshot())
+  send(ws, { type: 'propresenter', ...ppState })
 
   ws.on('message', (raw) => {
     let msg
@@ -452,6 +765,63 @@ app.use(express.json({ limit: '5mb' }))
 app.use(express.static(path.join(__dirname, 'public')))
 
 app.get('/api/config', (req, res) => res.json(config))
+
+// ProPresenter steuern – NUR diese Befehle (Weiter, Zurück, Ausblenden, Einblenden, Folie wählen).
+// Alles andere der Schnittstelle bleibt gesperrt.
+app.post('/api/propresenter/control', async (req, res) => {
+  const base = ppBase()
+  if (!base) return res.status(503).json({ ok: false, error: 'ProPresenter nicht eingerichtet' })
+  const { action, presentation, index } = req.body || {}
+  const cue = Number(index)
+  const paths = {
+    next: ['/v1/trigger/next'],
+    previous: ['/v1/trigger/previous'],
+    // Ausblenden: nur die Folie (Text) oder Folie und Hintergrund
+    clear: ['/v1/clear/layer/slide'],
+    clearAll: ['/v1/clear/layer/slide', '/v1/clear/layer/media'],
+    // Wieder einblenden = aktuelle Folie erneut auslösen
+    restore: ppState.presentation && ppState.index != null
+      ? [`/v1/presentation/${encodeURIComponent(ppState.presentation.uuid)}/${ppState.index}/trigger`]
+      : null,
+    goto: typeof presentation === 'string' && /^[0-9A-Fa-f-]{36}$/.test(presentation) && Number.isInteger(cue) && cue >= 0
+      ? [`/v1/presentation/${encodeURIComponent(presentation)}/${cue}/trigger`]
+      : null,
+  }[action]
+  if (!paths) return res.status(400).json({ ok: false, error: 'Unbekannter oder unvollständiger Befehl' })
+  try {
+    for (const path of paths) {
+      const r = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(3000) })
+      if (!r.ok) throw new Error(`ProPresenter antwortet mit HTTP ${r.status}`)
+    }
+    console.log(`ProPresenter: ${action}${action === 'goto' ? ` Folie ${cue + 1}` : ''} (von ${req.ip})`)
+    requestProPresenterPoll() // sofort neuen Stand holen, damit alle Bildschirme gleich nachziehen
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err.message })
+  }
+})
+
+// Folienbilder von ProPresenter weiterreichen (Browser brauchen so nur diesen Server)
+app.get('/api/propresenter/thumb/:uuid/:index', async (req, res) => {
+  const base = ppBase()
+  if (!base) return res.status(503).end()
+  const quality = Math.min(Math.max(Number(req.query.q) || 960, 100), 1920)
+  // PNG behält die Transparenz der Textfolien, JPEG ist für Hintergründe kleiner
+  const format = req.query.fmt === 'png' ? 'png' : 'jpeg'
+  try {
+    const upstream = await fetch(
+      `${base}/v1/presentation/${encodeURIComponent(req.params.uuid)}/thumbnail/${Number(req.params.index)}` +
+        `?quality=${quality}&thumbnail_type=${format}`,
+      { signal: AbortSignal.timeout(5000) },
+    )
+    if (!upstream.ok) return res.status(upstream.status).end()
+    res.set('Content-Type', upstream.headers.get('content-type') || `image/${format}`)
+    res.set('Cache-Control', 'max-age=30')
+    res.send(Buffer.from(await upstream.arrayBuffer()))
+  } catch {
+    res.status(502).end()
+  }
+})
 
 // Zustand der Kesher-Chat-Verbindung (zur Fehlersuche)
 app.get('/api/chat', (req, res) => res.json(kesherChat.snapshot()))
@@ -502,6 +872,7 @@ app.put('/api/config', (req, res) => {
 app.get('/api/state', (req, res) => {
   res.json({
     atem: atemState,
+    propresenter: ppState,
     layouts: config.layouts.map((l, i) => ({ nr: i + 1, id: l.id, name: l.name })),
     outputs: config.outputs.map((o, i) => ({
       nr: i + 1,
@@ -548,12 +919,13 @@ app.all('/api/layout/:layout/tile/:tile/source/:source', (req, res) => {
   res.json({ ok: true, layout: layout.name, source: source.name })
 })
 
-server.listen(PORT, HOST, () => {
+server.listen(PORT, () => {
   console.log('Multiview Builder läuft:')
   console.log(`  Webseite: http://localhost:${PORT}/`)
   for (const a of lanAddresses()) console.log(`            http://${a}:${PORT}/`)
   console.log(`  Monitor:  http://localhost:${PORT}/output.html?id=1`)
   applyAtemIp()
+  applyProPresenter()
   startMediamtx()
   kesherChat.start()
   churchTools.start()

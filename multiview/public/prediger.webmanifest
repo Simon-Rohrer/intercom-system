@@ -1,0 +1,10 @@
+{
+  "name": "Prediger – ProPresenter",
+  "short_name": "Prediger",
+  "start_url": "/prediger.html",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [{ "src": "/prediger-icon.png", "sizes": "180x180", "type": "image/png" }]
+}

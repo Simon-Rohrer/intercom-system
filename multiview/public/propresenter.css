@@ -1,0 +1,269 @@
+/* ProPresenter-Kachel – gemeinsam für Monitor-Ansicht und Editor */
+
+.pp-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(2px, 1cqmin, 8px);
+  padding: clamp(3px, 1.2cqmin, 10px);
+  background: #000;
+  color: #fff;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  pointer-events: none;
+}
+.pp-header {
+  font-weight: 600;
+  font-size: clamp(9px, 3.6cqmin, 20px);
+  color: #bbb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pp-header:empty { display: none; }
+
+.pp-panes { flex: 1; min-height: 0; display: grid; gap: clamp(3px, 1.2cqmin, 10px); grid-template-columns: 1fr; }
+.pp-two .pp-panes { grid-template-columns: 1fr 1fr; }
+/* Hochformatige Kachel: die beiden Bilder untereinander */
+@container (max-aspect-ratio: 5 / 4) {
+  .pp-two .pp-panes { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+}
+
+.pp-pane { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.pp-tag {
+  align-self: flex-start;
+  font-weight: 700;
+  font-size: clamp(8px, 2.8cqmin, 15px);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.15em 0.5em;
+  border-radius: 3px 3px 0 0;
+}
+.pp-current .pp-tag { background: #c40000; }
+.pp-next .pp-tag { background: #0f8f33; }
+
+.pp-slide {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+  border: 2px solid #222;
+  container-type: size;
+  overflow: hidden;
+}
+.pp-current .pp-slide { border-color: #c40000; }
+.pp-next .pp-slide { border-color: #0f8f33; }
+
+.pp-stack { position: relative; flex: 1; min-height: 0; width: 100%; }
+.pp-stack:not(:has(img:not([hidden]))) { display: none; }
+/* Folienbild liegt über dem Hintergrund (Textfolien sind transparent) */
+.pp-bg, .pp-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+.pp-bg[hidden], .pp-img[hidden] { display: none; }
+.pp-caption {
+  font-size: clamp(8px, 2.8cqmin, 15px);
+  color: #bbb;
+  padding-top: 0.2em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pp-caption:empty { display: none; }
+
+.pp-text {
+  white-space: pre-line;
+  text-align: center;
+  font-weight: 600;
+  line-height: 1.25;
+  padding: 0.3em 0.6em;
+  overflow: hidden;
+}
+.pp-text:empty { display: none; }
+/* Nur Text: groß in der Mitte */
+.pp-content-text .pp-text { font-size: clamp(10px, 9cqh, 64px); }
+/* Bild und Text: Text als Zeile unter dem Bild */
+.pp-content-both .pp-text { font-size: clamp(9px, 6cqh, 28px); flex: none; max-height: 40%; width: 100%; background: rgba(0, 0, 0, 0.6); }
+
+.pp-empty { color: #666; font-size: clamp(9px, 7cqh, 22px); }
+.pp-empty:empty { display: none; }
+.pp-offline { margin: auto; color: #888; font-size: clamp(10px, 4cqmin, 22px); }
+
+/* Playlist-Kachel */
+.pl-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0b0b0b;
+  color: #fff;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: calc(clamp(9px, 3.4cqmin, 22px) * var(--pl-size, 1));
+  pointer-events: none;
+}
+.pl-title { font-weight: 700; padding: 0.4em 0.6em; color: #bbb; border-bottom: 1px solid #222; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-title:empty { display: none; }
+.pl-list { flex: 1; min-height: 0; overflow: hidden; padding: 0.3em 0; position: relative; }
+.pl-row { display: flex; align-items: center; gap: 0.5em; padding: 0.22em 0.6em; line-height: 1.25; }
+.pl-header {
+  margin-top: 0.4em;
+  font-weight: 700;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--pl-color, #8aa);
+  border-left: 0.3em solid var(--pl-color, #8aa);
+  padding-left: 0.5em;
+}
+.pl-thumb { display: none; flex: none; width: 3.2em; aspect-ratio: 16 / 9; background: #1a1a1a; border-radius: 2px; overflow: hidden; }
+.pl-view.with-thumbs .pl-thumb { display: block; }
+.pl-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pl-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-bg { flex: none; max-width: 35%; font-size: 0.75em; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-row.done { opacity: 0.4; }
+.pl-row.pl-hidden { opacity: 0.3; font-style: italic; }
+.pl-row.current { background: #c40000; font-weight: 700; opacity: 1; }
+.pl-row.current .pl-bg { color: #fdd; }
+.pl-row.next { box-shadow: inset 0.25em 0 0 #19c94a; background: rgba(25, 201, 74, 0.12); }
+/* Vom Bediener angeklickt (abweichend von der Reihenfolge) */
+.pl-row.selected { outline: 2px dashed #19c94a; outline-offset: -2px; }
+.pl-row.selected .pl-name::after { content: "  ◀ angeklickt"; color: #19c94a; font-weight: 700; font-size: 0.8em; }
+
+/* Steuer-Leiste: Zurück / Ausblenden / Weiter */
+.pp-controls {
+  position: relative;
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: clamp(4px, 1.2cqmin, 12px);
+  padding-top: clamp(4px, 1.2cqmin, 12px);
+}
+/* Bedienbar nur auf den Monitoren (im Editor bleibt alles Vorschau) */
+.pp-controls.interactive, .pr-view.interactive { pointer-events: auto; }
+.pp-btn {
+  font: 700 clamp(11px, 4cqmin, 26px) / 1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #fff;
+  background: #2a2f38;
+  border: 2px solid #3b424e;
+  border-radius: 8px;
+  padding: clamp(6px, 2.6cqmin, 22px) 0.5em;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+}
+.pp-btn:active { transform: scale(0.97); background: #3a414d; }
+.pp-next-btn { background: #0f6b2c; border-color: #19c94a; }
+.pp-prev { background: #2a2f38; }
+.pp-blank { background: #6b5200; border-color: #f1c40f; }
+.pp-blank.active { background: #c40000; border-color: #ff5a5a; }
+.pp-controls.busy .pp-btn { opacity: 0.6; }
+.pp-controls.disabled .pp-btn { opacity: 0.35; pointer-events: none; }
+.pp-error {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: 4px;
+  background: #c40000;
+  color: #fff;
+  font: 600 clamp(10px, 3cqmin, 16px) system-ui, sans-serif;
+  padding: 0.3em 0.6em;
+  border-radius: 4px;
+}
+
+/* Prediger-Ansicht: alle Folien der laufenden Präsentation */
+.pr-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(4px, 1.2cqmin, 12px);
+  background: #0b0b0b;
+  color: #fff;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  pointer-events: none;
+}
+.pr-head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 0.8em;
+  font-size: clamp(10px, 3.4cqmin, 22px);
+  padding-bottom: 0.4em;
+}
+.pr-title { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pr-pos { color: #999; white-space: nowrap; }
+.pr-blanked { margin-left: auto; background: #c40000; font-weight: 800; padding: 0.1em 0.5em; border-radius: 4px; letter-spacing: 0.05em; }
+.pr-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(clamp(110px, 22cqw, 320px) * var(--pr-size, 1)), 1fr));
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: clamp(4px, 1.2cqmin, 12px);
+}
+.pr-grid::-webkit-scrollbar { display: none; }
+.pr-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  background: #161a20;
+  border: 3px solid #2a2f38;
+  border-radius: 6px;
+  overflow: hidden;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.pr-card.disabled { opacity: 0.35; }
+.pr-card.current { border-color: #ff2a2a; box-shadow: 0 0 0 2px #ff2a2a; }
+.pr-card.next { border-color: #19c94a; }
+.pr-card:active { transform: scale(0.98); }
+.pr-thumb { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; background: #000; }
+.pr-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.pr-thumb img[hidden] { display: none; }
+.pr-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: clamp(9px, 2.6cqmin, 15px);
+  padding: 0.25em 0.45em;
+  border-top: 0.25em solid var(--pr-color, #444);
+  min-height: 1.8em;
+}
+.pr-num { font-weight: 700; color: #ccc; }
+.pr-group { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ddd; }
+.pr-card.current .pr-label { background: #c40000; }
+.pr-view .pp-controls { padding-top: clamp(6px, 1.6cqmin, 14px); }
+
+/* ---- Handy und Tablet ---------------------------------------------------- */
+
+/* Mindestgröße für Finger (Apple empfiehlt 44 pt) */
+.pp-btn { min-height: 48px; white-space: nowrap; }
+.pr-card { -webkit-tap-highlight-color: transparent; }
+
+/* Schmal (iPhone hochkant): 2 Folien pro Zeile, „Weiter“ breiter, Schrift nicht zu klein */
+@container (max-width: 560px) {
+  .pr-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pr-view .pp-controls { grid-template-columns: 1fr 1fr 1.6fr; gap: 8px; }
+  .pr-view .pp-btn { font-size: 16px; min-height: 56px; border-radius: 12px; padding-inline: 4px; white-space: nowrap; }
+  .pr-head { font-size: 15px; }
+  .pr-label { font-size: 13px; }
+}
+
+/* Sehr schmal oder große Foliengröße: 1 Folie pro Zeile */
+@container (max-width: 340px) {
+  .pr-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Flach (iPhone quer): weniger Höhe für Kopf und Tasten, mehr für die Folien */
+@container (max-height: 460px) {
+  .pr-head { padding-bottom: 2px; }
+  .pr-view .pp-btn { min-height: 44px; padding-block: 6px; }
+}

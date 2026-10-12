@@ -62,6 +62,8 @@ sudo ufw allow 8090/tcp && sudo ufw allow 1935/tcp && sudo ufw allow 8554/tcp \
 | 8554/TCP | RTSP |
 | 8890/UDP | SRT |
 
+Ausgehend erreicht der Server ATEM (UDP 9910), Monarch (RTSP 554) und ProPresenter (TCP 1025).
+
 ## Mitgenommene Einstellungen (Stand beim Packen)
 
 **ATEM:** ATEM 2 M/E Constellation HD unter **192.168.0.31**. Tally kommt von M/E 1, die
@@ -82,6 +84,10 @@ Am Monarch muss dafür **Encoder 2** so eingestellt sein und laufen:
 Encoder 1 (YouTube) bleibt davon unberührt. Der Monarch hängt am ATEM an **Aux 3** und
 bekommt dort Programm 1. Die Einstellung muss im Monarch-Profil gespeichert sein, sonst ist
 sie nach dem Laden des Profils weg.
+
+**ProPresenter:** „Pro7-Mac“ unter **192.168.0.101, Port 1025** (ProPresenter 21.4). In
+ProPresenter muss unter *Einstellungen → Netzwerk* „Netzwerk aktivieren“ an sein. Der Zugriff
+ist nur lesend. Angezeigt werden Folien, Hintergründe und die aktive Playlist.
 
 **Multiviews und Layouts:** wie zuletzt im Editor eingerichtet. Ändern kannst du alles
 jederzeit auf der Webseite.

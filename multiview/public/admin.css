@@ -486,3 +486,5 @@ main { flex: 1; padding-bottom: 48px; }
 #ct-form { grid-template-columns: 1fr 1fr; }
 #ct-form .btn-row { grid-column: 1 / -1; }
 @media (max-width: 760px) { #ct-form { grid-template-columns: 1fr; } }
+/* Kacheln mit eigener Ansicht (z. B. ProPresenter) im Editor */
+.etile.covered .etile-body { display: none; }

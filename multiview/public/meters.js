@@ -11,7 +11,8 @@ const SCALE = [0, -6, -18, -30, -45]
 /** Grundeinstellung einer Pegelanzeige in einer Videokachel. */
 export const METER_DEFAULTS = { position: 'left', size: 1, length: 62, style: 'bar', scale: false }
 /** Grundeinstellung eines Pegel-Fensters (mehrere Pegel in einer eigenen Kachel). */
-export const BANK_DEFAULTS = { orientation: 'vertical', size: 1, style: 'bar', scale: true }
+// fill = Pegel teilen sich die ganze Kachel, gap = Abstand (Faktor), labels = Namen anzeigen
+export const BANK_DEFAULTS = { orientation: 'vertical', size: 1, style: 'bar', scale: true, fill: false, gap: 1, labels: true }
 
 const meters = new Set()
 let levels = { inputs: {}, master: null }
@@ -108,8 +109,9 @@ export function createMeterBank(channels, options) {
   const o = bankOptions(options)
   const horizontal = o.orientation === 'horizontal'
   const el = document.createElement('div')
-  el.className = `meter-bank ${o.orientation}`
+  el.className = `meter-bank ${o.orientation}${o.fill ? ' fill' : ''}${o.labels ? '' : ' no-labels'}`
   el.style.setProperty('--meter-size', String(o.size))
+  el.style.setProperty('--bank-gap', String(o.gap))
   const labels = []
 
   if (!channels.length) {

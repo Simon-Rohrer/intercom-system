@@ -2,6 +2,7 @@ import { connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels
 import { createMeter, createMeterBank, setLevels, meterOptions } from './meters.js'
 import { createChatView } from './chat.js'
 import { createAgendaView } from './agenda.js'
+import { createProPresenterView, createPlaylistView, createPreacherView } from './propresenter.js'
 import {
   attachDevice, attachNetworkStream, makeVideo, makeTestPattern, mediaKey, releaseUnusedStreams, listVideoDevices,
 } from './media.js'
@@ -22,6 +23,8 @@ let atem = { connected: false, program: [], preview: [], inputs: {} }
 let renderedKey = ''
 let tiles = [] // { el, tile, source, labelEl, labelText }
 let bankLabels = [] // Namensfelder der Pegel-Fenster: { el, channel }
+let ppViews = [] // ProPresenter-Kacheln
+let propresenter = { connected: false }
 const clocks = new Set()
 const chatViews = new Set() // Chat-Kacheln
 let chat = { state: 'connecting', messages: [], stationName: '' }
@@ -51,6 +54,9 @@ const ws = connect(
       for (const view of agendaViews) view.update(churchtools)
     } else if (msg.type === 'chatFlash') {
       for (const view of chatViews) view.flash(msg)
+    } else if (msg.type === 'propresenter') {
+      propresenter = msg
+      for (const view of ppViews) view.update(propresenter)
     }
   },
   (online) => {
@@ -77,6 +83,7 @@ function render() {
   stage.replaceChildren()
   tiles = []
   bankLabels = []
+  ppViews = []
   clocks.clear()
   chatViews.clear()
   agendaViews.clear()
@@ -135,6 +142,17 @@ function buildTile(tile, layout, usedStreams) {
     agendaViews.add(view)
     media.classList.add('chat')
     media.append(view.el)
+  } else if (tile.kind === 'propresenter' || tile.kind === 'playlist' || tile.kind === 'preacher') {
+    // Auf den Monitoren sind die Steuer-Tasten bedienbar (im Editor nur Vorschau)
+    const view =
+      tile.kind === 'playlist'
+        ? createPlaylistView(tile.playlist)
+        : tile.kind === 'preacher'
+          ? createPreacherView(tile.preacher, { interactive: true })
+          : createProPresenterView(tile.pp, { interactive: true })
+    view.update(propresenter)
+    ppViews.push(view)
+    el.append(view.el)
   } else if (tile.kind === 'audio') {
     // Pegel-Fenster: mehrere Pegel mit eigener Quelle
     const bank = createMeterBank(tileChannels(tile), tile.bank)
@@ -237,6 +255,8 @@ setInterval(tick, 200)
 
 /** Meldet dem Server, welche Videogeräte an diesem Rechner verfügbar sind. */
 async function reportDevices() {
+  // iPad/iPhone: nicht nach der Kamera fragen – dort hängen keine Capture-Karten
+  if (matchMedia('(pointer: coarse)').matches) return
   try {
     const devices = await listVideoDevices()
     if (devices.length) ws.send({ type: 'devices', devices: devices.map((d) => d.label) })
@@ -250,21 +270,39 @@ navigator.mediaDevices?.addEventListener('devicechange', () => !embedded && repo
 // Vollbild und Mauszeiger
 // ---------------------------------------------------------------------------
 
+// Vollbild: Safari auf dem iPad braucht die webkit-Variante, das iPhone kann es gar nicht
+const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement
+const canFullscreen = Boolean(document.fullscreenEnabled || document.webkitFullscreenEnabled)
+
 function toggleFullscreen() {
-  if (document.fullscreenElement) document.exitFullscreen()
-  else document.documentElement.requestFullscreen().catch(() => {})
+  const root = document.documentElement
+  if (fullscreenElement()) (document.exitFullscreen || document.webkitExitFullscreen)?.call(document)
+  else (root.requestFullscreen || root.webkitRequestFullscreen)?.call(root)?.catch?.(() => {})
+}
+
+if (!canFullscreen) {
+  // iPhone: Vollbild gibt es nur als Web-App vom Home-Bildschirm
+  fsButton.hidden = true
+  const hint = document.querySelector('.controls-hint')
+  if (hint && !navigator.standalone) hint.textContent = 'Vollbild: Teilen → „Zum Home-Bildschirm“'
 }
 
 fsButton.addEventListener('click', toggleFullscreen)
 if (!embedded) {
-  document.addEventListener('dblclick', toggleFullscreen)
+  document.addEventListener('dblclick', (e) => {
+    // Schnelles Doppel-Tippen auf die ProPresenter-Tasten soll nicht ins Vollbild schalten
+    if (e.target.closest('.pp-controls, .pr-view')) return
+    toggleFullscreen()
+  })
   document.addEventListener('keydown', (e) => {
     if (e.key === 'f' || e.key === 'F') toggleFullscreen()
   })
 }
-document.addEventListener('fullscreenchange', () => {
-  fsButton.textContent = document.fullscreenElement ? 'Vollbild beenden' : 'Vollbild'
-})
+for (const event of ['fullscreenchange', 'webkitfullscreenchange']) {
+  document.addEventListener(event, () => {
+    fsButton.textContent = fullscreenElement() ? 'Vollbild beenden' : 'Vollbild'
+  })
+}
 
 // Bedienelemente und Mauszeiger nach kurzer Zeit ausblenden
 let idleTimer
@@ -274,4 +312,21 @@ function wake() {
   idleTimer = setTimeout(() => document.body.classList.add('idle'), 2500)
 }
 document.addEventListener('mousemove', wake)
+document.addEventListener('pointerdown', wake) // Tablet/Handy: Antippen zeigt die Bedienelemente
 wake()
+
+// Bildschirm anlassen, solange der Multiview offen ist – wo das Gerät es erlaubt
+let wakeLock = null
+async function keepAwake() {
+  try {
+    if ('wakeLock' in navigator && document.visibilityState === 'visible' && !wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen')
+      wakeLock.addEventListener('release', () => (wakeLock = null))
+    }
+  } catch {
+    // nicht erlaubt (z. B. ohne HTTPS)
+  }
+}
+document.addEventListener('visibilitychange', keepAwake)
+document.addEventListener('pointerdown', keepAwake, { once: true })
+keepAwake()

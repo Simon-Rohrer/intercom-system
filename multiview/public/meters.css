@@ -82,7 +82,7 @@
   position: absolute;
   inset: 5% 4%;
   display: flex;
-  gap: clamp(4px, 2cqmin, 18px);
+  gap: calc(clamp(4px, 2cqmin, 18px) * var(--bank-gap, 1));
 }
 .meter-bank.vertical { flex-direction: row; justify-content: center; }
 .meter-bank.horizontal { flex-direction: column; justify-content: center; }
@@ -109,4 +109,17 @@
 .meter-bank.horizontal .bank-label { width: 7em; flex: none; text-align: right; }
 .bank-label.program { background: #c40000; }
 .bank-label.preview { background: #0f8f33; }
+.meter-bank.no-labels .bank-label { display: none; }
+
+/* Ganzes Feld ausfüllen: alle Pegel teilen sich die Kachel, die Balken werden so breit/hoch wie möglich */
+.meter-bank.fill { inset: 2%; }
+.meter-bank.fill .bank-ch { flex: 1 1 0; align-items: stretch; }
+.meter-bank.fill .meter-bars { flex: 1; gap: calc(clamp(2px, 0.8cqmin, 8px) * var(--bank-gap, 1)); }
+.meter-bank.fill.vertical .bank-meter { width: 100%; }
+.meter-bank.fill.vertical .meter-ch { width: auto; flex: 1; }
+.meter-bank.fill.vertical .bank-label { max-width: none; align-self: center; }
+.meter-bank.fill.horizontal .bank-meter { height: 100%; }
+.meter-bank.fill.horizontal .meter-ch { height: auto; flex: 1; }
+.meter-bank.fill.horizontal .bank-label { align-self: center; }
+
 .bank-empty { margin: auto; color: #888; font: 500 clamp(10px, 4cqmin, 18px) system-ui, sans-serif; }
