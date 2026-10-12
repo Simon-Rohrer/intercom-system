@@ -71,10 +71,12 @@ describe("LoginView", () => {
     expect(screen.getByLabelText("Rolle")).not.toHaveAttribute("aria-invalid");
   });
 
-  it("explains when all roles are already active", () => {
+  it("keeps occupied roles selectable and explains the takeover", () => {
     render(
       <LoginView
         {...baseProps}
+        username="Tim"
+        roleId="op"
         publicData={{
           ...baseProps.publicData,
           activeRoleIds: ["op", "admin"],
@@ -82,10 +84,13 @@ describe("LoginView", () => {
       />,
     );
 
-    expect(screen.getByText("Gerade ist keine Rolle frei.")).toBeVisible();
+    expect(screen.getByRole("option", { name: "Operator · belegt" })).toBeVisible();
+    expect(
+      screen.getByText(/Diese Rolle ist gerade angemeldet/),
+    ).toBeVisible();
     expect(
       screen.getByRole("button", { name: "Intercom beitreten" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
   });
 
   it("shows operator login error in the main login form", () => {
@@ -103,7 +108,7 @@ describe("LoginView", () => {
     ).toBeVisible();
   });
 
-  it("hides roles that already have an active session", () => {
+  it("marks roles that already have an active session", () => {
     render(
       <LoginView
         {...baseProps}
@@ -114,7 +119,7 @@ describe("LoginView", () => {
       />,
     );
 
-    expect(screen.queryByRole("option", { name: "Operator" })).toBeNull();
+    expect(screen.getByRole("option", { name: "Operator · belegt" })).toBeVisible();
     expect(screen.getByRole("option", { name: "Admin" })).toBeVisible();
   });
 

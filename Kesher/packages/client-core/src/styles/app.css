@@ -3886,10 +3886,11 @@ button.secondary {
   background: transparent;
 }
 .attention-flash-chat::before {
-  border: clamp(14px, 2.2vmin, 28px) solid var(--k-call);
+  /* Thick solid ring at the screen edge that fades softly towards the centre. */
   box-shadow:
-    inset 0 0 36px rgba(255, 176, 32, 0.55),
-    inset 0 0 0 1px rgba(255, 236, 190, 0.6);
+    inset 0 0 0 clamp(28px, 4.5vmin, 64px) var(--k-call),
+    inset 0 0 clamp(40px, 6vmin, 90px) clamp(36px, 6vmin, 90px) rgba(255, 176, 32, 0.85),
+    inset 0 0 clamp(120px, 22vmin, 320px) clamp(60px, 10vmin, 150px) rgba(255, 176, 32, 0.4);
   animation: attention-chat-border-blink 4s linear forwards;
 }
 .attention-flash-chat .attention-flash-card {

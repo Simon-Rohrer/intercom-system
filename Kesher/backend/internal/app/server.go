@@ -4421,12 +4421,30 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, err)
 		return
 	}
-	session := s.sessions.Create(user)
+	session := s.createOperatorSession(user)
 	s.writeJSON(w, http.StatusOK, LoginResponse{
 		Token:                session.Token,
 		User:                 user,
 		ShowBirthdayGreeting: s.shouldShowBirthdayGreeting(r.Context(), req.Username),
 	})
+}
+
+// operatorSessionConnectGrace is how long a new operator session may exist
+// without a realtime connection before its role is released again.
+const operatorSessionConnectGrace = 2 * time.Minute
+
+// createOperatorSession creates a session that is logged out again unless the
+// client opens its websocket in time (handleWS cancels the pending logout).
+// Without this, a login whose window is closed right away kept the role
+// occupied until the session TTL.
+func (s *Server) createOperatorSession(user User) Session {
+	session := s.sessions.Create(user)
+	grace := operatorSessionConnectGrace
+	if s.cfg.DisconnectLogoutDelay > grace {
+		grace = s.cfg.DisconnectLogoutDelay
+	}
+	s.sessions.ScheduleDisconnectLogout(session.Token, grace)
+	return session
 }
 
 func (s *Server) shouldShowBirthdayGreeting(ctx context.Context, username string) bool {
@@ -4498,7 +4516,7 @@ func (s *Server) handleLoginTakeover(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, err)
 		return
 	}
-	session := s.sessions.Create(user)
+	session := s.createOperatorSession(user)
 	s.writeJSON(w, http.StatusOK, LoginResponse{
 		Token:                session.Token,
 		User:                 user,
@@ -6405,7 +6423,9 @@ func (s *Server) withAuth(next func(http.ResponseWriter, *http.Request, Session)
 			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
 		}
-		s.sessions.CancelScheduledDisconnectLogout(session.Token)
+		// Only the realtime connection keeps an operator session (and its
+		// role) occupied; a late HTTP request from a closed window must not
+		// cancel the pending disconnect logout.
 		next(w, r, session)
 	}
 }

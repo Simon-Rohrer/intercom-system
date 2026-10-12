@@ -80,21 +80,13 @@ export function LoginView({
 }: LoginViewProps) {
   const stripWhitespace = (value: string) => value.replace(/\s+/g, "");
   const [loginMode, setLoginMode] = useState<LoginMode>(initialMode);
+  // Occupied roles stay selectable: joining one asks to take it over, so a
+  // forgotten or stale session never locks a role out.
   const activeRoleIds = new Set(publicData.activeRoleIds);
-  const availableRoles = publicData.roles.filter(
-    (role) => !activeRoleIds.has(role.id),
-  );
-  const selectedRoleIsAvailable = availableRoles.some(
-    (role) => role.id === roleId,
-  );
+  const selectedRoleExists = publicData.roles.some((role) => role.id === roleId);
+  const selectedRoleOccupied = selectedRoleExists && activeRoleIds.has(roleId);
   const usernameMissing = !username.trim();
-  const roleMissing = !roleId || !selectedRoleIsAvailable;
-  const roleHintText =
-    availableRoles.length === 0
-      ? "Gerade ist keine Rolle frei."
-      : roleId && !selectedRoleIsAvailable
-        ? "Die gewählte Rolle ist nicht mehr frei."
-        : "Wähle eine Rolle, um fortzufahren.";
+  const roleMissing = !roleId || !selectedRoleExists;
   const joinDisabled = usernameMissing || roleMissing;
   const remoteStations = raspberryRemoteStations ?? [];
 
@@ -180,21 +172,21 @@ export function LoginView({
                 aria-describedby={roleMissing ? "login-role-required" : undefined}
               >
                 <option value="">Rolle wählen</option>
-                {availableRoles.map((r) => (
+                {publicData.roles.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {r.name}
+                    {activeRoleIds.has(r.id) ? `${r.name} · belegt` : r.name}
                   </option>
                 ))}
-                {availableRoles.length === 0 ? (
-                  <option value="" disabled>
-                    Keine Rolle frei
-                  </option>
-                ) : null}
               </select>
               {roleMissing ? (
                 <RequiredFieldHint id="login-role-required">
-                  {roleHintText}
+                  Wähle eine Rolle, um fortzufahren.
                 </RequiredFieldHint>
+              ) : selectedRoleOccupied && !takeoverConflict ? (
+                <p className="login-role-occupied" role="status">
+                  Diese Rolle ist gerade angemeldet. Beim Beitreten kannst du
+                  sie übernehmen.
+                </p>
               ) : null}
             </div>
             <button

@@ -1301,22 +1301,6 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     };
   }, [token]);
 
-  useEffect(() => {
-    if (
-      token ||
-      !publicData ||
-      !settings.roleId ||
-      !publicData.activeRoleIds.includes(settings.roleId)
-    ) {
-      return;
-    }
-    settings.setRoleID("");
-    setPendingTakeover(null);
-    setOperatorLoginError(
-      "Die zuvor ausgewaehlte Rolle ist inzwischen belegt. Bitte waehle eine andere Rolle.",
-    );
-  }, [publicData, settings.roleId, settings.setRoleID, token]);
-
   // ── Auto Login via URL ──
   useEffect(() => {
     if (
