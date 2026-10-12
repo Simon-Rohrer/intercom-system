@@ -247,6 +247,16 @@ func (h *Hub) ClearChatHistory() {
 	}
 }
 
+// ClearChatHistoryIfIdle empties the chat for everyone when no message was
+// sent for at least idle, and tells all clients to clear their chat.
+func (h *Hub) ClearChatHistoryIfIdle(now time.Time, idle time.Duration) bool {
+	if h.chatHistory == nil || !h.chatHistory.ClearIfIdle(now, idle) {
+		return false
+	}
+	h.BroadcastChatHistoryCleared()
+	return true
+}
+
 func (h *Hub) BroadcastChatHistoryCleared() {
 	msg := WSOutbound{
 		Type: "chat_history_cleared",

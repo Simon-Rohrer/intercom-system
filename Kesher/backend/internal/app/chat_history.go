@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 )
 
 type chatRing struct {
@@ -52,6 +53,8 @@ type ChatHistory struct {
 	globalEvents *chatRing
 	roomEvents   map[string]*chatRing
 	userEvents   map[string]*chatRing
+	// lastMessageAt is the time of the newest stored message; zero while empty.
+	lastMessageAt time.Time
 }
 
 func NewChatHistory(limit int) *ChatHistory {
@@ -69,6 +72,7 @@ func NewChatHistory(limit int) *ChatHistory {
 func (h *ChatHistory) AppendGlobal(e RoutedEvent) {
 	h.mu.Lock()
 	h.globalEvents.append(e)
+	h.lastMessageAt = time.Now()
 	h.mu.Unlock()
 }
 
@@ -83,6 +87,7 @@ func (h *ChatHistory) AppendForRoom(roomID string, e RoutedEvent) {
 		h.roomEvents[roomID] = ring
 	}
 	ring.append(e)
+	h.lastMessageAt = time.Now()
 	h.mu.Unlock()
 }
 
@@ -97,6 +102,7 @@ func (h *ChatHistory) AppendForUser(userID string, e RoutedEvent) {
 		h.userEvents[userID] = ring
 	}
 	ring.append(e)
+	h.lastMessageAt = time.Now()
 	h.mu.Unlock()
 }
 
@@ -168,10 +174,30 @@ func (h *ChatHistory) HistoryForUserAndRooms(userID string, roomIDs []string) []
 
 func (h *ChatHistory) Clear() {
 	h.mu.Lock()
+	h.clearLocked()
+	h.mu.Unlock()
+}
+
+// ClearIfIdle empties the history when no message was stored for at least
+// idle and reports whether it did. An empty history is left alone.
+func (h *ChatHistory) ClearIfIdle(now time.Time, idle time.Duration) bool {
+	if idle <= 0 {
+		return false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.lastMessageAt.IsZero() || now.Sub(h.lastMessageAt) < idle {
+		return false
+	}
+	h.clearLocked()
+	return true
+}
+
+func (h *ChatHistory) clearLocked() {
 	h.globalEvents = newChatRing(h.limit)
 	h.roomEvents = make(map[string]*chatRing)
 	h.userEvents = make(map[string]*chatRing)
-	h.mu.Unlock()
+	h.lastMessageAt = time.Time{}
 }
 
 func sortHistoryEvents(events []RoutedEvent) {

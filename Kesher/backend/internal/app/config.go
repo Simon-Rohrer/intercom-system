@@ -11,14 +11,17 @@ import (
 )
 
 type Config struct {
-	Addr                        string
-	StaticDir                   string
-	DBPath                      string
-	AllowCORS                   bool
-	AdminPIN                    string
-	AdminPINFromEnv             bool
-	SessionTTL                  time.Duration
-	DisconnectLogoutDelay       time.Duration
+	Addr                  string
+	StaticDir             string
+	DBPath                string
+	AllowCORS             bool
+	AdminPIN              string
+	AdminPINFromEnv       bool
+	SessionTTL            time.Duration
+	DisconnectLogoutDelay time.Duration
+	// ChatHistoryIdleClear clears the chat for everyone after this long
+	// without a new message; 0 disables it.
+	ChatHistoryIdleClear        time.Duration
 	TrustedLANHTTP              bool
 	TLSMode                     string
 	TLSCertFile                 string
@@ -56,6 +59,7 @@ type fileConfig struct {
 	AdminPIN                           string   `yaml:"admin_pin"`
 	SessionTTLMinutes                  *int     `yaml:"session_ttl_minutes"`
 	DisconnectLogoutDelaySeconds       *int     `yaml:"disconnect_logout_delay_seconds"`
+	ChatHistoryIdleClearMinutes        *int     `yaml:"chat_history_idle_clear_minutes"`
 	TrustedLANHTTP                     *bool    `yaml:"trusted_lan_http"`
 	TLSMode                            string   `yaml:"tls_mode"`
 	TLSCertFile                        string   `yaml:"tls_cert_file"`
@@ -101,6 +105,7 @@ func defaultConfig() Config {
 		AdminPINFromEnv:             false,
 		SessionTTL:                  720 * time.Minute,
 		DisconnectLogoutDelay:       60 * time.Second,
+		ChatHistoryIdleClear:        defaultChatHistoryIdleClear,
 		TrustedLANHTTP:              true,
 		TLSMode:                     "internal",
 		TLSCertFile:                 "",
@@ -197,6 +202,9 @@ func loadConfigFromFile(path string) (Config, error) {
 	if fileCfg.DisconnectLogoutDelaySeconds != nil {
 		cfg.DisconnectLogoutDelay = time.Duration(*fileCfg.DisconnectLogoutDelaySeconds) * time.Second
 	}
+	if fileCfg.ChatHistoryIdleClearMinutes != nil {
+		cfg.ChatHistoryIdleClear = chatHistoryIdleClearFromMinutes(*fileCfg.ChatHistoryIdleClearMinutes)
+	}
 	if fileCfg.TrustedLANHTTP != nil {
 		cfg.TrustedLANHTTP = *fileCfg.TrustedLANHTTP
 	}
@@ -278,17 +286,31 @@ func loadConfigFromFile(path string) (Config, error) {
 	return cfg, nil
 }
 
+// defaultChatHistoryIdleClear: the chat is emptied after six hours without a
+// new message, so a new event day starts with a clean chat.
+const defaultChatHistoryIdleClear = 6 * time.Hour
+
+func chatHistoryIdleClearFromMinutes(minutes int) time.Duration {
+	if minutes <= 0 {
+		return 0
+	}
+	return time.Duration(minutes) * time.Minute
+}
+
 func loadConfigFromEnv() Config {
 	adminPIN, adminPINFromEnv := getEnvWithPresence("ADMIN_PIN", "123456")
 	return Config{
-		Addr:                       getEnv("APP_ADDR", ":8080"),
-		StaticDir:                  getEnv("STATIC_DIR", ""),
-		DBPath:                     getEnv("DB_PATH", "intercom.db"),
-		AllowCORS:                  getEnv("ALLOW_CORS", "true") == "true",
-		AdminPIN:                   adminPIN,
-		AdminPINFromEnv:            adminPINFromEnv,
-		SessionTTL:                 time.Duration(getEnvInt("SESSION_TTL_MINUTES", 720)) * time.Minute,
-		DisconnectLogoutDelay:      time.Duration(getEnvInt("DISCONNECT_LOGOUT_DELAY_SECONDS", 60)) * time.Second,
+		Addr:                  getEnv("APP_ADDR", ":8080"),
+		StaticDir:             getEnv("STATIC_DIR", ""),
+		DBPath:                getEnv("DB_PATH", "intercom.db"),
+		AllowCORS:             getEnv("ALLOW_CORS", "true") == "true",
+		AdminPIN:              adminPIN,
+		AdminPINFromEnv:       adminPINFromEnv,
+		SessionTTL:            time.Duration(getEnvInt("SESSION_TTL_MINUTES", 720)) * time.Minute,
+		DisconnectLogoutDelay: time.Duration(getEnvInt("DISCONNECT_LOGOUT_DELAY_SECONDS", 60)) * time.Second,
+		ChatHistoryIdleClear: chatHistoryIdleClearFromMinutes(
+			getEnvInt("CHAT_HISTORY_IDLE_CLEAR_MINUTES", int(defaultChatHistoryIdleClear/time.Minute)),
+		),
 		TrustedLANHTTP:             getEnv("TRUSTED_LAN_HTTP", "true") == "true",
 		TLSMode:                    getEnv("TLS_MODE", "internal"),
 		TLSCertFile:                getEnv("TLS_CERT_FILE", ""),

@@ -80,6 +80,12 @@ Wenn direkt auf die Datenbank zugegriffen werden muss, liegt sie im Container un
 /app/data/intercom.db
 ```
 
+## Chat automatisch leeren
+
+Kommt 6 Stunden lang keine neue Chat-Nachricht, leert Kesher den Chat für alle: Verlauf auf dem Server, Stationen und Chat-Anzeige. Der Server prüft das einmal pro Minute. Jede neue Nachricht (auch per Stream Deck oder Telegram) startet die 6 Stunden neu. Manuell geht es weiterhin im Admin-Bereich unter `Chatverlauf`.
+
+Die Zeit lässt sich ändern: in `config.yaml` mit `chat_history_idle_clear_minutes` oder als Umgebungsvariable `CHAT_HISTORY_IDLE_CLEAR_MINUTES` (in Minuten, `0` schaltet es ab).
+
 ## Chat-Anzeige auf dem Server-Bildschirm
 
 Ein am Server angeschlossener Bildschirm kann den Kesher-Chat dauerhaft anzeigen (nur lesen, kein Mikrofon, Ton stumm). Statt der Konsolen-Anmeldung auf `tty1` startet dann `cage` mit Chromium im Vollbild als eigener Benutzer `kesher-kiosk`.

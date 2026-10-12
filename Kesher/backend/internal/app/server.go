@@ -3839,7 +3839,27 @@ func NewServer(cfg Config) (*Server, error) {
 	return s, nil
 }
 
+// chatHistoryIdleCheckInterval is how often the idle chat cleanup checks.
+const chatHistoryIdleCheckInterval = time.Minute
+
+func (s *Server) startChatHistoryIdleCleanup() {
+	idle := s.cfg.ChatHistoryIdleClear
+	if idle <= 0 || s.hub == nil {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(chatHistoryIdleCheckInterval)
+		defer ticker.Stop()
+		for now := range ticker.C {
+			if s.hub.ClearChatHistoryIfIdle(now, idle) {
+				s.logger.Info("chat history cleared after inactivity", "idle", idle.String())
+			}
+		}
+	}()
+}
+
 func (s *Server) ListenAndServe() error {
+	s.startChatHistoryIdleCleanup()
 	// Start Telegram long polling if configured
 	if s.telegram != nil && s.telegram.Mode() == "polling" {
 		if err := s.telegram.DeleteWebhook(); err != nil {

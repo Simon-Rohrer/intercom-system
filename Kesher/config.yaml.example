@@ -5,6 +5,8 @@ allow_cors: true
 admin_pin: "123456"
 session_ttl_minutes: 720
 disconnect_logout_delay_seconds: 60
+# Chat für alle leeren, wenn so lange keine neue Nachricht kam (0 = aus).
+chat_history_idle_clear_minutes: 360
 desktop_audio_adaptation_profile: "balanced"
 companion_shared_secret: ""
 companion_allowed_usernames: []
