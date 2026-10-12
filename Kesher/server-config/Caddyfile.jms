@@ -1,26 +1,50 @@
-# Caddy auf dem JMS-Server (192.168.0.21): alle Weboberflächen einheitlich per HTTPS
-# auf ihren gewohnten Ports. Die Dienste selbst lauschen nur auf 127.0.0.1; Caddy
-# lauscht nur auf der LAN-Adresse, darum passen beide auf denselben Port.
+# Caddy auf dem JMS-Server (192.168.0.21) – Vorlage für die einheitliche HTTPS-Umstellung.
+# Grundlage ist die aktive /etc/caddy/Caddyfile vom 12.10.2026: alle bisherigen Namens-
+# Adressen (*.jms.de, *.local) bleiben erhalten. Neu:
+#   - jede Weboberfläche zusätzlich als https://192.168.0.21:<gewohnter Port>
+#   - http://192.168.0.21:<port> wird auf demselben Port auf https umgeleitet
+#   - Multiview auch als multiview.jms.de / multiview.local
+# Die Dienste lauschen danach nur noch auf 127.0.0.1 (Caddy nur auf der LAN-Adresse),
+# darum passen beide auf denselben Port. Auf dem Server selbst (Kiosk, Companion)
+# bleiben sie über http://127.0.0.1:<port> erreichbar.
 #
-# Zertifikate: Caddys eigene lokale Zertifizierungsstelle. Jeder Browser zeigt pro
-# Dienst einmal eine Warnung, die man bestätigt.
+# Zertifikate: Caddys lokale Zertifizierungsstelle (tls internal). Jeder Browser zeigt
+# pro Adresse einmal eine Warnung.
 #
-# Wer noch http://192.168.0.21:<port> aufruft, wird auf demselben Port auf https
-# umgeleitet (listener_wrappers/http_redirect, ab Caddy 2.6).
-#
-# Auf dem Server selbst (Kiosk, Companion) bleiben die Dienste über
-# http://127.0.0.1:<port> erreichbar – ohne Zertifikat.
-#
-# Installieren: sudo cp Caddyfile.jms /etc/caddy/Caddyfile
-#               sudo caddy validate --config /etc/caddy/Caddyfile
-#               sudo systemctl reload caddy
+# Installieren (erst nachdem die Dienste auf 127.0.0.1 umgestellt sind, siehe BETRIEB.md):
+#   sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.vor-https
+#   sudo cp Caddyfile.jms /etc/caddy/Caddyfile
+#   sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+#   sudo systemctl reload caddy
 
 {
-	local_certs
-	skip_install_trust
-	# Keine eigene Weiterleitung auf Port 80 (der bleibt frei), das erledigt http_redirect
-	auto_https disable_redirects
-	servers {
+	# Klartext-Anfragen auf den HTTPS-Ports auf https umleiten (Caddy ≥ 2.6).
+	# Nur für die Port-Adressen, nicht für Port 80 (setup.local) und 443.
+	servers 192.168.0.21:8443 {
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+	}
+	servers 192.168.0.21:8090 {
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+	}
+	servers 192.168.0.21:8000 {
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+	}
+	servers 192.168.0.21:3000 {
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+	}
+	servers 192.168.0.21:61208 {
 		listener_wrappers {
 			http_redirect
 			tls
@@ -28,40 +52,97 @@
 	}
 }
 
-(lan) {
+(lan_port) {
 	bind 192.168.0.21
 	tls internal
 }
 
+# ---------------------------------------------------------------------------
+# Port-Adressen: https://192.168.0.21:<port>
+# ---------------------------------------------------------------------------
+
 # Kesher (Container auf 127.0.0.1:8080)
 https://192.168.0.21:8443 {
-	import lan
+	import lan_port
 	reverse_proxy 127.0.0.1:8080
 }
 
-# Multiview (Container mit HOST=127.0.0.1, Port 8090)
+# Multiview (Container mit HOST=127.0.0.1)
 https://192.168.0.21:8090 {
-	import lan
+	import lan_port
 	reverse_proxy 127.0.0.1:8090
 }
 
-# Bitfocus Companion – vor Ort prüfen: Companion muss vorher auf 127.0.0.1:8000
-# umgestellt werden, sonst ist der Port belegt.
+# Bitfocus Companion – vorher die Admin-Oberfläche auf 127.0.0.1:8000 umstellen
 https://192.168.0.21:8000 {
-	import lan
+	import lan_port
 	reverse_proxy 127.0.0.1:8000
 }
 
-# Dashboard (Homepage) – Port-Bindung im Compose auf "127.0.0.1:3000:3000" ändern.
+# Dashboard (Homepage) – Compose-Port vorher auf "127.0.0.1:3000:3000"
 https://192.168.0.21:3000 {
-	import lan
+	import lan_port
 	reverse_proxy 127.0.0.1:3000
 }
 
-# Glances – vor Ort prüfen, wie der Container lauscht (evtl. --bind 127.0.0.1).
+# Glances – vorher nur auf 127.0.0.1 lauschen lassen
 https://192.168.0.21:61208 {
-	import lan
+	import lan_port
 	reverse_proxy 127.0.0.1:61208
 }
 
-# Portainer (https://192.168.0.21:9443) hat schon eigenes HTTPS und bleibt, wie er ist.
+# Portainer bleibt unter https://192.168.0.21:9443 (eigenes HTTPS).
+
+# ---------------------------------------------------------------------------
+# Namens-Adressen (bisher schon vorhanden, Ziele jetzt über 127.0.0.1)
+# ---------------------------------------------------------------------------
+
+https://intercom.jms.de, https://kesher.jms.de, https://intercom.local, https://kesher.local {
+	tls internal
+	reverse_proxy 127.0.0.1:8080
+}
+
+https://multiview.jms.de, https://multiview.local {
+	tls internal
+	reverse_proxy 127.0.0.1:8090
+}
+
+https://dashboard.jms.de, https://dashboard.local {
+	tls internal
+	reverse_proxy 127.0.0.1:3000
+}
+
+https://companion.jms.de, https://companion.local {
+	tls internal
+	reverse_proxy 127.0.0.1:8000
+}
+
+https://glances.jms.de, https://glances.local {
+	tls internal
+	reverse_proxy 127.0.0.1:61208
+}
+
+https://portainer.jms.de, https://portainer.local {
+	tls internal
+	reverse_proxy https://192.168.0.21:9443 {
+		transport http {
+			tls_insecure_skip_verify
+		}
+	}
+}
+
+https://dns.jms.de, https://dns.local {
+	tls internal
+	reverse_proxy 127.0.0.1:8083
+}
+
+http://setup.local {
+	root * /srv/homelab-setup
+	file_server
+}
+
+# Aus der früheren Installation (Heimnetz-Adresse), unverändert übernommen
+https://192.168.178.185 {
+	tls internal
+	reverse_proxy 127.0.0.1:8080
+}

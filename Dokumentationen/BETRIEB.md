@@ -171,7 +171,9 @@ Ziel: Alle Weboberflächen unter `https://192.168.0.21:<gewohnter Port>`. Caddy 
 | Glances | `https://192.168.0.21:61208` | `127.0.0.1:61208` |
 | Portainer | `https://192.168.0.21:9443` | unverändert (eigenes HTTPS) |
 
-Vorlage: `Kesher/server-config/Caddyfile.jms`. Umsetzung vor Ort, in dieser Reihenfolge (sonst ist ein Port doppelt belegt):
+Die bisherigen Namens-Adressen (`kesher.jms.de`, `dashboard.jms.de`, `companion.jms.de`, … sowie `*.local`) bleiben erhalten; neu ist `multiview.jms.de` / `multiview.local`.
+
+Vorlage: `Kesher/server-config/Caddyfile.jms` (aufgebaut auf der aktiven Server-Konfiguration vom 12.10.2026, mit `caddy adapt --validate` auf dem Server geprüft). Umsetzung vor Ort, in dieser Reihenfolge (sonst ist ein Port doppelt belegt):
 
 1. Sicherung: `/etc/caddy/Caddyfile`, Compose-Dateien in `/opt/homelab/compose`, Companion-Konfiguration.
 2. Dienste auf `127.0.0.1` umstellen: Homepage-Compose `127.0.0.1:3000:3000`, Glances, Companion (Admin-Oberfläche nur lokal), Multiview (in `multiview/docker-compose.yml` die Zeile `HOST: "127.0.0.1"` einkommentieren, dann `docker compose up -d`).
