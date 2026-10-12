@@ -1,0 +1,67 @@
+# Caddy auf dem JMS-Server (192.168.0.21): alle Weboberflächen einheitlich per HTTPS
+# auf ihren gewohnten Ports. Die Dienste selbst lauschen nur auf 127.0.0.1; Caddy
+# lauscht nur auf der LAN-Adresse, darum passen beide auf denselben Port.
+#
+# Zertifikate: Caddys eigene lokale Zertifizierungsstelle. Jeder Browser zeigt pro
+# Dienst einmal eine Warnung, die man bestätigt.
+#
+# Wer noch http://192.168.0.21:<port> aufruft, wird auf demselben Port auf https
+# umgeleitet (listener_wrappers/http_redirect, ab Caddy 2.6).
+#
+# Auf dem Server selbst (Kiosk, Companion) bleiben die Dienste über
+# http://127.0.0.1:<port> erreichbar – ohne Zertifikat.
+#
+# Installieren: sudo cp Caddyfile.jms /etc/caddy/Caddyfile
+#               sudo caddy validate --config /etc/caddy/Caddyfile
+#               sudo systemctl reload caddy
+
+{
+	local_certs
+	skip_install_trust
+	# Keine eigene Weiterleitung auf Port 80 (der bleibt frei), das erledigt http_redirect
+	auto_https disable_redirects
+	servers {
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+	}
+}
+
+(lan) {
+	bind 192.168.0.21
+	tls internal
+}
+
+# Kesher (Container auf 127.0.0.1:8080)
+https://192.168.0.21:8443 {
+	import lan
+	reverse_proxy 127.0.0.1:8080
+}
+
+# Multiview (Container mit HOST=127.0.0.1, Port 8090)
+https://192.168.0.21:8090 {
+	import lan
+	reverse_proxy 127.0.0.1:8090
+}
+
+# Bitfocus Companion – vor Ort prüfen: Companion muss vorher auf 127.0.0.1:8000
+# umgestellt werden, sonst ist der Port belegt.
+https://192.168.0.21:8000 {
+	import lan
+	reverse_proxy 127.0.0.1:8000
+}
+
+# Dashboard (Homepage) – Port-Bindung im Compose auf "127.0.0.1:3000:3000" ändern.
+https://192.168.0.21:3000 {
+	import lan
+	reverse_proxy 127.0.0.1:3000
+}
+
+# Glances – vor Ort prüfen, wie der Container lauscht (evtl. --bind 127.0.0.1).
+https://192.168.0.21:61208 {
+	import lan
+	reverse_proxy 127.0.0.1:61208
+}
+
+# Portainer (https://192.168.0.21:9443) hat schon eigenes HTTPS und bleibt, wie er ist.

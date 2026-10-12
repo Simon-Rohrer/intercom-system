@@ -157,3 +157,24 @@ Build und Tests:
 make build
 make test
 ```
+
+## Einheitlich HTTPS auf dem JMS-Server (vorbereitet, noch nicht umgesetzt)
+
+Ziel: Alle Weboberflächen unter `https://192.168.0.21:<gewohnter Port>`. Caddy übernimmt die Ports nach außen, die Dienste lauschen nur noch auf `127.0.0.1`. Alte `http://`-Links werden auf demselben Port auf `https://` umgeleitet. Auf dem Server selbst (Kiosk, Companion) bleibt `http://127.0.0.1:<port>`. Zertifikate kommen von Caddys lokaler Zertifizierungsstelle; jeder Browser zeigt pro Dienst einmal eine Warnung.
+
+| Dienst | neu | intern |
+| --- | --- | --- |
+| Kesher | `https://192.168.0.21:8443` | `127.0.0.1:8080` |
+| Multiview | `https://192.168.0.21:8090` | `127.0.0.1:8090` (`HOST=127.0.0.1` im Compose) |
+| Companion | `https://192.168.0.21:8000` | `127.0.0.1:8000` |
+| Dashboard | `https://192.168.0.21:3000` | `127.0.0.1:3000` |
+| Glances | `https://192.168.0.21:61208` | `127.0.0.1:61208` |
+| Portainer | `https://192.168.0.21:9443` | unverändert (eigenes HTTPS) |
+
+Vorlage: `Kesher/server-config/Caddyfile.jms`. Umsetzung vor Ort, in dieser Reihenfolge (sonst ist ein Port doppelt belegt):
+
+1. Sicherung: `/etc/caddy/Caddyfile`, Compose-Dateien in `/opt/homelab/compose`, Companion-Konfiguration.
+2. Dienste auf `127.0.0.1` umstellen: Homepage-Compose `127.0.0.1:3000:3000`, Glances, Companion (Admin-Oberfläche nur lokal), Multiview (in `multiview/docker-compose.yml` die Zeile `HOST: "127.0.0.1"` einkommentieren, dann `docker compose up -d`).
+3. `sudo cp Caddyfile.jms /etc/caddy/Caddyfile && sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy`
+4. Prüfen: jede Adresse per `https://` und die Weiterleitung von `http://`; Kiosk-Anzeige, Companion-Tasten (Generic HTTP auf `http://127.0.0.1:8090`), Kesher-Clients und Raspberry Pis.
+5. Links im Dashboard (Homepage `services.yaml`) und in Notion auf `https://` umstellen.
