@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type {
-  LoginConflict,
   PublicBootstrap,
   RaspberryPiRemoteStationStatus,
 } from "../types";
@@ -21,9 +20,6 @@ type LoginViewProps = {
   onAdminPinChange: (value: string) => void;
   onAdminLogin: () => void;
   adminError?: string;
-  takeoverConflict: LoginConflict | null;
-  onConfirmTakeover: () => void;
-  onCancelTakeover: () => void;
   raspberryRemoteStations: RaspberryPiRemoteStationStatus[] | null;
   raspberryRemoteError?: string;
   onRaspberryRemoteJoin: (station: RaspberryPiRemoteStationStatus) => void;
@@ -71,22 +67,29 @@ export function LoginView({
   onAdminPinChange,
   onAdminLogin,
   adminError,
-  takeoverConflict,
-  onConfirmTakeover,
-  onCancelTakeover,
   raspberryRemoteStations,
   raspberryRemoteError,
   onRaspberryRemoteJoin,
 }: LoginViewProps) {
   const stripWhitespace = (value: string) => value.replace(/\s+/g, "");
   const [loginMode, setLoginMode] = useState<LoginMode>(initialMode);
-  // Occupied roles stay selectable: joining one asks to take it over, so a
-  // forgotten or stale session never locks a role out.
+  // Occupied roles stay visible but cannot be chosen; they cannot be taken
+  // over from the login form.
   const activeRoleIds = new Set(publicData.activeRoleIds);
-  const selectedRoleExists = publicData.roles.some((role) => role.id === roleId);
-  const selectedRoleOccupied = selectedRoleExists && activeRoleIds.has(roleId);
+  const freeRoleCount = publicData.roles.filter(
+    (role) => !activeRoleIds.has(role.id),
+  ).length;
+  const selectedRoleIsFree = publicData.roles.some(
+    (role) => role.id === roleId && !activeRoleIds.has(role.id),
+  );
   const usernameMissing = !username.trim();
-  const roleMissing = !roleId || !selectedRoleExists;
+  const roleMissing = !selectedRoleIsFree;
+  const roleHintText =
+    freeRoleCount === 0
+      ? "Gerade ist keine Rolle frei."
+      : roleId && !selectedRoleIsFree
+        ? "Die gewählte Rolle ist gerade belegt."
+        : "Wähle eine Rolle, um fortzufahren.";
   const joinDisabled = usernameMissing || roleMissing;
   const remoteStations = raspberryRemoteStations ?? [];
 
@@ -172,21 +175,19 @@ export function LoginView({
                 aria-describedby={roleMissing ? "login-role-required" : undefined}
               >
                 <option value="">Rolle wählen</option>
-                {publicData.roles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {activeRoleIds.has(r.id) ? `${r.name} · belegt` : r.name}
-                  </option>
-                ))}
+                {publicData.roles.map((r) => {
+                  const occupied = activeRoleIds.has(r.id);
+                  return (
+                    <option key={r.id} value={r.id} disabled={occupied}>
+                      {occupied ? `${r.name} · belegt` : r.name}
+                    </option>
+                  );
+                })}
               </select>
               {roleMissing ? (
                 <RequiredFieldHint id="login-role-required">
-                  Wähle eine Rolle, um fortzufahren.
+                  {roleHintText}
                 </RequiredFieldHint>
-              ) : selectedRoleOccupied && !takeoverConflict ? (
-                <p className="login-role-occupied" role="status">
-                  Diese Rolle ist gerade angemeldet. Beim Beitreten kannst du
-                  sie übernehmen.
-                </p>
               ) : null}
             </div>
             <button
@@ -197,31 +198,6 @@ export function LoginView({
               Intercom beitreten
             </button>
             {loginError ? <p className="login-error">{loginError}</p> : null}
-            {takeoverConflict ? (
-              <div className="login-admin-card" role="alert">
-                <div className="login-admin-head">
-                  <h3>Rolle ist gerade belegt</h3>
-                </div>
-                <p className="login-admin-note">
-                  {takeoverConflict.conflictRoleName ||
-                    takeoverConflict.conflictRoleId}
-                  {" "}
-                  ist gerade aktiv
-                  {takeoverConflict.conflictUsername
-                    ? ` (${takeoverConflict.conflictUsername})`
-                    : ""}
-                  . Übernehmen beendet die bestehende Sitzung.
-                </p>
-                <div className="login-admin-actions">
-                  <button className="primary" onClick={onConfirmTakeover}>
-                    Rolle übernehmen
-                  </button>
-                  <button className="secondary" onClick={onCancelTakeover}>
-                    Abbrechen
-                  </button>
-                </div>
-              </div>
-            ) : null}
           </div>
         ) : loginMode === "raspberry" ? (
           <div className="login-remote-panel">

@@ -312,6 +312,12 @@ type AppProps = {
   onRequestNetworkSettings?: () => void;
 };
 
+function roleOccupiedMessage(conflict: LoginConflict): string {
+  const role = conflict.conflictRoleName || conflict.conflictRoleId;
+  const user = conflict.conflictUsername ? ` (${conflict.conflictUsername})` : "";
+  return `Die Rolle ${role} ist gerade belegt${user}. Bitte wähle eine andere Rolle.`;
+}
+
 export function App({ onRequestNetworkSettings }: AppProps = {}) {
   // ── Core auth state ──
   const [token, setToken] = useState<string | null>(() => {
@@ -367,16 +373,6 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     useState<string | null>(null);
   const [raspberryRemoteLocalMonitorActive, setRaspberryRemoteLocalMonitorActive] =
     useState(false);
-  const [pendingTakeover, setPendingTakeover] = useState<
-    | {
-        username: string;
-        roleId: string;
-        conflict: LoginConflict;
-        targetAuthMode: "operator" | "admin";
-        adminOverrideActive: boolean;
-      }
-    | null
-  >(null);
 
   // ── UI state ──
   const [isUserSettingsOpen, setIsUserSettingsOpen] = useState(false);
@@ -504,16 +500,10 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           if (autoLoginConfig.enabled && autoLoginConfig.allowTakeover) {
             res = await loginTakeover(useUsername, useRoleId);
           } else {
-            setPendingTakeover({
-              username: useUsername,
-              roleId: useRoleId,
-              conflict: res,
-              targetAuthMode: "operator",
-              adminOverrideActive: false,
-            });
             sessionStorage.removeItem(tokenStorageKey);
             setToken(null);
             setAppData(null);
+            setOperatorLoginError(roleOccupiedMessage(res));
             return;
           }
         }
@@ -523,7 +513,6 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         setAuthMode("operator");
         setAdminLoginError("");
         setOperatorLoginError("");
-        setPendingTakeover(null);
         setShowBirthdayGreeting(Boolean(res.showBirthdayGreeting));
         setBirthdayGreetingUsername(res.user.username || useUsername);
         sessionStorage.setItem(tokenStorageKey, res.token);
@@ -1738,28 +1727,18 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       typeof overrideRoleId === "string" ? overrideRoleId : settings.roleId;
     const res = await login(useUsername, useRoleId);
     if ("requiresTakeover" in res) {
-      const conflictLabel = res.conflictRoleName || res.conflictRoleId;
-      const conflictUser = res.conflictUsername
-        ? ` Bereits aktiv: ${res.conflictUsername}.`
-        : "";
-      const conflictMessage = `Die Rolle ${conflictLabel} ist bereits angemeldet.${conflictUser}`;
+      // Occupied roles cannot be taken over by hand; only fixed devices
+      // (auto-login URL with autoTakeover) reclaim their own role.
+      const conflictMessage = roleOccupiedMessage(res);
       if (targetAuthMode === "admin") {
         setAdminLoginError(conflictMessage);
       } else {
         setOperatorLoginError(conflictMessage);
       }
-      setPendingTakeover({
-        username: useUsername,
-        roleId: useRoleId,
-        conflict: res,
-        targetAuthMode,
-        adminOverrideActive: targetAuthMode === "admin",
-      });
       return false;
     }
     setOperatorLoginError("");
     setAdminLoginError("");
-    setPendingTakeover(null);
     sessionStorage.setItem(tokenStorageKey, res.token);
     setShowBirthdayGreeting(Boolean(res.showBirthdayGreeting));
     setBirthdayGreetingUsername(res.user.username || useUsername);
@@ -1771,7 +1750,6 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     setAuthMode("operator");
     setAdminLoginError("");
     setOperatorLoginError("");
-    setPendingTakeover(null);
     try {
       await doLogin(undefined, undefined, "operator");
     } catch (error) {
@@ -1790,7 +1768,6 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     setAuthMode("admin");
     try {
       const res = await adminLogin(adminPinInput.trim());
-      setPendingTakeover(null);
       setOperatorLoginError("");
       setShowBirthdayGreeting(false);
       setBirthdayGreetingUsername("");
@@ -1818,7 +1795,6 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     setAdminOverrideActive(false);
     setShowBirthdayGreeting(false);
     setBirthdayGreetingUsername("");
-    setPendingTakeover(null);
     setToken(null);
     setAppData(null);
   }
@@ -1915,33 +1891,6 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     setRaspberryRemoteBroadcastPttPressed(null);
     setRaspberryRemoteDirectPttPressedUserId(null);
     setRaspberryRemoteLocalMonitorActive(false);
-  }
-
-  async function handleConfirmTakeover() {
-    if (!pendingTakeover) return;
-    setAdminLoginError("");
-    setOperatorLoginError("");
-    try {
-      const res = await loginTakeover(
-        pendingTakeover.username,
-        pendingTakeover.roleId,
-      );
-      setPendingTakeover(null);
-      setAuthMode(pendingTakeover.targetAuthMode);
-      setAdminOverrideActive(pendingTakeover.adminOverrideActive);
-      setShowBirthdayGreeting(Boolean(res.showBirthdayGreeting));
-      setBirthdayGreetingUsername(res.user.username || pendingTakeover.username);
-      sessionStorage.setItem(tokenStorageKey, res.token);
-      setToken(res.token);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Takeover failed.";
-      if (pendingTakeover.targetAuthMode === "admin") {
-        setAdminLoginError(message);
-      } else {
-        setOperatorLoginError(message);
-      }
-    }
   }
 
   async function refreshBootstrapData() {
@@ -2961,14 +2910,6 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         onAdminLogin={() => void handleAdminLogin()}
         loginError={operatorLoginError}
         adminError={adminLoginError}
-        takeoverConflict={pendingTakeover?.conflict ?? null}
-        onConfirmTakeover={() => void handleConfirmTakeover()}
-        onCancelTakeover={() => {
-          setPendingTakeover(null);
-          setOperatorLoginError("");
-          setAdminLoginError("");
-          setAdminOverrideActive(false);
-        }}
         raspberryRemoteStations={raspberryRemoteStations}
         raspberryRemoteError={raspberryRemoteError}
         onRaspberryRemoteJoin={handleRaspberryRemoteJoin}

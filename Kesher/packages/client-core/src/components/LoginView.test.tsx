@@ -25,9 +25,6 @@ const baseProps = {
   adminPin: "",
   onAdminPinChange: vi.fn(),
   onAdminLogin: vi.fn(),
-  takeoverConflict: null,
-  onConfirmTakeover: vi.fn(),
-  onCancelTakeover: vi.fn(),
   raspberryRemoteStations: null,
   onRaspberryRemoteJoin: vi.fn(),
 };
@@ -71,12 +68,10 @@ describe("LoginView", () => {
     expect(screen.getByLabelText("Rolle")).not.toHaveAttribute("aria-invalid");
   });
 
-  it("keeps occupied roles selectable and explains the takeover", () => {
+  it("explains when all roles are already active", () => {
     render(
       <LoginView
         {...baseProps}
-        username="Tim"
-        roleId="op"
         publicData={{
           ...baseProps.publicData,
           activeRoleIds: ["op", "admin"],
@@ -84,13 +79,10 @@ describe("LoginView", () => {
       />,
     );
 
-    expect(screen.getByRole("option", { name: "Operator · belegt" })).toBeVisible();
-    expect(
-      screen.getByText(/Diese Rolle ist gerade angemeldet/),
-    ).toBeVisible();
+    expect(screen.getByText("Gerade ist keine Rolle frei.")).toBeVisible();
     expect(
       screen.getByRole("button", { name: "Intercom beitreten" }),
-    ).toBeEnabled();
+    ).toBeDisabled();
   });
 
   it("shows operator login error in the main login form", () => {
@@ -108,10 +100,12 @@ describe("LoginView", () => {
     ).toBeVisible();
   });
 
-  it("marks roles that already have an active session", () => {
+  it("shows occupied roles as belegt but not selectable", () => {
     render(
       <LoginView
         {...baseProps}
+        username="Tim"
+        roleId="op"
         publicData={{
           ...baseProps.publicData,
           activeRoleIds: ["op"],
@@ -119,8 +113,13 @@ describe("LoginView", () => {
       />,
     );
 
-    expect(screen.getByRole("option", { name: "Operator · belegt" })).toBeVisible();
-    expect(screen.getByRole("option", { name: "Admin" })).toBeVisible();
+    expect(screen.getByRole("option", { name: "Operator · belegt" })).toBeDisabled();
+    expect(screen.getByRole("option", { name: "Admin" })).toBeEnabled();
+    expect(screen.getByText("Die gewählte Rolle ist gerade belegt.")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Intercom beitreten" }),
+    ).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Rolle übernehmen" })).toBeNull();
   });
 
   it("calls callbacks when typing/selecting and joining", async () => {
@@ -213,30 +212,4 @@ describe("LoginView", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders and handles takeover confirmation controls", async () => {
-    const user = userEvent.setup();
-    const onConfirmTakeover = vi.fn();
-    const onCancelTakeover = vi.fn();
-
-    render(
-      <LoginView
-        {...baseProps}
-        takeoverConflict={{
-          requiresTakeover: true,
-          conflictRoleId: "op",
-          conflictRoleName: "Operator",
-          conflictUsername: "Alex",
-        }}
-        onConfirmTakeover={onConfirmTakeover}
-        onCancelTakeover={onCancelTakeover}
-      />,
-    );
-
-    expect(screen.getByText(/Rolle ist gerade belegt/i)).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Rolle übernehmen" }));
-    await user.click(screen.getByRole("button", { name: "Abbrechen" }));
-
-    expect(onConfirmTakeover).toHaveBeenCalledTimes(1);
-    expect(onCancelTakeover).toHaveBeenCalledTimes(1);
-  });
 });

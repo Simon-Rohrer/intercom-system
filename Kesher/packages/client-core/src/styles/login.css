@@ -163,11 +163,6 @@
   color: var(--k-ink-3);
   font-size: 13px;
 }
-.login-role-occupied {
-  margin: 0;
-  color: var(--k-call);
-  font-size: 13px;
-}
 .login-required-hint svg {
   width: 14px;
   height: 14px;
