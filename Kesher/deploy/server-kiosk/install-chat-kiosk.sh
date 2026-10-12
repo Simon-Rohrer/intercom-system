@@ -6,6 +6,9 @@
 #
 #   sudo ./install-chat-kiosk.sh [--role-id chat-monitor] [--username Chat-Monitor]
 #                                [--url http://127.0.0.1:8080] [--update-config]
+#                                [--display-url http://127.0.0.1:8090/output.html?id=1]
+#   --display-url shows that page instead of the plain chat (e.g. the multiview
+#   output with a chat tile); --display-url chat switches back to the chat.
 #   sudo ./install-chat-kiosk.sh --uninstall
 set -euo pipefail
 
@@ -24,6 +27,7 @@ PAM_FILE="/etc/pam.d/kesher-chat-kiosk"
 ROLE_ID="chat-monitor"
 USERNAME="Chat-Monitor"
 URL="http://127.0.0.1:8080"
+DISPLAY_URL=""
 UPDATE_CONFIG="false"
 UNINSTALL="false"
 
@@ -39,6 +43,7 @@ while [[ "$#" -gt 0 ]]; do
     --role-id) require_value "$@"; ROLE_ID="$2"; UPDATE_CONFIG="true"; shift ;;
     --username) require_value "$@"; USERNAME="$2"; UPDATE_CONFIG="true"; shift ;;
     --url) require_value "$@"; URL="${2%/}"; UPDATE_CONFIG="true"; shift ;;
+    --display-url) require_value "$@"; DISPLAY_URL="$2"; UPDATE_CONFIG="true"; shift ;;
     --update-config) UPDATE_CONFIG="true" ;;
     --uninstall) UNINSTALL="true" ;;
     *) echo "Unbekannte Option: $1" >&2; exit 1 ;;
@@ -104,6 +109,13 @@ for policy_dir in /etc/chromium/policies/managed /etc/chromium-browser/policies/
   printf '{\n  "TranslateEnabled": false\n}\n' >"${policy_dir}/kesher-chat-kiosk.json"
 done
 
+if [[ "${DISPLAY_URL}" == "chat" ]]; then
+  DISPLAY_URL=""
+elif [[ -z "${DISPLAY_URL}" && -f "${CONFIG_FILE}" ]]; then
+  # Keep a configured display page when only other options change.
+  DISPLAY_URL="$(sed -n 's/^KIOSK_URL="\(.*\)"$/\1/p' "${CONFIG_FILE}")"
+fi
+
 if [[ ! -f "${CONFIG_FILE}" || "${UPDATE_CONFIG}" == "true" ]]; then
   cat >"${CONFIG_FILE}" <<EOF
 # Kesher chat display on the server monitor.
@@ -111,6 +123,8 @@ if [[ ! -f "${CONFIG_FILE}" || "${UPDATE_CONFIG}" == "true" ]]; then
 KESHER_URL="${URL}"
 KESHER_USERNAME="${USERNAME}"
 KESHER_ROLE_ID="${ROLE_ID}"
+# Page shown on the monitor; empty = plain Kesher chat.
+KIOSK_URL="${DISPLAY_URL}"
 EOF
   chmod 0644 "${CONFIG_FILE}"
 fi

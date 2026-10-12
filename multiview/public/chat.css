@@ -1,0 +1,253 @@
+/* Kesher-Chat-Kachel: übernommen aus der Kesher-Chat-Anzeige (chat-display.css),
+   skaliert mit der Kachelgröße statt mit dem Bildschirm. */
+
+@font-face { font-family: "Barlow"; font-weight: 400; font-display: swap; src: url("fonts/barlow-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 600; font-display: swap; src: url("fonts/barlow-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow"; font-weight: 700; font-display: swap; src: url("fonts/barlow-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-weight: 600; font-display: swap; src: url("fonts/barlow-condensed-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Barlow Condensed"; font-weight: 700; font-display: swap; src: url("fonts/barlow-condensed-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url("fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 600; font-display: swap; src: url("fonts/jetbrains-mono-latin-600-normal.woff2") format("woff2"); }
+
+.kchat {
+  --k-bg: #090b0e;
+  --k-rack: #0f1217;
+  --k-line: #262c35;
+  --k-line-strong: #3a4250;
+  --k-ink: #eceff3;
+  --k-ink-2: #a9b2be;
+  --k-ink-3: #6c7581;
+  --k-accent: #00d1ff;
+  --k-talk: #ff3b30;
+  --k-direct: #b79bff;
+  --k-bcast: #5b9bff;
+  --k-face-hi: #1d222a;
+  --k-call: #ffb020;
+  --k-call-deep: #4a3205;
+  --k-ok: #30d158;
+  --k-bad: #ff5a4f;
+  --k-font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --k-font-label: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --k-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --k-r-panel: 4px;
+
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--k-bg);
+  color: var(--k-ink);
+  font-family: var(--k-font-body);
+  /* Vollbild in Kesher: 1.6vw – hier relativ zur Kachel, damit auch kleine Kacheln lesbar bleiben */
+  font-size: clamp(10px, min(2.4cqw, 4.2cqh), 34px);
+  overflow: hidden;
+  text-align: left;
+}
+
+.kchat-header {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  padding: 0.6em 1.4em;
+  background: var(--k-rack);
+  border-bottom: 1px solid var(--k-line);
+  min-width: 0;
+}
+.kchat .kchat-logo { height: 2.6em; width: auto; max-width: none; object-fit: contain; display: block; flex: none; }
+.kchat-sep { width: 1px; height: 2em; background: var(--k-line); flex: none; }
+.kchat-title { display: grid; min-width: 0; }
+.kchat-title strong {
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  font-size: 1.3em;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.kchat-title span { color: var(--k-ink-3); font-size: 0.75em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kchat-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  margin-left: auto;
+  padding: 0.2em 0.7em 0.2em 0.55em;
+  border: 1px solid var(--k-line);
+  border-radius: 999px;
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  font-size: 0.75em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.kchat-live-dot {
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: var(--k-ok);
+  box-shadow: 0 0 0.5em var(--k-ok);
+}
+.kchat-live.disconnected { border-color: var(--k-talk); color: var(--k-bad); }
+.kchat-live.disconnected .kchat-live-dot {
+  background: var(--k-bad);
+  box-shadow: 0 0 0.5em var(--k-bad);
+  animation: kchat-blink 1s steps(2, jump-none) infinite;
+}
+@keyframes kchat-blink { 50% { opacity: 0.2; } }
+.kchat-clock { font-family: var(--k-font-mono); font-size: 1.1em; color: var(--k-ink-2); }
+
+.kchat-body { position: relative; min-height: 0; display: grid; }
+.kchat-empty { margin: 0; align-self: center; justify-self: center; color: var(--k-ink-3); font-size: 1.2em; }
+
+.kchat-feed {
+  list-style: none;
+  margin: 0;
+  padding: 1em 1.4em 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8em;
+  overflow: hidden;
+  min-height: 0;
+}
+/* Nachrichten unten sammeln, wenn es nur wenige sind */
+.kchat-feed > :first-child { margin-top: auto; }
+
+.kchat-msg {
+  display: grid;
+  gap: 0.25em;
+  padding: 0.6em 0.9em;
+  border: 1px solid var(--k-line);
+  border-left: 0.3em solid var(--k-line-strong);
+  border-radius: var(--k-r-panel);
+  background: var(--k-rack);
+  transition: opacity 0.6s ease;
+  flex: none;
+}
+.kchat-msg.scope-global { border-left-color: var(--k-accent); }
+.kchat-msg.scope-room { border-left-color: var(--k-talk); }
+.kchat-msg.scope-direct { border-left-color: var(--k-direct); }
+.kchat-msg.scope-broadcast { border-left-color: var(--k-bcast); }
+.kchat-msg.is-old { opacity: 0.5; }
+.kchat-msg.is-newest { background: color-mix(in srgb, var(--k-accent) 10%, var(--k-face-hi)); border-color: var(--k-accent); }
+/* Die neueste Nachricht ist die, die man lesen soll: deutlich größer */
+.kchat-msg.is-newest .kchat-text { font-size: 1.9em; line-height: 1.2; }
+.kchat-msg.is-newest .kchat-meta { font-size: 0.85em; }
+.kchat-msg.is-newest.arrive { animation: kchat-arrive 1.2s ease-out; }
+.kchat-msg.needs-ack {
+  border-color: var(--k-call);
+  background: linear-gradient(var(--k-call-deep), var(--k-rack) 80%);
+}
+@keyframes kchat-arrive {
+  0% { box-shadow: 0 0 0 0.3em color-mix(in srgb, var(--k-accent) 45%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.kchat-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.2em 0.6em;
+  font-size: 0.75em;
+  color: var(--k-ink-3);
+}
+.kchat-meta strong { font-size: 1.25em; font-weight: 700; color: var(--k-ink); }
+.kchat-role {
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--k-ink-2);
+}
+.kchat-target {
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0 0.5em;
+  border: 1px solid var(--k-line);
+  border-radius: 3px;
+  color: var(--k-ink-2);
+}
+.kchat-target.is-telegram { border-color: #1d3a52; color: #6cc3ff; }
+.kchat-ack {
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--k-call);
+}
+.kchat-meta time { margin-left: auto; font-family: var(--k-font-mono); }
+.kchat-text {
+  margin: 0;
+  font-size: 1.35em;
+  line-height: 1.25;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* Stream-Deck-Nachricht: gleicher gelber Blink-Rahmen wie in Kesher, auf die Kachel begrenzt */
+.kchat-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.kchat-flash::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow:
+    inset 0 0 0 clamp(10px, 4.5cqmin, 64px) var(--k-call),
+    inset 0 0 clamp(20px, 6cqmin, 90px) clamp(18px, 6cqmin, 90px) rgba(255, 176, 32, 0.85),
+    inset 0 0 clamp(60px, 22cqmin, 320px) clamp(30px, 10cqmin, 150px) rgba(255, 176, 32, 0.4);
+  animation: kchat-border-blink 4s linear forwards;
+}
+@keyframes kchat-border-blink {
+  0% { opacity: 0; }
+  5% { opacity: 1; }
+  12% { opacity: 0.1; }
+  19% { opacity: 1; }
+  26% { opacity: 0.1; }
+  33% { opacity: 1; }
+  40% { opacity: 0.1; }
+  47% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.kchat-flash-card {
+  position: relative;
+  z-index: 1;
+  width: min(86%, 860px);
+  text-align: center;
+  border: 1px solid var(--k-call);
+  background: rgba(19, 12, 11, 0.88);
+  box-shadow: 0 0 32px rgba(255, 176, 32, 0.35);
+  border-radius: 14px;
+  padding: 1em 1.4em;
+  display: grid;
+  gap: 0.4em;
+}
+.kchat-flash-card strong {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.9em;
+  color: var(--k-call);
+}
+.kchat-flash-card span {
+  font-size: 1.9em;
+  line-height: 1.2;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  color: var(--k-call);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kchat-msg.is-newest.arrive { animation: none; }
+  .kchat-flash::before { animation: kchat-border-steady 4s linear forwards; }
+}
+@keyframes kchat-border-steady { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }

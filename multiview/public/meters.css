@@ -1,0 +1,112 @@
+/* Audio-Pegelanzeigen – gemeinsam für Monitor-Ansicht und Editor.
+   Farben: grün bis -18 dB, gelb bis -6 dB, darüber rot (Skala -60…0 dB). */
+
+.meter {
+  --edge: clamp(4px, 1.6cqmin, 14px);
+  --t: calc(clamp(4px, 2.4cqmin, 12px) * var(--meter-size, 1));
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  gap: 3px;
+  pointer-events: none;
+}
+.meter-bars { display: flex; gap: max(1px, calc(var(--t) * 0.25)); }
+.meter.vertical .meter-bars { flex-direction: row; height: 100%; }
+.meter.horizontal .meter-bars { flex-direction: column; width: 100%; }
+
+.meter-ch {
+  position: relative;
+  background: rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.meter.vertical .meter-ch { width: var(--t); height: 100%; }
+.meter.horizontal .meter-ch { height: var(--t); width: 100%; }
+
+.meter-fill { position: absolute; inset: 0; }
+.meter.vertical .meter-fill {
+  background: linear-gradient(to top, #19c94a 0%, #19c94a 70%, #f1c40f 70%, #f1c40f 90%, #ff2a2a 90%);
+  clip-path: inset(100% 0 0 0);
+}
+.meter.horizontal .meter-fill {
+  background: linear-gradient(to right, #19c94a 0%, #19c94a 70%, #f1c40f 70%, #f1c40f 90%, #ff2a2a 90%);
+  clip-path: inset(0 100% 0 0);
+}
+
+.meter-peak { position: absolute; background: #fff; opacity: 0; }
+.meter.vertical .meter-peak { left: 0; right: 0; bottom: 0; height: 2px; }
+.meter.horizontal .meter-peak { top: 0; bottom: 0; left: 0; width: 2px; }
+
+/* LED-Segmente: dunkle Lücken über dem Balken, unbeleuchtete Segmente schwach sichtbar */
+.meter.segments .meter-ch::after { content: ""; position: absolute; inset: 0; }
+.meter.vertical.segments .meter-ch {
+  background: linear-gradient(to top, rgba(25, 201, 74, 0.2) 0 70%, rgba(241, 196, 15, 0.2) 70% 90%, rgba(255, 42, 42, 0.22) 90%), rgba(0, 0, 0, 0.6);
+}
+.meter.horizontal.segments .meter-ch {
+  background: linear-gradient(to right, rgba(25, 201, 74, 0.2) 0 70%, rgba(241, 196, 15, 0.2) 70% 90%, rgba(255, 42, 42, 0.22) 90%), rgba(0, 0, 0, 0.6);
+}
+.meter.vertical.segments .meter-ch::after {
+  background: repeating-linear-gradient(to top, transparent 0 3.2%, rgba(0, 0, 0, 0.9) 3.2% 4.1667%);
+}
+.meter.horizontal.segments .meter-ch::after {
+  background: repeating-linear-gradient(to right, transparent 0 3.2%, rgba(0, 0, 0, 0.9) 3.2% 4.1667%);
+}
+
+/* Lage in einer Videokachel */
+.meter-left { left: var(--edge); top: 50%; height: var(--meter-length); transform: translateY(-50%); }
+.meter-right { right: var(--edge); top: 50%; height: var(--meter-length); transform: translateY(-50%); flex-direction: row-reverse; }
+.meter-top { top: var(--edge); left: 50%; width: var(--meter-length); transform: translateX(-50%); flex-direction: column; }
+.meter-bottom { bottom: var(--edge); left: 50%; width: var(--meter-length); transform: translateX(-50%); flex-direction: column-reverse; }
+
+/* Skala (dB-Werte) – liegt immer auf der Innenseite */
+.meter-scale {
+  position: relative;
+  color: #ccc;
+  text-shadow: 0 1px 2px #000;
+  font: 600 calc(clamp(8px, 3cqmin, 13px) * min(var(--meter-size, 1), 1.6)) / 1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.meter.vertical .meter-scale { width: 2.4em; height: 100%; }
+.meter.horizontal .meter-scale { height: 1.2em; width: 100%; }
+.meter.vertical .meter-scale span { position: absolute; left: 0; transform: translateY(50%); }
+.meter-right .meter-scale span { left: auto; right: 0; }
+.meter.horizontal .meter-scale span { position: absolute; top: 0; transform: translateX(-50%); }
+
+/* Skala vor den Balken (links bzw. oben) */
+.meter.vertical.scale-before { flex-direction: row-reverse; }
+.meter.horizontal.scale-before { flex-direction: column-reverse; }
+.meter.vertical.scale-before .meter-scale span { left: auto; right: 0; }
+
+/* Pegel-Fenster: eigene Kachel mit mehreren Pegeln */
+.meter-bank {
+  --t: calc(clamp(6px, 3.2cqmin, 30px) * var(--meter-size, 1));
+  position: absolute;
+  inset: 5% 4%;
+  display: flex;
+  gap: clamp(4px, 2cqmin, 18px);
+}
+.meter-bank.vertical { flex-direction: row; justify-content: center; }
+.meter-bank.horizontal { flex-direction: column; justify-content: center; }
+
+.bank-ch { display: flex; gap: clamp(3px, 1cqmin, 8px); min-width: 0; min-height: 0; }
+.meter-bank.vertical .bank-ch { flex-direction: column; align-items: center; }
+.meter-bank.horizontal .bank-ch { flex-direction: row; align-items: center; }
+
+.bank-meter { position: relative; z-index: auto; }
+.meter-bank.vertical .bank-meter { flex: 1; min-height: 0; }
+.meter-bank.horizontal .bank-meter { flex: 1; min-width: 0; }
+
+.bank-label {
+  font: 600 clamp(9px, 3.4cqmin, 18px) / 1.2 system-ui, sans-serif;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.15em 0.45em;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meter-bank.vertical .bank-label { max-width: 8em; text-align: center; }
+.meter-bank.horizontal .bank-label { width: 7em; flex: none; text-align: right; }
+.bank-label.program { background: #c40000; }
+.bank-label.preview { background: #0f8f33; }
+.bank-empty { margin: auto; color: #888; font: 500 clamp(10px, 4cqmin, 18px) system-ui, sans-serif; }

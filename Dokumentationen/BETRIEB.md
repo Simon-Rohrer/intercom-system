@@ -112,6 +112,29 @@ sudo ./install-chat-kiosk.sh --uninstall
 
 Die Anzeige wartet nach dem Start, bis `/api/healthz` antwortet, und startet sich bei Fehlern selbst neu.
 
+### Multiview statt reinem Chat
+
+Der Bildschirm kann stattdessen das Multiview zeigen (Ordner `multiview/`, eigener Docker-Container mit Port 8090). Der Chat ist dort eine Kachel mit dem Inhalt **Kesher-Chat**. Der Multiview-Container meldet sich einmal mit der Rolle `chat-monitor` bei Kesher an und verteilt den Chat an alle Multiview-Ansichten (HDMI-Monitor, Editor-Vorschau, `output.html` auf jedem Rechner). Darum darf keine andere Anzeige gleichzeitig mit `chat-monitor` angemeldet sein. Zum reinen Chat zurück geht es erst, wenn die Chat-Kachel entfernt oder der Container gestoppt ist.
+
+```sh
+cd ~/intercom-system/multiview
+docker compose up -d --build
+cd ~/intercom-system/Kesher/deploy/server-kiosk
+sudo ./install-chat-kiosk.sh --display-url "http://127.0.0.1:8090/output.html?id=1"
+```
+
+Zurück zum reinen Chat: `sudo ./install-chat-kiosk.sh --display-url chat`. Editor: `http://<server-ip>:8090/`.
+
+### ChurchTools-Ablauf im Multiview
+
+Kacheln mit dem Inhalt **ChurchTools-Ablauf** zeigen den Ablauf des heutigen Events (laufender Punkt hervorgehoben). Der Multiview-Server ist dafür mit einem eigenen ChurchTools-Konto per REST-API verbunden.
+
+1. In ChurchTools ein eigenes Konto für den Server anlegen (ohne Zwei-Faktor-Anmeldung). Es braucht Leserechte auf die Kalender bzw. Events und das Recht, Abläufe zu sehen.
+2. Im Multiview-Editor unter *Einstellungen → ChurchTools* die Adresse (z. B. `https://gemeinde.church.tools`) sowie Benutzername und Passwort eintragen und **Verbinden** klicken. Alternativ direkt den Login-Token des Kontos eintragen.
+3. Das Passwort wird nur einmal zum Holen des Login-Tokens benutzt. Gespeichert wird nur der Token in `churchtools-secret.json` im Daten-Volume (nur für den Server lesbar, wird nie an Browser geschickt).
+
+Der Server fragt ChurchTools jede Minute ab. Pro Kachel lässt sich unter *Datum* **Aktuelles Datum** oder **Festes Datum** (mit Kalender, z. B. 15.10.) wählen; nur beim aktuellen Datum wird der laufende Punkt hervorgehoben. Bei mehreren Events am Tag zeigt die Kachel das laufende, sonst das nächste; im Kachel-Feld *Event* lässt sich ein Name oder Kalender als Filter eintragen. Unter *Einstellungen → ChurchTools* steht eine Übersicht aller abgefragten Tage mit ihren Events.
+
 ## Wichtig im Fehlerfall
 
 1. Läuft der Container?

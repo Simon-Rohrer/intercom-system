@@ -1,0 +1,161 @@
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+body.idle { cursor: none; }
+
+#stage {
+  position: fixed;
+  inset: 0;
+  --gap: 4px;
+  --bg: #000;
+  background: var(--bg);
+}
+
+.tile {
+  position: absolute;
+  border: calc(var(--gap) / 2) solid var(--bg);
+  container-type: size;
+  overflow: hidden;
+}
+
+.media {
+  position: absolute;
+  inset: 0;
+  background: #0b0b0b;
+  display: grid;
+  place-items: center;
+}
+
+.media video,
+.media img,
+.media canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.media.chat { background: #090b0e; }
+
+.tile.fit-cover .media video,
+.tile.fit-cover .media img { object-fit: cover; }
+
+/* Tally-Rahmen liegt über dem Bild, damit sich nichts verschiebt */
+.tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: clamp(3px, 1.6cqmin, 8px) solid transparent;
+  pointer-events: none;
+}
+.tile.program::after { border-color: #ff1f1f; }
+.tile.preview::after { border-color: #19d24a; }
+
+.label {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(4px, 3cqh, 16px);
+  transform: translateX(-50%);
+  max-width: 92%;
+  padding: 0.15em 0.6em;
+  background: rgba(0, 0, 0, 0.72);
+  font-size: clamp(11px, 6.5cqh, 30px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 3px;
+}
+.tile.program .label { background: #c40000; }
+.tile.preview .label { background: #0f8f33; }
+
+.placeholder {
+  color: #777;
+  text-align: center;
+  white-space: pre-line;
+  font-size: clamp(11px, 7cqh, 26px);
+  padding: 1em;
+}
+
+.clock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: min(42cqh, 15cqw);
+  letter-spacing: 0.02em;
+}
+
+.text-tile {
+  font-weight: 600;
+  font-size: min(30cqh, 9cqw);
+  text-align: center;
+  padding: 0.3em;
+  white-space: pre-line;
+}
+
+.message {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #888;
+  font-size: 2.2vw;
+  text-align: center;
+  white-space: pre-line;
+}
+
+/* In der Vorschau auf der Webseite übernimmt die Seite die Bedienung */
+body.embedded .controls,
+body.embedded #badge-atem { display: none; }
+
+.controls {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 10;
+  transition: opacity 0.3s;
+}
+body.idle .controls { opacity: 0; pointer-events: none; }
+.controls button {
+  font: 600 14px system-ui, sans-serif;
+  color: #fff;
+  background: rgba(20, 20, 20, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+.controls button:hover { background: rgba(50, 50, 50, 0.9); }
+.controls-hint { font-size: 12px; color: rgba(255, 255, 255, 0.6); text-shadow: 0 1px 2px #000; }
+body.embedded .controls-hint { display: none; }
+
+#badges {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  z-index: 10;
+}
+.badge {
+  background: #b00000;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+/* Platz für die Beschriftung, wenn der Pegel unten quer liegt */
+.tile.meter-at-bottom .label { bottom: calc(clamp(4px, 3cqh, 16px) + var(--meter-space, 0px)); }

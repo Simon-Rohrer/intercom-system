@@ -1,0 +1,343 @@
+{
+  "atem": {
+    "ip": "192.168.0.31",
+    "me": 0
+  },
+  "sources": [
+    {
+      "id": "src1",
+      "name": "Kamera 1",
+      "type": "url",
+      "device": "",
+      "url": "",
+      "atemInput": 1,
+      "useAtemName": true
+    },
+    {
+      "id": "src2",
+      "name": "Kamera 2",
+      "type": "test",
+      "device": "",
+      "url": "",
+      "atemInput": 2,
+      "useAtemName": true
+    },
+    {
+      "id": "src3",
+      "name": "Kamera 3",
+      "type": "test",
+      "device": "",
+      "url": "",
+      "atemInput": 3,
+      "useAtemName": true
+    },
+    {
+      "id": "src4",
+      "name": "Kamera 4",
+      "type": "test",
+      "device": "",
+      "url": "",
+      "atemInput": 4,
+      "useAtemName": true
+    },
+    {
+      "id": "stream1",
+      "name": "Monarch",
+      "type": "stream",
+      "device": "",
+      "url": "rtsp://192.168.0.30:554/Stream1",
+      "atemInput": 10010,
+      "useAtemName": true
+    }
+  ],
+  "layouts": [
+    {
+      "id": "quad",
+      "name": "Quad",
+      "cols": 12,
+      "rows": 12,
+      "gap": 4,
+      "background": "#000000",
+      "tiles": [
+        {
+          "id": "ter9dtr5",
+          "kind": "source",
+          "sourceId": "src1",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 6,
+          "showLabel": true,
+          "showTally": true,
+          "fit": "contain",
+          "label": "",
+          "text": ""
+        },
+        {
+          "id": "tmims88s",
+          "kind": "source",
+          "sourceId": "stream1",
+          "x": 6,
+          "y": 2,
+          "w": 6,
+          "h": 10,
+          "showLabel": true,
+          "showTally": true,
+          "fit": "contain",
+          "label": "",
+          "text": ""
+        },
+        {
+          "id": "t4gtow15",
+          "kind": "chat",
+          "sourceId": null,
+          "x": 0,
+          "y": 6,
+          "w": 6,
+          "h": 6,
+          "showLabel": false,
+          "showTally": false,
+          "fit": "contain",
+          "label": "",
+          "text": ""
+        },
+        {
+          "id": "tuvmylbl",
+          "kind": "audio",
+          "sourceId": "src2",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 2,
+          "showLabel": true,
+          "showTally": true,
+          "fit": "contain",
+          "label": "",
+          "text": "",
+          "channels": [
+            {
+              "input": "master",
+              "label": ""
+            }
+          ],
+          "bank": {
+            "orientation": "horizontal",
+            "size": 3,
+            "style": "segments",
+            "scale": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "lvy834tn",
+      "name": "Quad (Kopie)",
+      "cols": 12,
+      "rows": 12,
+      "gap": 4,
+      "background": "#000000",
+      "tiles": [
+        {
+          "id": "t9dhj6kn",
+          "kind": "source",
+          "sourceId": "src1",
+          "x": 0,
+          "y": 0,
+          "w": 6,
+          "h": 6,
+          "showLabel": true,
+          "showTally": true,
+          "fit": "contain",
+          "label": "",
+          "text": ""
+        },
+        {
+          "id": "thwu97f1",
+          "kind": "source",
+          "sourceId": "stream1",
+          "x": 6,
+          "y": 0,
+          "w": 6,
+          "h": 6,
+          "showLabel": true,
+          "showTally": true,
+          "fit": "contain",
+          "label": "",
+          "text": "",
+          "meter": {
+            "position": "top",
+            "size": 2,
+            "length": 85,
+            "style": "segments",
+            "scale": false
+          }
+        },
+        {
+          "id": "tw7vq97n",
+          "kind": "source",
+          "sourceId": "src3",
+          "x": 0,
+          "y": 6,
+          "w": 3,
+          "h": 3,
+          "showLabel": true,
+          "showTally": true,
+          "fit": "contain",
+          "label": "",
+          "text": ""
+        },
+        {
+          "id": "tiwp7p8x",
+          "kind": "source",
+          "sourceId": "src4",
+          "x": 3,
+          "y": 6,
+          "w": 3,
+          "h": 3,
+          "showLabel": true,
+          "showTally": true,
+          "fit": "contain",
+          "label": "",
+          "text": ""
+        },
+        {
+          "id": "ti6ji0az",
+          "kind": "source",
+          "sourceId": "stream1",
+          "x": 6,
+          "y": 6,
+          "w": 3,
+          "h": 3,
+          "showLabel": true,
+          "showTally": true,
+          "fit": "contain",
+          "label": "",
+          "text": ""
+        },
+        {
+          "id": "tgl5b59b",
+          "kind": "source",
+          "sourceId": null,
+          "x": 9,
+          "y": 6,
+          "w": 3,
+          "h": 3,
+          "showLabel": true,
+          "showTally": true,
+          "fit": "contain",
+          "label": "",
+          "text": ""
+        },
+        {
+          "id": "ttizvzy2",
+          "kind": "source",
+          "sourceId": null,
+          "x": 0,
+          "y": 9,
+          "w": 3,
+          "h": 3,
+          "showLabel": true,
+          "showTally": true,
+          "fit": "contain",
+          "label": "",
+          "text": ""
+        },
+        {
+          "id": "thcjeejg",
+          "kind": "source",
+          "sourceId": null,
+          "x": 3,
+          "y": 9,
+          "w": 3,
+          "h": 3,
+          "showLabel": true,
+          "showTally": true,
+          "fit": "contain",
+          "label": "",
+          "text": ""
+        },
+        {
+          "id": "t271w2yv",
+          "kind": "source",
+          "sourceId": null,
+          "x": 6,
+          "y": 9,
+          "w": 3,
+          "h": 3,
+          "showLabel": true,
+          "showTally": true,
+          "fit": "contain",
+          "label": "",
+          "text": ""
+        },
+        {
+          "id": "t4o5exmz",
+          "kind": "source",
+          "sourceId": null,
+          "x": 9,
+          "y": 9,
+          "w": 3,
+          "h": 3,
+          "showLabel": true,
+          "showTally": true,
+          "fit": "contain",
+          "label": "",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "id": "lj9sdffe",
+      "name": "Layout 3",
+      "cols": 12,
+      "rows": 12,
+      "gap": 4,
+      "background": "#000000",
+      "tiles": [
+        {
+          "id": "twdeq1eo",
+          "kind": "audio",
+          "sourceId": "src1",
+          "x": 8,
+          "y": 1,
+          "w": 4,
+          "h": 11,
+          "showLabel": true,
+          "showTally": true,
+          "fit": "contain",
+          "label": "",
+          "text": "",
+          "channels": [
+            {
+              "input": "master",
+              "label": ""
+            }
+          ],
+          "bank": {
+            "orientation": "horizontal",
+            "size": 2.5,
+            "style": "bar",
+            "scale": true
+          }
+        }
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "id": "o4gsnj8y",
+      "name": "Multiview 1",
+      "layoutId": "quad"
+    },
+    {
+      "id": "o6d9d3j6",
+      "name": "Multiview 2",
+      "layoutId": "lvy834tn"
+    }
+  ],
+  "chat": {
+    "url": "http://127.0.0.1:8080",
+    "username": "Chat-Monitor",
+    "roleId": "chat-monitor"
+  }
+}

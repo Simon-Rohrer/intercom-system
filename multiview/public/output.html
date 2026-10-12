@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Multiview</title>
+  <link rel="stylesheet" href="output.css">
+  <link rel="stylesheet" href="meters.css">
+  <link rel="stylesheet" href="chat.css">
+  <link rel="stylesheet" href="agenda.css">
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="controls" class="controls">
+    <button id="fs-button" type="button">Vollbild</button>
+    <span class="controls-hint">oder Doppelklick / Taste F</span>
+  </div>
+  <div id="badges">
+    <span id="badge-server" class="badge" hidden>Server getrennt</span>
+    <span id="badge-atem" class="badge" hidden>ATEM getrennt</span>
+  </div>
+  <script type="module" src="output.js"></script>
+</body>
+</html>

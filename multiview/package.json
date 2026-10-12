@@ -1,0 +1,19 @@
+{
+  "name": "atem-multiview",
+  "version": "1.0.0",
+  "description": "Eigene Multiviews für Blackmagic ATEM bauen – mit Tally, Quellennamen und Companion-Steuerung",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "atem-connection": "^3.10.3",
+    "express": "^4.22.3",
+    "ws": "^8.22.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  }
+}

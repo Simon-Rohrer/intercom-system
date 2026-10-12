@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Starts the Kesher chat display full-screen on the local monitor.
 # Run by kesher-chat-kiosk.service (cage as Wayland kiosk compositor on tty1).
+# With KIOSK_URL set (e.g. the multiview output, which embeds the chat as a
+# tile), that page is shown instead of the plain chat view.
 set -euo pipefail
 
 CONFIG_FILE="/etc/kesher/chat-kiosk.env"
@@ -12,6 +14,8 @@ fi
 KESHER_URL="${KESHER_URL:-http://127.0.0.1:8080}"
 KESHER_USERNAME="${KESHER_USERNAME:-Chat-Monitor}"
 KESHER_ROLE_ID="${KESHER_ROLE_ID:-chat-monitor}"
+KIOSK_URL="${KIOSK_URL:-}"
+KIOSK_HEALTH_URL="${KIOSK_HEALTH_URL:-}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-300}"
 
 urlencode() {
@@ -26,11 +30,17 @@ urlencode() {
   printf '%s' "${out}"
 }
 
-# Wait for Kesher instead of showing a browser error page after boot.
+if [[ -n "${KIOSK_URL}" ]]; then
+  HEALTH_URL="${KIOSK_HEALTH_URL:-${KIOSK_URL}}"
+else
+  HEALTH_URL="${KESHER_URL}/api/healthz"
+fi
+
+# Wait for the page instead of showing a browser error page after boot.
 deadline=$((SECONDS + HEALTH_TIMEOUT_SECONDS))
-until curl -fsS --max-time 3 "${KESHER_URL}/api/healthz" >/dev/null 2>&1; do
+until curl -fsS --max-time 3 "${HEALTH_URL}" >/dev/null 2>&1; do
   if ((SECONDS >= deadline)); then
-    echo "Kesher not reachable at ${KESHER_URL} after ${HEALTH_TIMEOUT_SECONDS}s" >&2
+    echo "Not reachable: ${HEALTH_URL} after ${HEALTH_TIMEOUT_SECONDS}s" >&2
     exit 1
   fi
   sleep 3
@@ -48,7 +58,7 @@ if [[ -z "${BROWSER}" ]]; then
   exit 1
 fi
 
-DISPLAY_URL="${KESHER_URL}/?autoLogin=1&autoTakeover=1&viewMode=chat&username=$(urlencode "${KESHER_USERNAME}")&roleId=$(urlencode "${KESHER_ROLE_ID}")"
+DISPLAY_URL="${KIOSK_URL:-${KESHER_URL}/?autoLogin=1&autoTakeover=1&viewMode=chat&username=$(urlencode "${KESHER_USERNAME}")&roleId=$(urlencode "${KESHER_ROLE_ID}")}"
 
 # -s keeps Ctrl+Alt+F2..F6 working for a console login on the server.
 exec /usr/bin/cage -s -- "${BROWSER}" \
@@ -68,5 +78,7 @@ exec /usr/bin/cage -s -- "${BROWSER}" \
   --password-store=basic \
   --check-for-update-interval=31536000 \
   --overscroll-history-navigation=0 \
+  --autoplay-policy=no-user-gesture-required \
+  --use-fake-ui-for-media-stream \
   --mute-audio \
   "${DISPLAY_URL}"

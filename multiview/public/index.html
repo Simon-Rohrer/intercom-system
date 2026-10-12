@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Multiview</title>
+  <link rel="stylesheet" href="admin.css">
+  <link rel="stylesheet" href="meters.css">
+  <link rel="stylesheet" href="chat.css">
+  <link rel="stylesheet" href="agenda.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="#/" class="brand">
+        <span class="brand-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        Multiview
+      </a>
+      <nav class="site-nav">
+        <a href="#/" data-page="uebersicht">Übersicht</a>
+        <a href="#/eingaenge" data-page="eingaenge">Eingänge</a>
+        <a href="#/layouts" data-page="layouts">Layouts</a>
+        <a href="#/einstellungen" data-page="einstellungen">Einstellungen</a>
+      </nav>
+      <div class="header-status">
+        <span id="save-state" class="save-state"></span>
+        <a href="#/einstellungen" id="atem-pill" class="pill">ATEM</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Übersicht -->
+    <section id="page-uebersicht" class="page container">
+      <div class="page-head">
+        <div>
+          <h1>Übersicht</h1>
+          <p class="lead">Deine Multiviews live. <b>Vollbild</b> zeigt einen Multiview bildschirmfüllend – zurück mit <kbd>Esc</kbd>.</p>
+        </div>
+        <button id="output-add" class="btn primary">+ Multiview</button>
+      </div>
+      <div id="output-cards" class="output-grid"></div>
+    </section>
+
+    <!-- Eingänge -->
+    <section id="page-eingaenge" class="page container" hidden>
+      <div class="page-head">
+        <div>
+          <h1>Eingänge</h1>
+          <p class="lead">Woher die Bilder für deine Multiviews kommen.</p>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <span class="step-nr">1</span>
+          <h3>Signal abzweigen</h3>
+          <p>Kamerasignal vor dem ATEM teilen – über den 2. Ausgang der Kamera, einen SDI-Verteiler oder einen Aux-Ausgang des ATEM.</p>
+        </div>
+        <div class="step">
+          <span class="step-nr">2</span>
+          <h3>In den Rechner holen</h3>
+          <p>Capture-Karte (z. B. DeckLink, UltraStudio) mit <i>Desktop Video</i> oder ein USB-Grabber. Eingangsformat passend zum ATEM einstellen.</p>
+        </div>
+        <div class="step">
+          <span class="step-nr">3</span>
+          <h3>Hier übernehmen</h3>
+          <p>Auf <b>Eingänge suchen</b> klicken, Zugriff erlauben und beim gewünschten Bild <b>Als Quelle hinzufügen</b>.</p>
+        </div>
+      </div>
+
+      <div class="section-head">
+        <div>
+          <h2>Erkannte Videoeingänge</h2>
+          <p class="muted" id="device-note">Zeigt die Eingänge des Rechners, auf dem diese Seite geöffnet ist.</p>
+        </div>
+        <button id="scan-devices" class="btn primary">Eingänge suchen</button>
+      </div>
+      <div id="device-grid" class="device-grid"></div>
+
+      <div class="section-head">
+        <div>
+          <h2>Netzwerk-Streams</h2>
+          <p class="muted">Streams aus dem Netzwerk, z. B. vom Matrox Monarch oder dem Livestream des ATEM. Sichtbar auf jedem Rechner im Netzwerk.</p>
+        </div>
+        <button id="stream-add" class="btn primary">+ Netzwerk-Stream</button>
+      </div>
+      <div id="stream-status" class="stream-status"></div>
+      <div id="stream-grid" class="device-grid"></div>
+
+      <div class="section-head">
+        <div>
+          <h2>Quellen</h2>
+          <p class="muted">Diese Quellen kannst du in den Layouts verwenden. Mit dem ATEM-Eingang kommen Tally und Name vom Mischer.</p>
+        </div>
+        <button id="source-add" class="btn">+ Quelle manuell</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Typ</th>
+              <th>Gerät / URL</th>
+              <th>ATEM-Eingang</th>
+              <th class="center" title="Namen vom ATEM übernehmen">ATEM-Name</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="source-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Layouts -->
+    <section id="page-layouts" class="page container wide" hidden>
+      <div class="page-head">
+        <div>
+          <h1>Layouts</h1>
+          <p class="lead">Kacheln aufziehen, verschieben und Quellen zuweisen. Änderungen sind sofort live.</p>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="live-preview">
+          <span>Live-Bilder im Editor</span>
+        </label>
+      </div>
+      <div class="layout-editor">
+        <aside class="card list-panel">
+          <div class="panel-head">
+            <h3>Layouts</h3>
+            <button id="layout-add" class="btn small primary">+ Neu</button>
+          </div>
+          <ul id="layout-list" class="item-list"></ul>
+        </aside>
+
+        <div class="editor">
+          <div id="canvas" class="canvas"></div>
+          <p class="hint">
+            Auf freier Fläche <b>ziehen</b>: neue Kachel · Kachel ziehen: verschieben ·
+            Ecke unten rechts: Größe · <kbd>Pfeiltasten</kbd> verschieben,
+            <kbd>⇧</kbd>+Pfeile Größe · <kbd>Entf</kbd> löschen
+          </p>
+        </div>
+
+        <aside id="inspector" class="card inspector"></aside>
+      </div>
+    </section>
+
+    <!-- Einstellungen -->
+    <section id="page-einstellungen" class="page container" hidden>
+      <div class="page-head">
+        <div>
+          <h1>Einstellungen</h1>
+          <p class="lead">Verbindung zum ATEM, Kesher-Chat, ChurchTools und Steuerung über Companion.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>ATEM</h2>
+        <p class="muted">Über das Netzwerk kommen nur Tally und Quellennamen – kein Video.</p>
+        <div class="form-grid">
+          <label class="field"><span>IP-Adresse</span>
+            <input id="atem-ip" type="text" placeholder="192.168.10.240" spellcheck="false">
+          </label>
+          <label class="field"><span>Tally von</span>
+            <select id="atem-me">
+              <option value="0">M/E 1</option>
+              <option value="1">M/E 2</option>
+              <option value="2">M/E 3</option>
+              <option value="3">M/E 4</option>
+            </select>
+          </label>
+          <div id="atem-status" class="atem-status"></div>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Nr.</th><th>Kurzname</th><th>Name</th><th>Tally</th></tr></thead>
+            <tbody id="atem-inputs-rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Kesher-Chat</h2>
+        <p class="muted">Für Kacheln mit dem Inhalt <b>Kesher-Chat</b>. Der Multiview-Server meldet sich einmal mit dieser Rolle an und verteilt den Chat an alle Monitore. Die Rolle muss in Kesher existieren und auf allen Party Lines als Empfänger eingetragen sein.</p>
+        <div class="form-grid">
+          <label class="field"><span>Kesher-Adresse vom Multiview-Server aus (auf dem Kesher-Server: http://127.0.0.1:8080)</span>
+            <input id="chat-url" type="text" placeholder="http://127.0.0.1:8080" spellcheck="false">
+          </label>
+          <label class="field"><span>Anzeigename</span>
+            <input id="chat-username" type="text" placeholder="Chat-Monitor" spellcheck="false">
+          </label>
+          <label class="field"><span>Rollen-ID</span>
+            <input id="chat-roleId" type="text" placeholder="chat-monitor" spellcheck="false">
+          </label>
+          <div id="chat-status" class="atem-status"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>ChurchTools</h2>
+        <p class="muted">Für Kacheln mit dem Inhalt <b>ChurchTools-Ablauf</b>. Der Server verbindet sich mit einem eigenen ChurchTools-Konto und zeigt den Ablauf der heutigen Events. Das Passwort wird nur einmal zum Holen des Login-Tokens verwendet und nicht gespeichert. Der Token bleibt auf dem Server.</p>
+        <div id="ct-status" class="atem-status"></div>
+        <form id="ct-form" class="form-grid" autocomplete="off">
+          <label class="field"><span>ChurchTools-Adresse</span>
+            <input id="ct-url" type="text" placeholder="https://gemeinde.church.tools" spellcheck="false">
+          </label>
+          <label class="field"><span>oder Login-Token (statt Benutzername/Passwort)</span>
+            <input id="ct-token" type="password" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="field"><span>Benutzername oder E-Mail des Server-Kontos</span>
+            <input id="ct-username" type="text" spellcheck="false" autocomplete="off">
+          </label>
+          <label class="field"><span>Passwort</span>
+            <input id="ct-password" type="password" autocomplete="new-password">
+          </label>
+          <div class="btn-row">
+            <button class="btn primary" type="submit" id="ct-connect">Verbinden</button>
+            <button class="btn" type="button" id="ct-refresh">Jetzt aktualisieren</button>
+            <button class="btn danger" type="button" id="ct-disconnect">Trennen</button>
+          </div>
+        </form>
+        <div id="ct-events"></div>
+      </div>
+
+      <div class="card">
+        <h2>Companion</h2>
+        <p class="muted">Im Companion-Modul <b>Generic HTTP</b> eine GET-Anfrage auf diese Adressen legen. Multiviews, Layouts und Quellen gehen per Nummer, Name oder ID. Läuft Companion auf diesem Server, gilt die Adresse mit <code>127.0.0.1</code> (ohne Zertifikat).</p>
+        <div id="companion-help"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer container">
+    Multiview für Blackmagic ATEM · Monitor-Ansicht: <code>/output.html?id=1</code>
+  </footer>
+
+  <datalist id="device-list"></datalist>
+  <datalist id="atem-input-list"></datalist>
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="admin.js"></script>
+</body>
+</html>
