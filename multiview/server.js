@@ -645,7 +645,7 @@ function messageTemplates(list) {
     .map((m) => ({
       uuid: m.id?.uuid ?? '',
       name: String(m.id?.name ?? '').trim(),
-      text: String(m.message ?? '').trim(),
+      text: tokensFirst(String(m.message ?? '')),
       fields: (m.tokens ?? []).map((t) => t.name),
       free: m.id?.name === FREE_MESSAGE_NAME,
     }))
@@ -679,6 +679,17 @@ const publicRequests = () =>
   announceRequests.map(({ id, name, text, from, at, status, shownAt }) => ({ id, name, text, from, at, status, shownAt }))
 
 /** Text mit eingesetzten Platzhaltern, wie ihn ProPresenter anzeigen wird. */
+/**
+ * Einheitliches Format für Beamer-Meldungen: zuerst die Platzhalter (z. B. das Kennzeichen),
+ * dann der Text – wie bei „{Kennzeichen} Bitte sofort umparken!“. So kommt auch
+ * „Fenster offen!  {Kfz-Kennzeichen}“ als „{Kfz-Kennzeichen} Fenster offen!“ an.
+ */
+function tokensFirst(template) {
+  const tokens = template.match(/\{[^}]+\}/g) ?? []
+  const text = template.replace(/\{[^}]+\}/g, ' ').replace(/\s+/g, ' ').trim()
+  return [...tokens, text].filter(Boolean).join(' ')
+}
+
 const fillTokens = (template, values) =>
   template.replace(/\{([^}]+)\}/g, (all, name) => (values[name] != null ? values[name] : all))
 
@@ -740,7 +751,7 @@ async function prepareAnnouncement({ uuid, fields, text }, from) {
   if (template) {
     const values = {}
     for (const t of template.tokens ?? []) values[t.name] = clean(fields?.[t.name] ?? t.text?.text)
-    rendered = clean(fillTokens(String(template.message ?? ''), values))
+    rendered = clean(fillTokens(tokensFirst(String(template.message ?? '')), values))
     // Werte auch in der Vorlage selbst ablegen (dort sind sie dann vorbelegt)
     if (template.tokens?.length)
       await putMessage({ ...template, tokens: template.tokens.map((t) => ({ ...t, text: { ...t.text, text: values[t.name] } })) })
