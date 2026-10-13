@@ -146,6 +146,7 @@ function saveConfig() {
 }
 
 let config = loadConfig()
+rememberLayouts()
 
 /** Findet einen Eintrag per ID, Name (ohne Groß-/Kleinschreibung) oder 1-basierter Nummer. */
 function findByRef(list, ref) {
@@ -308,6 +309,9 @@ function emptyProPresenterState() {
     playlist: null, // { name, activeIndex, nextIndex, items: [...] }
     cues: [], // alle Folien der laufenden Präsentation { group, color, label, enabled } – für die Prediger-Ansicht
     layers: null, // was gerade sichtbar ist { slide, media } – „ausgeblendet“ = slide false
+    // Ausgeblendet meldet ProPresenter keine laufende Präsentation mehr. Damit die Prediger-Ansicht
+    // die Folien behält und „Einblenden“ weiß, wohin, merken wir uns die letzte: { presentation, index, cues }
+    held: null,
   }
 }
 
@@ -499,6 +503,14 @@ async function pollProPresenterOnce(target) {
       }))
     }
 
+    // Ausgeblendet (Folien-Ebene aus, keine laufende Präsentation): letzte Präsentation behalten
+    if (!liveUuid && next.layers && !next.layers.slide) {
+      const last = ppState.presentation
+        ? { presentation: ppState.presentation, index: ppState.index, cues: ppState.cues }
+        : ppState.held
+      if (last) next.held = last
+    }
+
     // Angeklicktes Lied: Klickt der Bediener ein anderes Lied an (z. B. weil eins übersprungen
     // wird), geht es dort weiter – auch wenn davon noch keine Folie läuft.
     const focusedUuid =
@@ -604,12 +616,13 @@ function emptyStageState() {
     timers: [], // { uuid, name, time: "-00:01:30", state: running|stopped|overrunning|complete }
     videoCountdown: '', // Restzeit des laufenden Videos, leer = kein Video
     messages: [], // aktive Meldungen { uuid, name, text, tokens: [{ name, timer }] }
+    templates: [], // Meldungen für den Beamer zum Vorbereiten { uuid, name, text, fields: [Name] }
+    requests: [], // Beamer-Meldungen, die auf den ProPresenter-Bediener warten (announceRequests)
   }
 }
 
 /** Aktive Meldungen; Platzhalter wie {Countdown 1} füllt der Browser mit der Timer-Zeit. */
-async function ppActiveMessages() {
-  const list = (await ppGet('/v1/messages')) ?? []
+function activeMessages(list) {
   return list
     .filter((m) => m.is_active)
     .map((m) => ({
@@ -618,6 +631,152 @@ async function ppActiveMessages() {
       text: String(m.message ?? '').trim(),
       tokens: (m.tokens ?? []).map((t) => ({ name: t.name, timer: t.timer?.id?.uuid ?? null, text: t.text?.text ?? '' })),
     }))
+}
+
+/**
+ * Meldungen, die man vom Handy aus für den Beamer vorbereiten kann: Text, nur Text-Platzhalter.
+ * Alles unter einer Trennzeile „ARCHIV“ (in ProPresenter) bleibt weg – außer der eigenen Meldung.
+ */
+function messageTemplates(list) {
+  const archive = list.findIndex((m) => /archiv/i.test(m.id?.name ?? ''))
+  return list
+    .filter((m, i) => archive < 0 || i < archive || m.id?.name === FREE_MESSAGE_NAME)
+    .filter((m) => String(m.message ?? '').trim() && (m.tokens ?? []).every((t) => t.text && !t.timer && !t.clock))
+    .map((m) => ({
+      uuid: m.id?.uuid ?? '',
+      name: String(m.id?.name ?? '').trim(),
+      text: String(m.message ?? '').trim(),
+      fields: (m.tokens ?? []).map((t) => t.name),
+      free: m.id?.name === FREE_MESSAGE_NAME,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Beamer-Meldungen: vom Handy/Multiview vorbereitet, angezeigt nur vom ProPresenter-Bediener.
+// Der Server trägt den Text in die ProPresenter-Meldung ein (PUT /v1/message/{id}, löst nichts
+// aus) und gibt im Kesher-Chat Bescheid. Ob die Meldung dann auf dem Beamer läuft, sieht er an
+// is_active in /v1/messages.
+// ---------------------------------------------------------------------------
+
+const FREE_MESSAGE_NAME = 'Multiview-Meldung' // eigene Meldung für freien Text, legt der Server bei Bedarf an
+const FREE_MESSAGE_TOKEN = 'Text'
+let announceRequests = [] // { id, uuid, name, text, from, at, status: wartet|angezeigt|beendet|ersetzt, seenInactive }
+
+function updateAnnounceRequests(list) {
+  const active = new Set(list.filter((m) => m.is_active).map((m) => m.id?.uuid))
+  const now = Date.now()
+  for (const r of announceRequests) {
+    if (r.status === 'wartet') {
+      if (!active.has(r.uuid)) r.seenInactive = true
+      else if (r.seenInactive) Object.assign(r, { status: 'angezeigt', shownAt: now })
+    } else if (r.status === 'angezeigt' && !active.has(r.uuid)) Object.assign(r, { status: 'beendet', endedAt: now })
+  }
+  // Nur die letzten Stunden, höchstens 10
+  announceRequests = announceRequests.filter((r) => now - r.at < 3 * 3600_000).slice(0, 10)
+}
+
+const publicRequests = () =>
+  announceRequests.map(({ id, name, text, from, at, status, shownAt }) => ({ id, name, text, from, at, status, shownAt }))
+
+/** Text mit eingesetzten Platzhaltern, wie ihn ProPresenter anzeigen wird. */
+const fillTokens = (template, values) =>
+  template.replace(/\{([^}]+)\}/g, (all, name) => (values[name] != null ? values[name] : all))
+
+/** Eigene Meldung für freien Text suchen oder anlegen (Aussehen wie eine vorhandene Laufschrift). */
+async function freeMessage(list) {
+  const found = list.find((m) => m.id?.name === FREE_MESSAGE_NAME)
+  if (found) return found
+  const looks =
+    list.find((m) => /ticker|laufschrift/i.test(m.theme?.name ?? '') && !(m.tokens ?? []).some((t) => t.timer)) ??
+    list.find((m) => !(m.tokens ?? []).some((t) => t.timer))
+  const res = await fetch(`${ppBase()}/v1/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: { name: FREE_MESSAGE_NAME, index: list.length, uuid: '' },
+      message: `{${FREE_MESSAGE_TOKEN}}`,
+      tokens: [{ name: FREE_MESSAGE_TOKEN, text: { text: '' } }],
+      theme: looks?.theme ?? { name: '', index: 0, uuid: '' },
+      visible_on_network: false,
+      is_active: false,
+    }),
+    signal: AbortSignal.timeout(3000),
+  })
+  if (!res.ok) throw new Error(`ProPresenter: Meldung „${FREE_MESSAGE_NAME}“ ließ sich nicht anlegen (HTTP ${res.status})`)
+  const created = ((await ppGet('/v1/messages')) ?? []).find((m) => m.id?.name === FREE_MESSAGE_NAME)
+  if (!created) throw new Error(`ProPresenter: Meldung „${FREE_MESSAGE_NAME}“ fehlt nach dem Anlegen`)
+  console.log(`ProPresenter: Meldung „${FREE_MESSAGE_NAME}“ für freien Text angelegt`)
+  return created
+}
+
+/** Meldung in ProPresenter überschreiben (PUT löst nichts aus; is_active muss mitgeschickt werden). */
+async function putMessage(message) {
+  const res = await fetch(`${ppBase()}/v1/message/${encodeURIComponent(message.id.uuid)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(message),
+    signal: AbortSignal.timeout(3000),
+  })
+  if (!res.ok) throw new Error(`ProPresenter antwortet mit HTTP ${res.status}`)
+}
+
+/**
+ * Meldung vorbereiten, NICHT anzeigen. Alles landet in der „Multiview-Meldung“ – dem festen Eingang,
+ * in den der ProPresenter-Bediener schaut: bei einer Vorlage mit eingesetztem Text und im Aussehen
+ * der Vorlage, bei freiem Text im Aussehen einer normalen Laufschrift.
+ * { uuid, fields: { Name: Wert } } für eine Vorlage, { text } für freien Text.
+ */
+async function prepareAnnouncement({ uuid, fields, text }, from) {
+  if (!ppBase()) throw Object.assign(new Error('ProPresenter nicht eingerichtet'), { status: 503 })
+  const list = (await ppGet('/v1/messages')) ?? []
+  const free = !uuid
+  const template = free ? null : list.find((m) => m.id?.uuid === uuid)
+  if (!free && !template) throw Object.assign(new Error('Diese Meldung gibt es in ProPresenter nicht mehr'), { status: 404 })
+  if (template && !messageTemplates([template]).length)
+    throw Object.assign(new Error('Diese Meldung lässt sich nicht vom Handy füllen'), { status: 400 })
+
+  const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, 300)
+  let rendered
+  if (template) {
+    const values = {}
+    for (const t of template.tokens ?? []) values[t.name] = clean(fields?.[t.name] ?? t.text?.text)
+    rendered = clean(fillTokens(String(template.message ?? ''), values))
+    // Werte auch in der Vorlage selbst ablegen (dort sind sie dann vorbelegt)
+    if (template.tokens?.length)
+      await putMessage({ ...template, tokens: template.tokens.map((t) => ({ ...t, text: { ...t.text, text: values[t.name] } })) })
+  } else rendered = clean(text)
+  if (!rendered) throw Object.assign(new Error('Bitte einen Text eingeben'), { status: 400 })
+
+  const inbox = await freeMessage(list)
+  // Aussehen: das der Vorlage, sonst eine graue (bzw. irgendeine) Laufschrift
+  const others = list.filter((m) => m.id?.uuid !== inbox.id?.uuid && m.theme?.uuid)
+  const theme = template?.theme?.uuid
+    ? template.theme
+    : (others.find((m) => /ticker|laufschrift/i.test(m.theme.name ?? '') && /grau|grey|gray/i.test(m.theme.name ?? '')) ??
+        others.find((m) => /ticker|laufschrift/i.test(m.theme.name ?? '')))?.theme ?? inbox.theme
+  const token = inbox.tokens?.find((t) => t.name === FREE_MESSAGE_TOKEN) ?? { name: FREE_MESSAGE_TOKEN, text: { text: '' } }
+  await putMessage({
+    ...inbox,
+    message: `{${FREE_MESSAGE_TOKEN}}`,
+    tokens: [{ ...token, text: { ...token.text, text: rendered } }],
+    theme,
+  })
+
+  const request = {
+    id: Math.random().toString(36).slice(2, 10),
+    uuid: inbox.id.uuid,
+    name: template ? String(template.id?.name ?? '').trim() : 'Eigene Meldung',
+    text: rendered,
+    from,
+    at: Date.now(),
+    status: 'wartet',
+    seenInactive: !inbox.is_active,
+  }
+  for (const r of announceRequests) if (r.uuid === request.uuid && r.status === 'wartet') r.status = 'ersetzt'
+  announceRequests.unshift(request)
+  stageMessagesAt = 0
+  requestStagePoll()
+  return request
 }
 
 async function pollStageOnce(target) {
@@ -639,8 +798,15 @@ async function pollStageOnce(target) {
     next.videoCountdown = typeof video === 'string' && /[1-9]/.test(video) ? video : ''
     if (Date.now() - stageMessagesAt >= STAGE_MESSAGES_MS) {
       stageMessagesAt = Date.now()
-      next.messages = await ppActiveMessages().catch(() => stageState.messages)
-    } else next.messages = stageState.messages
+      const list = await ppGet('/v1/messages').catch(() => null)
+      if (list) updateAnnounceRequests(list)
+      next.messages = list ? activeMessages(list) : stageState.messages
+      next.templates = list ? messageTemplates(list) : stageState.templates
+    } else {
+      next.messages = stageState.messages
+      next.templates = stageState.templates
+    }
+    next.requests = publicRequests()
   } catch {
     next.connected = false
   }
@@ -926,7 +1092,16 @@ const kesherChat = createKesherChat({
   log: console.log,
 })
 
+/**
+ * Zuletzt gelaufenes Layout je Multiview merken. Ein fremdes Layout sieht eine Rolle nur, solange
+ * es auf ihrem Multiview läuft – ohne diese Notiz käme sie nach „Aus“ nicht mehr zurück.
+ */
+function rememberLayouts() {
+  for (const o of config.outputs ?? []) if (o.layoutId) o.lastLayoutId = o.layoutId
+}
+
 function configChanged(origin = null) {
+  rememberLayouts()
   saveConfig()
   broadcast({ type: 'config', config, origin })
   refreshAtemState()
@@ -1171,6 +1346,29 @@ app.post('/api/me/output/:output/layout', requireUser, (req, res) => {
   res.json({ ok: true })
 })
 
+// Chat schreiben – als die angemeldete Rolle (Admin wählt eine Rolle). Kesher prüft die
+// Sprechrechte der Party Line; die Nachricht erscheint wie eine Stream-Deck-Nachricht.
+app.post('/api/chat/send', requireUser, async (req, res) => {
+  const text = String(req.body?.text ?? '').trim()
+  const roomId = String(req.body?.roomId ?? '').trim()
+  if (!text) return res.status(400).json({ ok: false, error: 'Text fehlt' })
+  if (text.length > 500) return res.status(400).json({ ok: false, error: 'Höchstens 500 Zeichen' })
+  const roleId = req.user.admin ? String(req.body?.roleId ?? '').trim() : req.user.roleId
+  if (!roleId || !loginRoles().some((r) => r.id === roleId))
+    return res.status(400).json({ ok: false, error: req.user.admin ? 'Bitte eine Rolle wählen' : 'Deine Rolle gibt es in Kesher nicht' })
+  const room = roomId ? (kesherChat.snapshot().rooms ?? []).find((r) => r.id === roomId) : null
+  if (roomId && !room) return res.status(400).json({ ok: false, error: 'Party Line nicht gefunden' })
+  if (room && !room.talkers.includes(roleId))
+    return res.status(403).json({ ok: false, error: 'Deine Rolle darf auf dieser Party Line nicht schreiben' })
+  try {
+    await kesherChat.sendText({ roleId, username: req.user.open ? '' : req.user.name, message: text, roomId })
+    console.log(`Chat: ${req.user.name || 'Gast'} (${roleName(roleId)}) → ${room ? room.name : 'Global'}`)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err.message })
+  }
+})
+
 // QR-Code-Anmeldung fürs Handy: Einmal-Link, 10 Minuten gültig
 app.post('/api/me/qr', requireUser, (req, res) => res.json({ ok: true, ...access.createQrToken(req.user) }))
 
@@ -1213,6 +1411,12 @@ app.delete('/api/access/sessions/:id', requireAdmin, (req, res) => {
   res.json({ ok: true })
 })
 
+/** Folie zum Wiedereinblenden: die laufende, sonst die vor dem Ausblenden gemerkte. */
+function restoreTarget() {
+  const t = ppState.presentation ? ppState : ppState.held
+  return t?.presentation && t.index != null ? t : null
+}
+
 // ProPresenter steuern – NUR diese Befehle (Weiter, Zurück, Ausblenden, Einblenden, Folie wählen).
 // Alles andere der Schnittstelle bleibt gesperrt.
 app.post('/api/propresenter/control', async (req, res) => {
@@ -1227,8 +1431,8 @@ app.post('/api/propresenter/control', async (req, res) => {
     clear: ['/v1/clear/layer/slide'],
     clearAll: ['/v1/clear/layer/slide', '/v1/clear/layer/media'],
     // Wieder einblenden = aktuelle Folie erneut auslösen
-    restore: ppState.presentation && ppState.index != null
-      ? [`/v1/presentation/${encodeURIComponent(ppState.presentation.uuid)}/${ppState.index}/trigger`]
+    restore: restoreTarget()
+      ? [`/v1/presentation/${encodeURIComponent(restoreTarget().presentation.uuid)}/${restoreTarget().index}/trigger`]
       : null,
     goto: typeof presentation === 'string' && /^[0-9A-Fa-f-]{36}$/.test(presentation) && Number.isInteger(cue) && cue >= 0
       ? [`/v1/presentation/${encodeURIComponent(presentation)}/${cue}/trigger`]
@@ -1261,6 +1465,40 @@ async function handleStageMessage(req, res, text) {
   }
 }
 app.all('/api/propresenter/stage-message/clear', (req, res) => handleStageMessage(req, res, ''))
+
+// Beamer-Meldung vorbereiten: Text in die ProPresenter-Meldung eintragen (angezeigt wird sie nur
+// vom ProPresenter-Bediener) und im Kesher-Chat Bescheid geben.
+app.post('/api/propresenter/announce', requireUser, async (req, res) => {
+  const user = req.user
+  const from = user.open ? '' : `${user.name}${user.roleName && !user.admin ? ` (${user.roleName})` : ''}`
+  let request
+  try {
+    request = await prepareAnnouncement(
+      { uuid: req.body?.uuid ? String(req.body.uuid) : '', fields: req.body?.fields || {}, text: req.body?.text },
+      from,
+    )
+  } catch (err) {
+    return res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
+  }
+  console.log(`ProPresenter: Beamer-Meldung vorbereitet „${request.text}“ (${from || req.ip})`)
+  // Bescheid im Chat – als die eigene Rolle, sonst als Chat-Monitor
+  let notified = false
+  if (req.body?.notify !== false) {
+    const roleId = !user.open && !user.admin ? user.roleId : config.chat.roleId
+    try {
+      await kesherChat.sendText({
+        roleId,
+        username: user.open ? '' : user.name,
+        message: `Beamer-Meldung wartet in ProPresenter: „${request.text}“ – bitte „${FREE_MESSAGE_NAME}“ unter Meldungen anzeigen`,
+        roomId: '',
+      })
+      notified = true
+    } catch (err) {
+      console.log(`Kesher: Hinweis zur Beamer-Meldung nicht gesendet (${err.message})`)
+    }
+  }
+  res.json({ ok: true, request: publicRequests().find((r) => r.id === request.id), notified })
+})
 app.all('/api/propresenter/stage-message', (req, res) => {
   const text = req.body?.text ?? req.query.text
   // Ohne Text nichts tun (ein versehentlich geöffneter Link soll die Nachricht nicht löschen)

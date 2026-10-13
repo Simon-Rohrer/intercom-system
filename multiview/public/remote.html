@@ -7,52 +7,101 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Multiview">
   <link rel="apple-touch-icon" href="prediger-icon.png">
   <title>Fernbedienung – Multiview</title>
   <script src="theme-boot.js"></script>
   <link rel="stylesheet" href="admin.css">
+  <link rel="stylesheet" href="remote.css">
 </head>
-<body class="booting">
-  <div class="app">
-    <div class="remote">
-      <header class="remote-head">
-        <div class="avatar" id="avatar"></div>
-        <div class="user-meta"><b id="user-name"></b><span id="user-role"></span></div>
-        <button type="button" class="icon-btn" id="theme-btn" aria-label="Hell / Dunkel"></button>
-        <a class="icon-btn" href="/" title="Zum Editor" aria-label="Zum Editor">
-          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>
-        </a>
-        <button type="button" class="icon-btn" id="logout-btn" aria-label="Abmelden" title="Abmelden" hidden>
-          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11"/></svg>
-        </button>
-      </header>
+<body class="booting rm-body">
+  <div class="rm">
+    <header class="rm-head">
+      <div class="rm-avatar" id="avatar"></div>
+      <div class="rm-who">
+        <b id="user-name"></b>
+        <span><i class="rm-dot" id="live-dot"></i><span id="user-role"></span></span>
+      </div>
+      <button type="button" class="rm-icon" id="theme-btn" aria-label="Hell / Dunkel"></button>
+      <a class="rm-icon" href="/" id="editor-link" title="Zum Editor" aria-label="Zum Editor">
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>
+      </a>
+      <button type="button" class="rm-icon" id="logout-btn" aria-label="Abmelden" title="Abmelden" hidden>
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11"/></svg>
+      </button>
+    </header>
 
-      <div id="offline" class="notice warn" hidden>Verbindung zum Server unterbrochen – verbinde neu …</div>
+    <div id="offline" class="rm-offline" hidden>Verbindung unterbrochen – verbinde neu …</div>
 
-      <section class="remote-section">
-        <h2>Meine Bildschirme</h2>
-        <div id="outputs"></div>
+    <main class="rm-main">
+      <section class="rm-panel" data-panel="outputs">
+        <h1 class="rm-title">Bildschirme</h1>
+        <div id="outputs" class="rm-stack"></div>
       </section>
 
-      <section class="remote-section" id="screens-section" hidden>
-        <h2>Monitore am Server</h2>
-        <div id="screens"></div>
+      <section class="rm-panel rm-chat" data-panel="chat" hidden>
+        <h1 class="rm-title">Chat <span class="rm-chip" id="chat-state"></span></h1>
+        <ul class="rm-bubbles" id="chat-list"></ul>
+        <div class="rm-composer" id="chat-compose"></div>
       </section>
 
-      <section class="remote-section" id="message-section" hidden>
-        <h2>Bühnennachricht</h2>
-        <div class="card remote-card">
-          <div class="muted" id="message-current"></div>
-          <form class="remote-message" id="message-form">
-            <input type="text" id="message-text" maxlength="500" placeholder="z. B. Noch 5 Minuten" enterkeyhint="send">
-            <button class="btn primary" type="submit">Senden</button>
-          </form>
-          <button class="btn danger" type="button" id="message-clear">Nachricht löschen</button>
+      <section class="rm-panel" data-panel="stage" hidden>
+        <h1 class="rm-title">Bühnennachricht</h1>
+        <p class="rm-lead">Erscheint nur auf dem Stage Display für Prediger und Band – nicht auf dem Beamer.</p>
+        <div class="rm-stage" id="stage-card">
+          <span class="rm-stage-label" id="stage-label"></span>
+          <div class="rm-stage-text" id="message-current"></div>
+          <button class="rm-stage-clear" type="button" id="message-clear">Löschen</button>
         </div>
+        <form class="rm-send" id="message-form">
+          <input type="text" id="message-text" maxlength="500" placeholder="Nachricht an die Bühne …" enterkeyhint="send" autocomplete="off">
+          <button type="submit" aria-label="Senden">
+            <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 12l16-8-6 16-2.5-6.5L4 12z"/></svg>
+          </button>
+        </form>
+        <h2 class="rm-sub">Schnell senden</h2>
+        <div class="rm-quick" id="message-quick"></div>
       </section>
-    </div>
+
+      <section class="rm-panel" data-panel="beamer" hidden>
+        <h1 class="rm-title">Beamer</h1>
+        <p class="rm-lead">Die Meldung wird in ProPresenter nur vorbereitet. Auf den Beamer kommt sie erst, wenn der ProPresenter-Bediener unter „Meldungen“ die „Multiview-Meldung“ anklickt.</p>
+        <div id="beamer-requests" class="rm-requests"></div>
+        <h2 class="rm-sub">Meldung vorbereiten</h2>
+        <div id="beamer-templates" class="rm-templates"></div>
+        <label class="rm-check"><input type="checkbox" id="beamer-notify" checked> Im Kesher-Chat Bescheid geben</label>
+      </section>
+
+      <section class="rm-panel" data-panel="screens" hidden>
+        <h1 class="rm-title">Monitore am Server</h1>
+        <div id="screens" class="rm-stack"></div>
+      </section>
+    </main>
+
+    <nav class="rm-tabs" id="tabs">
+      <button type="button" data-tab="outputs">
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+        <span>Bildschirme</span>
+      </button>
+      <button type="button" data-tab="chat">
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>
+        <span>Chat</span><b class="rm-badge" id="chat-badge" hidden></b>
+      </button>
+      <button type="button" data-tab="stage">
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 10v4h3l6 4V6L7 10H4zM17 9a4 4 0 0 1 0 6M19.5 6.5a8 8 0 0 1 0 11"/></svg>
+        <span>Bühne</span><b class="rm-badge rm-badge-dot" id="stage-badge" hidden></b>
+      </button>
+      <button type="button" data-tab="beamer">
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="4" width="18" height="11" rx="1.5"/><path d="M12 15v3M8 21l4-3 4 3"/></svg>
+        <span>Beamer</span><b class="rm-badge rm-badge-dot" id="beamer-badge" hidden></b>
+      </button>
+      <button type="button" data-tab="screens">
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="2" y="5" width="9" height="7" rx="1.5"/><rect x="13" y="5" width="9" height="7" rx="1.5"/><path d="M6.5 12v3M17.5 12v3M4 18h5M15 18h5"/></svg>
+        <span>Monitore</span>
+      </button>
+    </nav>
   </div>
-  <div id="toast" class="toast" hidden></div>
+  <div id="toast" class="rm-toast" hidden></div>
   <script type="module" src="remote.js"></script>
 </body>
 </html>
