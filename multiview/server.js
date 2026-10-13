@@ -10,6 +10,7 @@ const { WebSocketServer } = require('ws')
 const { Atem } = require('atem-connection')
 const { createKesherChat } = require('./kesher-chat')
 const { createChurchTools } = require('./churchtools')
+const { legacyMiddleware } = require('./legacy')
 
 const PORT = Number(process.env.PORT) || 8090
 // Hinter Caddy (HTTPS) nur lokal lauschen: HOST=127.0.0.1
@@ -842,6 +843,8 @@ wss.on('connection', (ws) => {
 })
 
 app.use(express.json({ limit: '5mb' }))
+// Alte Browser (z. B. iPad mit iOS 12) bekommen umgeschriebene Dateien, siehe legacy.js
+app.use(legacyMiddleware(path.join(__dirname, 'public')))
 app.use(express.static(path.join(__dirname, 'public')))
 
 app.get('/api/config', (req, res) => res.json(config))

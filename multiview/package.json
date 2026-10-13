@@ -9,6 +9,7 @@
   "type": "commonjs",
   "dependencies": {
     "atem-connection": "^3.10.3",
+    "esbuild": "0.28.2",
     "express": "^4.22.3",
     "ws": "^8.22.0"
   },
