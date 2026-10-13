@@ -472,5 +472,22 @@
   <div id="toast" class="toast" hidden></div>
 
   <script type="module" src="admin.js"></script>
+  <script>
+    // Menü (☰) auf schmalen Bildschirmen. Bewusst einfaches Skript ohne Modul: so geht das Menü
+    // auch, wenn admin.js auf einem alten Gerät nicht (vollständig) läuft.
+    ;(function () {
+      var btn = document.getElementById('menu-btn')
+      var backdrop = document.getElementById('sidebar-backdrop')
+      if (btn)
+        btn.addEventListener('click', function (e) {
+          e.preventDefault()
+          document.body.classList.toggle('nav-open')
+        })
+      if (backdrop)
+        backdrop.addEventListener('click', function () {
+          document.body.classList.remove('nav-open')
+        })
+    })()
+  </script>
 </body>
 </html>

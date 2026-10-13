@@ -2612,8 +2612,7 @@ for (const dialog of document.querySelectorAll('dialog')) {
   })
 }
 
-$('#menu-btn').addEventListener('click', () => document.body.classList.toggle('nav-open'))
-$('#sidebar-backdrop').addEventListener('click', () => document.body.classList.remove('nav-open'))
+// Menü-Taste (☰) und Abdunklung: siehe Skript am Ende von index.html – unabhängig von diesem Modul
 
 // Sprungmarken der Einstellungen ohne die Seiten-Navigation (#/…) zu stören
 document.addEventListener('click', (e) => {

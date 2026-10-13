@@ -303,6 +303,8 @@ function kesherUrl(tile) {
     // und sein eigenes Kesher (Handy, Laptop, Station) soll dadurch nicht rausfliegen. Ist die Rolle
     // dort schon angemeldet, zeigt die Kachel „Rolle belegt“ – Chat lesen/schreiben geht über die Chat-Kachel.
     if (tile.kesherTakeover !== false && !asViewer) params.set('autoTakeover', '1')
+    // Als Zweitgerät: belegt die Rolle in Kesher nicht, das eigene Kesher-Gerät geht trotzdem
+    if (asViewer) params.set('secondary', '1')
   }
   if (tile.kesherAudioIn) params.set('audioInputMatch', tile.kesherAudioIn)
   if (tile.kesherAudioOut) params.set('audioOutputMatch', tile.kesherAudioOut)

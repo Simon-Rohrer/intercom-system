@@ -13,7 +13,7 @@ func TestOperatorSessionWithoutConnectionIsReleased(t *testing.T) {
 	s := newCompanionTestServer(t)
 	user := User{ID: "u1", Username: "Licht", RoleID: "lighting"}
 
-	session := s.createOperatorSession(user)
+	session := s.createOperatorSession(user, false)
 
 	s.sessions.mu.RLock()
 	_, pending := s.sessions.scheduledRevoke[session.Token]

@@ -286,3 +286,12 @@
 .chat-with-compose .chat-compose-status.error { color: #ff5a4f; }
 .chat-with-compose .chat-compose-status.ok { color: #30d158; }
 .chat-compose [hidden] { display: none !important; }
+
+/* Wichtige Meldung aus dem Multiview (Bühnennachricht, Beamer-Meldung): rot wie in Kesher */
+.kchat-msg.is-alert {
+  border-color: #ff5a4f;
+  border-left-color: #ff5a4f;
+  background: color-mix(in srgb, #ff5a4f 20%, #1d222a);
+}
+.kchat-msg.is-alert .kchat-text { font-weight: 600; }
+.kchat-target.is-alert { background: #ff5a4f; border-color: #ff5a4f; color: #fff; }

@@ -499,3 +499,17 @@ body.booting .rm-main { opacity: 0; }
 .rm-primary:active { transform: scale(0.98); }
 .rm-check { display: flex; align-items: center; gap: 10px; margin: 16px 4px 0; font-size: 14.5px; color: var(--text-2); }
 .rm-check input { width: 20px; height: 20px; accent-color: var(--accent); }
+
+/* Wichtige Meldung (Bühnennachricht, Beamer-Meldung): rot */
+.rm-bubble.alert { background: #dc2626; color: #fff; box-shadow: 0 8px 18px -10px rgba(220, 38, 38, 0.8); }
+.rm-bubble.alert .rm-bubble-from { color: rgba(255, 255, 255, 0.9); }
+.rm-bubble.alert .rm-bubble-meta { color: rgba(255, 255, 255, 0.8); }
+.rm-bubble.alert .rm-target { background: rgba(255, 255, 255, 0.22); }
+
+/* Live-Vorschau: in Monitorgröße (1920×1080) rendern und auf die Kartenbreite verkleinern */
+.rm-preview iframe {
+  width: 1920px !important;
+  height: 1080px !important;
+  transform: scale(var(--rm-scale, 0.18));
+  transform-origin: 0 0;
+}
