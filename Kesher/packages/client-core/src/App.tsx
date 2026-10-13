@@ -2990,16 +2990,10 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     ).values(),
   ).sort((a, b) => a.username.localeCompare(b.username));
 
-  // New chat messages flash inside the chat on stations; only the
-  // chat display (server monitor) flashes the whole screen.
-  const chatAttention =
-    session.incomingAttention?.kind === "chat"
-      ? {
-          key: session.attentionFlashKey,
-          title: session.incomingAttention.title,
-          detail: session.incomingAttention.detail,
-        }
-      : null;
+  // New chat messages flash a border around the chat on stations; only the
+  // chat display (server monitor) flashes the whole screen edge.
+  const chatAttentionKey =
+    session.incomingAttention?.kind === "chat" ? session.attentionFlashKey : null;
   const chatAndSignalBlock = (
     <ChatSignalPanel
       message={session.message}
@@ -3016,7 +3010,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         .map((room) => ({ id: room.id, name: room.name }))}
       roles={appData.roles.map((role) => ({ id: role.id, name: role.name }))}
       activeUsers={activeUsersForChat}
-      attention={chatAttention}
+      attentionKey={chatAttentionKey}
     />
   );
   const realtimeDebugBlock = <RealtimeEventsPanel events={session.events} />;
@@ -3081,22 +3075,25 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     "Keine Party Line gewählt";
 
   const attentionFlashOverlay =
-    session.incomingAttention &&
-    (session.incomingAttention.kind === "call" || session.viewMode === "chat") ? (
-    <div
-      key={session.attentionFlashKey}
-      className={`attention-flash attention-flash-${session.incomingAttention.kind}${
-        session.viewMode === "chat" ? " chat-display-flash" : ""
-      }`}
-      role="status"
-      aria-live="assertive"
-    >
-      <div className="attention-flash-card">
-        <strong>{session.incomingAttention.title}</strong>
-        <span>{session.incomingAttention.detail}</span>
+    session.incomingAttention?.kind === "call" ? (
+      <div
+        key={session.attentionFlashKey}
+        className="attention-flash attention-flash-call"
+        role="status"
+        aria-live="assertive"
+      >
+        <div className="attention-flash-card">
+          <strong>{session.incomingAttention.title}</strong>
+          <span>{session.incomingAttention.detail}</span>
+        </div>
       </div>
-    </div>
-  ) : null;
+    ) : session.incomingAttention?.kind === "chat" && session.viewMode === "chat" ? (
+      <div
+        key={session.attentionFlashKey}
+        className="attention-flash attention-flash-chat"
+        aria-hidden="true"
+      />
+    ) : null;
 
   if (session.viewMode === "chat") {
     return (

@@ -85,13 +85,11 @@ export function createChatView() {
       body.replaceChildren(list)
       list.scrollTop = list.scrollHeight
     },
-    /** Stream-Deck-Nachricht: gelber Rahmen blinkt, Text in der Mitte der Kachel. */
-    flash({ title: heading, detail }) {
+    /** Neue Nachricht: nur der gelbe Rahmen der Kachel blinkt. */
+    flash() {
       root.querySelector('.kchat-flash')?.remove()
       const overlay = el('div', 'kchat-flash')
-      const card = el('div', 'kchat-flash-card')
-      card.append(el('strong', null, heading), el('span', null, detail))
-      overlay.append(card)
+      overlay.setAttribute('aria-hidden', 'true')
       root.append(overlay)
       setTimeout(() => overlay.remove(), FLASH_MS)
     },

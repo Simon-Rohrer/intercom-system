@@ -3881,7 +3881,7 @@ button.secondary {
   );
   animation: attention-call-multi-flash 3.8s linear forwards;
 }
-/* New chat message: thick yellow screen border blinks, text stays centred. */
+/* New chat message (chat display): thick yellow screen border blinks. */
 .attention-flash-chat {
   background: transparent;
 }
@@ -3892,10 +3892,6 @@ button.secondary {
     inset 0 0 clamp(40px, 6vmin, 90px) clamp(36px, 6vmin, 90px) rgba(255, 176, 32, 0.85),
     inset 0 0 clamp(120px, 22vmin, 320px) clamp(60px, 10vmin, 150px) rgba(255, 176, 32, 0.4);
   animation: attention-chat-border-blink 4s linear forwards;
-}
-.attention-flash-chat .attention-flash-card {
-  border-color: var(--k-call);
-  box-shadow: 0 0 32px rgba(255, 176, 32, 0.35);
 }
 @keyframes attention-chat-border-blink {
   0% { opacity: 0; }

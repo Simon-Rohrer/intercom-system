@@ -176,9 +176,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
 
     // Jede neue Nachricht blinkt wie ein Anruf (nicht bei History oder eigener Nachricht)
     if (!isSelf && Date.now() - entry.timestamp <= FLASH_MAX_AGE_MS) {
-      const sender = entry.fromRole && entry.fromRole !== entry.from ? `${entry.from} · ${entry.fromRole}` : entry.from
-      const origin = e.source === 'companion' ? 'Stream Deck' : 'Chat'
-      onFlash({ type: 'chatFlash', title: `${origin} · ${entry.target}`, detail: `${sender}: ${body}`, key, audience: audienceOf(entry) })
+      onFlash({ type: 'chatFlash', audience: audienceOf(entry) })
     }
   }
 

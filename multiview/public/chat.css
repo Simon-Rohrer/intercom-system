@@ -193,8 +193,6 @@
   inset: 0;
   z-index: 5;
   pointer-events: none;
-  display: grid;
-  place-items: center;
   overflow: hidden;
 }
 .kchat-flash::before {
@@ -219,33 +217,6 @@
   88% { opacity: 1; }
   100% { opacity: 0; }
 }
-.kchat-flash-card {
-  position: relative;
-  z-index: 1;
-  width: min(86%, 860px);
-  text-align: center;
-  border: 1px solid var(--k-call);
-  background: rgba(19, 12, 11, 0.88);
-  box-shadow: 0 0 32px rgba(255, 176, 32, 0.35);
-  border-radius: 14px;
-  padding: 1em 1.4em;
-  display: grid;
-  gap: 0.4em;
-}
-.kchat-flash-card strong {
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: 0.9em;
-  color: var(--k-call);
-}
-.kchat-flash-card span {
-  font-size: 1.9em;
-  line-height: 1.2;
-  font-weight: 700;
-  overflow-wrap: anywhere;
-  color: var(--k-call);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .kchat-msg.is-newest.arrive { animation: none; }
   .kchat-flash::before { animation: kchat-border-steady 4s linear forwards; }
