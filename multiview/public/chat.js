@@ -18,8 +18,24 @@ function shortTime(ts) {
   return new Date(ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
 }
 
-export function createChatView() {
+/** Darstellung der Chat-Kachel (im Layout-Editor einstellbar). */
+export const CHAT_DEFAULTS = { size: 1, newest: true, header: true, meta: true, dimOld: true, count: 30 }
+
+export function chatOptions(options) {
+  const o = { ...CHAT_DEFAULTS, ...options }
+  o.size = Math.min(Math.max(Number(o.size) || 1, 0.5), 2.5)
+  o.count = Math.min(Math.max(Math.round(Number(o.count) || 30), 1), 60)
+  return o
+}
+
+export function createChatView(options) {
+  const o = chatOptions(options)
   const root = el('div', 'kchat')
+  root.style.setProperty('--kchat-scale', String(o.size))
+  root.classList.toggle('no-header', !o.header)
+  root.classList.toggle('no-meta', !o.meta)
+  root.classList.toggle('no-newest', !o.newest)
+  root.classList.toggle('no-dim', !o.dimOld)
   const header = el('header', 'kchat-header')
   const logo = el('img', 'kchat-logo')
   logo.src = 'jms-logo.svg'
@@ -51,7 +67,7 @@ export function createChatView() {
       live.title = connected ? '' : chat.error || ''
 
       // Neueste unten, wie in Kesher
-      const feed = (chat.messages || []).slice(0, 60).reverse()
+      const feed = (chat.messages || []).slice(0, o.count).reverse()
       const now = Date.now()
       for (const m of feed) if (!firstSeen.has(m.key)) firstSeen.set(m.key, m.receivedAt || now)
 

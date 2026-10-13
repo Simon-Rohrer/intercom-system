@@ -1,6 +1,6 @@
 import { connect, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
-import { createChatView } from './chat.js'
+import { createChatView, chatOptions } from './chat.js'
 import { createAgendaView } from './agenda.js'
 import {
   createProPresenterView, createPlaylistView, createPreacherView, ppOptions, playlistOptions, preacherOptions,
@@ -1095,7 +1095,7 @@ function syncTileMedia(el, tile) {
   // Der Chat ist immer live zu sehen, so wie auf den Monitoren
   const key =
     tile.kind === 'chat'
-      ? JSON.stringify(['chat', tile.chatRole ?? ''])
+      ? JSON.stringify(['chat', tile.chatRole ?? '', chatOptions(tile.chat)])
       : tile.kind === 'churchtools'
         ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctDate])
         : livePreview && source
@@ -1110,7 +1110,7 @@ function syncTileMedia(el, tile) {
   const media = document.createElement('div')
   media.className = 'etile-media'
   if (tile.kind === 'chat') {
-    const view = createChatView()
+    const view = createChatView(tile.chat)
     view.roleId = () => chatRoleFor(tile, user)
     view.update(chatFor(chat, view.roleId()))
     chatViews.add(view)
@@ -1618,7 +1618,27 @@ function chatSection(tile) {
         ${roles.map((r) => `<option value="${esc(r.id)}" ${r.id === value ? 'selected' : ''}>Rolle ${esc(r.name)}</option>`).join('')}
       </select></label>
       <label class="check"><input type="checkbox" data-t="chatInput" ${tile.chatInput !== false ? 'checked' : ''}> Schreiben, wenn am Bildschirm jemand angemeldet ist</label>
+      ${chatLookSection(tile)}
       <p class="muted">Der Chat zeigt, was die Rolle auch in Kesher sieht: globale Nachrichten und die ihrer Party Lines. „Angemeldete Rolle“: Wer angemeldet ist, sieht seinen Chat – Monitore ohne Anmeldung zeigen alles.</p>`
+}
+
+/** Chat-Kachel: Schriftgröße und was angezeigt wird. */
+function chatLookSection(tile) {
+  const o = chatOptions(tile.chat)
+  const check = (key, label) =>
+    `<label class="check"><input type="checkbox" data-chat="${key}" ${o[key] ? 'checked' : ''}> ${label}</label>`
+  return `
+    <div class="meter-settings">
+      <h4>Darstellung</h4>
+      <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+        <input type="range" min="0.5" max="2.5" step="0.1" data-chat="size" value="${o.size}"></label>
+      <label class="field"><span>Nachrichten <output>${o.count}</output></span>
+        <input type="range" min="1" max="60" step="1" data-chat="count" value="${o.count}"></label>
+      ${check('newest', 'Neueste Nachricht groß hervorheben')}
+      ${check('meta', 'Absender, Ziel und Uhrzeit zeigen')}
+      ${check('header', 'Kopfzeile (Logo, Titel, Uhr)')}
+      ${check('dimOld', 'Ältere Nachrichten (über 5 Minuten) abdunkeln')}
+    </div>`
 }
 
 /** Kesher-Intercom: die Kesher-Weboberfläche als bedienbares Fenster auf dem Monitor. */
@@ -1750,6 +1770,19 @@ function onInspectorField(e) {
       if (out) out.textContent = `${Math.round(o.size * 100)} %`
     }
     tile.stage = o
+    renderCanvas()
+    changed()
+    return
+  }
+
+  if (el.dataset.chat) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const key = el.dataset.chat
+    const value = el.type === 'checkbox' ? el.checked : Number(el.value)
+    tile.chat = { ...chatOptions(tile.chat), [key]: value }
+    const out = el.closest('label').querySelector('output')
+    if (out) out.textContent = key === 'size' ? `${Math.round(value * 100)} %` : String(value)
     renderCanvas()
     changed()
     return

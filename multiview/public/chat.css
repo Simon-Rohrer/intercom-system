@@ -266,3 +266,13 @@
 }
 .kchat-msg.is-alert .kchat-text { font-weight: 600; }
 .kchat-target.is-alert { background: #ff5a4f; border-color: #ff5a4f; color: #fff; }
+
+/* ---- Einstellungen der Chat-Kachel (Layout-Editor) ------------------------------ */
+/* Schriftgröße der Nachrichten; die Kopfzeile bleibt gleich */
+.kchat-body { font-size: calc(var(--kchat-scale, 1) * 1em); }
+.kchat.no-header { grid-template-rows: minmax(0, 1fr); }
+.kchat.no-header .kchat-header { display: none; }
+.kchat.no-meta .kchat-meta { display: none; }
+.kchat.no-newest .kchat-msg.is-newest .kchat-text { font-size: 1em; line-height: inherit; }
+.kchat.no-newest .kchat-msg.is-newest .kchat-meta { font-size: 1em; }
+.kchat.no-dim .kchat-msg.is-old { opacity: 1; }

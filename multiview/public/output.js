@@ -186,7 +186,7 @@ function buildTile(tile, layout, usedStreams) {
     text.textContent = tile.text || ''
     media.append(text)
   } else if (tile.kind === 'chat') {
-    const view = createChatView()
+    const view = createChatView(tile.chat)
     // Chat wie in Kesher für die gewählte bzw. angemeldete Rolle (sonst alles)
     view.roleId = () => chatRoleFor(tile, viewer)
     view.update(chatFor(chat, view.roleId()))
