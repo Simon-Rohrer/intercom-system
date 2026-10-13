@@ -495,7 +495,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           return;
         }
 
-        let res = await login(useUsername, useRoleId);
+        let res = await login(
+          useUsername,
+          useRoleId,
+          autoLoginConfig.enabled && autoLoginConfig.secondary,
+        );
         if ("requiresTakeover" in res) {
           if (autoLoginConfig.enabled && autoLoginConfig.allowTakeover) {
             res = await loginTakeover(useUsername, useRoleId);
@@ -1324,7 +1328,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
       void (async () => {
         try {
-          let res = await login(paramUsername, targetRoleId);
+          let res = await login(
+            paramUsername,
+            targetRoleId,
+            autoLoginConfig.secondary,
+          );
           if ("requiresTakeover" in res) {
             if (!autoLoginConfig.allowTakeover) {
               setOperatorLoginError(

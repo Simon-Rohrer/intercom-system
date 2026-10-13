@@ -1,0 +1,154 @@
+/* ProPresenter-Bühne (Stage Display) – gemeinsam für Monitor-Ansicht und Editor */
+
+.st-view {
+  --st-size: 1;
+  --st-fs: calc(clamp(9px, 3.2cqmin, 22px) * var(--st-size));
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--st-fs) * 0.45);
+  padding: calc(var(--st-fs) * 0.6);
+  background: #000;
+  color: #fff;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: var(--st-fs);
+  pointer-events: none;
+  overflow: hidden;
+}
+.st-view [hidden] { display: none !important; }
+
+.st-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  min-height: 1.4em;
+  color: #bbb;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.st-song { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.st-group {
+  flex: none;
+  padding: 0.1em 0.5em;
+  border-radius: 4px;
+  background: #3a414d;
+  color: #fff;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.st-clock { margin-left: auto; color: #fff; font-variant-numeric: tabular-nums; font-size: 1.15em; }
+
+.st-tag {
+  display: inline-block;
+  font-size: 0.7em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.85;
+}
+
+/* Bühnennachricht: nicht zu übersehen */
+.st-message {
+  flex: none;
+  padding: 0.4em 0.7em 0.5em;
+  border-radius: 6px;
+  background: #f5c400;
+  color: #111;
+}
+.st-message-text { font-size: 1.9em; font-weight: 800; line-height: 1.15; white-space: pre-line; overflow-wrap: anywhere; }
+.st-message.arrive { animation: st-flash 0.5s ease-in-out 4; }
+@keyframes st-flash {
+  50% { background: #fff; }
+}
+
+.st-current {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border: 2px solid #c40000;
+  border-radius: 6px;
+  padding: 0.4em 0.6em;
+  overflow: hidden;
+}
+.st-current .st-text { font-size: 2.3em; font-weight: 700; line-height: 1.2; white-space: pre-line; overflow-wrap: anywhere; }
+.st-current.empty .st-text { font-size: 1em; font-weight: 400; color: #777; }
+
+.st-next {
+  flex: 0 1 auto;
+  max-height: 30%;
+  min-height: 0;
+  border-left: 4px solid #0f8f33;
+  padding: 0.1em 0.6em;
+  color: #9fd8ae;
+  overflow: hidden;
+}
+.st-next .st-text { font-size: 1.3em; line-height: 1.2; white-space: pre-line; color: #ddd; }
+
+.st-notes {
+  flex: none;
+  max-height: 20%;
+  overflow: hidden;
+  color: #e7c27a;
+  white-space: pre-line;
+}
+
+.st-meldungen { flex: none; display: grid; gap: 0.25em; }
+.st-meldung {
+  padding: 0.2em 0.6em;
+  border-radius: 4px;
+  background: #1d2a3a;
+  border-left: 4px solid #3b82f6;
+}
+
+.st-timers { flex: none; display: flex; flex-wrap: wrap; gap: 0.4em; }
+.st-timer {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  padding: 0.2em 0.6em;
+  border-radius: 6px;
+  background: #1b1f26;
+  border: 1px solid #333;
+}
+.st-timer-name { color: #aaa; font-size: 0.85em; }
+.st-timer-time { font-size: 1.6em; font-weight: 700; font-variant-numeric: tabular-nums; }
+.st-timer.state-running .st-timer-time { color: #3ddc6b; }
+.st-timer.state-overrunning, .st-timer.state-overran { border-color: #c40000; }
+.st-timer.state-overrunning .st-timer-time, .st-timer.state-overran .st-timer-time { color: #ff4d4d; }
+.st-timer.state-stopped .st-timer-time, .st-timer.state-complete .st-timer-time { color: #888; }
+.st-timer.state-video .st-timer-time { color: #6cb6ff; }
+
+/* Bühnennachricht senden */
+.st-send { flex: none; display: flex; flex-wrap: wrap; gap: 0.4em; }
+.st-view.interactive .st-send { pointer-events: auto; }
+.st-send input {
+  flex: 1 1 10em;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 0.7em;
+  border-radius: 8px;
+  border: 1px solid #3a414d;
+  background: #111;
+  color: #fff;
+  font: inherit;
+}
+.st-btn {
+  min-height: 44px;
+  padding: 0 1em;
+  border-radius: 8px;
+  border: 0;
+  background: #2b313b;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.st-btn-send { background: #b38f00; color: #111; }
+.st-btn:active { transform: scale(0.97); }
+.st-send.busy .st-btn { opacity: 0.6; }
+.st-error { flex-basis: 100%; color: #ff6b6b; font-size: 0.85em; }

@@ -6,6 +6,8 @@ export type AutoLoginConfiguration = {
   roleId: string;
   requestedRole: string;
   allowTakeover: boolean;
+  /** Additional device that does not occupy the role (e.g. the Multiview tile). */
+  secondary: boolean;
 };
 
 export function resolveAutoLoginConfiguration(
@@ -21,6 +23,9 @@ export function resolveAutoLoginConfiguration(
   const allowTakeover =
     params.get("autoTakeover") === "1" ||
     params.get("autoTakeover") === "true";
+
+  const secondary =
+    params.get("secondary") === "1" || params.get("secondary") === "true";
 
   let roleId = "";
   if (requestedRoleId) {
@@ -39,5 +44,6 @@ export function resolveAutoLoginConfiguration(
     roleId,
     requestedRole: requestedRoleId || requestedRoleName,
     allowTakeover,
+    secondary,
   };
 }

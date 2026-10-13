@@ -11,6 +11,9 @@ const MAX_MESSAGES = 120
 const FLASH_MAX_AGE_MS = 15 * 1000 // ältere Stream-Deck-Nachrichten (History) blinken nicht
 const RETRY_MS = 3000
 const REVOKED_RETRY_MS = 60 * 1000 // Rolle wurde übernommen: nicht sofort zurückholen
+// Kesher meldet neue oder umbenannte Rollen nicht von selbst (nur Änderungen an Party Lines):
+// darum Rollen und Linien regelmäßig neu holen
+const BOOTSTRAP_REFRESH_MS = 30 * 1000
 
 function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
   let ws = null
@@ -37,12 +40,44 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
       state,
       error,
       stationName: roleName,
-      messages: messages.slice(0, 60),
+      // Für die Auswahl der Rolle in der Kesher-Intercom-Kachel
+      roles: (bootstrap?.roles ?? []).map((r) => ({ id: r.id, name: r.name || r.id })),
+      // Party Lines mit ihren Hörern – zeigt im Multiview, was eine Rolle in Kesher hört
+      rooms: (bootstrap?.rooms ?? []).map((r) => ({
+        id: r.id,
+        name: r.name || r.id,
+        listeners: [...new Set([...(r.receiverRoleIds ?? []), ...(r.forcedListenRoleIds ?? [])])],
+        talkers: r.senderRoleIds ?? [], // wer dort schreiben/sprechen darf
+      })),
+      // audience: Rollen, die die Nachricht in Kesher sehen (null = alle) – für den Chat pro Nutzer
+      messages: messages.slice(0, 60).map((m) => ({ ...m, audience: audienceOf(m) })),
     }
   }
 
   function publish() {
     onUpdate(snapshot())
+  }
+
+  /** Wer hört auf einer Party Line mit (Empfänger und Zwangs-Mithörer)? */
+  function roomListeners(roomId) {
+    const room = bootstrap?.rooms?.find((r) => r.id === roomId)
+    return room ? [...(room.receiverRoleIds ?? []), ...(room.forcedListenRoleIds ?? [])] : []
+  }
+
+  /**
+   * Rollen, die eine Nachricht in Kesher sehen – nach den Rechten aus Kesher:
+   * Party Line = wer auf ihr empfängt, Broadcast = wer auf einer ihrer Linien empfängt,
+   * Global (und Direktnachrichten an den Chat-Monitor) = alle. Der Absender sieht sie immer.
+   */
+  function audienceOf(m) {
+    let roles = null
+    if (m.scope === 'room') roles = roomListeners(m.targetId)
+    else if (m.scope === 'broadcast') {
+      const group = bootstrap?.broadcastGroups?.find((g) => g.id === m.targetId)
+      roles = (group?.roomIds ?? []).flatMap(roomListeners)
+    }
+    if (!roles) return null
+    return [...new Set([...roles, m.fromRoleId].filter(Boolean))]
   }
 
   function setState(next, message = '') {
@@ -126,7 +161,9 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
       messageId: e.messageId || null,
       from: e.fromUser?.username || '',
       fromRole: roleName(e.fromUser?.roleId),
+      fromRoleId: e.fromUser?.roleId || '',
       scope: e.scope,
+      targetId: e.targetId || '',
       target: targetLabel(e),
       source: e.source || '',
       body,
@@ -141,7 +178,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
     // Stream-Deck-Nachricht blinkt wie ein Anruf (nicht bei History oder eigener Nachricht)
     if (e.source === 'companion' && !isSelf && Date.now() - entry.timestamp <= FLASH_MAX_AGE_MS) {
       const sender = entry.fromRole && entry.fromRole !== entry.from ? `${entry.from} · ${entry.fromRole}` : entry.from
-      onFlash({ type: 'chatFlash', title: `Stream Deck · ${entry.target}`, detail: `${sender}: ${body}`, key })
+      onFlash({ type: 'chatFlash', title: `Stream Deck · ${entry.target}`, detail: `${sender}: ${body}`, key, audience: audienceOf(entry) })
     }
   }
 
@@ -241,6 +278,21 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
     })
   }
 
+  /** Rollen und Party Lines nachladen; nur bei einer Änderung an alle verteilen. */
+  const shape = () => JSON.stringify([bootstrap?.roles, bootstrap?.rooms, bootstrap?.broadcastGroups])
+  setInterval(() => {
+    if (stopped || !token || state !== 'connected') return
+    const before = shape()
+    loadBootstrap()
+      .then(() => {
+        if (shape() === before) return
+        log('Kesher-Chat: Rollen oder Party Lines geändert – übernommen')
+        sendRoomMatrix()
+        publish()
+      })
+      .catch(() => {})
+  }, BOOTSTRAP_REFRESH_MS).unref?.()
+
   /** Nach einer Änderung der Einstellungen aufrufen. */
   function reconfigure() {
     const next = settings()
@@ -265,7 +317,66 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
     }
   }
 
-  return { start: connect, reconfigure, stop, snapshot }
+  /**
+   * Prüft eine Admin-PIN bei Kesher (dieselbe PIN wie im Kesher-Admin). Die dabei
+   * entstehende Kesher-Admin-Sitzung wird sofort wieder beendet.
+   */
+  async function verifyAdminPin(pin) {
+    const url = settings().url
+    if (!url) throw new Error('Kesher-Adresse fehlt (Einstellungen → Kesher-Chat)')
+    let res
+    try {
+      res = await fetch(`${url}/api/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: String(pin ?? '') }),
+        signal: AbortSignal.timeout(5000),
+      })
+    } catch {
+      throw new Error('Kesher ist nicht erreichbar – die PIN kann gerade nicht geprüft werden')
+    }
+    if (res.status === 403) return false
+    if (!res.ok) throw new Error(`Kesher antwortet mit HTTP ${res.status}`)
+    const adminToken = (await res.json().catch(() => ({})))?.token
+    if (adminToken) {
+      fetch(`${url}/api/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        signal: AbortSignal.timeout(3000),
+      }).catch(() => {})
+    }
+    return true
+  }
+
+  /**
+   * Freien Chat-Text als Rolle schicken (Kesher-Schnittstelle /api/companion/chat-text,
+   * nur vom Server selbst erreichbar). Ist die Rolle an einer Station online, erscheint
+   * die Nachricht von dieser Station, sonst von der Rolle. roomId leer = global.
+   */
+  /** alert: wichtige Meldung (Kesher und Multiview zeigen sie rot). */
+  async function sendText({ roleId, username, message, roomId, alert = false }) {
+    const url = settings().url
+    if (!url) throw new Error('Kesher-Adresse fehlt (Einstellungen → Kesher-Chat)')
+    let res
+    try {
+      res = await fetch(`${url}/api/companion/chat-text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roleId, username, message, roomId: roomId || '', ...(alert ? { alert: true } : {}) }),
+        signal: AbortSignal.timeout(5000),
+      })
+    } catch {
+      throw new Error('Kesher ist nicht erreichbar')
+    }
+    if (res.ok) return
+    const text = (await res.text().catch(() => '')).trim()
+    if (res.status === 404 && /page not found/i.test(text)) throw new Error('Kesher kennt das Schreiben noch nicht – Kesher muss aktualisiert werden')
+    if (res.status === 403 && /room/.test(text)) throw new Error('Deine Rolle darf auf dieser Party Line nicht schreiben')
+    if (res.status === 404) throw new Error('Rolle in Kesher nicht gefunden')
+    throw new Error(`Kesher: ${text || `HTTP ${res.status}`}`)
+  }
+
+  return { start: connect, reconfigure, stop, snapshot, verifyAdminPin, sendText }
 }
 
 module.exports = { createKesherChat }

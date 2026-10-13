@@ -2,7 +2,7 @@
 
 // nextMode: 'background' = nächste Folie, die einen Hintergrund startet (Video, Bild, PDF …),
 //           'direct' = direkt folgende Folie
-export const PP_DEFAULTS = { show: 'both', content: 'image', showName: true, nextMode: 'background', showControls: false, blankMode: 'clear' }
+export const PP_DEFAULTS = { show: 'both', content: 'image', showName: true, nextMode: 'background', showControls: false, blankMode: 'clearAll' }
 export const PLAYLIST_DEFAULTS = { thumbs: true, size: 1 }
 
 const SHOW_MODES = ['both', 'current', 'next', 'backgrounds', 'nextBackground']
@@ -219,6 +219,20 @@ export function createPlaylistView(options) {
   let itemsKey = ''
   let rows = []
   let lastActive = null
+  let lastTop = null
+
+  // Laufendes Lied mittig halten; am Anfang und Ende der Liste so weit es geht
+  function centerCurrent(smooth) {
+    const current = rows.find((r) => r.item.index === lastActive)?.row
+    if (!current || !list.clientHeight) return
+    const max = Math.max(0, list.scrollHeight - list.clientHeight)
+    const top = Math.round(Math.min(max, Math.max(0, current.offsetTop + current.offsetHeight / 2 - list.clientHeight / 2)))
+    if (top === lastTop) return
+    lastTop = top
+    list.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' })
+  }
+  // Nach Größenänderung der Kachel neu ausrichten (alte Browser ohne ResizeObserver: beim nächsten Update)
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => centerCurrent(false)).observe(list)
 
   return {
     el,
@@ -259,6 +273,7 @@ export function createPlaylistView(options) {
           return { row, item: it }
         })
         lastActive = null
+        lastTop = null
       }
 
       for (const { row, item } of rows) {
@@ -267,12 +282,11 @@ export function createPlaylistView(options) {
         row.classList.toggle('next', item.index === pl.nextIndex)
         row.classList.toggle('selected', item.index === pl.focusedIndex)
       }
-      // Laufendes Lied ins obere Drittel scrollen
-      if (pl.activeIndex !== lastActive) {
-        lastActive = pl.activeIndex
-        const current = rows.find((r) => r.item.index === pl.activeIndex)?.row
-        if (current) list.scrollTo({ top: Math.max(0, current.offsetTop - list.clientHeight / 3), behavior: 'smooth' })
-      }
+      const changed = pl.activeIndex !== lastActive
+      lastActive = pl.activeIndex
+      // Noch nicht ausgelegt (Kachel gerade erst eingefügt): im nächsten Frame
+      if (list.clientHeight) centerCurrent(changed)
+      else requestAnimationFrame(() => centerCurrent(false))
     },
   }
 }
@@ -281,11 +295,11 @@ export function createPlaylistView(options) {
 // Steuerung: Weiter, Zurück, Ausblenden – und die Prediger-Ansicht
 // ---------------------------------------------------------------------------
 
-export const PREACHER_DEFAULTS = { size: 1, blankMode: 'clear', showControls: true }
+export const PREACHER_DEFAULTS = { size: 1, blankMode: 'clearAll', showControls: true }
 
 export function preacherOptions(options) {
   const o = { ...PREACHER_DEFAULTS, ...options }
-  if (!['clear', 'clearAll'].includes(o.blankMode)) o.blankMode = 'clear'
+  if (!['clear', 'clearAll'].includes(o.blankMode)) o.blankMode = 'clearAll'
   return o
 }
 
@@ -301,13 +315,13 @@ async function sendControl(action, extra = {}) {
 }
 
 /** Ausgeblendet = keine Folie auf der Ausgabe, obwohl eine Präsentation läuft. */
-const isBlanked = (state) => Boolean(state?.presentation && state.layers && !state.layers.slide)
+const isBlanked = (state) => Boolean((state?.presentation || state?.held) && state.layers && !state.layers.slide)
 
 /**
  * Steuer-Leiste mit drei Tasten. interactive = false (Editor): nur Vorschau, löst nichts aus.
  * blankMode: 'clear' = nur Folie ausblenden, 'clearAll' = Folie und Hintergrund.
  */
-export function createControls({ interactive = false, blankMode = 'clear' } = {}) {
+export function createControls({ interactive = false, blankMode = 'clearAll' } = {}) {
   const el = document.createElement('div')
   el.className = `pp-controls${interactive ? ' interactive' : ''}`
   el.innerHTML = `
@@ -344,22 +358,23 @@ export function createControls({ interactive = false, blankMode = 'clear' } = {}
     const btn = e.target.closest('.pp-btn')
     if (!btn) return
     const action = btn.dataset.action
-    if (action === 'blank') run(isBlanked(state) ? 'restore' : blankMode === 'clearAll' ? 'clearAll' : 'clear')
+    // Ausblenden schaltet nicht um: es macht ProPresenter immer blank. Zurück geht es mit Weiter/Zurück
+    // oder durch Antippen einer Folie.
+    if (action === 'blank') run(blankMode === 'clear' ? 'clear' : 'clearAll')
     else run(action)
   })
 
   return {
     el,
     run,
-    /** Wie ein Tastendruck: 'next', 'previous' oder 'blank' (Aus-/Einblenden). */
+    /** Wie ein Tastendruck: 'next', 'previous' oder 'blank' (Ausblenden). */
     press(action) {
-      if (action === 'blank') run(isBlanked(state) ? 'restore' : blankMode === 'clearAll' ? 'clearAll' : 'clear')
+      if (action === 'blank') run(blankMode === 'clear' ? 'clear' : 'clearAll')
       else run(action)
     },
     update(next) {
       state = next
       const blanked = isBlanked(state)
-      blank.textContent = blanked ? 'Einblenden' : 'Ausblenden'
       blank.classList.toggle('active', blanked)
       el.classList.toggle('disabled', !state?.connected)
     },
@@ -412,8 +427,10 @@ export function createPreacherView(options, { interactive = false } = {}) {
   return {
     el,
     press: (action) => controls.press(action),
-    update(state) {
-      controls.update(state)
+    update(live) {
+      controls.update(live)
+      // Ausgeblendet: Folien der zuletzt laufenden Präsentation weiter zeigen
+      const state = live?.connected && !live.presentation && live.held ? { ...live, ...live.held } : live
       const p = state?.connected ? state.presentation : null
       offline.hidden = Boolean(p)
       grid.hidden = !p

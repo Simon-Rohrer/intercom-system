@@ -3428,11 +3428,111 @@ func (s *Server) resolveButtonLabel(ctx context.Context, button StreamDeckButton
 	return fallbackButtonLabel(action.Type), ""
 }
 
+// CompanionChatTextRequest is free chat text sent as a role by a service on this server.
+type CompanionChatTextRequest struct {
+	RoleID   string `json:"roleId"`
+	Username string `json:"username"`
+	Message  string `json:"message"`
+	RoomID   string `json:"roomId"`
+	// Alert marks the message as important (e.g. a Beamer message waiting in
+	// ProPresenter); clients show it in red.
+	Alert bool `json:"alert"`
+}
+
+const companionChatTextMaxRunes = 500
+
+// handleCompanionChatText lets a trusted service on this server (the multiview's chat
+// window) post free text as a role - like a Stream Deck chat button, but with any text.
+// The role's online station is the sender, otherwise the role itself. Party-line
+// messages need the role's talk permission. Only direct requests from this machine
+// are accepted (never through the HTTPS reverse proxy), plus the Companion secret
+// when one is configured.
+func (s *Server) handleCompanionChatText(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !isDirectLocalRequest(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if !s.requireCompanionSecret(w, r) {
+		return
+	}
+	var req CompanionChatTextRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	roleID := strings.TrimSpace(req.RoleID)
+	message := strings.TrimSpace(req.Message)
+	if roleID == "" || message == "" {
+		http.Error(w, "roleId and message are required", http.StatusBadRequest)
+		return
+	}
+	if len([]rune(message)) > companionChatTextMaxRunes {
+		http.Error(w, "message too long", http.StatusBadRequest)
+		return
+	}
+	known, err := s.store.RoleExists(r.Context(), roleID)
+	if err != nil {
+		http.Error(w, "role lookup failed", http.StatusInternalServerError)
+		return
+	}
+	if !known {
+		http.Error(w, "unknown roleId", http.StatusNotFound)
+		return
+	}
+	roomID := strings.TrimSpace(req.RoomID)
+	if roomID != "" {
+		allowed, err := s.store.RoomAllowsSenderRole(r.Context(), roomID, roleID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if !allowed {
+			http.Error(w, "not allowed to chat in room", http.StatusForbidden)
+			return
+		}
+	}
+	action := StreamDeckButtonAction{Type: StreamDeckActionTypeChatMessage, Message: message, RoomID: roomID}
+	// Own source: a normal chat message, not a Stream Deck call that alerts the stations.
+	source := "multiview"
+	if req.Alert {
+		source = "multiview-alert"
+	}
+	if err := s.sendRoleChatMessage(r.Context(), roleID, req.Username, action, source); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// isDirectLocalRequest reports whether a request comes straight from this machine:
+// no reverse-proxy headers (Caddy always adds X-Forwarded-For) and a loopback or
+// private source address (the Docker bridge when the port is published on 127.0.0.1).
+func isDirectLocalRequest(r *http.Request) bool {
+	if r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("X-Real-Ip") != "" || r.Header.Get("Forwarded") != "" {
+		return false
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate())
+}
+
 // sendCompanionChatMessage posts the preset text of a Stream Deck chat button
 // to the global chat or a party line. The role's online station is the sender
 // (shown with its username and role); without one the role itself is shown.
 // Callers check the party-line permission.
 func (s *Server) sendCompanionChatMessage(ctx context.Context, roleID, username string, action StreamDeckButtonAction) error {
+	return s.sendRoleChatMessage(ctx, roleID, username, action, "companion")
+}
+
+// sendRoleChatMessage is sendCompanionChatMessage with an explicit event source.
+func (s *Server) sendRoleChatMessage(ctx context.Context, roleID, username string, action StreamDeckButtonAction, source string) error {
 	body := strings.TrimSpace(action.Message)
 	if body == "" {
 		return errors.New("message is required")
@@ -3444,7 +3544,7 @@ func (s *Server) sendCompanionChatMessage(ctx context.Context, roleID, username 
 		TargetID:   "global",
 		Body:       body,
 		MessageID:  newID(),
-		Source:     "companion",
+		Source:     source,
 	}
 	if roomID != "" {
 		e.Scope = "room"
@@ -3805,6 +3905,7 @@ func NewServer(cfg Config) (*Server, error) {
 	mux.HandleFunc("/api/admin/routing-matrix", s.withAuth(s.handleAdminRoutingMatrix))
 	mux.HandleFunc("/api/admin/raspberry-pis", s.withAuth(s.handleAdminRaspberryPis))
 	mux.HandleFunc("/api/companion/discovery", s.handleCompanionDiscovery)
+	mux.HandleFunc("/api/companion/chat-text", s.handleCompanionChatText)
 	mux.HandleFunc("/api/companion/ws", s.handleCompanionWS)
 	mux.HandleFunc("/api/companion/image-stream", s.HandleImageStreamWebSocket)
 	mux.HandleFunc("/api/image-stream", s.HandleImageStreamWebSocket)
@@ -4403,7 +4504,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
-	if existing, conflict := s.sessions.LatestForRole(req.RoleID); conflict {
+	// Secondary devices never conflict; a real device only conflicts with another real one.
+	if existing, conflict := s.sessions.LatestForRole(req.RoleID); conflict && !req.Secondary && !existing.Secondary {
 		s.writeJSON(w, http.StatusConflict, LoginConflictResponse{
 			RequiresTakeover: true,
 			ConflictRoleID:   req.RoleID,
@@ -4421,7 +4523,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, err)
 		return
 	}
-	session := s.createOperatorSession(user)
+	session := s.createOperatorSession(user, req.Secondary)
 	s.writeJSON(w, http.StatusOK, LoginResponse{
 		Token:                session.Token,
 		User:                 user,
@@ -4437,8 +4539,13 @@ const operatorSessionConnectGrace = 2 * time.Minute
 // client opens its websocket in time (handleWS cancels the pending logout).
 // Without this, a login whose window is closed right away kept the role
 // occupied until the session TTL.
-func (s *Server) createOperatorSession(user User) Session {
-	session := s.sessions.Create(user)
+func (s *Server) createOperatorSession(user User, secondary bool) Session {
+	var session Session
+	if secondary {
+		session = s.sessions.CreateSecondary(user)
+	} else {
+		session = s.sessions.Create(user)
+	}
 	grace := operatorSessionConnectGrace
 	if s.cfg.DisconnectLogoutDelay > grace {
 		grace = s.cfg.DisconnectLogoutDelay
@@ -4516,7 +4623,7 @@ func (s *Server) handleLoginTakeover(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, err)
 		return
 	}
-	session := s.createOperatorSession(user)
+	session := s.createOperatorSession(user, false)
 	s.writeJSON(w, http.StatusOK, LoginResponse{
 		Token:                session.Token,
 		User:                 user,

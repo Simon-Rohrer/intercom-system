@@ -1,0 +1,529 @@
+// Fernbedienung fürs Handy – wie eine kleine App mit Leiste unten:
+//   Bildschirme: die eigenen Multiviews umschalten (welches Layout läuft)
+//   Chat:        Kesher-Chat lesen und als die angemeldete Rolle schreiben
+//   Bühne:       Bühnennachricht (Stage Display) in ProPresenter senden/löschen
+//   Beamer:      Meldung für die Gemeinde in ProPresenter vorbereiten – anzeigen tut sie der Bediener
+//   Monitore:    (nur Admin) welcher Multiview auf welchem Monitor am Server läuft
+import { connect } from './common.js'
+import { adoptServerPrefs, applyPrefs, currentPrefs, nextTheme, setPrefs, themeIcon } from './theme.js'
+import { visibleOutputs, visibleLayouts, chatFor } from './rights.js'
+import { createComposer } from './chat-compose.js'
+
+const $ = (sel) => document.querySelector(sel)
+const $$ = (sel) => [...document.querySelectorAll(sel)]
+const esc = (s) =>
+  String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+
+const QUICK_MESSAGES = ['Noch 5 Minuten', 'Noch 2 Minuten', 'Bitte zum Ende kommen', 'Lauter sprechen', 'Mikrofon näher an den Mund']
+
+let user = { admin: false, open: false, name: '', roleId: '' } // wird in start() gesetzt
+let config = null
+let screens = [] // erkannte Anschlüsse
+let stage = { message: '' }
+let propresenter = { connected: false }
+let chat = { state: 'connecting', messages: [] }
+let composer = null
+let online = true
+const previews = new Set(readJson(sessionStorage, 'mv.remote.previews', []))
+let tab = readJson(localStorage, 'mv.remote.tab', 'outputs')
+let lastSeenChat = readJson(localStorage, 'mv.remote.chatSeen', 0) // Zeitstempel der neuesten gelesenen Nachricht
+
+function readJson(store, key, fallback) {
+  try {
+    const v = store.getItem(key)
+    return v == null ? fallback : JSON.parse(v)
+  } catch {
+    return fallback
+  }
+}
+
+function writeJson(store, key, value) {
+  try {
+    store.setItem(key, JSON.stringify(value))
+  } catch {
+    // privater Modus
+  }
+}
+
+start()
+
+/** Anmeldung klären (sonst zur Anmeldeseite), dann Kopf zeigen und verbinden. */
+async function start() {
+  const me = await fetch('/api/me', { cache: 'no-store' })
+    .then((r) => r.json())
+    .catch(() => null)
+  if (me?.access?.enabled && !me.user) return location.replace('/login.html?next=/remote.html')
+  user = me?.user ?? { admin: true, open: true, name: '', roleId: 'admin' }
+  if (!user.open) adoptServerPrefs(me.prefs)
+  else applyPrefs(currentPrefs())
+
+  $('#avatar').textContent = user.open ? 'MV' : initials(user.name)
+  $('#user-name').textContent = user.open ? 'Fernbedienung' : user.name
+  $('#user-role').textContent = user.open ? 'Zugang offen' : user.roleName
+  $('#logout-btn').hidden = user.open
+  $('#editor-link').hidden = !user.admin
+  renderTheme()
+  // Chat schreiben nur angemeldet – dann als die eigene Rolle (Admin wählt eine)
+  if (!user.open) {
+    composer = createComposer(user)
+    $('#chat-compose').append(composer.el)
+  } else {
+    $('#chat-compose').innerHTML = '<p class="rm-hint">Zum Schreiben bitte anmelden.</p>'
+  }
+  $('#message-quick').innerHTML = QUICK_MESSAGES.map((t) => `<button type="button" data-quick="${esc(t)}">${esc(t)}</button>`).join('')
+
+  connect(
+    (msg) => {
+      if (msg.type === 'config') {
+        config = msg.config
+        render()
+      } else if (msg.type === 'screens') {
+        screens = msg.screens
+        renderScreens()
+      } else if (msg.type === 'ppstage') {
+        stage = msg
+        renderMessage()
+        renderBeamer()
+      } else if (msg.type === 'propresenter') {
+        propresenter = msg
+        renderMessage()
+      } else if (msg.type === 'chat') {
+        chat = msg
+        renderChat()
+      } else if (msg.type === 'session_revoked') {
+        location.replace('/login.html?abgemeldet=1&next=/remote.html')
+      }
+    },
+    (isOnline) => {
+      online = isOnline
+      $('#offline').hidden = online
+      $('#live-dot').classList.toggle('off', !online)
+    },
+  )
+}
+
+$('#logout-btn').addEventListener('click', async () => {
+  await fetch('/api/logout', { method: 'POST' }).catch(() => {})
+  location.replace('/login.html?next=/remote.html')
+})
+function renderTheme() {
+  $('#theme-btn').innerHTML = themeIcon(currentPrefs().theme)
+}
+$('#theme-btn').addEventListener('click', async () => {
+  await setPrefs({ theme: nextTheme() }, { server: !user.open })
+  renderTheme()
+})
+
+function initials(name) {
+  return (
+    String(name || '?')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0]?.toUpperCase() ?? '')
+      .join('') || '?'
+  )
+}
+
+function toast(text, kind = '') {
+  const el = $('#toast')
+  el.textContent = text
+  el.className = `rm-toast ${kind}`
+  el.hidden = false
+  clearTimeout(toast.timer)
+  toast.timer = setTimeout(() => (el.hidden = true), 2200)
+}
+
+function render() {
+  renderOutputs()
+  renderScreens()
+  renderMessage()
+  renderTabs()
+  document.body.classList.remove('booting')
+}
+
+// --- Leiste unten ------------------------------------------------------------------
+
+/** Welche Bereiche es für diesen Nutzer gibt. */
+function availableTabs() {
+  return [
+    'outputs',
+    'chat',
+    config?.propresenter?.host ? 'stage' : null,
+    config?.propresenter?.host ? 'beamer' : null,
+    user.admin && screenIds().length ? 'screens' : null,
+  ].filter(Boolean)
+}
+
+function renderTabs() {
+  const tabs = availableTabs()
+  if (!tabs.includes(tab)) tab = tabs[0]
+  for (const btn of $$('#tabs [data-tab]')) {
+    btn.hidden = !tabs.includes(btn.dataset.tab)
+    btn.classList.toggle('active', btn.dataset.tab === tab)
+    btn.setAttribute('aria-current', btn.dataset.tab === tab ? 'page' : 'false')
+  }
+  for (const panel of $$('[data-panel]')) panel.hidden = panel.dataset.panel !== tab
+  document.body.dataset.tab = tab
+  if (tab === 'chat') markChatSeen()
+  updateBadges()
+}
+
+$('#tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-tab]')
+  if (!btn || btn.dataset.tab === tab) return
+  tab = btn.dataset.tab
+  writeJson(localStorage, 'mv.remote.tab', tab)
+  renderTabs()
+  window.scrollTo(0, 0)
+  if (tab === 'chat') scrollChatToEnd()
+})
+
+function updateBadges() {
+  const unread = tab === 'chat' ? 0 : myMessages().filter((m) => m.timestamp > lastSeenChat).length
+  $('#chat-badge').hidden = !unread
+  $('#chat-badge').textContent = unread > 9 ? '9+' : String(unread)
+  $('#stage-badge').hidden = !(tab !== 'stage' && stage.message)
+  $('#beamer-badge').hidden = !(tab !== 'beamer' && (stage.requests ?? []).some((r) => r.status === 'wartet' || r.status === 'angezeigt'))
+}
+
+// --- Bildschirme ---------------------------------------------------------------------
+
+/** Kleine Skizze eines Layouts: die Kacheln als Kästchen, eingefärbt nach Art. */
+function layoutSketch(layout) {
+  if (!layout?.tiles?.length || !layout.cols || !layout.rows) return '<span class="rm-sketch empty"></span>'
+  const boxes = layout.tiles
+    .map((t) => {
+      const style = `left:${(t.x / layout.cols) * 100}%;top:${(t.y / layout.rows) * 100}%;width:${(t.w / layout.cols) * 100}%;height:${(t.h / layout.rows) * 100}%`
+      return `<i class="k-${esc(t.kind || 'source')}" style="${style}"></i>`
+    })
+    .join('')
+  return `<span class="rm-sketch">${boxes}</span>`
+}
+
+function renderOutputs() {
+  const outputs = visibleOutputs(config, user)
+  const layouts = visibleLayouts(config, user)
+  const box = $('#outputs')
+  // Offene Vorschauen (iframes) behalten, damit sie nicht bei jeder Änderung neu laden
+  const keep = new Map([...box.querySelectorAll('.rm-preview')].map((el) => [el.dataset.id, el]))
+  box.replaceChildren()
+  if (!outputs.length) {
+    box.innerHTML = `<div class="rm-empty"><b>Noch kein Bildschirm freigegeben</b>Der Admin legt unter „Benutzer &amp; Rechte“ fest, welche Bildschirme deine Rolle bedienen darf.</div>`
+    return
+  }
+  for (const output of outputs) {
+    const current = config.layouts.find((l) => l.id === output.layoutId)
+    const card = document.createElement('article')
+    card.className = 'rm-card'
+    card.dataset.id = output.id
+    card.innerHTML = `
+      <div class="rm-card-head">
+        <div class="rm-card-title">
+          <h2>${esc(output.name)}</h2>
+          <span class="rm-status ${current ? 'on' : ''}">${current ? `<i></i>${esc(current.name)}` : 'Aus'}</span>
+        </div>
+        <button class="rm-pill ${previews.has(output.id) ? 'active' : ''}" data-preview aria-pressed="${previews.has(output.id)}">
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          Vorschau
+        </button>
+      </div>
+      <div class="rm-layouts">
+        ${layouts
+          .map(
+            (l) => `<button class="rm-layout ${l.id === output.layoutId ? 'active' : ''}" data-layout="${esc(l.id)}">
+              ${layoutSketch(l)}<span>${esc(l.name)}</span></button>`,
+          )
+          .join('')}
+        <button class="rm-layout off ${output.layoutId ? '' : 'active'}" data-layout="">
+          <span class="rm-sketch empty"><svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg></span><span>Aus</span>
+        </button>
+      </div>`
+    if (previews.has(output.id)) {
+      const preview =
+        keep.get(output.id) ??
+        Object.assign(document.createElement('div'), {
+          className: 'rm-preview',
+          innerHTML: `<iframe src="/output.html?id=${encodeURIComponent(output.id)}&embed=1" title="${esc(output.name)}"></iframe>`,
+        })
+      preview.dataset.id = output.id
+      card.querySelector('.rm-card-head').after(preview)
+      previewScaler.observe(preview)
+    }
+    box.append(card)
+  }
+}
+
+// Vorschau in Monitorgröße rendern und verkleinern – sonst wäre die Schrift im Verhältnis
+// zu den Kacheln viel zu groß (der Multiview rechnet Schriftgrößen mit Mindestwerten).
+const PREVIEW_WIDTH = 1920
+const scalePreview = (el) => el.style.setProperty('--rm-scale', String(el.clientWidth / PREVIEW_WIDTH))
+// Ältere iPhones (iOS 12) kennen ResizeObserver nicht – dann beim Drehen/Ändern der Größe neu rechnen
+const previewScaler =
+  typeof ResizeObserver === 'function'
+    ? new ResizeObserver((entries) => entries.forEach((entry) => scalePreview(entry.target)))
+    : {
+        observe: (el) => requestAnimationFrame(() => scalePreview(el)),
+      }
+if (typeof ResizeObserver !== 'function')
+  window.addEventListener('resize', () => document.querySelectorAll('.rm-preview').forEach(scalePreview))
+
+$('#outputs').addEventListener('click', async (e) => {
+  const card = e.target.closest('.rm-card')
+  if (!card) return
+  const id = card.dataset.id
+  if (e.target.closest('[data-preview]')) {
+    if (previews.has(id)) previews.delete(id)
+    else previews.add(id)
+    writeJson(sessionStorage, 'mv.remote.previews', [...previews])
+    return renderOutputs()
+  }
+  const btn = e.target.closest('[data-layout]')
+  if (!btn || btn.classList.contains('active')) return
+  btn.classList.add('busy')
+  const res = await fetch(`/api/me/output/${encodeURIComponent(id)}/layout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ layoutId: btn.dataset.layout || null }),
+  }).catch(() => null)
+  btn.classList.remove('busy')
+  if (res?.status === 401) return location.replace('/login.html?next=/remote.html')
+  if (!res?.ok) return toast((await res?.json().catch(() => null))?.error || 'Umschalten fehlgeschlagen', 'error')
+  navigator.vibrate?.(15)
+})
+
+// --- Monitore am Server (Admin) ------------------------------------------------------
+
+function connectorLabel(id) {
+  const m = /^([A-Za-z]+)(?:-[A-Z])?-(\d+)$/.exec(id)
+  if (!m) return id
+  return `${{ DP: 'DisplayPort', eDP: 'Laptop-Display' }[m[1]] ?? m[1]} ${m[2]}`
+}
+
+function screenIds() {
+  if (!config) return []
+  return [...new Set([...screens.map((s) => s.id), ...(config.screens ?? []).map((s) => s.id)])]
+}
+
+function renderScreens() {
+  if (!config || !user.admin) return
+  renderTabs()
+  $('#screens').innerHTML = screenIds()
+    .map((id) => {
+      const saved = config.screens?.find((s) => s.id === id)
+      const detected = screens.find((s) => s.id === id)
+      return `<article class="rm-card" data-screen="${esc(id)}">
+        <div class="rm-card-head"><div class="rm-card-title"><h2>${esc(saved?.name || connectorLabel(id))}</h2>
+          <span class="rm-status ${detected?.connected ? 'on' : ''}">${detected?.connected ? '<i></i>Monitor angeschlossen' : 'kein Monitor'}</span></div></div>
+        <div class="rm-segments">
+          ${config.outputs
+            .map((o, i) => `<button class="${o.id === saved?.outputId ? 'active' : ''}" data-output="${i + 1}">${esc(o.name)}</button>`)
+            .join('')}
+          <button class="off ${saved?.outputId ? '' : 'active'}" data-output="aus">Aus</button>
+        </div>
+      </article>`
+    })
+    .join('')
+}
+
+$('#screens').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-output]')
+  const card = e.target.closest('[data-screen]')
+  if (!btn || !card || btn.classList.contains('active')) return
+  btn.classList.add('busy')
+  const res = await fetch(`/api/screen/${encodeURIComponent(card.dataset.screen)}/output/${btn.dataset.output}`, { method: 'POST' }).catch(
+    () => null,
+  )
+  btn.classList.remove('busy')
+  if (!res?.ok) toast('Umschalten fehlgeschlagen', 'error')
+  else navigator.vibrate?.(15)
+})
+
+// --- Chat ----------------------------------------------------------------------------
+
+const ownRole = () => (user.admin || user.open ? '' : user.roleId)
+const myMessages = () => chatFor(chat, ownRole()).messages ?? []
+
+function markChatSeen() {
+  const newest = myMessages()[0]?.timestamp ?? 0
+  if (newest > lastSeenChat) {
+    lastSeenChat = newest
+    writeJson(localStorage, 'mv.remote.chatSeen', newest)
+  }
+}
+
+function scrollChatToEnd() {
+  requestAnimationFrame(() => window.scrollTo(0, document.documentElement.scrollHeight))
+}
+
+const time = (ms) => new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+const day = (ms) => new Date(ms).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
+
+function renderChat() {
+  composer?.update(chat)
+  const own = ownRole()
+  // Server liefert die neueste zuerst – im Messenger steht sie unten
+  const messages = myMessages().slice(0, 40).reverse()
+  const state = { connected: '', connecting: 'verbindet …' }[chat.state] ?? 'getrennt'
+  $('#chat-state').textContent = state
+  $('#chat-state').hidden = !state
+  const nearEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 80
+  let lastDay = ''
+  let lastFrom = ''
+  $('#chat-list').innerHTML =
+    messages
+      .map((m) => {
+        const mine = own ? m.fromRoleId === own : false
+        const d = day(m.timestamp)
+        const dayLine = d !== lastDay ? `<li class="rm-day">${esc(d)}</li>` : ''
+        const sameSender = d === lastDay && lastFrom === `${m.from}|${m.fromRoleId}`
+        lastDay = d
+        lastFrom = `${m.from}|${m.fromRoleId}`
+        const who = mine ? '' : `<b>${esc(m.from)}</b>${m.fromRole && m.fromRole !== m.from ? ` · ${esc(m.fromRole)}` : ''}`
+        return `${dayLine}<li class="rm-bubble ${mine ? 'mine' : ''} ${sameSender ? 'cont' : ''} ${m.source === 'multiview-alert' ? 'alert' : ''}">
+          ${who && !sameSender ? `<div class="rm-bubble-from">${who}</div>` : ''}
+          <div class="rm-bubble-body">${esc(m.body)}</div>
+          <div class="rm-bubble-meta"><span class="rm-target">${esc(m.target)}</span>${esc(time(m.timestamp))}</div>
+        </li>`
+      })
+      .join('') || '<li class="rm-empty"><b>Noch keine Nachrichten</b>Hier erscheint der Kesher-Chat deiner Rolle.</li>'
+  if (tab === 'chat') {
+    markChatSeen()
+    if (nearEnd) scrollChatToEnd()
+  }
+  updateBadges()
+}
+
+// --- Bühnennachricht -------------------------------------------------------------------
+
+function renderMessage() {
+  if (!config) return
+  const card = $('#stage-card')
+  const live = propresenter.connected && stage.message
+  card.classList.toggle('live', Boolean(live))
+  card.classList.toggle('offline', !propresenter.connected)
+  $('#stage-label').textContent = !propresenter.connected ? 'ProPresenter nicht verbunden' : live ? 'Gerade auf der Bühne' : 'Keine Nachricht'
+  $('#message-current').textContent = live ? stage.message : propresenter.connected ? 'Die Bühne zeigt gerade keine Nachricht.' : 'Senden geht erst wieder, wenn ProPresenter erreichbar ist.'
+  $('#message-clear').hidden = !live
+  renderTabs()
+}
+
+async function sendMessage(text) {
+  const res = await fetch(text ? '/api/propresenter/stage-message' : '/api/propresenter/stage-message/clear', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  }).catch(() => null)
+  const data = await res?.json().catch(() => ({}))
+  if (!res?.ok || !data?.ok) return toast(data?.error || 'Senden fehlgeschlagen', 'error')
+  navigator.vibrate?.(15)
+  toast(text ? 'Auf der Bühne ✓' : 'Nachricht gelöscht', 'ok')
+}
+
+$('#message-form').addEventListener('submit', (e) => {
+  e.preventDefault()
+  const text = $('#message-text').value.trim()
+  if (!text) return
+  sendMessage(text)
+  $('#message-text').value = ''
+  $('#message-text').blur()
+})
+$('#message-clear').addEventListener('click', () => sendMessage(''))
+$('#message-quick').addEventListener('click', (e) => {
+  // Nur eintragen, gesendet wird mit dem Pfeil – ein versehentliches Antippen landet nicht auf der Bühne
+  const btn = e.target.closest('[data-quick]')
+  if (!btn) return
+  $('#message-text').value = btn.dataset.quick
+  $('#message-form').classList.remove('ready')
+  void $('#message-form').offsetWidth
+  $('#message-form').classList.add('ready')
+})
+$('#message-text').addEventListener('input', () => $('#message-form').classList.remove('ready'))
+
+// --- Beamer-Meldungen -------------------------------------------------------------------
+
+const REQUEST_STATUS = {
+  wartet: ['wait', 'Wartet auf ProPresenter'],
+  angezeigt: ['live', 'Auf dem Beamer'],
+  beendet: ['done', 'Beendet'],
+  ersetzt: ['done', 'Ersetzt'],
+}
+let openTemplate = null // aufgeklappte Vorlage (uuid, '' = eigene Meldung)
+let templatesKey = ''
+
+function renderBeamer() {
+  const requests = (stage.requests ?? []).filter((r) => r.status !== 'ersetzt').slice(0, 4)
+  $('#beamer-requests').innerHTML = requests
+    .map((r) => {
+      const [kind, label] = REQUEST_STATUS[r.status] ?? ['done', r.status]
+      return `<div class="rm-request ${kind}">
+        <span class="rm-request-state">${esc(label)}</span>
+        <div class="rm-request-text">${esc(r.text)}</div>
+        <div class="rm-request-meta">${esc(r.name)}${r.from ? ` · ${esc(r.from)}` : ''} · ${esc(time(r.at))}</div>
+      </div>`
+    })
+    .join('')
+
+  // Vorlagen nur neu aufbauen, wenn sie sich ändern – sonst gingen Eingaben verloren
+  const templates = (stage.templates ?? []).filter((t) => !t.free)
+  const key = JSON.stringify([templates, openTemplate, propresenter.connected])
+  if (key === templatesKey) return
+  templatesKey = key
+  const card = (id, name, preview, fields) => {
+    const open = openTemplate === id
+    return `<div class="rm-template ${open ? 'open' : ''}" data-template="${esc(id)}">
+      <button type="button" class="rm-template-head" data-toggle>
+        <b>${esc(name)}</b><span>${esc(preview)}</span>
+      </button>
+      ${
+        open
+          ? `<form class="rm-template-form" data-send>
+              ${fields
+                .map(
+                  (f) => `<label><span>${esc(f)}</span><input type="text" name="${esc(f)}" maxlength="300" autocomplete="off" required></label>`,
+                )
+                .join('')}
+              <button type="submit" class="rm-primary">An ProPresenter schicken</button>
+            </form>`
+          : ''
+      }
+    </div>`
+  }
+  $('#beamer-templates').innerHTML = !propresenter.connected
+    ? '<div class="rm-empty"><b>ProPresenter nicht verbunden</b>Vorbereiten geht erst wieder, wenn ProPresenter erreichbar ist.</div>'
+    : [card('', 'Eigene Meldung', 'Freier Text', ['Text']), ...templates.map((t) => card(t.uuid, t.name, t.text, t.fields))].join('')
+  $('#beamer-templates .rm-template.open input')?.focus()
+}
+
+$('#beamer-templates').addEventListener('click', (e) => {
+  const head = e.target.closest('[data-toggle]')
+  if (!head) return
+  const id = head.closest('[data-template]').dataset.template
+  openTemplate = openTemplate === id ? null : id
+  renderBeamer()
+})
+
+$('#beamer-templates').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const form = e.target.closest('[data-send]')
+  const id = form.closest('[data-template]').dataset.template
+  const values = Object.fromEntries(new FormData(form))
+  const body = id ? { uuid: id, fields: values } : { text: values.Text }
+  const button = form.querySelector('button')
+  button.disabled = true
+  const res = await fetch('/api/propresenter/announce', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).catch(() => null)
+  const data = await res?.json().catch(() => ({}))
+  button.disabled = false
+  if (res?.status === 401) return location.replace('/login.html?next=/remote.html')
+  if (!res?.ok || !data?.ok) return toast(data?.error || 'Vorbereiten fehlgeschlagen', 'error')
+  navigator.vibrate?.(15)
+  openTemplate = null
+  templatesKey = ''
+  renderBeamer()
+  window.scrollTo(0, 0)
+  toast(data.notified ? 'Vorbereitet – ProPresenter weiß Bescheid' : 'In ProPresenter vorbereitet', 'ok')
+})

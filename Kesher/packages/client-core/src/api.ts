@@ -570,11 +570,12 @@ export async function getPublicBootstrap(): Promise<PublicBootstrap> {
 export async function login(
   username: string,
   roleId: string,
+  secondary = false,
 ): Promise<LoginSuccess | LoginConflict> {
   const res = await fetch(apiUrl("/api/login"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, roleId }),
+    body: JSON.stringify(secondary ? { username, roleId, secondary } : { username, roleId }),
   });
   if (res.status === 409) {
     return (await res.json()) as LoginConflict;

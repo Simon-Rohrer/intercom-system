@@ -251,3 +251,47 @@
   .kchat-flash::before { animation: kchat-border-steady 4s linear forwards; }
 }
 @keyframes kchat-border-steady { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Chat-Kachel mit Eingabefeld (angemeldet am Monitor): Chat oben, Schreiben unten */
+.chat-with-compose { position: absolute; inset: 0; display: flex; flex-direction: column; background: #090b0e; pointer-events: auto; }
+.chat-with-compose > .kchat { position: relative; inset: auto; flex: 1; min-height: 0; }
+.chat-with-compose .chat-compose {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  background: #0f1217;
+  border-top: 1px solid #262c35;
+  font-family: "Barlow", "Segoe UI", system-ui, sans-serif;
+  font-size: clamp(12px, 2.2cqmin, 18px);
+}
+.chat-with-compose .chat-compose select,
+.chat-with-compose .chat-compose input,
+.chat-with-compose .chat-compose button {
+  height: 2.6em;
+  border-radius: 6px;
+  border: 1px solid #3a4250;
+  background: #090b0e;
+  color: #eceff3;
+  font: inherit;
+  padding: 0 0.7em;
+}
+.chat-with-compose .chat-compose input { flex: 1 1 10em; min-width: 0; }
+.chat-with-compose .chat-compose select { max-width: 40%; }
+.chat-with-compose .chat-compose button { background: #00d1ff; border-color: #00d1ff; color: #001018; font-weight: 700; cursor: pointer; }
+.chat-with-compose .chat-compose.busy button { opacity: 0.6; }
+.chat-with-compose .chat-compose.offline { opacity: 0.6; }
+.chat-with-compose .chat-compose-status { flex-basis: 100%; font-size: 0.85em; color: #a9b2be; }
+.chat-with-compose .chat-compose-status:empty { display: none; }
+.chat-with-compose .chat-compose-status.error { color: #ff5a4f; }
+.chat-with-compose .chat-compose-status.ok { color: #30d158; }
+.chat-compose [hidden] { display: none !important; }
+
+/* Wichtige Meldung aus dem Multiview (Bühnennachricht, Beamer-Meldung): rot wie in Kesher */
+.kchat-msg.is-alert {
+  border-color: #ff5a4f;
+  border-left-color: #ff5a4f;
+  background: color-mix(in srgb, #ff5a4f 20%, #1d222a);
+}
+.kchat-msg.is-alert .kchat-text { font-weight: 600; }
+.kchat-target.is-alert { background: #ff5a4f; border-color: #ff5a4f; color: #fff; }

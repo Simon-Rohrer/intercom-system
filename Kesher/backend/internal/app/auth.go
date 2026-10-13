@@ -25,6 +25,16 @@ func NewSessionManager(ttl time.Duration) *SessionManager {
 }
 
 func (m *SessionManager) Create(user User) Session {
+	return m.create(user, false)
+}
+
+// CreateSecondary creates a session for an additional device of the role
+// (see Session.Secondary).
+func (m *SessionManager) CreateSecondary(user User) Session {
+	return m.create(user, true)
+}
+
+func (m *SessionManager) create(user User, secondary bool) Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	token := uuid.NewString()
@@ -34,6 +44,7 @@ func (m *SessionManager) Create(user User) Session {
 		Username:  user.Username,
 		RoleID:    user.RoleID,
 		ExpiresAt: time.Now().Add(m.ttl),
+		Secondary: secondary,
 	}
 	m.sessions[token] = s
 	return s
@@ -110,7 +121,11 @@ func (m *SessionManager) LatestForRole(roleID string) (Session, bool) {
 		if session.RoleID != roleID {
 			continue
 		}
-		if !found || session.ExpiresAt.After(selected.ExpiresAt) {
+		// A real device of the role always wins over secondary devices.
+		better := !found ||
+			(selected.Secondary && !session.Secondary) ||
+			(selected.Secondary == session.Secondary && session.ExpiresAt.After(selected.ExpiresAt))
+		if better {
 			selected = session
 			found = true
 		}
@@ -133,7 +148,7 @@ func (m *SessionManager) ActiveRoleIDs() []string {
 			continue
 		}
 		roleID := strings.TrimSpace(session.RoleID)
-		if roleID != "" {
+		if roleID != "" && !session.Secondary {
 			roleIDs[roleID] = struct{}{}
 		}
 	}
@@ -156,7 +171,7 @@ func (m *SessionManager) DeleteByRole(roleID string) []Session {
 			delete(m.sessions, token)
 			continue
 		}
-		if session.RoleID != roleID {
+		if session.RoleID != roleID || session.Secondary {
 			continue
 		}
 		deleted = append(deleted, session)

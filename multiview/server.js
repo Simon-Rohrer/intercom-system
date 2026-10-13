@@ -10,6 +10,10 @@ const { WebSocketServer } = require('ws')
 const { Atem } = require('atem-connection')
 const { createKesherChat } = require('./kesher-chat')
 const { createChurchTools } = require('./churchtools')
+const QRCode = require('qrcode')
+const {
+  createAccess, normalizeAccess, roleRights, allowedOutputs, visibleLayouts, applyRestrictedChanges, claimLayouts, ADMIN,
+} = require('./access')
 
 const PORT = Number(process.env.PORT) || 8090
 // Hinter Caddy (HTTPS) nur lokal lauschen: HOST=127.0.0.1
@@ -102,6 +106,7 @@ function normalizeConfig(c) {
     screens: normalizeScreens(c?.screens),
     chat: normalizeChat(c?.chat),
     churchtools: normalizeChurchTools(c?.churchtools),
+    access: normalizeAccess(c?.access),
   }
 }
 
@@ -141,6 +146,7 @@ function saveConfig() {
 }
 
 let config = loadConfig()
+rememberLayouts()
 
 /** Findet einen Eintrag per ID, Name (ohne Groß-/Kleinschreibung) oder 1-basierter Nummer. */
 function findByRef(list, ref) {
@@ -303,6 +309,9 @@ function emptyProPresenterState() {
     playlist: null, // { name, activeIndex, nextIndex, items: [...] }
     cues: [], // alle Folien der laufenden Präsentation { group, color, label, enabled } – für die Prediger-Ansicht
     layers: null, // was gerade sichtbar ist { slide, media } – „ausgeblendet“ = slide false
+    // Ausgeblendet meldet ProPresenter keine laufende Präsentation mehr. Damit die Prediger-Ansicht
+    // die Folien behält und „Einblenden“ weiß, wohin, merken wir uns die letzte: { presentation, index, cues }
+    held: null,
   }
 }
 
@@ -494,6 +503,14 @@ async function pollProPresenterOnce(target) {
       }))
     }
 
+    // Ausgeblendet (Folien-Ebene aus, keine laufende Präsentation): letzte Präsentation behalten
+    if (!liveUuid && next.layers && !next.layers.slide) {
+      const last = ppState.presentation
+        ? { presentation: ppState.presentation, index: ppState.index, cues: ppState.cues }
+        : ppState.held
+      if (last) next.held = last
+    }
+
     // Angeklicktes Lied: Klickt der Bediener ein anderes Lied an (z. B. weil eins übersprungen
     // wird), geht es dort weiter – auch wenn davon noch keine Folie läuft.
     const focusedUuid =
@@ -567,7 +584,279 @@ function applyProPresenter() {
   ppPlaylistCache = null
   ppState = emptyProPresenterState()
   broadcast({ type: 'propresenter', ...ppState })
-  if (target) pollProPresenter()
+  clearTimeout(stageTimer)
+  stageState = emptyStageState()
+  broadcast({ type: 'ppstage', ...stageState })
+  if (target) {
+    pollProPresenter()
+    requestStagePoll()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ProPresenter-Bühne: Bühnennachricht, Timer (Countdowns), Video-Countdown und laufende
+// Meldungen. Eigene Nachricht "ppstage", weil sich die Zeiten jede Sekunde ändern –
+// sonst ginge jedes Mal der ganze Folien-Zustand samt Playlist an alle Bildschirme.
+// Lesend; geschrieben wird nur die Bühnennachricht (setStageMessage).
+// ---------------------------------------------------------------------------
+
+const STAGE_POLL_MS = 500
+const STAGE_MESSAGES_MS = 3000 // Meldungen ändern sich selten
+
+let stageState = emptyStageState()
+let stageTimer = null
+let stageBusy = false
+let stageAgain = false
+let stageMessagesAt = 0
+
+function emptyStageState() {
+  return {
+    connected: false,
+    message: '', // Bühnennachricht
+    timers: [], // { uuid, name, time: "-00:01:30", state: running|stopped|overrunning|complete }
+    videoCountdown: '', // Restzeit des laufenden Videos, leer = kein Video
+    messages: [], // aktive Meldungen { uuid, name, text, tokens: [{ name, timer }] }
+    templates: [], // Meldungen für den Beamer zum Vorbereiten { uuid, name, text, fields: [Name] }
+    requests: [], // Beamer-Meldungen, die auf den ProPresenter-Bediener warten (announceRequests)
+  }
+}
+
+/** Aktive Meldungen; Platzhalter wie {Countdown 1} füllt der Browser mit der Timer-Zeit. */
+function activeMessages(list) {
+  return list
+    .filter((m) => m.is_active)
+    .map((m) => ({
+      uuid: m.id?.uuid ?? '',
+      name: m.id?.name ?? '',
+      text: String(m.message ?? '').trim(),
+      tokens: (m.tokens ?? []).map((t) => ({ name: t.name, timer: t.timer?.id?.uuid ?? null, text: t.text?.text ?? '' })),
+    }))
+}
+
+/**
+ * Meldungen, die man vom Handy aus für den Beamer vorbereiten kann: Text, nur Text-Platzhalter.
+ * Alles unter einer Trennzeile „ARCHIV“ (in ProPresenter) bleibt weg – außer der eigenen Meldung.
+ */
+function messageTemplates(list) {
+  const archive = list.findIndex((m) => /archiv/i.test(m.id?.name ?? ''))
+  return list
+    .filter((m, i) => archive < 0 || i < archive || m.id?.name === FREE_MESSAGE_NAME)
+    .filter((m) => String(m.message ?? '').trim() && (m.tokens ?? []).every((t) => t.text && !t.timer && !t.clock))
+    .map((m) => ({
+      uuid: m.id?.uuid ?? '',
+      name: String(m.id?.name ?? '').trim(),
+      text: String(m.message ?? '').trim(),
+      fields: (m.tokens ?? []).map((t) => t.name),
+      free: m.id?.name === FREE_MESSAGE_NAME,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Beamer-Meldungen: vom Handy/Multiview vorbereitet, angezeigt nur vom ProPresenter-Bediener.
+// Der Server trägt den Text in die ProPresenter-Meldung ein (PUT /v1/message/{id}, löst nichts
+// aus) und gibt im Kesher-Chat Bescheid. Ob die Meldung dann auf dem Beamer läuft, sieht er an
+// is_active in /v1/messages.
+// ---------------------------------------------------------------------------
+
+const FREE_MESSAGE_NAME = 'Multiview-Meldung' // eigene Meldung für freien Text, legt der Server bei Bedarf an
+const FREE_MESSAGE_TOKEN = 'Text'
+let announceRequests = [] // { id, uuid, name, text, from, at, status: wartet|angezeigt|beendet|ersetzt, seenInactive }
+
+function updateAnnounceRequests(list) {
+  const active = new Set(list.filter((m) => m.is_active).map((m) => m.id?.uuid))
+  const now = Date.now()
+  for (const r of announceRequests) {
+    if (r.status === 'wartet') {
+      if (!active.has(r.uuid)) r.seenInactive = true
+      else if (r.seenInactive) Object.assign(r, { status: 'angezeigt', shownAt: now })
+    } else if (r.status === 'angezeigt' && !active.has(r.uuid)) Object.assign(r, { status: 'beendet', endedAt: now })
+  }
+  // Nur die letzten Stunden, höchstens 10
+  announceRequests = announceRequests.filter((r) => now - r.at < 3 * 3600_000).slice(0, 10)
+}
+
+const publicRequests = () =>
+  announceRequests.map(({ id, name, text, from, at, status, shownAt }) => ({ id, name, text, from, at, status, shownAt }))
+
+/** Text mit eingesetzten Platzhaltern, wie ihn ProPresenter anzeigen wird. */
+const fillTokens = (template, values) =>
+  template.replace(/\{([^}]+)\}/g, (all, name) => (values[name] != null ? values[name] : all))
+
+/** Eigene Meldung für freien Text suchen oder anlegen (Aussehen wie eine vorhandene Laufschrift). */
+async function freeMessage(list) {
+  const found = list.find((m) => m.id?.name === FREE_MESSAGE_NAME)
+  if (found) return found
+  const looks =
+    list.find((m) => /ticker|laufschrift/i.test(m.theme?.name ?? '') && !(m.tokens ?? []).some((t) => t.timer)) ??
+    list.find((m) => !(m.tokens ?? []).some((t) => t.timer))
+  const res = await fetch(`${ppBase()}/v1/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: { name: FREE_MESSAGE_NAME, index: list.length, uuid: '' },
+      message: `{${FREE_MESSAGE_TOKEN}}`,
+      tokens: [{ name: FREE_MESSAGE_TOKEN, text: { text: '' } }],
+      theme: looks?.theme ?? { name: '', index: 0, uuid: '' },
+      visible_on_network: false,
+      is_active: false,
+    }),
+    signal: AbortSignal.timeout(3000),
+  })
+  if (!res.ok) throw new Error(`ProPresenter: Meldung „${FREE_MESSAGE_NAME}“ ließ sich nicht anlegen (HTTP ${res.status})`)
+  const created = ((await ppGet('/v1/messages')) ?? []).find((m) => m.id?.name === FREE_MESSAGE_NAME)
+  if (!created) throw new Error(`ProPresenter: Meldung „${FREE_MESSAGE_NAME}“ fehlt nach dem Anlegen`)
+  console.log(`ProPresenter: Meldung „${FREE_MESSAGE_NAME}“ für freien Text angelegt`)
+  return created
+}
+
+/** Meldung in ProPresenter überschreiben (PUT löst nichts aus; is_active muss mitgeschickt werden). */
+async function putMessage(message) {
+  const res = await fetch(`${ppBase()}/v1/message/${encodeURIComponent(message.id.uuid)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(message),
+    signal: AbortSignal.timeout(3000),
+  })
+  if (!res.ok) throw new Error(`ProPresenter antwortet mit HTTP ${res.status}`)
+}
+
+/**
+ * Meldung vorbereiten, NICHT anzeigen. Alles landet in der „Multiview-Meldung“ – dem festen Eingang,
+ * in den der ProPresenter-Bediener schaut: bei einer Vorlage mit eingesetztem Text und im Aussehen
+ * der Vorlage, bei freiem Text im Aussehen einer normalen Laufschrift.
+ * { uuid, fields: { Name: Wert } } für eine Vorlage, { text } für freien Text.
+ */
+async function prepareAnnouncement({ uuid, fields, text }, from) {
+  if (!ppBase()) throw Object.assign(new Error('ProPresenter nicht eingerichtet'), { status: 503 })
+  const list = (await ppGet('/v1/messages')) ?? []
+  const free = !uuid
+  const template = free ? null : list.find((m) => m.id?.uuid === uuid)
+  if (!free && !template) throw Object.assign(new Error('Diese Meldung gibt es in ProPresenter nicht mehr'), { status: 404 })
+  if (template && !messageTemplates([template]).length)
+    throw Object.assign(new Error('Diese Meldung lässt sich nicht vom Handy füllen'), { status: 400 })
+
+  const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, 300)
+  let rendered
+  if (template) {
+    const values = {}
+    for (const t of template.tokens ?? []) values[t.name] = clean(fields?.[t.name] ?? t.text?.text)
+    rendered = clean(fillTokens(String(template.message ?? ''), values))
+    // Werte auch in der Vorlage selbst ablegen (dort sind sie dann vorbelegt)
+    if (template.tokens?.length)
+      await putMessage({ ...template, tokens: template.tokens.map((t) => ({ ...t, text: { ...t.text, text: values[t.name] } })) })
+  } else rendered = clean(text)
+  if (!rendered) throw Object.assign(new Error('Bitte einen Text eingeben'), { status: 400 })
+
+  const inbox = await freeMessage(list)
+  // Aussehen: das der Vorlage, sonst eine graue (bzw. irgendeine) Laufschrift
+  const others = list.filter((m) => m.id?.uuid !== inbox.id?.uuid && m.theme?.uuid)
+  const theme = template?.theme?.uuid
+    ? template.theme
+    : (others.find((m) => /ticker|laufschrift/i.test(m.theme.name ?? '') && /grau|grey|gray/i.test(m.theme.name ?? '')) ??
+        others.find((m) => /ticker|laufschrift/i.test(m.theme.name ?? '')))?.theme ?? inbox.theme
+  const token = inbox.tokens?.find((t) => t.name === FREE_MESSAGE_TOKEN) ?? { name: FREE_MESSAGE_TOKEN, text: { text: '' } }
+  await putMessage({
+    ...inbox,
+    message: `{${FREE_MESSAGE_TOKEN}}`,
+    tokens: [{ ...token, text: { ...token.text, text: rendered } }],
+    theme,
+  })
+
+  const request = {
+    id: Math.random().toString(36).slice(2, 10),
+    uuid: inbox.id.uuid,
+    name: template ? String(template.id?.name ?? '').trim() : 'Eigene Meldung',
+    text: rendered,
+    from,
+    at: Date.now(),
+    status: 'wartet',
+    seenInactive: !inbox.is_active,
+  }
+  for (const r of announceRequests) if (r.uuid === request.uuid && r.status === 'wartet') r.status = 'ersetzt'
+  announceRequests.unshift(request)
+  stageMessagesAt = 0
+  requestStagePoll()
+  return request
+}
+
+async function pollStageOnce(target) {
+  const next = emptyStageState()
+  try {
+    const [message, timers, video] = await Promise.all([
+      ppGet('/v1/stage/message'),
+      ppGet('/v1/timers/current'),
+      ppGet('/v1/timer/video_countdown').catch(() => null),
+    ])
+    next.connected = true
+    next.message = typeof message === 'string' ? message.trim() : ''
+    next.timers = (timers ?? []).map((t) => ({
+      uuid: t.id?.uuid ?? '',
+      name: String(t.id?.name ?? '').trim(),
+      time: String(t.time ?? ''),
+      state: String(t.state ?? ''),
+    }))
+    next.videoCountdown = typeof video === 'string' && /[1-9]/.test(video) ? video : ''
+    if (Date.now() - stageMessagesAt >= STAGE_MESSAGES_MS) {
+      stageMessagesAt = Date.now()
+      const list = await ppGet('/v1/messages').catch(() => null)
+      if (list) updateAnnounceRequests(list)
+      next.messages = list ? activeMessages(list) : stageState.messages
+      next.templates = list ? messageTemplates(list) : stageState.templates
+    } else {
+      next.messages = stageState.messages
+      next.templates = stageState.templates
+    }
+    next.requests = publicRequests()
+  } catch {
+    next.connected = false
+  }
+  if (target !== ppBase()) return
+  if (JSON.stringify(next) !== JSON.stringify(stageState)) {
+    stageState = next
+    broadcast({ type: 'ppstage', ...stageState })
+  }
+}
+
+async function pollStage() {
+  stageTimer = null
+  const target = ppBase()
+  if (!target) return
+  stageBusy = true
+  try {
+    await pollStageOnce(target)
+  } finally {
+    stageBusy = false
+  }
+  if (target !== ppBase()) return
+  const delay = stageAgain ? 0 : stageState.connected ? STAGE_POLL_MS : 3000
+  stageAgain = false
+  clearTimeout(stageTimer)
+  stageTimer = setTimeout(pollStage, delay)
+}
+
+/** Sofort neu abfragen, ohne eine zweite Abfrage-Schleife zu starten. */
+function requestStagePoll() {
+  if (stageBusy) {
+    stageAgain = true
+    return
+  }
+  clearTimeout(stageTimer)
+  pollStage()
+}
+
+/** Bühnennachricht in ProPresenter setzen; leerer Text = Nachricht löschen. */
+async function setStageMessage(text) {
+  const base = ppBase()
+  if (!base) throw Object.assign(new Error('ProPresenter nicht eingerichtet'), { status: 503 })
+  const res = await fetch(`${base}/v1/stage/message`, {
+    method: text ? 'PUT' : 'DELETE',
+    headers: text ? { 'Content-Type': 'application/json' } : {},
+    body: text ? JSON.stringify(text) : undefined,
+    signal: AbortSignal.timeout(2500),
+  })
+  if (!res.ok) throw new Error(`ProPresenter antwortet mit HTTP ${res.status}`)
+  stageMessagesAt = 0
+  requestStagePoll()
 }
 
 // ---------------------------------------------------------------------------
@@ -759,6 +1048,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     stopMediamtx()
     kesherChat.stop()
     churchTools.stop()
+    access.flush()
     // kurz warten, damit die Abmeldung bei Kesher die Rolle freigibt
     setTimeout(() => process.exit(0), 500)
   })
@@ -788,6 +1078,9 @@ const churchTools = createChurchTools({
   // Fest gewählte Tage aller ChurchTools-Kacheln
   getDates: () =>
     config.layouts.flatMap((l) => l.tiles.filter((t) => t.kind === 'churchtools' && t.ctDate).map((t) => t.ctDate)),
+  // Filter der Kacheln mit aktuellem Datum: dafür wird bei Bedarf der nächste Ablauf gesucht
+  getFilters: () =>
+    config.layouts.flatMap((l) => l.tiles.filter((t) => t.kind === 'churchtools' && !t.ctDate).map((t) => t.ctFilter || '')),
   onUpdate: broadcast,
   log: console.log,
 })
@@ -799,7 +1092,16 @@ const kesherChat = createKesherChat({
   log: console.log,
 })
 
+/**
+ * Zuletzt gelaufenes Layout je Multiview merken. Ein fremdes Layout sieht eine Rolle nur, solange
+ * es auf ihrem Multiview läuft – ohne diese Notiz käme sie nach „Aus“ nicht mehr zurück.
+ */
+function rememberLayouts() {
+  for (const o of config.outputs ?? []) if (o.layoutId) o.lastLayoutId = o.layoutId
+}
+
 function configChanged(origin = null) {
+  rememberLayouts()
   saveConfig()
   broadcast({ type: 'config', config, origin })
   refreshAtemState()
@@ -810,7 +1112,85 @@ function configChanged(origin = null) {
   if (mediamtx.proc) writeMediamtxConfig()
 }
 
-wss.on('connection', (ws) => {
+// ---------------------------------------------------------------------------
+// Layout-Vorlagen: gespeicherte Ansichten, je eine JSON-Datei in data/vorlagen.
+// Eine Vorlage gehört der Rolle, die sie gespeichert hat; Rollen sehen ihre eigenen und die
+// des Admins, der Admin sieht alle.
+// ---------------------------------------------------------------------------
+
+const TEMPLATE_DIR = path.join(DATA_DIR, 'vorlagen')
+
+/** Dateiname aus dem Vorlagennamen: "Gottesdienst Sonntag" → "gottesdienst-sonntag" */
+function templateId(name) {
+  return String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9äöüß]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+}
+
+function templateFile(id) {
+  return path.join(TEMPLATE_DIR, `${id}.json`)
+}
+
+/** Nur das Raster und die Kacheln – Name, ID und Besitzer gehören dem Layout, in das geladen wird. */
+function normalizeTemplateLayout(l) {
+  const int = (v, min, max, fallback) => {
+    const n = Number(v)
+    return Number.isInteger(n) && n >= min && n <= max ? n : fallback
+  }
+  return {
+    cols: int(l?.cols, 1, 48, 12),
+    rows: int(l?.rows, 1, 48, 12),
+    gap: int(l?.gap, 0, 40, 4),
+    background: typeof l?.background === 'string' ? l.background : '#000000',
+    tiles: Array.isArray(l?.tiles) ? l.tiles.filter((t) => t && typeof t === 'object') : [],
+  }
+}
+
+function readTemplate(id) {
+  try {
+    const t = JSON.parse(fs.readFileSync(templateFile(id), 'utf8'))
+    return {
+      id,
+      name: String(t.name || id),
+      savedAt: t.savedAt || null,
+      owner: typeof t.owner === 'string' && t.owner ? t.owner : null,
+      layout: normalizeTemplateLayout(t.layout),
+    }
+  } catch {
+    return null
+  }
+}
+
+function templateVisible(t, user) {
+  return user.admin || !t.owner || t.owner === user.roleId
+}
+
+function templateList(user) {
+  let files = []
+  try {
+    files = fs.readdirSync(TEMPLATE_DIR).filter((f) => f.endsWith('.json'))
+  } catch {
+    // noch keine Vorlagen
+  }
+  return files
+    .map((f) => readTemplate(f.slice(0, -5)))
+    .filter((t) => t && templateVisible(t, user))
+    .map(({ id, name, savedAt, owner, layout }) => ({
+      id, name, savedAt, owner, tiles: layout.tiles.length, own: user.admin || owner === user.roleId,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'de'))
+}
+
+/** Die Listen sind je Nutzer verschieden – die Seiten holen sie sich daraufhin selbst. */
+function templatesChanged() {
+  broadcast({ type: 'templates_changed' })
+}
+
+wss.on('connection', (ws, req) => {
+  // Welche Anmeldung hier offen ist – so gilt eine Rolle als belegt, solange ihre Seite offen ist
+  ws.sessionId = access.sessionIdOf(req)
   send(ws, { type: 'config', config })
   send(ws, { type: 'atem', ...atemState })
   send(ws, { type: 'devices', devices: [...knownDevices] })
@@ -819,6 +1199,7 @@ wss.on('connection', (ws) => {
   send(ws, kesherChat.snapshot())
   send(ws, churchTools.snapshot())
   send(ws, { type: 'propresenter', ...ppState })
+  send(ws, { type: 'ppstage', ...stageState })
 
   ws.on('message', (raw) => {
     let msg
@@ -842,9 +1223,199 @@ wss.on('connection', (ws) => {
 })
 
 app.use(express.json({ limit: '5mb' }))
+// Alte Browser (z. B. iPad mit iOS 12) bekommen umgeschriebene Dateien, siehe legacy.js
+app.use(require('./legacy').legacyMiddleware(path.join(__dirname, 'public')))
 app.use(express.static(path.join(__dirname, 'public')))
 
 app.get('/api/config', (req, res) => res.json(config))
+
+// ---------------------------------------------------------------------------
+// Benutzer und Rechte (access.js): Anmeldung mit Name + Kesher-Rolle, Admin mit PIN
+// ---------------------------------------------------------------------------
+
+const access = createAccess({
+  dataDir: DATA_DIR,
+  log: console.log,
+  // Admin-PIN wie im Kesher-Admin: Kesher prüft sie
+  verifyKesherPin: (pin) => kesherChat.verifyAdminPin(pin),
+  isLive: (id) => [...wss.clients].some((ws) => ws.readyState === 1 && ws.sessionId === id),
+  // Übernommene oder vom Admin beendete Anmeldung: die offenen Seiten dort abmelden
+  onRevoke: (ids, reason) => {
+    for (const ws of wss.clients) {
+      if (!ids.includes(ws.sessionId)) continue
+      send(ws, { type: 'session_revoked', reason })
+      ws.sessionId = null
+    }
+  },
+})
+const PROFILES_FILE = path.join(DATA_DIR, 'profiles.json')
+
+function requireUser(req, res, next) {
+  const user = access.userOf(req)
+  if (!user) return res.status(401).json({ ok: false, error: 'Bitte anmelden', login: true })
+  req.user = user
+  next()
+}
+
+function requireAdmin(req, res, next) {
+  const user = access.userOf(req)
+  if (!user) return res.status(401).json({ ok: false, error: 'Bitte anmelden', login: true })
+  if (!user.admin) return res.status(403).json({ ok: false, error: 'Nur für den Admin' })
+  req.user = user
+  next()
+}
+
+/** Kesher-Rollen für die Anmeldung (ohne die Rolle des Chat-Monitors). */
+function loginRoles() {
+  return (kesherChat.snapshot().roles ?? []).filter((r) => r.id !== config.chat.roleId)
+}
+
+function roleName(roleId) {
+  if (roleId === ADMIN) return 'Admin'
+  return loginRoles().find((r) => r.id === roleId)?.name || roleId
+}
+
+function readProfiles() {
+  try {
+    return JSON.parse(fs.readFileSync(PROFILES_FILE, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+const profileKey = (user) => `${user.roleId}:${String(user.name).trim().toLowerCase()}`
+
+app.get('/api/me', (req, res) => {
+  const user = access.userOf(req)
+  const rights = roleRights(config, user)
+  res.json({
+    access: { enabled: access.enabled(), pinSource: access.pinSource() },
+    user: user && { name: user.name, roleId: user.roleId, roleName: roleName(user.roleId), admin: user.admin, open: user.open },
+    rights: rights && {
+      admin: rights.admin,
+      editLayouts: rights.admin || rights.editLayouts,
+      outputs: [...allowedOutputs(config, user)],
+      layouts: visibleLayouts(config, user).map((l) => l.id),
+    },
+    prefs: user && !user.open ? (readProfiles()[profileKey(user)] ?? null) : null,
+  })
+})
+
+app.get('/api/login/roles', (req, res) =>
+  res.json({ enabled: access.enabled(), roles: loginRoles(), occupied: access.occupiedRoles() }),
+)
+
+app.post('/api/login', async (req, res) => {
+  try {
+    await access.login(req.body || {}, req, res)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message, holder: err.holder })
+  }
+})
+
+app.post('/api/logout', (req, res) => {
+  access.logout(req, res)
+  res.json({ ok: true })
+})
+
+// Darstellung (Hell/Dunkel, Akzentfarbe) pro Nutzer – damit Handy und Rechner gleich aussehen
+app.put('/api/me/prefs', requireUser, (req, res) => {
+  if (req.user.open) return res.json({ ok: true })
+  const { theme, accent } = req.body || {}
+  const profiles = readProfiles()
+  profiles[profileKey(req.user)] = {
+    theme: ['light', 'dark', 'system'].includes(theme) ? theme : 'system',
+    accent: /^#[0-9a-f]{6}$/i.test(accent) ? accent : null,
+  }
+  fs.writeFileSync(PROFILES_FILE, JSON.stringify(profiles, null, 2))
+  res.json({ ok: true })
+})
+
+// Multiview am Handy umschalten (Fernbedienung) – nur eigene Multiviews und sichtbare Layouts
+app.post('/api/me/output/:output/layout', requireUser, (req, res) => {
+  const output = config.outputs.find((o) => o.id === req.params.output)
+  if (!output || !allowedOutputs(config, req.user).has(output.id))
+    return res.status(403).json({ ok: false, error: 'Kein Zugriff auf diesen Multiview' })
+  const layoutId = req.body?.layoutId ?? null
+  if (layoutId !== null && !visibleLayouts(config, req.user).some((l) => l.id === layoutId))
+    return res.status(403).json({ ok: false, error: 'Kein Zugriff auf dieses Layout' })
+  claimLayouts(config, req.user)
+  output.layoutId = layoutId
+  configChanged()
+  res.json({ ok: true })
+})
+
+// Chat schreiben – als die angemeldete Rolle (Admin wählt eine Rolle). Kesher prüft die
+// Sprechrechte der Party Line; die Nachricht erscheint wie eine Stream-Deck-Nachricht.
+app.post('/api/chat/send', requireUser, async (req, res) => {
+  const text = String(req.body?.text ?? '').trim()
+  const roomId = String(req.body?.roomId ?? '').trim()
+  if (!text) return res.status(400).json({ ok: false, error: 'Text fehlt' })
+  if (text.length > 500) return res.status(400).json({ ok: false, error: 'Höchstens 500 Zeichen' })
+  const roleId = req.user.admin ? String(req.body?.roleId ?? '').trim() : req.user.roleId
+  if (!roleId || !loginRoles().some((r) => r.id === roleId))
+    return res.status(400).json({ ok: false, error: req.user.admin ? 'Bitte eine Rolle wählen' : 'Deine Rolle gibt es in Kesher nicht' })
+  const room = roomId ? (kesherChat.snapshot().rooms ?? []).find((r) => r.id === roomId) : null
+  if (roomId && !room) return res.status(400).json({ ok: false, error: 'Party Line nicht gefunden' })
+  if (room && !room.talkers.includes(roleId))
+    return res.status(403).json({ ok: false, error: 'Deine Rolle darf auf dieser Party Line nicht schreiben' })
+  try {
+    await kesherChat.sendText({ roleId, username: req.user.open ? '' : req.user.name, message: text, roomId })
+    console.log(`Chat: ${req.user.name || 'Gast'} (${roleName(roleId)}) → ${room ? room.name : 'Global'}`)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err.message })
+  }
+})
+
+// QR-Code-Anmeldung fürs Handy: Einmal-Link, 10 Minuten gültig
+app.post('/api/me/qr', requireUser, (req, res) => res.json({ ok: true, ...access.createQrToken(req.user) }))
+
+app.get('/q/:token', (req, res) => {
+  const ok = access.redeemQrToken(req.params.token, req, res)
+  res.redirect(ok ? '/remote.html' : '/login.html?qr=abgelaufen')
+})
+
+app.get('/api/qr.svg', async (req, res) => {
+  const data = String(req.query.data ?? '')
+  if (!data || data.length > 600) return res.status(400).send('data fehlt oder ist zu lang')
+  try {
+    const svg = await QRCode.toString(data, { type: 'svg', margin: 1, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } })
+    res.type('image/svg+xml').set('Cache-Control', 'no-store').send(svg)
+  } catch (err) {
+    res.status(500).send(err.message)
+  }
+})
+
+// Admin: PIN und angemeldete Geräte
+app.post('/api/access/pin', requireAdmin, async (req, res) => {
+  try {
+    const wasOpen = !access.enabled()
+    await access.setAdminPin(req.body || {}, req.user)
+    // Wer die Anmeldung gerade einschaltet, bleibt als Admin angemeldet (PIN ist eben geprüft)
+    if (wasOpen && access.enabled())
+      await access.login({ name: req.body?.name || 'Admin', roleId: ADMIN }, req, res, { pinChecked: true })
+    res.json({ ok: true, enabled: access.enabled() })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
+})
+
+app.get('/api/access/sessions', requireAdmin, (req, res) =>
+  res.json(access.sessions().map((s) => ({ ...s, roleName: roleName(s.roleId), self: s.id === req.user.sessionId }))),
+)
+
+app.delete('/api/access/sessions/:id', requireAdmin, (req, res) => {
+  access.endSession(req.params.id)
+  res.json({ ok: true })
+})
+
+/** Folie zum Wiedereinblenden: die laufende, sonst die vor dem Ausblenden gemerkte. */
+function restoreTarget() {
+  const t = ppState.presentation ? ppState : ppState.held
+  return t?.presentation && t.index != null ? t : null
+}
 
 // ProPresenter steuern – NUR diese Befehle (Weiter, Zurück, Ausblenden, Einblenden, Folie wählen).
 // Alles andere der Schnittstelle bleibt gesperrt.
@@ -860,8 +1431,8 @@ app.post('/api/propresenter/control', async (req, res) => {
     clear: ['/v1/clear/layer/slide'],
     clearAll: ['/v1/clear/layer/slide', '/v1/clear/layer/media'],
     // Wieder einblenden = aktuelle Folie erneut auslösen
-    restore: ppState.presentation && ppState.index != null
-      ? [`/v1/presentation/${encodeURIComponent(ppState.presentation.uuid)}/${ppState.index}/trigger`]
+    restore: restoreTarget()
+      ? [`/v1/presentation/${encodeURIComponent(restoreTarget().presentation.uuid)}/${restoreTarget().index}/trigger`]
       : null,
     goto: typeof presentation === 'string' && /^[0-9A-Fa-f-]{36}$/.test(presentation) && Number.isInteger(cue) && cue >= 0
       ? [`/v1/presentation/${encodeURIComponent(presentation)}/${cue}/trigger`]
@@ -879,6 +1450,65 @@ app.post('/api/propresenter/control', async (req, res) => {
   } catch (err) {
     res.status(502).json({ ok: false, error: err.message })
   }
+})
+
+// Bühnennachricht setzen/löschen – von der Bühnen-Kachel (POST { text }) und aus Companion
+// (GET …/stage-message?text=… bzw. …/stage-message/clear). Leerer Text löscht.
+async function handleStageMessage(req, res, text) {
+  const value = String(text ?? '').trim().slice(0, 500)
+  try {
+    await setStageMessage(value)
+    console.log(`ProPresenter: Bühnennachricht ${value ? `„${value}“` : 'gelöscht'} (von ${req.ip})`)
+    if (value) notifyChat(access.userOf(req), `Bühnennachricht (Stage Display): „${value}“`)
+    res.json({ ok: true, message: value })
+  } catch (err) {
+    res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
+  }
+}
+app.all('/api/propresenter/stage-message/clear', (req, res) => handleStageMessage(req, res, ''))
+
+/**
+ * Wichtigen Hinweis in den Kesher-Chat schreiben (rot markiert) – als die Rolle des Nutzers,
+ * sonst (Admin, offener Zugang, Companion) als Chat-Monitor. Fehler nur protokollieren.
+ */
+async function notifyChat(user, message) {
+  const roleId = user && !user.open && !user.admin ? user.roleId : config.chat.roleId
+  try {
+    await kesherChat.sendText({ roleId, username: user && !user.open ? user.name : '', message, roomId: '', alert: true })
+    return true
+  } catch (err) {
+    console.log(`Kesher: Hinweis nicht gesendet (${err.message})`)
+    return false
+  }
+}
+
+// Beamer-Meldung vorbereiten: Text in die ProPresenter-Meldung eintragen (angezeigt wird sie nur
+// vom ProPresenter-Bediener) und im Kesher-Chat Bescheid geben.
+app.post('/api/propresenter/announce', requireUser, async (req, res) => {
+  const user = req.user
+  const from = user.open ? '' : `${user.name}${user.roleName && !user.admin ? ` (${user.roleName})` : ''}`
+  let request
+  try {
+    request = await prepareAnnouncement(
+      { uuid: req.body?.uuid ? String(req.body.uuid) : '', fields: req.body?.fields || {}, text: req.body?.text },
+      from,
+    )
+  } catch (err) {
+    return res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
+  }
+  console.log(`ProPresenter: Beamer-Meldung vorbereitet „${request.text}“ (${from || req.ip})`)
+  // Immer im Chat Bescheid geben (rot)
+  const notified = await notifyChat(
+    user,
+    `Beamer-Meldung wartet in ProPresenter: „${request.text}“ – bitte „${FREE_MESSAGE_NAME}“ unter Meldungen anzeigen`,
+  )
+  res.json({ ok: true, request: publicRequests().find((r) => r.id === request.id), notified })
+})
+app.all('/api/propresenter/stage-message', (req, res) => {
+  const text = req.body?.text ?? req.query.text
+  // Ohne Text nichts tun (ein versehentlich geöffneter Link soll die Nachricht nicht löschen)
+  if (text == null) return res.status(400).json({ ok: false, error: 'text fehlt, z. B. ?text=Noch%205%20Minuten' })
+  handleStageMessage(req, res, text)
 })
 
 // Folienbilder von ProPresenter weiterreichen (Browser brauchen so nur diesen Server)
@@ -909,7 +1539,7 @@ app.get('/api/chat', (req, res) => res.json(kesherChat.snapshot()))
 // ChurchTools: Verbindung mit dem Server-Konto (Token oder Benutzername/Passwort).
 // Das Passwort wird nur zum Holen des Login-Tokens benutzt und nicht gespeichert.
 app.get('/api/churchtools', (req, res) => res.json(churchTools.snapshot()))
-app.post('/api/churchtools/connect', async (req, res) => {
+app.post('/api/churchtools/connect', requireAdmin, async (req, res) => {
   try {
     const { url, token, username, password } = req.body || {}
     res.json({ ok: true, ...(await churchTools.connect({ url, token, username, password })) })
@@ -917,11 +1547,11 @@ app.post('/api/churchtools/connect', async (req, res) => {
     res.status(400).json({ ok: false, error: err.message })
   }
 })
-app.post('/api/churchtools/disconnect', (req, res) => {
+app.post('/api/churchtools/disconnect', requireAdmin, (req, res) => {
   churchTools.disconnect()
   res.json({ ok: true })
 })
-app.post('/api/churchtools/refresh', async (req, res) => {
+app.post('/api/churchtools/refresh', requireAdmin, async (req, res) => {
   await churchTools.refresh()
   res.json(churchTools.snapshot())
 })
@@ -943,9 +1573,58 @@ app.post('/whep/:path', express.text({ type: () => true, limit: '1mb' }), async 
   }
 })
 
-app.put('/api/config', (req, res) => {
-  config = normalizeConfig(req.body)
+app.put('/api/config', requireUser, (req, res) => {
+  // Ohne Admin-Rechte nur die eigenen Layouts und die Layout-Wahl der eigenen Multiviews
+  config = normalizeConfig(req.user.admin ? req.body : applyRestrictedChanges(config, req.body, req.user))
   configChanged(req.get('X-Client-Id') || null)
+  res.json({ ok: true })
+})
+
+app.get('/api/templates', requireUser, (req, res) => res.json(templateList(req.user)))
+
+app.get('/api/templates/:id', requireUser, (req, res) => {
+  const t = readTemplate(templateId(req.params.id))
+  if (!t || !templateVisible(t, req.user)) return res.status(404).json({ ok: false, error: 'Vorlage nicht gefunden' })
+  if (req.query.download !== undefined) {
+    res.attachment(`${t.id}.json`)
+    return res.send(JSON.stringify({ name: t.name, savedAt: t.savedAt, layout: t.layout }, null, 2))
+  }
+  res.json(t)
+})
+
+// Speichert unter dem Namen; eine eigene Vorlage mit gleichem Namen wird überschrieben.
+app.post('/api/templates', requireUser, (req, res) => {
+  if (!roleRights(config, req.user)?.admin && !roleRights(config, req.user)?.editLayouts)
+    return res.status(403).json({ ok: false, error: 'Deine Rolle darf keine Layouts einrichten' })
+  const name = String(req.body?.name ?? '').trim()
+  const id = templateId(name)
+  if (!id) return res.status(400).json({ ok: false, error: 'Bitte einen Namen angeben' })
+  if (!Array.isArray(req.body?.layout?.tiles)) return res.status(400).json({ ok: false, error: 'Keine Kacheln in der Vorlage' })
+  const existing = readTemplate(id)
+  if (existing && !req.user.admin && existing.owner !== req.user.roleId)
+    return res.status(403).json({ ok: false, error: `„${existing.name}“ gehört einer anderen Rolle – bitte anderen Namen wählen` })
+  const data = {
+    name,
+    savedAt: new Date().toISOString(),
+    // Beim Überschreiben bleibt der Besitzer; neue Vorlagen des Admins gehören niemandem (für alle)
+    owner: existing ? existing.owner : req.user.admin ? null : req.user.roleId,
+    layout: normalizeTemplateLayout(req.body.layout),
+  }
+  fs.mkdirSync(TEMPLATE_DIR, { recursive: true })
+  const tmp = `${templateFile(id)}.tmp`
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2))
+  fs.renameSync(tmp, templateFile(id))
+  templatesChanged()
+  res.json({ ok: true, id, name })
+})
+
+app.delete('/api/templates/:id', requireUser, (req, res) => {
+  const t = readTemplate(templateId(req.params.id))
+  if (!t || !templateVisible(t, req.user)) return res.status(404).json({ ok: false, error: 'Vorlage nicht gefunden' })
+  if (!req.user.admin && t.owner !== req.user.roleId)
+    return res.status(403).json({ ok: false, error: 'Nur der Admin oder die eigene Rolle darf löschen' })
+  fs.unlinkSync(templateFile(t.id))
+  templatesChanged()
   res.json({ ok: true })
 })
 
@@ -953,6 +1632,7 @@ app.get('/api/state', (req, res) => {
   res.json({
     atem: atemState,
     propresenter: ppState,
+    propresenterStage: stageState,
     layouts: config.layouts.map((l, i) => ({ nr: i + 1, id: l.id, name: l.name })),
     outputs: config.outputs.map((o, i) => ({
       nr: i + 1,

@@ -1,10 +1,13 @@
-import { connect, uid, sourceLabel, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox } from './common.js'
+import { connect, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView } from './chat.js'
 import { createAgendaView } from './agenda.js'
 import {
   createProPresenterView, createPlaylistView, createPreacherView, ppOptions, playlistOptions, preacherOptions,
 } from './propresenter.js'
+import { createStageView, stageOptions, fmtTimer } from './stage.js'
+import { adoptServerPrefs, appearanceHtml, bindAppearance, currentPrefs, nextTheme, setPrefs, themeIcon, THEMES, onPrefsChange } from './theme.js'
+import { roleRights, visibleOutputs, visibleLayouts, canEditLayout, claimLayouts, publicOrigin, chatFor, chatRoleFor } from './rights.js'
 import {
   attachDevice, attachNetworkStream, makeVideo, makeTestPattern, mediaKey,
   listVideoDevices, permissionGranted, releaseUnusedStreams, mediaAvailable,
@@ -16,7 +19,8 @@ const esc = (s) =>
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max)
 
 const CLIENT_ID = uid('c')
-const PAGES = ['uebersicht', 'eingaenge', 'layouts', 'einstellungen']
+const PAGES = ['uebersicht', 'eingaenge', 'layouts', 'einstellungen', 'zugang']
+const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'zugang']
 const SOURCE_TYPES = {
   device: 'Capture-Gerät',
   stream: 'Netzwerk-Stream',
@@ -65,6 +69,7 @@ let detectedScreens = [] // Anschlüsse der Grafikkarte am Server { id, connecte
 let server ={ addresses: [], ports: {}, mediamtx: { status: 'unknown', message: '' } }
 let lastLevels = { inputs: {}, master: null }
 let propresenter = { connected: false }
+let ppStage = { connected: false, message: '', timers: [], videoCountdown: '', messages: [] }
 let localDevices = []
 let layoutId = null
 let selectedTileId = null
@@ -75,11 +80,11 @@ let chat = { state: 'connecting', messages: [], stationName: '' }
 const chatViews = new Set()
 let churchtools = { state: 'connecting', events: [] }
 const agendaViews = new Set()
+let templates = [] // gespeicherte Layouts { id, name, savedAt, owner, tiles, own }
 
-connect(onMessage, (online) => {
-  if (!online) setSaveState('error', 'Server nicht erreichbar')
-  else if (!saveTimer) setSaveState('')
-})
+// Wer ist angemeldet? Wird in start() geladen, bevor die Verbindung zum Server aufgeht.
+let me = null
+let user = null // { name, roleId, roleName, admin, open }
 
 function onMessage(msg) {
   if (msg.type === 'config') {
@@ -90,6 +95,7 @@ function onMessage(msg) {
   } else if (msg.type === 'atem') {
     atem = msg
     renderAtemPill()
+    renderStatusStrip()
     renderAtem()
     renderDatalists()
     updateCanvasOverlays()
@@ -105,6 +111,7 @@ function onMessage(msg) {
   } else if (msg.type === 'churchtools') {
     churchtools = msg
     renderChurchTools()
+    renderStatusStrip()
     for (const view of agendaViews) {
       if (view.el.isConnected) view.update(churchtools)
       else agendaViews.delete(view)
@@ -112,14 +119,28 @@ function onMessage(msg) {
   } else if (msg.type === 'chat') {
     chat = msg
     renderChatStatus()
+    renderStatusStrip()
+    renderAccess()
     for (const view of chatViews) {
-      if (view.el.isConnected) view.update(chat)
+      if (view.el.isConnected) view.update(chatFor(chat, view.roleId?.() ?? ''))
       else chatViews.delete(view)
     }
   } else if (msg.type === 'propresenter') {
     propresenter = msg
     for (const el of canvas.querySelectorAll('.etile')) el.ppView?.update(propresenter)
     renderProPresenter()
+    renderStatusStrip()
+  } else if (msg.type === 'ppstage') {
+    const timersChanged = JSON.stringify(ppStage.timers.map((t) => t.uuid)) !== JSON.stringify(msg.timers.map((t) => t.uuid))
+    ppStage = msg
+    for (const el of canvas.querySelectorAll('.etile')) el.ppView?.updateStage?.(ppStage)
+    // Timer-Auswahl der Bühnen-Kachel nachziehen, wenn ProPresenter andere Timer meldet
+    if (timersChanged && inspector.querySelector('[data-st-timer]')) renderInspector()
+  } else if (msg.type === 'templates_changed') {
+    loadTemplates()
+  } else if (msg.type === 'session_revoked') {
+    // Rolle wurde auf einem anderen Gerät übernommen oder vom Admin beendet
+    location.replace(`/login.html?abgemeldet=1&next=${encodeURIComponent(location.pathname + location.hash)}`)
   } else if (msg.type === 'levels') {
     setLevels(msg)
     lastLevels = msg
@@ -166,7 +187,8 @@ async function save() {
       headers: { 'Content-Type': 'application/json', 'X-Client-Id': CLIENT_ID },
       body: JSON.stringify(config),
     })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    if (res.status === 401) return goToLogin()
+    if (!res.ok) throw new Error(res.status === 403 ? 'keine Berechtigung' : `HTTP ${res.status}`)
     setSaveState('saved')
   } catch (err) {
     setSaveState('error', `Speichern fehlgeschlagen: ${err.message}`)
@@ -195,10 +217,12 @@ function toast(text) {
 
 function showPage() {
   const requested = location.hash.replace(/^#\/?/, '')
-  page = PAGES.includes(requested) ? requested : 'uebersicht'
+  page = PAGES.includes(requested) && (isAdmin() || !ADMIN_PAGES.includes(requested)) ? requested : 'uebersicht'
   for (const p of PAGES) $(`#page-${p}`).hidden = p !== page
   document.querySelectorAll('.site-nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === page))
+  document.body.classList.remove('nav-open')
   if (page === 'eingaenge') autoScanDevices()
+  if (page === 'zugang') loadSessions()
   renderAll()
   window.scrollTo(0, 0)
 }
@@ -206,7 +230,9 @@ window.addEventListener('hashchange', showPage)
 
 function renderAll() {
   if (!config) return
-  if (!config.layouts.some((l) => l.id === layoutId)) layoutId = config.layouts[0]?.id ?? null
+  config.access ??= { roles: {} }
+  const layouts = myLayouts()
+  if (!layouts.some((l) => l.id === layoutId)) layoutId = layouts[0]?.id ?? null
   if (!currentLayout()?.tiles.some((t) => t.id === selectedTileId)) selectedTileId = null
   renderOutputs()
   renderScreens()
@@ -223,6 +249,9 @@ function renderAll() {
   renderCompanion()
   renderAtemPill()
   renderDatalists()
+  renderStatusStrip()
+  renderAccess()
+  applyRoleUi()
   syncStreams()
 }
 
@@ -277,7 +306,7 @@ function outputUrl(output, embed = false) {
 function layoutOptions(selected) {
   return [
     `<option value="">– kein Layout –</option>`,
-    ...config.layouts.map((l) => `<option value="${esc(l.id)}" ${l.id === selected ? 'selected' : ''}>${esc(l.name)}</option>`),
+    ...myLayouts().map((l) => `<option value="${esc(l.id)}" ${l.id === selected ? 'selected' : ''}>${esc(l.name)}</option>`),
   ].join('')
 }
 
@@ -289,11 +318,12 @@ function renderOutputs() {
     outputsKey = ''
     return
   }
-  const key = config.outputs.map((o) => o.id).join('|')
+  const outputs = myOutputs()
+  const key = outputs.map((o) => o.id).join('|')
   if (key !== outputsKey) {
     outputsKey = key
     grid.innerHTML =
-      config.outputs
+      outputs
         .map(
           (o) => `<article class="card output-card" data-id="${esc(o.id)}">
           <div class="output-preview">
@@ -301,7 +331,7 @@ function renderOutputs() {
           </div>
           <div class="output-body">
             <div class="output-title">
-              <input type="text" class="name-input" data-o="name" aria-label="Name">
+              <input type="text" class="name-input" data-o="name" aria-label="Name" ${isAdmin() ? '' : 'readonly'}>
               <select data-o="layoutId" aria-label="Layout"></select>
             </div>
             <div class="output-foot">
@@ -309,13 +339,15 @@ function renderOutputs() {
                 <button class="btn primary" data-action="fullscreen">⛶ Vollbild</button>
                 <a class="btn" href="${esc(outputUrl(o))}" target="_blank" rel="noopener">Monitor-Ansicht ↗</a>
               </div>
-              <button class="btn small danger" data-action="delete-output">Entfernen</button>
+              ${isAdmin() ? '<button class="btn small danger" data-action="delete-output">Entfernen</button>' : ''}
             </div>
           </div>
         </article>`,
         )
         .join('') ||
-      `<div class="empty-state">Noch kein Multiview. Lege mit <b>+ Multiview</b> einen an.</div>`
+      (isAdmin()
+        ? `<div class="empty-state">Noch kein Multiview. Lege mit <b>+ Multiview</b> einen an.</div>`
+        : `<div class="empty-state">Für deine Rolle ist noch kein Multiview freigegeben. Der Admin legt das unter <b>Benutzer &amp; Rechte</b> fest.</div>`)
   }
   // Felder aktualisieren, ohne die Vorschauen neu zu laden
   for (const card of grid.querySelectorAll('.output-card')) {
@@ -333,6 +365,7 @@ function onOutputField(e) {
   if (!key) return
   if ((e.type === 'input') !== (el.type === 'text')) return
   const output = config.outputs.find((o) => o.id === el.closest('.output-card').dataset.id)
+  if (key === 'layoutId') claimLayouts(config, user)
   output[key] = el.value || null
   renderLayoutList()
   renderScreens()
@@ -744,20 +777,23 @@ function currentLayout() {
 }
 
 function renderLayoutList() {
-  $('#layout-list').innerHTML = config.layouts
-    .map((l, i) => {
-      const usedBy = config.outputs.filter((o) => o.layoutId === l.id).length
-      return `<li data-id="${esc(l.id)}" class="${l.id === layoutId ? 'active' : ''}" title="${usedBy ? `auf ${usedBy} Multiview(s) aktiv` : ''}">
-        <span>${i + 1}. ${esc(l.name)}</span>
-        <span class="meta">${usedBy ? '● live' : ''}</span>
+  $('#layout-list').innerHTML =
+    myLayouts()
+      .map((l) => {
+        const usedBy = config.outputs.filter((o) => o.layoutId === l.id).length
+        const nr = config.layouts.indexOf(l) + 1
+        const tag = !canEditLayout(config, user, l) ? '🔒' : l.owner && isAdmin() ? esc(roleLabel(l.owner)) : l.shared ? 'für alle' : ''
+        return `<li data-id="${esc(l.id)}" class="${l.id === layoutId ? 'active' : ''}" title="${usedBy ? `auf ${usedBy} Multiview(s) aktiv` : ''}">
+        <span>${nr}. ${esc(l.name)}</span>
+        <span class="meta">${tag}${usedBy ? '<i class="live-dot"></i>' : ''}</span>
       </li>`
-    })
-    .join('')
+      })
+      .join('') || '<li class="muted" style="cursor:default">Noch keine Layouts</li>'
 }
 
 $('#layout-list').addEventListener('click', (e) => {
   const li = e.target.closest('li')
-  if (!li) return
+  if (!li?.dataset.id) return
   layoutId = li.dataset.id
   selectedTileId = null
   renderLayoutList()
@@ -775,12 +811,163 @@ $('#layout-add').addEventListener('click', () => {
     gap: 4,
     background: '#000000',
     tiles: [],
+    // Layouts einer Rolle gehören ihr – andere Rollen sehen sie nicht
+    ...(isAdmin() ? {} : { owner: user.roleId }),
   }
   config.layouts.push(layout)
   layoutId = layout.id
   selectedTileId = null
   renderAll()
   changed(0)
+})
+
+// ---------------------------------------------------------------------------
+// Layouts: gespeicherte Ansichten (liegen als JSON-Dateien auf dem Server)
+// ---------------------------------------------------------------------------
+
+function mayEditLayouts() {
+  const rights = roleRights(config, user)
+  return Boolean(rights?.admin || rights?.editLayouts)
+}
+
+async function loadTemplates() {
+  try {
+    const res = await fetch('/api/templates', { cache: 'no-store' })
+    if (!res.ok) return
+    templates = await res.json()
+    renderTemplates()
+  } catch {
+    // Server gerade nicht erreichbar – beim nächsten Verbinden wieder
+  }
+}
+
+function formatSavedAt(iso) {
+  const d = iso && new Date(iso)
+  if (!d || isNaN(d)) return ''
+  return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function renderTemplates() {
+  $('#template-list').innerHTML = templates.length
+    ? templates
+        .map((t) => {
+          const owner = isAdmin() && t.owner ? ` · ${esc(roleLabel(t.owner))}` : !t.owner && !isAdmin() ? ' · vom Admin' : ''
+          return `<li data-id="${esc(t.id)}">
+            <span class="name">${esc(t.name)}</span>
+            <span class="meta">${t.tiles} Kachel(n)${t.savedAt ? ` · ${esc(formatSavedAt(t.savedAt))}` : ''}${owner}</span>
+            <div class="btn-row">
+              <button class="btn small primary" data-action="load" title="In das gewählte Layout laden">Laden</button>
+              <a class="btn small" href="/api/templates/${encodeURIComponent(t.id)}?download" download title="Als Datei herunterladen">↓</a>
+              ${t.own ? '<button class="btn small danger" data-action="delete" title="Vorlage löschen">✕</button>' : ''}
+            </div>
+          </li>`
+        })
+        .join('')
+    : '<li class="muted empty">Noch nichts gespeichert.</li>'
+}
+
+async function postTemplate(name, layout) {
+  const res = await fetch('/api/templates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, layout }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
+  return body
+}
+
+/** Gleicher Dateiname wie auf dem Server – dort wird eine gleichnamige Vorlage überschrieben. */
+function existingTemplate(name) {
+  const id = name.toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
+  return templates.find((t) => t.id === id)
+}
+
+$('#template-save').addEventListener('click', async () => {
+  const layout = currentLayout()
+  if (!layout) return toast('Erst ein Layout anlegen.')
+  const name = prompt('Name für die gespeicherte Ansicht:', layout.name)?.trim()
+  if (!name) return
+  const existing = existingTemplate(name)
+  if (existing && !confirm(`„${existing.name}“ gibt es schon. Überschreiben?`)) return
+  try {
+    await postTemplate(name, layout)
+    toast(`„${name}“ gespeichert.`)
+  } catch (err) {
+    toast(`Speichern fehlgeschlagen: ${err.message}`)
+  }
+})
+
+$('#template-list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-action]')
+  if (!btn) return
+  const id = btn.closest('li').dataset.id
+  const entry = templates.find((t) => t.id === id)
+  if (!entry) return
+
+  if (btn.dataset.action === 'delete') {
+    if (!confirm(`Gespeicherte Ansicht „${entry.name}“ löschen?`)) return
+    const res = await fetch(`/api/templates/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null)
+    if (!res?.ok) toast('Löschen fehlgeschlagen.')
+    return
+  }
+
+  // Ins gewählte Layout laden – ist das gesperrt, entsteht ein neues eigenes Layout
+  let layout = currentLayout()
+  if (layout && !canEditLayout(config, user, layout)) layout = null
+  if (layout && !confirm(`„${entry.name}“ in das Layout „${layout.name}“ laden?\nDie Kacheln dort werden ersetzt – auf den Monitoren sofort sichtbar.`)) return
+  let template
+  try {
+    const res = await fetch(`/api/templates/${encodeURIComponent(id)}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    template = await res.json()
+  } catch (err) {
+    return toast(`Laden fehlgeschlagen: ${err.message}`)
+  }
+  if (!layout) {
+    layout = { id: uid('l'), name: template.name, tiles: [], ...(isAdmin() ? {} : { owner: user.roleId }) }
+    config.layouts.push(layout)
+    layoutId = layout.id
+  }
+  const { cols, rows, gap, background, tiles } = template.layout
+  Object.assign(layout, { cols, rows, gap, background })
+  layout.tiles = tiles.map((t) => ({
+    ...t,
+    id: uid('t'),
+    // Inzwischen gelöschte Quellen nicht mitnehmen
+    sourceId: config.sources.some((s) => s.id === t.sourceId) ? t.sourceId : null,
+  }))
+  selectedTileId = null
+  renderAll()
+  changed(0)
+  toast(`„${template.name}“ geladen.`)
+})
+
+$('#template-file').addEventListener('change', (e) => {
+  const input = e.target
+  const file = input.files[0]
+  input.value = ''
+  if (!file) return
+  // FileReader statt file.text() – das kennt iOS 12 noch nicht
+  const reader = new FileReader()
+  reader.onload = async () => {
+    let data
+    try {
+      data = JSON.parse(reader.result)
+    } catch {
+      return toast('Die Datei ist keine gültige Vorlage.')
+    }
+    const name = String(data?.name || file.name.replace(/\.json$/i, '')).trim()
+    const existing = existingTemplate(name)
+    if (existing && !confirm(`„${existing.name}“ gibt es schon. Überschreiben?`)) return
+    try {
+      await postTemplate(name, data?.layout)
+      toast(`„${name}“ importiert.`)
+    } catch (err) {
+      toast(`Import fehlgeschlagen: ${err.message}`)
+    }
+  }
+  reader.readAsText(file)
 })
 
 const livePreviewToggle = $('#live-preview')
@@ -811,6 +998,11 @@ function renderCanvas() {
   canvas.style.setProperty('--cols', layout.cols)
   canvas.style.setProperty('--rows', layout.rows)
   canvas.style.backgroundColor = layout.background || '#000'
+  const readonly = !canEditLayout(config, user, layout)
+  canvas.classList.toggle('readonly', readonly)
+  const note = $('#readonly-note')
+  note.hidden = !readonly
+  if (readonly) note.textContent = 'Nur ansehen: Dieses Layout gehört nicht zu deiner Rolle. Mit „+ Neu“ legst du ein eigenes an.'
 
   // Vorhandene Kachel-Elemente wiederverwenden, damit Live-Bilder nicht flackern
   const existing = new Map([...canvas.querySelectorAll('.etile')].map((el) => [el.dataset.id, el]))
@@ -875,10 +1067,12 @@ function syncTileProPresenter(el, tile) {
         ? JSON.stringify(['playlist', playlistOptions(tile.playlist)])
         : tile.kind === 'preacher'
           ? JSON.stringify(['preacher', preacherOptions(tile.preacher)])
-          : ''
+          : tile.kind === 'stage'
+            ? JSON.stringify(['stage', stageOptions(tile.stage)])
+            : ''
   if (el.dataset.ppKey === signature) return
   el.dataset.ppKey = signature
-  el.querySelector('.pp-view, .pl-view, .pr-view')?.remove()
+  el.querySelector('.pp-view, .pl-view, .pr-view, .st-view')?.remove()
   el.ppView = null
   el.classList.toggle('covered', Boolean(signature))
   if (!signature) return
@@ -888,8 +1082,11 @@ function syncTileProPresenter(el, tile) {
       ? createPlaylistView(tile.playlist)
       : tile.kind === 'preacher'
         ? createPreacherView(tile.preacher)
-        : createProPresenterView(tile.pp)
+        : tile.kind === 'stage'
+          ? createStageView(tile.stage)
+          : createProPresenterView(tile.pp)
   el.ppView.update(propresenter)
+  el.ppView.updateStage?.(ppStage)
   el.append(el.ppView.el)
 }
 
@@ -898,7 +1095,7 @@ function syncTileMedia(el, tile) {
   // Der Chat ist immer live zu sehen, so wie auf den Monitoren
   const key =
     tile.kind === 'chat'
-      ? 'chat'
+      ? JSON.stringify(['chat', tile.chatRole ?? ''])
       : tile.kind === 'churchtools'
         ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctDate])
         : livePreview && source
@@ -914,7 +1111,8 @@ function syncTileMedia(el, tile) {
   media.className = 'etile-media'
   if (tile.kind === 'chat') {
     const view = createChatView()
-    view.update(chat)
+    view.roleId = () => chatRoleFor(tile, user)
+    view.update(chatFor(chat, view.roleId()))
     chatViews.add(view)
     media.append(view.el)
   } else if (tile.kind === 'churchtools') {
@@ -953,6 +1151,15 @@ function describeTile(tile) {
   if (tile.kind === 'text') return { title: tile.text || 'Text', sub: 'Text' }
   if (tile.kind === 'audio') return { title: 'Pegel-Fenster', sub: `${tileChannels(tile).length} Pegel` }
   if (tile.kind === 'chat') return { title: 'Kesher-Chat', sub: 'Chat' }
+  if (tile.kind === 'kesher') {
+    const role =
+      tile.kesherRoleId === '@user'
+        ? 'angemeldeter Nutzer'
+        : tile.kesherRoleId
+          ? chat.roles?.find((r) => r.id === tile.kesherRoleId)?.name || tile.kesherRoleId
+          : 'ohne Rolle'
+    return { title: 'Kesher-Intercom', sub: `${role} · nur auf dem Monitor bedienbar` }
+  }
   if (tile.kind === 'churchtools') {
     const day = tile.ctDate ? new Date(`${tile.ctDate}T12:00:00Z`).toLocaleDateString('de-DE', { timeZone: 'UTC' }) : 'heute'
     return { title: 'ChurchTools-Ablauf', sub: [day, tile.ctFilter].filter(Boolean).join(' · ') }
@@ -960,6 +1167,7 @@ function describeTile(tile) {
   if (tile.kind === 'propresenter') return { title: 'ProPresenter', sub: 'Folien' }
   if (tile.kind === 'playlist') return { title: 'Playlist', sub: 'ProPresenter' }
   if (tile.kind === 'preacher') return { title: 'Prediger', sub: 'ProPresenter-Steuerung' }
+  if (tile.kind === 'stage') return { title: 'ProPresenter-Bühne', sub: 'Songtext · Countdown · Nachricht' }
   const source = config.sources.find((s) => s.id === tile.sourceId)
   if (!source) return { title: 'Keine Quelle', sub: '' }
   const atemPart = source.atemInput !== '' && source.atemInput != null ? ` · ATEM ${source.atemInput}` : ''
@@ -1017,7 +1225,7 @@ function nextFreeSource() {
 
 canvas.addEventListener('pointerdown', (e) => {
   const layout = currentLayout()
-  if (!layout || e.button !== 0) return
+  if (!layout || e.button !== 0 || !canEditLayout(config, user, layout)) return
   const rect = canvas.getBoundingClientRect()
   const cw = rect.width / layout.cols
   const ch = rect.height / layout.rows
@@ -1101,6 +1309,7 @@ canvas.addEventListener('pointercancel', endDrag)
 document.addEventListener('keydown', (e) => {
   if (page !== 'layouts' || e.target.closest('input, select, textarea')) return
   const layout = currentLayout()
+  if (!canEditLayout(config, user, layout)) return
   const tile = layout?.tiles.find((t) => t.id === selectedTileId)
   if (!tile) return
   if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -1149,6 +1358,14 @@ function renderInspector() {
     inspector.innerHTML = '<p class="muted">Kein Layout ausgewählt.</p>'
     return
   }
+  if (!canEditLayout(config, user, layout)) {
+    const usedBy = config.outputs.filter((o) => o.layoutId === layout.id).map((o) => o.name)
+    inspector.innerHTML = `<h3>${esc(layout.name)}</h3>
+      <p class="muted">${layout.tiles.length} Kachel(n)${usedBy.length ? ` · läuft auf ${esc(usedBy.join(', '))}` : ''}.</p>
+      <p class="muted">Dieses Layout kannst du auf deine Multiviews schalten, aber nicht verändern.</p>
+      ${roleRights(config, user)?.editLayouts ? '<button class="btn" data-action="duplicate-layout">Als eigenes Layout kopieren</button>' : ''}`
+    return
+  }
   const tile = layout.tiles.find((t) => t.id === selectedTileId)
   inspector.innerHTML = tile ? tileInspector(tile, layout) : layoutInspector(layout)
 }
@@ -1171,6 +1388,7 @@ function layoutInspector(layout) {
       <label class="field"><span>Abstand (px)</span><input type="number" min="0" max="40" data-l="gap" value="${layout.gap ?? 4}"></label>
       <label class="field"><span>Hintergrund</span><input type="color" data-l="background" value="${esc(layout.background || '#000000')}"></label>
     </div>
+    ${isAdmin() ? layoutAccessFields(layout) : ''}
     <hr class="divider">
     <h3>Vorlagen</h3>
     <div class="presets">
@@ -1272,12 +1490,60 @@ function ppSection(tile) {
 /** Auswahl, was „Ausblenden“ bei ProPresenter wegnimmt. */
 function blankModeField(attr, value) {
   return `<label class="field"><span>„Ausblenden“ blendet aus</span><select ${attr}="blankMode">
+    <option value="clearAll" ${value !== 'clear' ? 'selected' : ''}>Alles – ProPresenter blank (Folie und Hintergrund)</option>
     <option value="clear" ${value === 'clear' ? 'selected' : ''}>Nur die Folie (Hintergrund bleibt)</option>
-    <option value="clearAll" ${value === 'clearAll' ? 'selected' : ''}>Folie und Hintergrund</option>
   </select></label>`
 }
 
 /** Prediger-Kachel: Größe der Folien, Ausblenden-Art, Tasten. */
+/** ProPresenter-Bühne: was das Stage Display zeigt. */
+function stageSection(tile) {
+  const o = stageOptions(tile.stage)
+  const check = (key, label) =>
+    `<label class="check"><input type="checkbox" data-st="${key}" ${o[key] ? 'checked' : ''}> ${label}</label>`
+  // Timer, die ProPresenter kennt, plus gewählte, die es (gerade) nicht meldet
+  const known = ppStage.timers.map((t) => ({ uuid: t.uuid, name: t.name, time: t.time }))
+  for (const uuid of o.timers) if (!known.some((t) => t.uuid === uuid)) known.push({ uuid, name: 'Timer (nicht gefunden)', time: '' })
+  const timerChecks = known
+    .map(
+      (t) => `<label class="check"><input type="checkbox" data-st-timer="${esc(t.uuid)}" ${o.timers.includes(t.uuid) ? 'checked' : ''}> ${esc(t.name)}${t.time ? ` <span class="muted">${esc(fmtTimer(t.time))}</span>` : ''}</label>`,
+    )
+    .join('')
+  return `
+    <div class="meter-settings">
+      <h4>ProPresenter-Bühne</h4>
+      <p class="muted" style="margin:0;font-size:12px">Wie ein Stage Display: Songtext, Countdowns und Bühnennachricht. Am Monitor lässt sich die Bühnennachricht senden und löschen, hier im Editor ist alles nur Vorschau.</p>
+      ${check('song', 'Liedname und Teil (Strophe, Refrain …)')}
+      ${check('current', 'Text der aktuellen Folie')}
+      ${check('next', 'Text der nächsten Folie')}
+      ${check('notes', 'Folien-Notizen')}
+      ${check('message', 'Bühnennachricht')}
+      ${check('messages', 'Laufende Meldungen (Publikum)')}
+      ${check('videoCountdown', 'Restzeit des laufenden Videos')}
+      ${check('clock', 'Uhrzeit')}
+      ${check('send', 'Feld zum Senden der Bühnennachricht')}
+      <div class="field"><span>Countdowns / Timer (keiner gewählt = alle, die gerade laufen)</span>
+        ${timerChecks || '<p class="muted" style="margin:0;font-size:12px">ProPresenter meldet keine Timer.</p>'}
+      </div>
+      <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+        <input type="range" min="0.5" max="2.5" step="0.1" data-st="size" value="${o.size}"></label>
+      ${propresenter.connected ? '' : '<p class="muted" style="margin:0;font-size:12px">ProPresenter ist nicht verbunden – Adresse unter <a href="#/einstellungen">Einstellungen</a> prüfen.</p>'}
+    </div>`
+}
+
+/** Eintrag in der Quellen-Auswahl: Name · ATEM-Eingang mit seinem Namen · Art – damit klar ist, was dahinter liegt. */
+function sourceOptionLabel(s) {
+  const name = sourceLabel(s, atem) || s.name || 'Ohne Namen'
+  const parts = [name]
+  if (hasAtemInput(s)) {
+    const input = atem.inputs?.[Number(s.atemInput)]
+    const atemName = input?.longName || input?.shortName || ''
+    parts.push(`ATEM ${s.atemInput}${atemName && atemName !== name ? `: ${atemName}` : ''}`)
+  }
+  parts.push(SOURCE_TYPES[s.type] ?? s.type)
+  return parts.join(' · ')
+}
+
 function preacherSection(tile) {
   const o = preacherOptions(tile.preacher)
   return `
@@ -1341,10 +1607,55 @@ function bankSection(tile) {
     </div>`
 }
 
+/** Kesher-Chat: für welche Rolle (wie in Kesher, nach deren Party Lines). */
+function chatSection(tile) {
+  const value = tile.chatRole ?? ''
+  const roles = kesherRoles()
+  return `
+      <label class="field"><span>Nachrichten zeigen für</span><select data-t="chatRole">
+        <option value="" ${value === '' ? 'selected' : ''}>Angemeldete Rolle (sonst alle)</option>
+        <option value="*" ${value === '*' ? 'selected' : ''}>Alle Nachrichten</option>
+        ${roles.map((r) => `<option value="${esc(r.id)}" ${r.id === value ? 'selected' : ''}>Rolle ${esc(r.name)}</option>`).join('')}
+      </select></label>
+      <label class="check"><input type="checkbox" data-t="chatInput" ${tile.chatInput !== false ? 'checked' : ''}> Schreiben, wenn am Bildschirm jemand angemeldet ist</label>
+      <p class="muted">Der Chat zeigt, was die Rolle auch in Kesher sieht: globale Nachrichten und die ihrer Party Lines. „Angemeldete Rolle“: Wer angemeldet ist, sieht seinen Chat – Monitore ohne Anmeldung zeigen alles.</p>`
+}
+
+/** Kesher-Intercom: die Kesher-Weboberfläche als bedienbares Fenster auf dem Monitor. */
+function kesherSection(tile) {
+  const roles = chat.roles || []
+  const roleOptions = [
+    `<option value="">– selbst anmelden –</option>`,
+    `<option value="@user" ${tile.kesherRoleId === '@user' ? 'selected' : ''}>– angemeldeter Nutzer (Name und Rolle) –</option>`,
+    ...roles.map((r) => `<option value="${esc(r.id)}" ${r.id === tile.kesherRoleId ? 'selected' : ''}>${esc(r.name)}</option>`),
+  ]
+  // Gespeicherte Rolle, die Kesher (noch) nicht gemeldet hat, nicht stillschweigend verlieren
+  if (tile.kesherRoleId && tile.kesherRoleId !== '@user' && !roles.some((r) => r.id === tile.kesherRoleId))
+    roleOptions.push(`<option value="${esc(tile.kesherRoleId)}" selected>${esc(tile.kesherRoleId)}</option>`)
+  const view = tile.kesherView || 'station'
+  return `
+      <label class="field"><span>Rolle (automatisch anmelden)</span><select data-t="kesherRoleId">${roleOptions.join('')}</select></label>
+      <label class="field"><span>Name der Station</span><input type="text" data-t="kesherUser" value="${esc(tile.kesherUser ?? 'Multiview')}" placeholder="Multiview"></label>
+      <label class="field"><span>Ansicht</span>
+        <select data-t="kesherView">
+          <option value="station" ${view === 'station' ? 'selected' : ''}>Station (alle Kanäle)</option>
+          <option value="simple" ${view === 'simple' ? 'selected' : ''}>Einfach (große Tasten)</option>
+          <option value="chat" ${view === 'chat' ? 'selected' : ''}>Nur Chat (ohne Mikrofon)</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" data-t="kesherTakeover" ${tile.kesherTakeover !== false ? 'checked' : ''}> Rolle übernehmen, wenn sie schon angemeldet ist <span class="muted">(nicht bei „angemeldeter Nutzer“ – dessen eigenes Kesher bleibt angemeldet)</span></label>
+      <label class="field"><span>Mikrofon (Name enthält, leer = Standard)</span><input type="text" data-t="kesherAudioIn" value="${esc(tile.kesherAudioIn)}" placeholder="z. B. USB"></label>
+      <label class="field"><span>Lautsprecher (Name enthält, leer = Standard)</span><input type="text" data-t="kesherAudioOut" value="${esc(tile.kesherAudioOut)}" placeholder="z. B. HDMI"></label>
+      <label class="field"><span>Kesher-Adresse (leer = automatisch)</span><input type="text" data-t="kesherUrl" value="${esc(tile.kesherUrl)}" placeholder="automatisch"></label>
+      <p class="muted">Zeigt Kesher direkt auf dem Monitor, mit Sprechtasten, Kanälen und Chat. Bedienen per Maus oder Touch am Monitor. In der Vorschau hier im Editor ist es nur ein Platzhalter, damit die Rolle nicht zweimal angemeldet wird. Für das Mikrofon muss der Monitor die Seite über <code>127.0.0.1</code> oder <code>https</code> öffnen.</p>`
+}
+
 function tileInspector(tile, layout) {
   const sourceOptions = [
     `<option value="">– keine –</option>`,
-    ...config.sources.map((s) => `<option value="${esc(s.id)}" ${s.id === tile.sourceId ? 'selected' : ''}>${esc(s.name)}</option>`),
+    ...config.sources.map(
+      (s) => `<option value="${esc(s.id)}" ${s.id === tile.sourceId ? 'selected' : ''}>${esc(sourceOptionLabel(s))}</option>`,
+    ),
   ].join('')
   const kind = tile.kind || 'source'
   return `
@@ -1356,10 +1667,12 @@ function tileInspector(tile, layout) {
         <option value="text" ${kind === 'text' ? 'selected' : ''}>Text</option>
         <option value="audio" ${kind === 'audio' ? 'selected' : ''}>Pegel-Fenster (Audio)</option>
         <option value="chat" ${kind === 'chat' ? 'selected' : ''}>Kesher-Chat</option>
+        <option value="kesher" ${kind === 'kesher' ? 'selected' : ''}>Kesher-Intercom (bedienbar)</option>
         <option value="churchtools" ${kind === 'churchtools' ? 'selected' : ''}>ChurchTools-Ablauf</option>
         <option value="propresenter" ${kind === 'propresenter' ? 'selected' : ''}>ProPresenter (Folien / Hintergründe)</option>
         <option value="playlist" ${kind === 'playlist' ? 'selected' : ''}>ProPresenter-Playlist</option>
         <option value="preacher" ${kind === 'preacher' ? 'selected' : ''}>ProPresenter-Prediger (Folien steuern)</option>
+        <option value="stage" ${kind === 'stage' ? 'selected' : ''}>ProPresenter-Bühne (Songtext, Countdown, Nachricht)</option>
       </select>
     </label>
     ${
@@ -1388,14 +1701,16 @@ function tileInspector(tile, layout) {
       <label class="field"><span>Event (Name oder Kalender enthält, leer = laufendes/nächstes)</span><input type="text" data-t="ctFilter" value="${esc(tile.ctFilter)}" placeholder="z. B. Gottesdienst"></label>
       <label class="check"><input type="checkbox" data-t="ctResponsible" ${tile.ctResponsible !== false ? 'checked' : ''}> Verantwortliche anzeigen</label>
       <label class="check"><input type="checkbox" data-t="ctNotes" ${tile.ctNotes === true ? 'checked' : ''}> Notizen anzeigen</label>
-      <p class="muted">Zeigt den Ablauf des heutigen Events aus ChurchTools. Verbindung unter <a href="#einstellungen">Einstellungen</a>.</p>`
+      <p class="muted">Zeigt den Ablauf des heutigen Events aus ChurchTools. Gibt es heute keinen, steht der nächste Termin mit Ablauf da (bis 6 Wochen voraus). Mit festem Datum nur dieser Tag. Verbindung unter <a href="#einstellungen">Einstellungen</a>.</p>`
         : ''
     }
-    ${kind === 'chat' ? `<p class="muted">Zeigt den Kesher-Chat, auf allen Monitoren und Vorschauen gleich. Der Server ist dafür einmal bei Kesher angemeldet. Adresse und Rolle unter <a href="#einstellungen">Einstellungen</a>.</p>` : ''}
+    ${kind === 'chat' ? chatSection(tile) : ''}
+    ${kind === 'kesher' ? kesherSection(tile) : ''}
     ${kind === 'audio' ? bankSection(tile) : ''}
     ${kind === 'propresenter' ? ppSection(tile) : ''}
     ${kind === 'playlist' ? playlistSection(tile) : ''}
     ${kind === 'preacher' ? preacherSection(tile) : ''}
+    ${kind === 'stage' ? stageSection(tile) : ''}
     <hr class="divider">
     <div class="row4">
       <label class="field"><span>X</span><input type="number" min="0" max="${layout.cols - 1}" data-t="x" value="${tile.x}"></label>
@@ -1419,6 +1734,24 @@ function onInspectorField(e) {
   if ((e.type === 'input') !== live) return
   const layout = currentLayout()
   if (!layout) return
+
+  if (el.dataset.st || el.dataset.stTimer) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const o = stageOptions(tile.stage)
+    if (el.dataset.stTimer) {
+      const uuid = el.dataset.stTimer
+      o.timers = el.checked ? [...o.timers.filter((u) => u !== uuid), uuid] : o.timers.filter((u) => u !== uuid)
+    } else {
+      o[el.dataset.st] = el.type === 'checkbox' ? el.checked : Number(el.value)
+      const out = el.closest('label').querySelector('output')
+      if (out) out.textContent = `${Math.round(o.size * 100)} %`
+    }
+    tile.stage = o
+    renderCanvas()
+    changed()
+    return
+  }
 
   if (el.dataset.pr) {
     const tile = layout.tiles.find((t) => t.id === selectedTileId)
@@ -1499,6 +1832,10 @@ function onInspectorField(e) {
       renderInspector()
     } else if (key === 'gap') {
       layout.gap = clamp(parseInt(el.value, 10) || 0, 0, 40)
+    } else if (key === 'shared') {
+      layout.shared = el.checked
+    } else if (key === 'owner') {
+      layout.owner = el.value || null
     } else {
       layout[key] = el.value
     }
@@ -1513,7 +1850,15 @@ function onInspectorField(e) {
   const tile = layout.tiles.find((t) => t.id === selectedTileId)
   if (!tile || !el.dataset.t) return
   const key = el.dataset.t
-  if (key === 'showLabel' || key === 'showTally' || key === 'showMeter' || key === 'ctResponsible' || key === 'ctNotes')
+  if (
+    key === 'showLabel' ||
+    key === 'showTally' ||
+    key === 'showMeter' ||
+    key === 'ctResponsible' ||
+    key === 'ctNotes' ||
+    key === 'kesherTakeover' ||
+    key === 'chatInput'
+  )
     tile[key] = el.checked
   else if (key === 'ctDateMode') {
     // Festes Datum beginnt mit heute und lässt sich dann im Kalender ändern
@@ -1540,6 +1885,7 @@ function onInspectorField(e) {
     delete tile.meter // Video- und Audiokacheln haben unterschiedliche Lagen
     if (tile.kind === 'source' && !tile.sourceId) tile.sourceId = nextFreeSource()?.id ?? null
     if (tile.kind === 'audio' && !Array.isArray(tile.channels)) tile.channels = [{ input: 'master', label: '' }]
+    if (tile.kind === 'kesher' && tile.kesherUser == null) tile.kesherUser = 'Multiview'
     renderInspector()
   }
   renderCanvas()
@@ -1590,6 +1936,10 @@ inspector.addEventListener('click', (e) => {
       copy.id = uid('l')
       copy.name = `${layout.name} (Kopie)`
       copy.tiles.forEach((t) => (t.id = uid('t')))
+      if (!isAdmin()) {
+        copy.owner = user.roleId
+        copy.shared = false
+      }
       config.layouts.push(copy)
       layoutId = copy.id
       renderAll()
@@ -1601,7 +1951,7 @@ inspector.addEventListener('click', (e) => {
       const warn = users.length ? `\nEs wird gerade von ${users.map((o) => o.name).join(', ')} benutzt.` : ''
       if (!confirm(`Layout „${layout.name}“ löschen?${warn}`)) return
       config.layouts = config.layouts.filter((l) => l !== layout)
-      users.forEach((o) => (o.layoutId = config.layouts[0]?.id ?? null))
+      users.forEach((o) => (o.layoutId = myLayouts()[0]?.id ?? null))
       renderAll()
       changed(0)
       break
@@ -1866,6 +2216,8 @@ function renderCompanion() {
       ]
     }),
     ['Kachel 1 in Layout 1 auf Quelle 2', `${base}/api/layout/1/tile/1/source/2`],
+    ['ProPresenter: Bühnennachricht senden', `${base}/api/propresenter/stage-message?text=Noch%205%20Minuten`],
+    ['ProPresenter: Bühnennachricht löschen', `${base}/api/propresenter/stage-message/clear`],
     ['Status abfragen (JSON)', `${base}/api/state`],
   ]
   $('#companion-help').innerHTML = `<div class="table-wrap"><table class="table companion-table">${lines
@@ -1873,4 +2225,455 @@ function renderCompanion() {
     .join('')}</table></div>`
 }
 
-showPage()
+// ---------------------------------------------------------------------------
+// Benutzer, Rechte und Darstellung
+// ---------------------------------------------------------------------------
+
+async function loadMe() {
+  try {
+    const data = await fetch('/api/me', { cache: 'no-store' }).then((r) => r.json())
+    if (data.access?.enabled && !data.user) {
+      goToLogin()
+      await new Promise(() => {}) // Seite wechselt gleich
+    }
+    if (data.user && !data.user.open) adoptServerPrefs(data.prefs)
+    return data
+  } catch {
+    // Server (noch) nicht erreichbar: wie bisher offen arbeiten, der Server prüft beim Speichern
+    return { access: { enabled: false }, user: { admin: true, open: true, name: '', roleId: 'admin' } }
+  }
+}
+
+function goToLogin() {
+  location.replace(`/login.html?next=${encodeURIComponent(location.pathname + location.hash)}`)
+}
+
+function isAdmin() {
+  return Boolean(user?.admin)
+}
+
+/** Multiviews und Layouts, die der angemeldete Nutzer sieht. */
+function myOutputs() {
+  return config ? visibleOutputs(config, user) : []
+}
+
+function myLayouts() {
+  return config ? visibleLayouts(config, user) : []
+}
+
+/** Kesher-Rollen für die Rechte (ohne die Rolle des Chat-Monitors). */
+function kesherRoles() {
+  return (chat.roles ?? []).filter((r) => r.id !== config?.chat?.roleId)
+}
+
+function roleLabel(roleId) {
+  return kesherRoles().find((r) => r.id === roleId)?.name || roleId
+}
+
+const initials = (name) =>
+  String(name || '?')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('') || '?'
+
+function applyRoleUi() {
+  for (const el of document.querySelectorAll('[data-admin]')) el.hidden = !isAdmin()
+  $('#layout-add').hidden = !roleRights(config, user)?.editLayouts
+  $('#template-panel').hidden = !mayEditLayouts()
+  renderUserCard()
+}
+
+function renderUserCard() {
+  const card = $('#user-card')
+  if (user?.open) {
+    card.innerHTML = `<div class="avatar" style="background:var(--amber)">!</div>
+      <div class="user-meta"><b>Zugang offen</b><span>Ohne Anmeldung – alle dürfen alles</span></div>
+      <a class="icon-btn" href="#/zugang" title="Admin-PIN festlegen" aria-label="Admin-PIN festlegen">
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></a>`
+    return
+  }
+  card.innerHTML = `<div class="avatar">${esc(initials(user?.name))}</div>
+    <div class="user-meta"><b>${esc(user?.name)}</b><span>${esc(user?.roleName || '')}</span></div>
+    <div class="user-actions">
+      <a class="icon-btn" href="/login.html?wechseln=1&next=${encodeURIComponent(location.pathname + location.hash)}" title="Konto oder Rolle wechseln" aria-label="Konto wechseln">
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg></a>
+      <button class="icon-btn" id="logout-btn" title="Abmelden" aria-label="Abmelden">
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11"/></svg></button>
+    </div>`
+  // Angemeldet mit einer Rolle: direkt zum Admin wechseln können
+  $('#admin-login-btn').hidden = !me?.access?.enabled || isAdmin()
+}
+
+$('#user-card').addEventListener('click', async (e) => {
+  if (!e.target.closest('#logout-btn')) return
+  await fetch('/api/logout', { method: 'POST' }).catch(() => {})
+  location.replace('/login.html')
+})
+
+$('#admin-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const error = $('#admin-error')
+  error.textContent = me?.access?.pinSource === 'kesher' ? 'Prüfe bei Kesher …' : ''
+  const res = await fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: user?.name || 'Admin', roleId: 'admin', pin: $('#admin-pin').value }),
+  }).catch(() => null)
+  const data = await res?.json().catch(() => ({}))
+  if (!res?.ok || !data?.ok) {
+    error.textContent = data?.error || 'Server nicht erreichbar'
+    $('#admin-pin').select()
+    return
+  }
+  location.reload()
+})
+$('#admin-dialog').addEventListener('close', () => {
+  $('#admin-pin').value = ''
+  $('#admin-error').textContent = ''
+})
+
+/** Layout-Inspector (Admin): wem das Layout gehört und ob alle Rollen es benutzen dürfen. */
+function layoutAccessFields(layout) {
+  const roles = kesherRoles()
+  return `<hr class="divider">
+    <h3>Zugriff</h3>
+    <label class="field"><span>Gehört zur Rolle</span><select data-l="owner">
+      <option value="">– niemandem (Admin) –</option>
+      ${roles.map((r) => `<option value="${esc(r.id)}" ${r.id === layout.owner ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}
+      ${layout.owner && !roles.some((r) => r.id === layout.owner) ? `<option value="${esc(layout.owner)}" selected>${esc(layout.owner)}</option>` : ''}
+    </select></label>
+    <label class="check"><input type="checkbox" data-l="shared" ${layout.shared ? 'checked' : ''}> Für alle Rollen freigegeben (nur benutzen)</label>`
+}
+
+// --- Statusübersicht ---------------------------------------------------------
+
+function renderStatusStrip() {
+  if (!config) return
+  const tile = (state, title, text, href) =>
+    `<${isAdmin() ? `a href="${href}"` : 'div'} class="status-tile ${state}">
+      <span class="status-dot"></span>
+      <span class="status-text"><b>${title}</b><span>${esc(text)}</span></span>
+    </${isAdmin() ? 'a' : 'div'}>`
+  const pp = propresenter
+  const ct = churchtools
+  $('#status-strip').innerHTML = [
+    !config.atem.ip
+      ? tile('off', 'ATEM', 'nicht eingerichtet', '#/einstellungen')
+      : tile(atem.connected ? 'ok' : 'bad', 'ATEM', atem.connected ? atem.model || 'verbunden' : 'getrennt', '#/einstellungen'),
+    !config.propresenter?.host
+      ? tile('off', 'ProPresenter', 'nicht eingerichtet', '#/einstellungen')
+      : tile(
+          pp.connected ? 'ok' : 'bad',
+          'ProPresenter',
+          pp.connected ? (pp.presentation ? pp.presentation.name : 'verbunden') : 'nicht erreichbar',
+          '#/einstellungen',
+        ),
+    tile(chat.state === 'connected' ? 'ok' : 'bad', 'Kesher', chat.state === 'connected' ? 'verbunden' : 'getrennt', '#/einstellungen'),
+    ct.state === 'unconfigured'
+      ? tile('off', 'ChurchTools', 'nicht verbunden', '#/einstellungen')
+      : tile(ct.state === 'connected' ? 'ok' : 'bad', 'ChurchTools', ct.state === 'connected' ? 'verbunden' : ct.error || 'Fehler', '#/einstellungen'),
+  ].join('')
+}
+
+// --- Benutzer & Rechte (Admin) ----------------------------------------------
+
+let pinChoice = null // im Formular gewählte PIN-Quelle
+const lockIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>'
+let accessKey = ''
+
+function renderAccess() {
+  if (!config || !isAdmin() || page !== 'zugang') return
+  // Nicht neu aufbauen, während jemand eine PIN tippt
+  if ($('#access-pin-card').contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return
+
+  const enabled = me.access?.enabled
+  const fromKesher = me.access?.pinSource === 'kesher'
+  const source = pinChoice ?? (enabled && !fromKesher ? 'own' : 'kesher')
+  $('#access-pin-card').innerHTML = `
+    <div class="card-head"><div><h2>Anmeldung</h2>
+      <p class="muted">Mit einer Admin-PIN wird die Anmeldung eingeschaltet. Danach meldet sich jeder mit Namen und Kesher-Rolle an, der Admin mit der PIN.</p></div></div>
+    <div class="access-state ${enabled ? 'on' : 'open'}">${lockIcon}
+      <div>${
+        enabled
+          ? `<b>Anmeldung aktiv</b> – Admin-PIN ${fromKesher ? '<b>wie im Kesher-Admin</b> (wird bei Kesher geprüft)' : '<b>eigene PIN</b>'}. Ohne Anmeldung lässt sich nichts ändern; Monitore und Companion laufen weiter ohne Anmeldung.`
+          : '<b>Zugang offen.</b> Jeder im Netzwerk kann alles ändern. Richte die Admin-PIN ein, um Rollen und Rechte zu nutzen.'
+      }</div>
+    </div>
+    <form id="pin-form" class="pin-form" autocomplete="off">
+      <div class="field" style="grid-column:1/-1"><span>Admin-PIN</span>
+        <div class="segmented" role="radiogroup">
+          <button type="button" data-pin-source="kesher" class="${source === 'kesher' ? 'active' : ''}">Wie im Kesher-Admin (empfohlen)</button>
+          <button type="button" data-pin-source="own" class="${source === 'own' ? 'active' : ''}">Eigene PIN</button>
+        </div>
+      </div>
+      ${enabled ? '<label class="field"><span>Bisherige Admin-PIN</span><input type="password" inputmode="numeric" name="currentPin" autocomplete="off" required></label>' : ''}
+      ${enabled ? '' : `<label class="field"><span>Dein Name</span><input type="text" name="name" value="${esc(user?.name || 'Admin')}" required></label>`}
+      ${
+        source === 'kesher'
+          ? `<label class="field"><span>Admin-PIN von Kesher</span><input type="password" inputmode="numeric" name="pin" autocomplete="off" required></label>`
+          : `<label class="field"><span>Neue PIN (4–12 Ziffern)</span><input type="password" inputmode="numeric" name="pin" pattern="\\d{4,12}" autocomplete="new-password" required></label>
+             <label class="field"><span>PIN wiederholen</span><input type="password" inputmode="numeric" name="pin2" autocomplete="new-password" required></label>`
+      }
+      <div class="btn-row" style="grid-column:1/-1"><button class="btn primary" type="submit">${
+        enabled ? 'Übernehmen' : source === 'kesher' ? 'Mit Kesher-PIN einschalten' : 'PIN festlegen und einschalten'
+      }</button>
+        ${enabled ? '<button class="btn danger" type="button" id="pin-remove">Anmeldung ausschalten</button>' : ''}</div>
+    </form>
+    <p class="muted" style="font-size:12.5px;margin-top:10px">${
+      source === 'kesher'
+        ? 'Der Multiview speichert die PIN nicht – er fragt bei jeder Admin-Anmeldung Kesher. Ändert sich die PIN in Kesher, gilt sie hier sofort mit. Ist Kesher nicht erreichbar, geht die Admin-Anmeldung so lange nicht.'
+        : 'Die PIN wird nur als Hash auf dem Server gespeichert.'
+    }</p>
+    <p class="form-error" id="pin-error"></p>`
+
+  const roles = kesherRoles()
+  const key = JSON.stringify([roles, chat.rooms, config.outputs.map((o) => [o.id, o.name]), config.access.roles])
+  if (key !== accessKey || !$('#access-roles').childElementCount) {
+    accessKey = key
+    $('#access-roles').innerHTML = !roles.length
+      ? `<p class="muted">Keine Rollen – ist Kesher verbunden? (Einstellungen → Kesher-Chat)</p>`
+      : `<div class="table-wrap"><table class="table role-table">
+          <thead><tr><th>Rolle</th><th>Hört in Kesher (Chat)</th><th>Sieht und schaltet diese Multiviews</th><th>Eigene Layouts</th></tr></thead>
+          <tbody>${roles
+            .map((r) => {
+              const rights = roleRights(config, { roleId: r.id })
+              return `<tr data-role="${esc(r.id)}">
+                <td class="role-name">${esc(r.name)}</td>
+                <td class="muted" style="font-size:12.5px">${esc(listensTo(r.id)) || '–'}</td>
+                <td><div class="chip-set">${
+                  config.outputs
+                    .map(
+                      (o) => `<label class="chip"><input type="checkbox" data-role-output="${esc(o.id)}" ${rights.outputs.includes(o.id) ? 'checked' : ''}>${esc(o.name)}</label>`,
+                    )
+                    .join('') || '<span class="muted">Noch keine Multiviews</span>'
+                }</div></td>
+                <td><label class="switch"><input type="checkbox" data-role-edit ${rights.editLayouts ? 'checked' : ''}><span class="switch-track"></span><span class="muted">einrichten</span></label></td>
+              </tr>`
+            })
+            .join('')}</tbody></table></div>
+        <div class="btn-row" style="margin-top:14px">
+          <button class="btn" type="button" id="roles-suggest">Multiviews nach Rollennamen vorschlagen</button>
+          <span class="muted" style="font-size:12.5px;align-self:center">z. B. „Licht 1“ und „Licht 2“ → Multiview „Licht“. Bestehende Häkchen bleiben.</span>
+        </div>`
+  }
+}
+
+/** Party Lines, auf denen eine Rolle in Kesher hört (bestimmt ihren Chat). */
+function listensTo(roleId) {
+  return (chat.rooms ?? [])
+    .filter((room) => room.listeners.includes(roleId))
+    .map((room) => room.name)
+    .join(', ')
+}
+
+/** Multiviews vorschlagen, deren Name im Rollennamen steckt („Licht 2“ → „Licht“). */
+function suggestRights() {
+  const norm = (t) => String(t).toLowerCase().replace(/[^a-z0-9äöüß]+/g, ' ').trim()
+  let added = 0
+  for (const role of kesherRoles()) {
+    const words = norm(role.name).split(' ')
+    const matches = config.outputs.filter((o) => {
+      const name = norm(o.name)
+      return name && (words.includes(name) || norm(role.name).startsWith(`${name} `) || norm(role.name) === name)
+    })
+    if (!matches.length) continue
+    const current = config.access.roles[role.id] ?? { outputs: [], editLayouts: true }
+    const before = current.outputs.length
+    current.outputs = [...new Set([...current.outputs, ...matches.map((o) => o.id)])]
+    added += current.outputs.length - before
+    config.access.roles[role.id] = current
+  }
+  accessKey = ''
+  renderAccess()
+  if (added) changed(0)
+  toast(added ? `${added} Freigabe(n) ergänzt` : 'Keine passenden Namen gefunden')
+}
+
+$('#page-zugang').addEventListener('change', (e) => {
+  const row = e.target.closest('tr[data-role]')
+  if (!row) return
+  const roleId = row.dataset.role
+  const current = config.access.roles[roleId] ?? { outputs: [], editLayouts: true }
+  if (e.target.dataset.roleOutput) {
+    const id = e.target.dataset.roleOutput
+    current.outputs = e.target.checked ? [...new Set([...current.outputs, id])] : current.outputs.filter((x) => x !== id)
+  } else if ('roleEdit' in e.target.dataset) {
+    current.editLayouts = e.target.checked
+  } else return
+  config.access.roles[roleId] = current
+  accessKey = JSON.stringify([kesherRoles(), config.outputs.map((o) => [o.id, o.name]), config.access.roles])
+  changed(0)
+})
+
+$('#page-zugang').addEventListener('submit', async (e) => {
+  if (e.target.id !== 'pin-form') return
+  e.preventDefault()
+  const form = new FormData(e.target)
+  const error = $('#pin-error')
+  const source = $('#pin-form [data-pin-source].active')?.dataset.pinSource || 'kesher'
+  if (source === 'own' && form.get('pin') !== form.get('pin2')) return (error.textContent = 'Die beiden PINs stimmen nicht überein.')
+  error.textContent = source === 'kesher' ? 'Prüfe bei Kesher …' : ''
+  const res = await fetch('/api/access/pin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source, pin: form.get('pin'), currentPin: form.get('currentPin'), name: form.get('name') }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok || !data.ok) return (error.textContent = data.error || `Fehler (HTTP ${res.status})`)
+  error.textContent = ''
+  toast(me.access.enabled ? 'Admin-PIN übernommen' : 'Anmeldung ist eingeschaltet – du bist als Admin angemeldet')
+  setTimeout(() => location.reload(), 900)
+})
+
+$('#page-zugang').addEventListener('click', async (e) => {
+  const choice = e.target.closest('[data-pin-source]')
+  if (choice) {
+    pinChoice = choice.dataset.pinSource
+    return renderAccess()
+  }
+  if (e.target.closest('#roles-suggest')) return suggestRights()
+  if (e.target.closest('#pin-remove')) {
+    const pin = $('#pin-form [name="currentPin"]').value
+    if (!pin) return ($('#pin-error').textContent = 'Zum Ausschalten die bisherige PIN eingeben.')
+    if (!confirm('Anmeldung ausschalten? Danach kann wieder jeder im Netzwerk alles ändern.')) return
+    const res = await fetch('/api/access/pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ off: true, currentPin: pin }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.ok) return ($('#pin-error').textContent = data.error || `Fehler (HTTP ${res.status})`)
+    location.reload()
+  }
+  const end = e.target.closest('[data-end-session]')
+  if (end) {
+    await fetch(`/api/access/sessions/${encodeURIComponent(end.dataset.endSession)}`, { method: 'DELETE' })
+    loadSessions()
+  }
+  if (e.target.closest('#sessions-refresh')) loadSessions()
+})
+
+async function loadSessions() {
+  if (!isAdmin()) return
+  const box = $('#access-sessions')
+  if (!me.access?.enabled) {
+    box.innerHTML = '<p class="muted">Erst mit eingeschalteter Anmeldung gibt es angemeldete Geräte.</p>'
+    return
+  }
+  try {
+    const list = await fetch('/api/access/sessions').then((r) => r.json())
+    const when = (ms) => new Date(ms).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    box.innerHTML = `<div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Rolle</th><th>Zuletzt aktiv</th><th></th></tr></thead>
+      <tbody>${list
+        .map(
+          (s) => `<tr><td><b>${esc(s.name)}</b>${s.self ? ' <span class="badge accent">dieses Gerät</span>' : ''}${s.live ? ' <span class="pill ok" style="height:22px">online</span>' : ''}</td>
+            <td>${esc(s.roleName)}</td><td class="muted">${esc(when(s.seen))}</td>
+            <td style="text-align:right">${s.self ? '' : `<button class="btn small danger" data-end-session="${esc(s.id)}">Abmelden</button>`}</td></tr>`,
+        )
+        .join('') || '<tr><td colspan="4" class="muted">Niemand angemeldet.</td></tr>'}</tbody></table></div>`
+  } catch {
+    box.innerHTML = '<p class="muted">Konnte die Liste nicht laden.</p>'
+  }
+}
+
+// --- Darstellung, QR-Codes, Menü ---------------------------------------------
+
+function renderThemeButton() {
+  const { theme } = currentPrefs()
+  const name = THEMES.find((t) => t.value === theme)?.name
+  $('#theme-btn').innerHTML = themeIcon(theme)
+  $('#theme-btn').title = `Darstellung: ${name} (klicken zum Wechseln)`
+}
+renderThemeButton()
+onPrefsChange(() => {
+  renderThemeButton()
+  if ($('#appearance-dialog').open) $('#appearance-body').innerHTML = appearanceHtml()
+})
+$('#theme-btn').addEventListener('click', () => setPrefs({ theme: nextTheme() }, { server: !user?.open }))
+bindAppearance($('#appearance-body'))
+
+document.addEventListener('click', (e) => {
+  const opener = e.target.closest('[data-open]')
+  if (!opener) return
+  const dialog = document.getElementById(opener.dataset.open)
+  if (dialog.id === 'appearance-dialog') $('#appearance-body').innerHTML = appearanceHtml()
+  if (dialog.id === 'qr-dialog') renderQr()
+  if (dialog.id === 'admin-dialog') setTimeout(() => $('#admin-pin').focus(), 50)
+  document.body.classList.remove('nav-open')
+  dialog.showModal()
+})
+for (const dialog of document.querySelectorAll('dialog')) {
+  // Klick neben den Dialog schließt ihn
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) dialog.close()
+  })
+}
+
+// Menü-Taste (☰) und Abdunklung: siehe Skript am Ende von index.html – unabhängig von diesem Modul
+
+// Sprungmarken der Einstellungen ohne die Seiten-Navigation (#/…) zu stören
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-jump]')
+  if (!a) return
+  e.preventDefault()
+  document.querySelector(a.getAttribute('href'))?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+})
+
+const qrUrl = (data) => `/api/qr.svg?data=${encodeURIComponent(data)}`
+let qrTimer = null
+
+async function renderQr() {
+  const origin = publicOrigin(server)
+  $('#qr-site').src = qrUrl(`${origin}/`)
+  $('#qr-site-url').textContent = `${origin}/`
+  $('#qr-login-user').textContent = user?.open ? 'Gast' : `${user.name} (${user.roleName})`
+  await renewLoginQr()
+}
+
+async function renewLoginQr() {
+  clearInterval(qrTimer)
+  const img = $('#qr-login')
+  const timer = $('#qr-login-timer')
+  try {
+    const res = await fetch('/api/me/qr', { method: 'POST' })
+    if (res.status === 401) return goToLogin()
+    const data = await res.json()
+    img.src = qrUrl(`${publicOrigin(server)}/q/${data.token}`)
+    img.style.opacity = ''
+    const until = Date.now() + data.expiresInMs
+    const tick = () => {
+      const left = Math.max(0, until - Date.now())
+      timer.textContent = left
+        ? `Noch ${Math.floor(left / 60000)}:${String(Math.floor((left % 60000) / 1000)).padStart(2, '0')} gültig`
+        : 'Abgelaufen – neuen Code erzeugen'
+      if (!left) {
+        img.style.opacity = '0.25'
+        clearInterval(qrTimer)
+      }
+    }
+    tick()
+    qrTimer = setInterval(tick, 1000)
+  } catch {
+    timer.textContent = 'Code konnte nicht erzeugt werden'
+  }
+}
+$('#qr-login-renew').addEventListener('click', renewLoginQr)
+$('#qr-dialog').addEventListener('close', () => clearInterval(qrTimer))
+
+/** Start: erst die Anmeldung klären (ohne Anmeldung zur Anmeldeseite), dann verbinden. */
+async function start() {
+  me = await loadMe()
+  user = me.user
+  connect(onMessage, (online) => {
+    if (!online) setSaveState('error', 'Server nicht erreichbar')
+    else if (!saveTimer) setSaveState('')
+  })
+  showPage()
+  loadTemplates()
+  document.body.classList.remove('booting')
+}
+
+start()

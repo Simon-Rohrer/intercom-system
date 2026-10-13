@@ -103,3 +103,92 @@ export function applyBox(el, tile, layout) {
   el.style.width = `${(tile.w / layout.cols) * 100}%`
   el.style.height = `${(tile.h / layout.rows) * 100}%`
 }
+
+/** Nächstes Element, das sich per Wischen scrollen lässt (oder null). */
+function scrollableParent(node) {
+  for (let el = node instanceof Element ? node : node?.parentElement; el && el !== document.body; el = el.parentElement) {
+    const style = getComputedStyle(el)
+    const y = /(auto|scroll)/.test(style.overflowY) && el.scrollHeight > el.clientHeight + 1
+    const x = /(auto|scroll)/.test(style.overflowX) && el.scrollWidth > el.clientWidth + 1
+    if (x || y) return el
+  }
+  return null
+}
+
+/**
+ * Scrollen per Finger selbst übernehmen (Folienliste, Chat …), die Seite selbst bewegt sich nie.
+ * Safari auf dem iPad verkleinert das Vollbild, sobald es eine Wischgeste nach unten sieht –
+ * auch mitten in einer scrollbaren Liste. Darum bekommt Safari gar keine Wischgeste mehr
+ * (jedes touchmove wird abgefangen) und wir scrollen den Bereich selbst, mit Schwung.
+ * Vollbild beenden geht dann nur noch über das X bzw. die Vollbild-Taste.
+ */
+export function keepTouchScrollInside() {
+  let el = null
+  let lastX = 0
+  let lastY = 0
+  let lastT = 0
+  let vx = 0
+  let vy = 0
+  let glide = 0
+  let startX = 0
+  let startY = 0
+  let moving = false
+
+  const stopGlide = () => cancelAnimationFrame(glide)
+
+  document.addEventListener(
+    'touchstart',
+    (e) => {
+      stopGlide()
+      if (e.touches.length > 1) return (el = null)
+      const t = e.touches[0]
+      el = scrollableParent(e.target)
+      lastX = startX = t.clientX
+      lastY = startY = t.clientY
+      lastT = performance.now()
+      vx = vy = 0
+      moving = false
+    },
+    { passive: true },
+  )
+  document.addEventListener(
+    'touchmove',
+    (e) => {
+      if (e.touches.length > 1) return // Zwei Finger: Zoomen nicht verhindern
+      const t = e.touches[0]
+      // Kleines Wackeln beim Antippen bleibt ein Tippen (Safari wertet das noch nicht als Wischen)
+      if (!moving && Math.hypot(t.clientX - startX, t.clientY - startY) < 6) return
+      moving = true
+      e.preventDefault()
+      if (!el) return
+      const now = performance.now()
+      const dx = lastX - t.clientX
+      const dy = lastY - t.clientY
+      el.scrollLeft += dx
+      el.scrollTop += dy
+      const dt = Math.max(now - lastT, 1)
+      vx = 0.8 * (dx / dt) + 0.2 * vx // Pixel pro Millisekunde, leicht geglättet
+      vy = 0.8 * (dy / dt) + 0.2 * vy
+      lastX = t.clientX
+      lastY = t.clientY
+      lastT = now
+    },
+    { passive: false },
+  )
+  document.addEventListener('touchend', () => {
+    const target = el
+    if (!target || !moving || performance.now() - lastT > 80) return // Finger lag still: kein Schwung
+    let prev = performance.now()
+    const step = (now) => {
+      const dt = now - prev
+      prev = now
+      target.scrollLeft += vx * dt
+      target.scrollTop += vy * dt
+      const decay = Math.pow(0.995, dt)
+      vx *= decay
+      vy *= decay
+      if (Math.abs(vx) > 0.02 || Math.abs(vy) > 0.02) glide = requestAnimationFrame(step)
+    }
+    glide = requestAnimationFrame(step)
+  })
+}

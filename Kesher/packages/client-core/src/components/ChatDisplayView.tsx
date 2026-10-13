@@ -151,6 +151,7 @@ export function ChatDisplayView({
                   isNewest ? "is-newest" : "",
                   isOld ? "is-old" : "",
                   needsAck ? "needs-ack" : "",
+                  entry.source === "multiview-alert" ? "is-alert" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
@@ -165,6 +166,10 @@ export function ChatDisplayView({
                     <span className="chat-display-target is-telegram">Telegram</span>
                   ) : entry.source === "companion" ? (
                     <span className="chat-display-target">Stream Deck</span>
+                  ) : entry.source === "multiview-alert" ? (
+                    <span className="chat-display-target is-alert">Wichtig</span>
+                  ) : entry.source === "multiview" ? (
+                    <span className="chat-display-target">Multiview</span>
                   ) : null}
                   {needsAck ? (
                     <span className="chat-display-ack">Bestätigung erwartet</span>
