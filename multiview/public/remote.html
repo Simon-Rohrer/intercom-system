@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="de" data-theme="system">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f7f9">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="apple-touch-icon" href="prediger-icon.png">
+  <title>Fernbedienung – Multiview</title>
+  <script src="theme-boot.js"></script>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body class="booting">
+  <div class="app">
+    <div class="remote">
+      <header class="remote-head">
+        <div class="avatar" id="avatar"></div>
+        <div class="user-meta"><b id="user-name"></b><span id="user-role"></span></div>
+        <button type="button" class="icon-btn" id="theme-btn" aria-label="Hell / Dunkel"></button>
+        <a class="icon-btn" href="/" title="Zum Editor" aria-label="Zum Editor">
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>
+        </a>
+        <button type="button" class="icon-btn" id="logout-btn" aria-label="Abmelden" title="Abmelden" hidden>
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11"/></svg>
+        </button>
+      </header>
+
+      <div id="offline" class="notice warn" hidden>Verbindung zum Server unterbrochen – verbinde neu …</div>
+
+      <section class="remote-section">
+        <h2>Meine Bildschirme</h2>
+        <div id="outputs"></div>
+      </section>
+
+      <section class="remote-section" id="screens-section" hidden>
+        <h2>Monitore am Server</h2>
+        <div id="screens"></div>
+      </section>
+
+      <section class="remote-section" id="message-section" hidden>
+        <h2>Bühnennachricht</h2>
+        <div class="card remote-card">
+          <div class="muted" id="message-current"></div>
+          <form class="remote-message" id="message-form">
+            <input type="text" id="message-text" maxlength="500" placeholder="z. B. Noch 5 Minuten" enterkeyhint="send">
+            <button class="btn primary" type="submit">Senden</button>
+          </form>
+          <button class="btn danger" type="button" id="message-clear">Nachricht löschen</button>
+        </div>
+      </section>
+    </div>
+  </div>
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="remote.js"></script>
+</body>
+</html>

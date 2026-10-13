@@ -48,6 +48,26 @@ body.idle { cursor: none; }
 .tile.fit-cover .media video,
 .tile.fit-cover .media img { object-fit: cover; }
 
+/* Kesher-Intercom: eigene Ebene über den Kacheln, damit die Seite beim Neuaufbau
+   der Kacheln weiterläuft (ein verschobenes iframe würde neu laden) */
+#frames {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+.frame-tile {
+  position: absolute;
+  border: calc(var(--gap) / 2) solid var(--bg);
+  pointer-events: auto;
+}
+.frame-tile iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #090b0e;
+}
+
 /* Tally-Rahmen liegt über dem Bild, damit sich nichts verschiebt */
 .tile::after {
   content: "";
@@ -170,7 +190,8 @@ body {
   overscroll-behavior: none;
 }
 /* Abstand zu Notch, Dynamic Island und Home-Leiste (am Monitor ist das 0) */
-#stage {
+#stage,
+#frames {
   top: env(safe-area-inset-top);
   right: env(safe-area-inset-right);
   bottom: env(safe-area-inset-bottom);

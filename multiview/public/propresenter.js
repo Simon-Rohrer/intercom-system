@@ -219,6 +219,20 @@ export function createPlaylistView(options) {
   let itemsKey = ''
   let rows = []
   let lastActive = null
+  let lastTop = null
+
+  // Laufendes Lied mittig halten; am Anfang und Ende der Liste so weit es geht
+  function centerCurrent(smooth) {
+    const current = rows.find((r) => r.item.index === lastActive)?.row
+    if (!current || !list.clientHeight) return
+    const max = Math.max(0, list.scrollHeight - list.clientHeight)
+    const top = Math.round(Math.min(max, Math.max(0, current.offsetTop + current.offsetHeight / 2 - list.clientHeight / 2)))
+    if (top === lastTop) return
+    lastTop = top
+    list.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' })
+  }
+  // Nach Größenänderung der Kachel neu ausrichten (alte Browser ohne ResizeObserver: beim nächsten Update)
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => centerCurrent(false)).observe(list)
 
   return {
     el,
@@ -259,6 +273,7 @@ export function createPlaylistView(options) {
           return { row, item: it }
         })
         lastActive = null
+        lastTop = null
       }
 
       for (const { row, item } of rows) {
@@ -267,12 +282,11 @@ export function createPlaylistView(options) {
         row.classList.toggle('next', item.index === pl.nextIndex)
         row.classList.toggle('selected', item.index === pl.focusedIndex)
       }
-      // Laufendes Lied ins obere Drittel scrollen
-      if (pl.activeIndex !== lastActive) {
-        lastActive = pl.activeIndex
-        const current = rows.find((r) => r.item.index === pl.activeIndex)?.row
-        if (current) list.scrollTo({ top: Math.max(0, current.offsetTop - list.clientHeight / 3), behavior: 'smooth' })
-      }
+      const changed = pl.activeIndex !== lastActive
+      lastActive = pl.activeIndex
+      // Noch nicht ausgelegt (Kachel gerade erst eingefügt): im nächsten Frame
+      if (list.clientHeight) centerCurrent(changed)
+      else requestAnimationFrame(() => centerCurrent(false))
     },
   }
 }

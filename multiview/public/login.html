@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="de" data-theme="system">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f7f9">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Anmelden – Multiview</title>
+  <script src="theme-boot.js"></script>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="auth-page">
+    <div class="card auth-card">
+      <div class="brand">
+        <span class="brand-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span class="brand-text">Multiview<small>Technik</small></span>
+      </div>
+      <div>
+        <h1>Anmelden</h1>
+        <p class="muted">Wie bei Kesher: Name eingeben und deine Rolle wählen.</p>
+      </div>
+      <div class="notice" id="current-note" hidden>
+        <span id="current-text"></span>
+        <a class="btn small" id="current-back" href="/">Zurück</a>
+      </div>
+      <div class="notice warn" id="revoked-note" hidden>Du wurdest abgemeldet – deine Rolle wurde auf einem anderen Gerät angemeldet oder vom Admin beendet.</div>
+      <div class="notice warn" id="qr-note" hidden>Der QR-Code ist abgelaufen oder wurde schon benutzt. Melde dich hier an oder lass dir einen neuen Code zeigen.</div>
+      <form id="login-form" autocomplete="on">
+        <label class="field"><span>Name</span>
+          <input type="text" name="name" id="name" autocomplete="name" required placeholder="z. B. Tim">
+        </label>
+        <label class="field"><span>Rolle</span>
+          <select name="roleId" id="role" required></select>
+        </label>
+        <label class="field" id="pin-field" hidden><span>Admin-PIN</span>
+          <input type="password" name="pin" id="pin" inputmode="numeric" autocomplete="current-password">
+        </label>
+        <button class="btn primary block" type="submit">Anmelden</button>
+        <p class="form-error" id="error"></p>
+        <div class="notice warn" id="takeover" hidden>
+          <span id="takeover-text"></span>
+          <button class="btn small" type="button" id="takeover-btn">Übernehmen</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <script type="module" src="login.js"></script>
+</body>
+</html>
