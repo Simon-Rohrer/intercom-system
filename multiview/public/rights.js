@@ -4,13 +4,22 @@
 /** user = { admin, roleId } aus /api/me (offener Zugang: admin = true). */
 export function roleRights(config, user) {
   if (!user) return null
-  if (user.admin) return { admin: true, editLayouts: true, outputs: config.outputs.map((o) => o.id) }
+  const all = config.outputs.map((o) => o.id)
+  if (user.admin) return { admin: true, editLayouts: true, outputs: all, edit: all }
   const r = config.access?.roles?.[user.roleId]
+  const outputs = (r?.outputs ?? []).filter((id) => all.includes(id))
   return {
     admin: false,
     editLayouts: r?.editLayouts !== false,
-    outputs: (r?.outputs ?? []).filter((id) => config.outputs.some((o) => o.id === id)),
+    outputs,
+    // Bearbeiten (umschalten, laufendes Layout ändern); ohne Angabe wie früher: alles Freigegebene
+    edit: Array.isArray(r?.edit) ? r.edit.filter((id) => outputs.includes(id)) : outputs,
   }
+}
+
+/** Darf der Nutzer diesen Multiview bearbeiten (Layout umschalten, laufendes Layout ändern)? */
+export function canEditOutput(config, user, outputId) {
+  return Boolean(roleRights(config, user)?.edit.includes(outputId))
 }
 
 export function visibleOutputs(config, user) {
@@ -23,12 +32,9 @@ export function canEditLayout(config, user, layout) {
   const rights = roleRights(config, user)
   if (!rights || !layout) return false
   if (rights.admin) return true
-  if (!rights.editLayouts) return false
-  if (layout.owner === user.roleId) return true
-  if (layout.owner && layout.owner !== user.roleId) return false
   if (layout.shared) return false
-  const usedBy = config.outputs.filter((o) => o.layoutId === layout.id).map((o) => o.id)
-  return usedBy.length > 0 && usedBy.every((id) => rights.outputs.includes(id))
+  if (layout.owner === user.roleId) return true
+  return config.outputs.some((o) => rights.edit.includes(o.id) && o.layoutId === layout.id)
 }
 
 export function visibleLayouts(config, user) {
@@ -40,7 +46,7 @@ export function visibleLayouts(config, user) {
       l.owner === user.roleId ||
       l.shared === true ||
       // auch das zuletzt gelaufene, damit man nach „Aus“ wieder einschalten kann
-      config.outputs.some((o) => rights.outputs.includes(o.id) && (o.layoutId === l.id || o.lastLayoutId === l.id)),
+      config.outputs.some((o) => rights.edit.includes(o.id) && (o.layoutId === l.id || o.lastLayoutId === l.id)),
   )
 }
 
@@ -51,7 +57,7 @@ export function claimLayouts(config, user) {
   for (const layout of config.layouts) {
     if (layout.owner || layout.shared) continue
     const usedBy = config.outputs.filter((o) => o.layoutId === layout.id).map((o) => o.id)
-    if (usedBy.length && usedBy.every((id) => rights.outputs.includes(id))) layout.owner = user.roleId
+    if (usedBy.length && usedBy.every((id) => rights.edit.includes(id))) layout.owner = user.roleId
   }
 }
 

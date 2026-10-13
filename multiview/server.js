@@ -12,7 +12,7 @@ const { createKesherChat } = require('./kesher-chat')
 const { createChurchTools } = require('./churchtools')
 const QRCode = require('qrcode')
 const {
-  createAccess, normalizeAccess, roleRights, allowedOutputs, visibleLayouts, applyRestrictedChanges, claimLayouts, ADMIN,
+  createAccess, normalizeAccess, roleRights, allowedOutputs, editableOutputs, visibleLayouts, applyRestrictedChanges, claimLayouts, ADMIN,
 } = require('./access')
 
 const PORT = Number(process.env.PORT) || 8090
@@ -1314,6 +1314,7 @@ app.get('/api/me', (req, res) => {
       admin: rights.admin,
       editLayouts: rights.admin || rights.editLayouts,
       outputs: [...allowedOutputs(config, user)],
+      edit: [...editableOutputs(config, user)],
       layouts: visibleLayouts(config, user).map((l) => l.id),
     },
     prefs: user && !user.open ? (readProfiles()[profileKey(user)] ?? null) : null,
@@ -1356,6 +1357,8 @@ app.post('/api/me/output/:output/layout', requireUser, (req, res) => {
   const output = config.outputs.find((o) => o.id === req.params.output)
   if (!output || !allowedOutputs(config, req.user).has(output.id))
     return res.status(403).json({ ok: false, error: 'Kein Zugriff auf diesen Multiview' })
+  if (!editableOutputs(config, req.user).has(output.id))
+    return res.status(403).json({ ok: false, error: 'Diesen Multiview darfst du nur ansehen' })
   const layoutId = req.body?.layoutId ?? null
   if (layoutId !== null && !visibleLayouts(config, req.user).some((l) => l.id === layoutId))
     return res.status(403).json({ ok: false, error: 'Kein Zugriff auf dieses Layout' })

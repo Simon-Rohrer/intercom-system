@@ -7,7 +7,7 @@ import {
 } from './propresenter.js'
 import { createStageView, stageOptions, fmtTimer } from './stage.js'
 import { adoptServerPrefs, appearanceHtml, bindAppearance, currentPrefs, nextTheme, setPrefs, themeIcon, THEMES, onPrefsChange } from './theme.js'
-import { roleRights, visibleOutputs, visibleLayouts, canEditLayout, claimLayouts, publicOrigin, chatFor, chatRoleFor } from './rights.js'
+import { roleRights, visibleOutputs, visibleLayouts, canEditLayout, canEditOutput, claimLayouts, publicOrigin, chatFor, chatRoleFor } from './rights.js'
 import {
   attachDevice, attachNetworkStream, makeVideo, makeTestPattern, mediaKey,
   listVideoDevices, permissionGranted, releaseUnusedStreams, mediaAvailable,
@@ -354,7 +354,13 @@ function renderOutputs() {
     const output = config.outputs.find((o) => o.id === card.dataset.id)
     const name = card.querySelector('[data-o="name"]')
     if (document.activeElement !== name) name.value = output.name
-    card.querySelector('[data-o="layoutId"]').innerHTML = layoutOptions(output.layoutId)
+    const select = card.querySelector('[data-o="layoutId"]')
+    const editable = canEditOutput(config, user, output.id)
+    // Nur ansehen: das laufende Layout anzeigen, nicht umschaltbar
+    select.innerHTML = editable
+      ? layoutOptions(output.layoutId)
+      : `<option>${esc(config.layouts.find((l) => l.id === output.layoutId)?.name ?? '– kein Layout –')} · nur ansehen</option>`
+    select.disabled = !editable
     card.querySelector('iframe').title = output.name
   }
 }
@@ -2471,7 +2477,7 @@ function renderAccess() {
     $('#access-roles').innerHTML = !roles.length
       ? `<p class="muted">Keine Rollen – ist Kesher verbunden? (Einstellungen → Kesher-Chat)</p>`
       : `<div class="table-wrap"><table class="table role-table">
-          <thead><tr><th>Rolle</th><th>Hört in Kesher (Chat)</th><th>Sieht und schaltet diese Multiviews</th><th>Eigene Layouts</th></tr></thead>
+          <thead><tr><th>Rolle</th><th>Hört in Kesher (Chat)</th><th>Multiviews <span class="muted" style="font-weight:500">– antippen: aus → sehen → bearbeiten</span></th><th>Neue Layouts anlegen</th></tr></thead>
           <tbody>${roles
             .map((r) => {
               const rights = roleRights(config, { roleId: r.id })
@@ -2481,7 +2487,11 @@ function renderAccess() {
                 <td><div class="chip-set">${
                   config.outputs
                     .map(
-                      (o) => `<label class="chip"><input type="checkbox" data-role-output="${esc(o.id)}" ${rights.outputs.includes(o.id) ? 'checked' : ''}>${esc(o.name)}</label>`,
+                      (o) => {
+                        const level = rights.edit.includes(o.id) ? 'edit' : rights.outputs.includes(o.id) ? 'view' : 'off'
+                        const hint = { off: 'kein Zugriff', view: 'nur sehen', edit: 'sehen und bearbeiten' }[level]
+                        return `<button type="button" class="chip level-${level}" data-role-output="${esc(o.id)}" title="${esc(o.name)}: ${hint}">${esc(o.name)}<span class="chip-level">${{ off: '', view: 'sehen', edit: 'bearbeiten' }[level]}</span></button>`
+                      },
                     )
                     .join('') || '<span class="muted">Noch keine Multiviews</span>'
                 }</div></td>
@@ -2515,11 +2525,16 @@ function suggestRights() {
       return name && (words.includes(name) || norm(role.name).startsWith(`${name} `) || norm(role.name) === name)
     })
     if (!matches.length) continue
-    const current = config.access.roles[role.id] ?? { outputs: [], editLayouts: true }
-    const before = current.outputs.length
-    current.outputs = [...new Set([...current.outputs, ...matches.map((o) => o.id)])]
-    added += current.outputs.length - before
-    config.access.roles[role.id] = current
+    const rights = roleRights(config, { roleId: role.id })
+    const ids = matches.map((o) => o.id).filter((id) => !rights.outputs.includes(id))
+    added += ids.length
+    // Vorschläge bekommen „sehen und bearbeiten“; bestehende Einstellungen bleiben
+    config.access.roles[role.id] = {
+      ...(config.access.roles[role.id] ?? {}),
+      outputs: [...rights.outputs, ...ids],
+      edit: [...rights.edit, ...ids],
+      editLayouts: rights.editLayouts,
+    }
   }
   accessKey = ''
   renderAccess()
@@ -2532,14 +2547,31 @@ $('#page-zugang').addEventListener('change', (e) => {
   if (!row) return
   const roleId = row.dataset.role
   const current = config.access.roles[roleId] ?? { outputs: [], editLayouts: true }
-  if (e.target.dataset.roleOutput) {
-    const id = e.target.dataset.roleOutput
-    current.outputs = e.target.checked ? [...new Set([...current.outputs, id])] : current.outputs.filter((x) => x !== id)
-  } else if ('roleEdit' in e.target.dataset) {
+  if ('roleEdit' in e.target.dataset) {
     current.editLayouts = e.target.checked
   } else return
   config.access.roles[roleId] = current
   accessKey = JSON.stringify([kesherRoles(), config.outputs.map((o) => [o.id, o.name]), config.access.roles])
+  changed(0)
+})
+
+// Multiview-Recht einer Rolle weiterschalten: aus → sehen → bearbeiten → aus
+$('#page-zugang').addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-role-output]')
+  const row = chip?.closest('tr[data-role]')
+  if (!row) return
+  const roleId = row.dataset.role
+  const rights = roleRights(config, { roleId })
+  const id = chip.dataset.roleOutput
+  const level = rights.edit.includes(id) ? 'edit' : rights.outputs.includes(id) ? 'view' : 'off'
+  const next = { off: 'view', view: 'edit', edit: 'off' }[level]
+  const outputs = rights.outputs.filter((x) => x !== id)
+  const edit = rights.edit.filter((x) => x !== id)
+  if (next !== 'off') outputs.push(id)
+  if (next === 'edit') edit.push(id)
+  config.access.roles[roleId] = { ...(config.access.roles[roleId] ?? {}), outputs, edit, editLayouts: rights.editLayouts }
+  accessKey = ''
+  renderAccess()
   changed(0)
 })
 

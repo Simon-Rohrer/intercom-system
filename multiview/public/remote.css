@@ -536,3 +536,8 @@ body.booting .rm-main { opacity: 0; }
 .rm-card.folded .rm-segments { display: none; }
 .rm-foldbar { display: flex; align-items: center; justify-content: space-between; margin: -4px 4px 2px; font-size: 13.5px; color: var(--muted); }
 .rm-foldbar button { border: 0; background: none; color: var(--accent-text); font-weight: 650; font-size: 14px; padding: 6px 0; }
+
+/* Multiview nur zum Ansehen freigegeben */
+.rm-viewonly { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); color: var(--muted); font-size: 13.5px; }
+.rm-viewonly .icon { width: 18px; height: 18px; flex: none; }
+.rm-card.folded .rm-viewonly { display: none; }

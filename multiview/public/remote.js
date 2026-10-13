@@ -6,7 +6,7 @@
 //   Monitore:    (nur Admin) welcher Multiview auf welchem Monitor am Server läuft
 import { connect } from './common.js'
 import { adoptServerPrefs, applyPrefs, currentPrefs, nextTheme, setPrefs, themeIcon } from './theme.js'
-import { visibleOutputs, visibleLayouts, chatFor } from './rights.js'
+import { visibleOutputs, visibleLayouts, canEditOutput, chatFor } from './rights.js'
 import { createComposer } from './chat-compose.js'
 
 const $ = (sel) => document.querySelector(sel)
@@ -253,7 +253,10 @@ function renderOutputs() {
         </button>
         <button type="button" class="rm-fold-btn" data-fold aria-label="${folded ? 'Aufklappen' : 'Zuklappen'}"><svg viewBox="0 0 24 24" class="icon rm-chevron" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
       </div>
-      <div class="rm-layouts">
+      ${
+        !canEditOutput(config, user, output.id)
+          ? `<div class="rm-viewonly"><svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Nur ansehen – umschalten darf hier jemand anderes</div>`
+          : `<div class="rm-layouts">
         ${layouts
           .map(
             (l) => `<button class="rm-layout ${l.id === output.layoutId ? 'active' : ''}" data-layout="${esc(l.id)}">
@@ -264,6 +267,7 @@ function renderOutputs() {
           <span class="rm-sketch empty"><svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg></span><span>Aus</span>
         </button>
       </div>`
+      }`
     // Vorschau auch zugeklappt zeigen, wenn sie an ist – das ist der schnelle Blick auf den Monitor
     if (previews.has(output.id)) {
       const preview =

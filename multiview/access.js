@@ -43,12 +43,17 @@ function parseCookies(header) {
   return out
 }
 
-/** Rechte einer Rolle aus config.access (fehlende Rolle = darf nichts). */
+/**
+ * Rechte einer Rolle aus config.access (fehlende Rolle = darf nichts).
+ * outputs: Multiviews, die die Rolle sieht. edit: davon die, die sie auch bearbeiten darf
+ * (Layout umschalten und das laufende Layout ändern). editLayouts: eigene neue Layouts anlegen.
+ * Ältere Einstellungen ohne „edit“: alles Freigegebene war bearbeitbar – so bleibt es.
+ */
 function normalizeRole(r) {
-  return {
-    outputs: Array.isArray(r?.outputs) ? r.outputs.filter((id) => typeof id === 'string') : [],
-    editLayouts: r?.editLayouts !== false,
-  }
+  const ids = (list) => (Array.isArray(list) ? list.filter((id) => typeof id === 'string') : [])
+  const outputs = ids(r?.outputs)
+  const edit = Array.isArray(r?.edit) ? ids(r.edit).filter((id) => outputs.includes(id)) : [...outputs]
+  return { outputs, edit, editLayouts: r?.editLayouts !== false }
 }
 
 function normalizeAccess(a) {
@@ -284,7 +289,7 @@ function roleRights(config, user) {
   return { admin: false, ...normalizeRole(config.access?.roles?.[user.roleId]) }
 }
 
-/** Multiviews, die der Nutzer sehen und schalten darf. */
+/** Multiviews, die der Nutzer sehen darf. */
 function allowedOutputs(config, user) {
   const rights = roleRights(config, user)
   if (!rights) return new Set()
@@ -292,20 +297,27 @@ function allowedOutputs(config, user) {
   return new Set(rights.outputs.filter((id) => config.outputs.some((o) => o.id === id)))
 }
 
+/** Multiviews, die der Nutzer bearbeiten darf (Layout umschalten, laufendes Layout ändern). */
+function editableOutputs(config, user) {
+  const rights = roleRights(config, user)
+  if (!rights) return new Set()
+  if (rights.admin) return new Set(config.outputs.map((o) => o.id))
+  return new Set(rights.edit.filter((id) => config.outputs.some((o) => o.id === id)))
+}
+
 /**
- * Darf der Nutzer dieses Layout bearbeiten? Eigene Layouts der Rolle immer; andere nur,
- * wenn sie ausschließlich auf Multiviews der Rolle laufen (z. B. das Licht-Layout).
+ * Darf der Nutzer dieses Layout bearbeiten? Eigene Layouts der Rolle immer; sonst das Layout,
+ * das gerade auf einem Multiview läuft, den der Admin der Rolle zum Bearbeiten freigegeben hat.
+ * Freigegebene Layouts des Admins („für alle“) nur benutzen.
  */
 function canEditLayout(config, user, layout) {
   const rights = roleRights(config, user)
   if (!rights || !layout) return false
   if (rights.admin) return true
-  if (!rights.editLayouts) return false
+  if (layout.shared) return false
   if (layout.owner === user.roleId) return true
-  if (layout.owner && layout.owner !== user.roleId) return false
-  if (layout.shared) return false // freigegebene Layouts des Admins nur benutzen
-  const usedBy = config.outputs.filter((o) => o.layoutId === layout.id).map((o) => o.id)
-  return usedBy.length > 0 && usedBy.every((id) => rights.outputs.includes(id))
+  const edit = editableOutputs(config, user)
+  return config.outputs.some((o) => edit.has(o.id) && o.layoutId === layout.id)
 }
 
 /** Layouts, die der Nutzer sieht (und auf seine Multiviews schalten darf). */
@@ -313,7 +325,7 @@ function visibleLayouts(config, user) {
   const rights = roleRights(config, user)
   if (!rights) return []
   if (rights.admin) return config.layouts
-  const outputs = allowedOutputs(config, user)
+  const outputs = editableOutputs(config, user)
   return config.layouts.filter(
     (l) =>
       l.owner === user.roleId ||
@@ -332,7 +344,7 @@ function claimLayouts(config, user) {
   for (const layout of config.layouts) {
     if (layout.owner || layout.shared) continue
     const usedBy = config.outputs.filter((o) => o.layoutId === layout.id).map((o) => o.id)
-    if (usedBy.length && usedBy.every((id) => rights.outputs.includes(id))) layout.owner = user.roleId
+    if (usedBy.length && usedBy.every((id) => rights.edit.includes(id))) layout.owner = user.roleId
   }
 }
 
@@ -359,7 +371,7 @@ function applyRestrictedChanges(current, submitted, user) {
   }
 
   claimLayouts(next, user)
-  const outputs = allowedOutputs(current, user)
+  const outputs = editableOutputs(current, user)
   const visible = new Set(visibleLayouts(next, user).map((l) => l.id))
   for (const output of next.outputs) {
     if (!outputs.has(output.id)) continue
@@ -374,6 +386,7 @@ module.exports = {
   normalizeAccess,
   roleRights,
   allowedOutputs,
+  editableOutputs,
   canEditLayout,
   visibleLayouts,
   applyRestrictedChanges,
