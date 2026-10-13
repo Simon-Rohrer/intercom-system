@@ -1,7 +1,8 @@
-import { connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox } from './common.js'
+import { connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions } from './meters.js'
 import { createChatView } from './chat.js'
 import { chatFor, chatRoleFor } from './rights.js'
+import { createComposer } from './chat-compose.js'
 import { createAgendaView } from './agenda.js'
 import { createProPresenterView, createPlaylistView, createPreacherView } from './propresenter.js'
 import { createStageView } from './stage.js'
@@ -36,6 +37,7 @@ const stageViews = new Set() // ProPresenter-Bühne
 let ppStage = { connected: false, message: '', timers: [], videoCountdown: '', messages: [] }
 const clocks = new Set()
 const chatViews = new Set() // Chat-Kacheln
+const composers = new Set() // Eingabefelder der Chat-Kacheln (angemeldet)
 // Angemeldeter Nutzer (falls diese Seite angemeldet geöffnet ist): Chat und Intercom gehen mit ihm mit
 let viewer = null
 fetch('/api/me', { cache: 'no-store' })
@@ -73,6 +75,7 @@ const ws = connect(
     } else if (msg.type === 'chat') {
       chat = msg
       for (const view of chatViews) view.update(chatFor(chat, view.roleId()))
+      for (const composer of composers) composer.update(chat)
     } else if (msg.type === 'churchtools') {
       churchtools = msg
       for (const view of agendaViews) view.update(churchtools)
@@ -124,6 +127,7 @@ function render() {
   ppViews = []
   clocks.clear()
   chatViews.clear()
+  composers.clear()
   agendaViews.clear()
   stageViews.clear()
 
@@ -184,7 +188,16 @@ function buildTile(tile, layout, usedStreams) {
     view.update(chatFor(chat, view.roleId()))
     chatViews.add(view)
     media.classList.add('chat')
-    media.append(view.el)
+    // Angemeldet (nicht in der Editor-Vorschau): unten schreiben – als die eigene Rolle
+    if (viewer && !embedded && tile.chatInput !== false) {
+      const composer = createComposer(viewer)
+      composer.update(chat)
+      composers.add(composer)
+      const wrap = document.createElement('div')
+      wrap.className = 'chat-with-compose'
+      wrap.append(view.el, composer.el)
+      media.append(wrap)
+    } else media.append(view.el)
   } else if (tile.kind === 'kesher') {
     // Die Kesher-Seite selbst liegt in der Ebene #frames (syncFrames) über dieser Kachel
     media.classList.add('chat')
@@ -288,7 +301,10 @@ function kesherUrl(tile) {
     params.set('autoLogin', '1')
     params.set('username', username)
     params.set('roleId', roleId)
-    if (tile.kesherTakeover !== false) params.set('autoTakeover', '1')
+    // Mit der Rolle des angemeldeten Nutzers nie übernehmen: Kesher erlaubt pro Rolle nur ein Gerät,
+    // und sein eigenes Kesher (Handy, Laptop, Station) soll dadurch nicht rausfliegen. Ist die Rolle
+    // dort schon angemeldet, zeigt die Kachel „Rolle belegt“ – Chat lesen/schreiben geht über die Chat-Kachel.
+    if (tile.kesherTakeover !== false && !asViewer) params.set('autoTakeover', '1')
   }
   if (tile.kesherAudioIn) params.set('audioInputMatch', tile.kesherAudioIn)
   if (tile.kesherAudioOut) params.set('audioOutputMatch', tile.kesherAudioOut)
@@ -430,9 +446,10 @@ if (!canFullscreen) {
 
 fsButton.addEventListener('click', toggleFullscreen)
 if (!embedded) {
+  keepTouchScrollInside() // iPad: Wischen in Listen soll das Vollbild nicht beenden
   document.addEventListener('dblclick', (e) => {
     // Schnelles Doppel-Tippen auf die ProPresenter-Tasten soll nicht ins Vollbild schalten
-    if (e.target.closest('.pp-controls, .pr-view, .st-send')) return
+    if (e.target.closest('.pp-controls, .pr-view, .st-send, .chat-compose')) return
     toggleFullscreen()
   })
   document.addEventListener('keydown', (e) => {

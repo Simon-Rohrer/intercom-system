@@ -3,21 +3,22 @@
 //
 // Einstellungen über die Adresse:
 //   ?groesse=1.4        Folien größer (0.5 … 2.5)
-//   ?ausblenden=alles   „Ausblenden“ nimmt Folie UND Hintergrund weg (sonst nur die Folie)
+//   ?ausblenden=folie   „Ausblenden“ nimmt nur die Folie weg (sonst Folie UND Hintergrund)
 //   ?tasten=aus         keine Tasten (Folien antippen und Tastatur/Clicker gehen weiter)
-import { connect } from './common.js'
+import { connect, keepTouchScrollInside } from './common.js'
 import { createPreacherView } from './propresenter.js'
 
 const params = new URLSearchParams(location.search)
 const view = createPreacherView(
   {
     size: Math.min(Math.max(Number(params.get('groesse')) || 1, 0.5), 2.5),
-    blankMode: params.get('ausblenden') === 'alles' ? 'clearAll' : 'clear',
+    blankMode: params.get('ausblenden') === 'folie' ? 'clear' : 'clearAll',
     showControls: params.get('tasten') !== 'aus',
   },
   { interactive: true },
 )
 document.getElementById('app').append(view.el)
+keepTouchScrollInside()
 
 const offline = document.getElementById('offline')
 let bootId = null

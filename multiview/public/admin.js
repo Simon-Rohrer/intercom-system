@@ -1490,8 +1490,8 @@ function ppSection(tile) {
 /** Auswahl, was „Ausblenden“ bei ProPresenter wegnimmt. */
 function blankModeField(attr, value) {
   return `<label class="field"><span>„Ausblenden“ blendet aus</span><select ${attr}="blankMode">
+    <option value="clearAll" ${value !== 'clear' ? 'selected' : ''}>Alles – ProPresenter blank (Folie und Hintergrund)</option>
     <option value="clear" ${value === 'clear' ? 'selected' : ''}>Nur die Folie (Hintergrund bleibt)</option>
-    <option value="clearAll" ${value === 'clearAll' ? 'selected' : ''}>Folie und Hintergrund</option>
   </select></label>`
 }
 
@@ -1617,6 +1617,7 @@ function chatSection(tile) {
         <option value="*" ${value === '*' ? 'selected' : ''}>Alle Nachrichten</option>
         ${roles.map((r) => `<option value="${esc(r.id)}" ${r.id === value ? 'selected' : ''}>Rolle ${esc(r.name)}</option>`).join('')}
       </select></label>
+      <label class="check"><input type="checkbox" data-t="chatInput" ${tile.chatInput !== false ? 'checked' : ''}> Schreiben, wenn am Bildschirm jemand angemeldet ist</label>
       <p class="muted">Der Chat zeigt, was die Rolle auch in Kesher sieht: globale Nachrichten und die ihrer Party Lines. „Angemeldete Rolle“: Wer angemeldet ist, sieht seinen Chat – Monitore ohne Anmeldung zeigen alles.</p>`
 }
 
@@ -1642,7 +1643,7 @@ function kesherSection(tile) {
           <option value="chat" ${view === 'chat' ? 'selected' : ''}>Nur Chat (ohne Mikrofon)</option>
         </select>
       </label>
-      <label class="check"><input type="checkbox" data-t="kesherTakeover" ${tile.kesherTakeover !== false ? 'checked' : ''}> Rolle übernehmen, wenn sie schon angemeldet ist</label>
+      <label class="check"><input type="checkbox" data-t="kesherTakeover" ${tile.kesherTakeover !== false ? 'checked' : ''}> Rolle übernehmen, wenn sie schon angemeldet ist <span class="muted">(nicht bei „angemeldeter Nutzer“ – dessen eigenes Kesher bleibt angemeldet)</span></label>
       <label class="check"><input type="checkbox" data-t="kesherHideControls" ${tile.kesherHideControls ? 'checked' : ''}> Sprechtasten ausblenden (Hold to talk, Reply, Always on)</label>
       <p class="muted">Die Kanäle passen sich immer der Kachelgröße an. Ohne Sprechtasten spricht man über Stream Deck oder Tastatur – oder in Kesher unter Einstellungen „Direct PTT Mode“ einschalten, dann ist jede Kanal-Taste eine Sprechtaste.</p>
       <label class="field"><span>Mikrofon (Name enthält, leer = Standard)</span><input type="text" data-t="kesherAudioIn" value="${esc(tile.kesherAudioIn)}" placeholder="z. B. USB"></label>
@@ -1858,7 +1859,8 @@ function onInspectorField(e) {
     key === 'ctResponsible' ||
     key === 'ctNotes' ||
     key === 'kesherTakeover' ||
-    key === 'kesherHideControls'
+    key === 'kesherHideControls' ||
+    key === 'chatInput'
   )
     tile[key] = el.checked
   else if (key === 'ctDateMode') {
