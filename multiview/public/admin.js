@@ -1643,6 +1643,8 @@ function kesherSection(tile) {
         </select>
       </label>
       <label class="check"><input type="checkbox" data-t="kesherTakeover" ${tile.kesherTakeover !== false ? 'checked' : ''}> Rolle übernehmen, wenn sie schon angemeldet ist</label>
+      <label class="check"><input type="checkbox" data-t="kesherHideControls" ${tile.kesherHideControls ? 'checked' : ''}> Sprechtasten ausblenden (Hold to talk, Reply, Always on)</label>
+      <p class="muted">Die Kanäle passen sich immer der Kachelgröße an. Ohne Sprechtasten spricht man über Stream Deck oder Tastatur – oder in Kesher unter Einstellungen „Direct PTT Mode“ einschalten, dann ist jede Kanal-Taste eine Sprechtaste.</p>
       <label class="field"><span>Mikrofon (Name enthält, leer = Standard)</span><input type="text" data-t="kesherAudioIn" value="${esc(tile.kesherAudioIn)}" placeholder="z. B. USB"></label>
       <label class="field"><span>Lautsprecher (Name enthält, leer = Standard)</span><input type="text" data-t="kesherAudioOut" value="${esc(tile.kesherAudioOut)}" placeholder="z. B. HDMI"></label>
       <label class="field"><span>Kesher-Adresse (leer = automatisch)</span><input type="text" data-t="kesherUrl" value="${esc(tile.kesherUrl)}" placeholder="automatisch"></label>
@@ -1855,7 +1857,8 @@ function onInspectorField(e) {
     key === 'showMeter' ||
     key === 'ctResponsible' ||
     key === 'ctNotes' ||
-    key === 'kesherTakeover'
+    key === 'kesherTakeover' ||
+    key === 'kesherHideControls'
   )
     tile[key] = el.checked
   else if (key === 'ctDateMode') {

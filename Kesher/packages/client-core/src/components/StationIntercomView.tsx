@@ -1,4 +1,11 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   Bootstrap,
   BroadcastGroup,
@@ -22,6 +29,8 @@ import { createHoldButtonProps } from "../lib/holdButton";
 import { resolveInputDeviceChannelCount } from "../lib/audioDeviceChannels";
 import { withResolvedStreamDeckButtonLabel } from "../lib/streamDeckLabels";
 import { roleAllowed } from "../lib/intercom";
+import { fitKeyGrid, type KeyGridFit } from "../lib/keyGridFit";
+import { resolveEmbedMode, resolveHideTalkControls } from "../lib/runtimeMode";
 import { sortDirectUsersByRoleAndUsername } from "../lib/users";
 import { BrandLogo } from "./BrandLogo";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
@@ -949,6 +958,26 @@ type ChannelAudioFeedEditor = {
   forcedListenRoleIds: string[];
 };
 
+/** Gap between keys in the embedded layout (must match station.css). */
+const EMBED_KEY_GAP = 8;
+
+/**
+ * Key size in the embedded layout as CSS variables: `--key-scale` scales the
+ * text and buttons of a key (1 = the size of a normal key, ~140px high).
+ */
+function embedKeyGridStyle(fit: KeyGridFit | null): React.CSSProperties | undefined {
+  if (!fit) return undefined;
+  const scale = Math.min(
+    1.8,
+    Math.max(0.5, Math.min(fit.keyHeight / 140, fit.keyWidth / 190)),
+  );
+  return {
+    "--fit-cols": fit.cols,
+    "--fit-rows": fit.rows,
+    "--key-scale": scale.toFixed(3),
+  } as React.CSSProperties;
+}
+
 type StationIntercomViewProps = {
   token: string;
   connectionState: "connecting" | "connected" | "reconnecting" | "offline";
@@ -1602,6 +1631,45 @@ export function StationIntercomView({
         : appData.rooms,
     [appData.rooms, pinnedRoomIds, showPinnedOnly],
   );
+
+  // Embedded (Multiview tile): no page scroll, all party lines fit the window
+  const embedMode = useMemo(() => resolveEmbedMode(window.location.search), []);
+  const hideTalkControls = useMemo(
+    () => embedMode && resolveHideTalkControls(window.location.search),
+    [embedMode],
+  );
+  const talkGridRef = useRef<HTMLDivElement>(null);
+  const [talkFit, setTalkFit] = useState<KeyGridFit | null>(null);
+  useLayoutEffect(() => {
+    const grid = talkGridRef.current;
+    if (!embedMode || !grid) return;
+    const measure = () => {
+      const next = fitKeyGrid(
+        visibleRooms.length,
+        grid.clientWidth,
+        grid.clientHeight,
+        EMBED_KEY_GAP,
+      );
+      setTalkFit((prev) =>
+        prev &&
+        prev.cols === next.cols &&
+        prev.rows === next.rows &&
+        Math.abs(prev.keyHeight - next.keyHeight) < 1 &&
+        Math.abs(prev.keyWidth - next.keyWidth) < 1
+          ? prev
+          : next,
+      );
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(grid);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [embedMode, visibleRooms.length, hideTalkControls]);
 
   // Helper: get max priority for a user based on their active talk rooms and broadcasts
   const getMaxUserChannelPriority = (user: Presence): number | null => {
@@ -2568,7 +2636,8 @@ export function StationIntercomView({
       </article>
     );
   };
-  const hasChatAndSignalPanel = Boolean(chatAndSignalPanel);
+  // Embedded: no chat column – the Multiview has its own chat tiles
+  const hasChatAndSignalPanel = Boolean(chatAndSignalPanel) && !embedMode;
   const stationRoleLabel =
     remoteControl?.roleName ||
     roleNameById.get(appData.self.roleId) ||
@@ -2582,7 +2651,9 @@ export function StationIntercomView({
     <div
       className={`root app station-shell ${
         lowPowerMode && isUserSettingsOpen ? "settings-open-low-power" : ""
-      } ${remoteControl ? "station-shell-remote" : ""}`.trim()}
+      } ${remoteControl ? "station-shell-remote" : ""} ${
+        embedMode ? "station-embed" : ""
+      }`.trim()}
     >
       {connectionState !== "connected" && (
         <div className="connection-offline-banner">
@@ -2653,6 +2724,7 @@ export function StationIntercomView({
           </div>
         </div>
 
+        {hideTalkControls ? null : (
         <section
           className={`station-controls ${
             isUserSettingsOpen ? "station-controls-hidden-mobile" : ""
@@ -2670,6 +2742,7 @@ export function StationIntercomView({
             <span className="station-always-on-text">Always on</span>
           </button>
         </section>
+        )}
       </div>
 
       <div
@@ -2698,7 +2771,13 @@ export function StationIntercomView({
             {visibleRooms.length === 0 ? (
               <p className="station-empty">Keine Party Lines vorhanden.</p>
             ) : null}
-            <div className="station-talk-grid">
+            <div
+              className={`station-talk-grid ${
+                embedMode && talkFit && talkFit.keyHeight < 112 ? "station-keys-tight" : ""
+              }`.trim()}
+              ref={talkGridRef}
+              style={embedMode ? embedKeyGridStyle(talkFit) : undefined}
+            >
               {visibleRooms.map((room) => {
                 const listening = listenRoomIds.includes(room.id);
                 const talking = talkRoomIds.includes(room.id);
@@ -2933,6 +3012,7 @@ export function StationIntercomView({
             </div>
           </section>
 
+          {embedMode ? null : (
           <section className="station-block station-direct-section">
             <StationSectionHeader
               tone="direct"
@@ -2984,8 +3064,9 @@ export function StationIntercomView({
               </div>
             )}
           </section>
+          )}
 
-          {broadcastGroups.length > 0 ? (
+          {!embedMode && broadcastGroups.length > 0 ? (
             <section className="station-block station-broadcast-section">
               <StationSectionHeader
                 tone="broadcast"

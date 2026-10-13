@@ -1428,6 +1428,182 @@ body.panel-resizing-row {
   }
 }
 
+/* ---------- Embedded (?embed=1, e.g. a Multiview tile) ----------
+   The window is the tile: nothing scrolls, the party lines share the
+   space between the header rail and the talk strip (now at the bottom),
+   and every key scales with --key-scale (set from the fitted key size).
+   Selectors start with .root.station-shell.station-embed so they win over
+   the phone/tablet media queries above. */
+.root.station-shell.station-embed {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.root.station-shell.station-embed .station-header {
+  display: contents;
+}
+.root.station-shell.station-embed .station-topbar {
+  order: 0;
+  flex: none;
+  flex-wrap: nowrap;
+  gap: 10px;
+  padding-block: clamp(2px, 1vh, 6px);
+}
+.root.station-shell.station-embed .station-brand-logo.app-brand-logo {
+  height: clamp(20px, 7vh, 40px);
+}
+.root.station-shell.station-embed .station-live-sep {
+  height: clamp(16px, 5vh, 30px);
+}
+.root.station-shell.station-embed .station-live-role {
+  font-size: clamp(12px, 3.6vh, 18px);
+}
+.root.station-shell.station-embed .station-top-actions {
+  margin-left: auto;
+}
+.root.station-shell.station-embed .station-top-admin,
+.root.station-shell.station-embed .station-top-logout {
+  width: clamp(26px, 8vh, 40px);
+  height: clamp(26px, 8vh, 40px);
+  padding: 0;
+  justify-content: center;
+}
+.root.station-shell.station-embed .station-top-admin span,
+.root.station-shell.station-embed .station-top-logout-label {
+  display: none;
+}
+
+.root.station-shell.station-embed .station-content-grid {
+  order: 1;
+  flex: 1 1 0;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+.root.station-shell.station-embed .station-primary-column {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: clamp(4px, 1.5vh, 12px) var(--k-gutter);
+}
+.root.station-shell.station-embed .station-talk-section {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.root.station-shell.station-embed .station-section-head {
+  margin-bottom: clamp(3px, 1vh, 8px);
+}
+.root.station-shell.station-embed .station-section-hint {
+  display: none;
+}
+.root.station-shell.station-embed .station-talk-grid {
+  flex: 1 1 0;
+  min-height: 0;
+  gap: 8px; /* EMBED_KEY_GAP */
+  grid-template-columns: repeat(var(--fit-cols, 2), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--fit-rows, 1), minmax(0, 1fr));
+}
+
+/* keys: text and buttons follow the key size */
+.root.station-shell.station-embed .station-room-card {
+  --s: var(--key-scale, 1);
+  min-height: 0;
+}
+.root.station-shell.station-embed .station-key-top {
+  padding: calc(7px * var(--s)) calc(10px * var(--s)) 0;
+}
+.root.station-shell.station-embed .station-channel-meter {
+  height: max(3px, calc(6px * var(--s)));
+}
+.root.station-shell.station-embed .station-card-head {
+  min-height: 0;
+  overflow: hidden;
+  gap: calc(2px * var(--s));
+  padding: calc(24px * var(--s)) calc(10px * var(--s)) calc(6px * var(--s));
+}
+.root.station-shell.station-embed .station-card-head small {
+  font-size: max(9px, calc(11px * var(--s)));
+}
+.root.station-shell.station-embed .station-card-head strong {
+  font-size: max(11px, calc(20px * var(--s)));
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.root.station-shell.station-embed .station-presence-badge {
+  font-size: max(9px, calc(11px * var(--s)));
+}
+.root.station-shell.station-embed .station-gain-control {
+  padding: 0 calc(10px * var(--s)) calc(5px * var(--s));
+}
+.root.station-shell.station-embed .station-card-actions button {
+  height: clamp(20px, calc(32px * var(--s)), 48px);
+  font-size: max(10px, calc(13px * var(--s)));
+}
+/* small keys: room for the name and Listen/Call, not for the volume */
+.root.station-shell.station-embed .station-keys-tight .station-gain-control {
+  display: none;
+}
+
+/* talk strip at the bottom, in the window instead of over it */
+.root.station-shell.station-embed .station-controls {
+  order: 2;
+  flex: none;
+  position: static;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
+  grid-template-areas: "reply always ptt";
+  gap: 8px;
+  padding: clamp(4px, 1.5vh, 10px) var(--k-gutter);
+  border-top: 1px solid var(--k-line);
+  border-bottom: 0;
+  box-shadow: none;
+  background: var(--k-rack);
+}
+.root.station-shell.station-embed .station-reply {
+  grid-area: reply;
+  min-width: 0;
+}
+.root.station-shell.station-embed .station-always-on {
+  grid-area: always;
+  min-width: 0;
+  justify-content: center;
+}
+.root.station-shell.station-embed .station-ptt {
+  grid-area: ptt;
+}
+.root.station-shell.station-embed .station-reply,
+.root.station-shell.station-embed .station-always-on,
+.root.station-shell.station-embed .station-ptt {
+  min-height: clamp(30px, 11vh, 64px);
+}
+.root.station-shell.station-embed .station-reply strong,
+.root.station-shell.station-embed .station-ptt strong {
+  font-size: clamp(11px, 3.4vh, 16px);
+}
+/* narrow window: Reply + Always on above, Hold to talk across */
+@media (max-width: 520px) {
+  .root.station-shell.station-embed .station-controls {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "reply always"
+      "ptt ptt";
+  }
+  .root.station-shell.station-embed .station-top-stats {
+    display: none;
+  }
+}
+/* low window: one line per button */
+@media (max-height: 360px) {
+  .root.station-shell.station-embed .station-reply small,
+  .root.station-shell.station-embed .station-ptt small {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .connection-offline-icon {
     animation: none;

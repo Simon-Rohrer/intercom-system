@@ -277,7 +277,9 @@ function kesherBase(tile) {
 }
 
 function kesherUrl(tile) {
-  const params = new URLSearchParams({ viewMode: tile.kesherView || 'station' })
+  // embed: Kesher passt sich dem Kachelfenster an (alle Kanäle sichtbar, nichts scrollt)
+  const params = new URLSearchParams({ viewMode: tile.kesherView || 'station', embed: '1' })
+  if (tile.kesherHideControls) params.set('controls', '0')
   // "@user": mit Namen und Rolle des angemeldeten Nutzers (nur wenn hier jemand mit Rolle angemeldet ist)
   const asViewer = tile.kesherRoleId === '@user'
   const roleId = asViewer ? (viewer && !viewer.admin ? viewer.roleId : '') : tile.kesherRoleId
