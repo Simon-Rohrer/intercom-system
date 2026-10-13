@@ -125,6 +125,17 @@ sudo ./install-chat-kiosk.sh --display-url "http://127.0.0.1:8090/output.html?id
 
 Zurück zum reinen Chat: `sudo ./install-chat-kiosk.sh --display-url chat`. Editor: `http://<server-ip>:8090/`.
 
+### Mehrere Monitore am Server (HDMI, DisplayPort, VGA)
+
+An jedem Ausgang der Grafikkarte kann ein eigener Multiview laufen. Welcher wo läuft, stellst du im Multiview-Editor auf der **Übersicht** unter **Bildschirme am Server** ein. Die Umschaltung ist sofort live, auch per Companion (`/api/screen/<Anschluss>/output/<Multiview>`, `…/output/aus` = schwarz). VGA hängt bei vielen Boards intern an einem DisplayPort-Ausgang und erscheint dann als `DP-1` oder `DP-2`. Den Namen kannst du in der Tabelle frei vergeben.
+
+```sh
+cd ~/intercom-system/Kesher/deploy/server-kiosk
+sudo ./install-chat-kiosk.sh --display-url screens
+```
+
+Statt `cage` läuft dann `sway`, weil `cage` nur einen Monitor ansteuern kann. Es läuft ein einziger Chromium mit einem Vollbildfenster pro angeschlossenem Monitor, so können sich mehrere Monitore dieselbe Capture-Karte teilen. Wird ein Monitor ein- oder ausgesteckt, startet die Anzeige nach wenigen Sekunden neu. Zurück zu einem einzelnen Monitor: `--display-url "http://127.0.0.1:8090/output.html?id=1"`.
+
 ### ChurchTools-Ablauf im Multiview
 
 Kacheln mit dem Inhalt **ChurchTools-Ablauf** zeigen den Ablauf des heutigen Events (laufender Punkt hervorgehoben). Der Multiview-Server ist dafür mit einem eigenen ChurchTools-Konto per REST-API verbunden.

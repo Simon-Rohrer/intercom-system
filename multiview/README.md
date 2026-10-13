@@ -116,6 +116,11 @@ google-chrome --kiosk --window-position=1920,0 --user-data-dir=/tmp/mv-out1 \
 ```
 
 `--use-fake-ui-for-media-stream` erlaubt den Zugriff auf die Capture-Karte ohne Rückfrage.
+
+**Fester Anschluss statt fester Multiview:** `output.html?screen=HDMI-A-1` zeigt den Multiview, der im
+Editor unter *Übersicht → Bildschirme am Server* diesem Anschluss zugeordnet ist, und schaltet live um.
+Auf dem Kesher-Server richtet das der Kiosk ein (`install-chat-kiosk.sh --display-url screens`, siehe
+`Dokumentationen/BETRIEB.md`).
 Ohne Kiosk-Modus wechselt ein Doppelklick ins Vollbild.
 
 > Die Ausgabe-Seite muss auf dem Rechner laufen, in dem die Capture-Karte steckt. Den Editor
@@ -174,6 +179,8 @@ Tab *Ausgänge*. Ausgänge, Layouts, Kacheln und Quellen gehen per Nummer, Name 
 | Ausgang 1 auf Layout „Interview“ | `/api/output/1/layout/Interview` |
 | Nächstes / vorheriges Layout | `/api/output/1/next`, `/api/output/1/prev` |
 | Kachel 3 in Layout 1 auf Quelle 5 | `/api/layout/1/tile/3/source/5` |
+| Bildschirm HDMI-A-1 auf Multiview 2 | `/api/screen/HDMI-A-1/output/2` |
+| Bildschirm HDMI-A-1 aus (schwarz) | `/api/screen/HDMI-A-1/output/aus` |
 | Status als JSON | `/api/state` |
 
 ## Grenzen

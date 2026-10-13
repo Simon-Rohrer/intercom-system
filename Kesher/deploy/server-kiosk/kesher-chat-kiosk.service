@@ -26,10 +26,11 @@ ExecStart=/opt/kesher-chat-kiosk/kesher-chat-kiosk-launch.sh
 Restart=always
 RestartSec=10
 # The intercom services have priority: the display yields CPU and memory.
+# Room for up to three monitors (KIOSK_URL="screens").
 Nice=10
 CPUWeight=20
-MemoryHigh=1G
-MemoryMax=1536M
+MemoryHigh=2G
+MemoryMax=3G
 
 [Install]
 WantedBy=multi-user.target

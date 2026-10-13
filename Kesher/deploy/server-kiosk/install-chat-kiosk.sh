@@ -9,6 +9,8 @@
 #                                [--display-url http://127.0.0.1:8090/output.html?id=1]
 #   --display-url shows that page instead of the plain chat (e.g. the multiview
 #   output with a chat tile); --display-url chat switches back to the chat.
+#   --display-url screens: every connected monitor (HDMI, DisplayPort, VGA)
+#   shows the multiview chosen for it in the multiview editor (sway instead of cage).
 #   sudo ./install-chat-kiosk.sh --uninstall
 set -euo pipefail
 
@@ -70,9 +72,9 @@ if [[ "${UNINSTALL}" == "true" ]]; then
 fi
 
 echo "==> Pakete installieren (nur Ergänzungen, keine Systemaktualisierung)"
-if ! command -v cage >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+if ! command -v cage >/dev/null 2>&1 || ! command -v sway >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
   apt-get update
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cage curl
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cage sway curl
 fi
 if [[ ! -x /snap/bin/chromium && ! -x /usr/bin/chromium && ! -x /usr/bin/chromium-browser ]]; then
   snap install chromium
@@ -93,6 +95,7 @@ done
 echo "==> Dateien installieren"
 install -d -m 0755 "${INSTALL_DIR}" /etc/kesher
 install -m 0755 "${SCRIPT_DIR}/kesher-chat-kiosk-launch.sh" "${INSTALL_DIR}/kesher-chat-kiosk-launch.sh"
+install -m 0755 "${SCRIPT_DIR}/kesher-screens-session.sh" "${INSTALL_DIR}/kesher-screens-session.sh"
 install -m 0644 "${SCRIPT_DIR}/kesher-chat-kiosk.service" "${SERVICE_FILE}"
 cat >"${PAM_FILE}" <<'EOF'
 # Login session for the Kesher chat kiosk (seat and GPU access via logind).
@@ -123,7 +126,8 @@ if [[ ! -f "${CONFIG_FILE}" || "${UPDATE_CONFIG}" == "true" ]]; then
 KESHER_URL="${URL}"
 KESHER_USERNAME="${USERNAME}"
 KESHER_ROLE_ID="${ROLE_ID}"
-# Page shown on the monitor; empty = plain Kesher chat.
+# Page shown on the monitor; empty = plain Kesher chat;
+# "screens" = each monitor shows the multiview chosen for it in the multiview editor.
 KIOSK_URL="${DISPLAY_URL}"
 EOF
   chmod 0644 "${CONFIG_FILE}"

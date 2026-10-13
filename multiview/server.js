@@ -99,9 +99,23 @@ function normalizeConfig(c) {
     sources: Array.isArray(c?.sources) ? c.sources : base.sources,
     layouts: Array.isArray(c?.layouts) ? c.layouts : base.layouts,
     outputs: Array.isArray(c?.outputs) ? c.outputs : base.outputs,
+    screens: normalizeScreens(c?.screens),
     chat: normalizeChat(c?.chat),
     churchtools: normalizeChurchTools(c?.churchtools),
   }
+}
+
+/** Bildschirme am Server: Anschluss (z. B. "HDMI-A-1"), eigener Name und gezeigter Multiview. */
+function normalizeScreens(list) {
+  if (!Array.isArray(list)) return []
+  const seen = new Set()
+  return list
+    .filter((s) => typeof s?.id === 'string' && s.id && !seen.has(s.id) && seen.add(s.id))
+    .map((s) => ({
+      id: s.id,
+      name: typeof s.name === 'string' ? s.name.trim() : '',
+      outputId: typeof s.outputId === 'string' && s.outputId ? s.outputId : null,
+    }))
 }
 
 /** Nur Einstellungen ohne Geheimnisse – der Login-Token liegt in data/churchtools-secret.json. */
@@ -677,6 +691,69 @@ function stopMediamtx() {
   mediamtx.proc?.kill()
 }
 
+// ---------------------------------------------------------------------------
+// Bildschirme am Server: Anschlüsse der Grafikkarte (HDMI, DisplayPort, VGA …).
+// Der Kiosk öffnet pro angeschlossenem Monitor output.html?screen=<Anschluss>;
+// welcher Multiview dort läuft, steht in config.screens und schaltet live um.
+// ---------------------------------------------------------------------------
+
+const DRM_DIR = process.env.DRM_DIR || '/sys/class/drm'
+let detectedScreens = [] // { id: 'HDMI-A-1', connected, mode: '1920x1080' }
+
+function readFileTrim(file) {
+  try {
+    return fs.readFileSync(file, 'utf8').trim()
+  } catch {
+    return ''
+  }
+}
+
+function readScreens() {
+  let entries = []
+  try {
+    entries = fs.readdirSync(DRM_DIR)
+  } catch {
+    return [] // kein Linux oder keine Grafikkarte
+  }
+  return entries
+    .map((entry) => [entry, /^card\d+-(.+)$/.exec(entry)?.[1]])
+    .filter(([, id]) => id && !id.startsWith('Writeback'))
+    .map(([entry, id]) => {
+      const connected = readFileTrim(path.join(DRM_DIR, entry, 'status')) === 'connected'
+      const mode = connected ? readFileTrim(path.join(DRM_DIR, entry, 'modes')).split('\n')[0] : ''
+      return { id, connected, mode }
+    })
+    .sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }))
+}
+
+function refreshScreens() {
+  const next = readScreens()
+  if (JSON.stringify(next) === JSON.stringify(detectedScreens)) return
+  detectedScreens = next
+  broadcast({ type: 'screens', screens: detectedScreens })
+}
+
+/** Erkannte und eingestellte Bildschirme zusammen (für Companion und /api/state). */
+function screenList() {
+  const ids = [...new Set([...detectedScreens.map((s) => s.id), ...config.screens.map((s) => s.id)])]
+  return ids.map((id) => {
+    const detected = detectedScreens.find((s) => s.id === id)
+    const saved = config.screens.find((s) => s.id === id)
+    return {
+      id,
+      name: saved?.name || id,
+      connected: detected?.connected ?? false,
+      outputId: saved?.outputId ?? null,
+    }
+  })
+}
+
+function setScreenOutput(id, outputId) {
+  let screen = config.screens.find((s) => s.id === id)
+  if (!screen) config.screens.push((screen = { id, name: '', outputId: null }))
+  screen.outputId = outputId
+}
+
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
     stopMediamtx()
@@ -737,6 +814,7 @@ wss.on('connection', (ws) => {
   send(ws, { type: 'config', config })
   send(ws, { type: 'atem', ...atemState })
   send(ws, { type: 'devices', devices: [...knownDevices] })
+  send(ws, { type: 'screens', screens: detectedScreens })
   send(ws, serverInfo())
   send(ws, kesherChat.snapshot())
   send(ws, churchTools.snapshot())
@@ -882,6 +960,13 @@ app.get('/api/state', (req, res) => {
       name: o.name,
       layout: config.layouts.find((l) => l.id === o.layoutId)?.name ?? null,
     })),
+    screens: screenList().map((s, i) => ({
+      nr: i + 1,
+      id: s.id,
+      name: s.name,
+      connected: s.connected,
+      output: config.outputs.find((o) => o.id === s.outputId)?.name ?? null,
+    })),
   })
 })
 
@@ -909,6 +994,18 @@ app.all('/api/output/:output/:dir(next|prev)', (req, res) => {
   res.json({ ok: true, output: output.name, layout: layout.name })
 })
 
+// Bildschirm am Server auf einen Multiview schalten ("aus" = schwarz)
+app.all('/api/screen/:screen/output/:output', (req, res) => {
+  const screen = findByRef(screenList(), req.params.screen)
+  if (!screen) return res.status(404).json({ ok: false, error: 'Bildschirm nicht gefunden' })
+  const off = ['aus', 'off', '0'].includes(req.params.output.toLowerCase())
+  const output = off ? null : findByRef(config.outputs, req.params.output)
+  if (!off && !output) return res.status(404).json({ ok: false, error: 'Multiview nicht gefunden' })
+  setScreenOutput(screen.id, output?.id ?? null)
+  configChanged()
+  res.json({ ok: true, screen: screen.name, output: output?.name ?? null })
+})
+
 app.all('/api/layout/:layout/tile/:tile/source/:source', (req, res) => {
   const layout = findByRef(config.layouts, req.params.layout)
   const tile = layout && findByRef(layout.tiles, req.params.tile)
@@ -926,6 +1023,8 @@ server.listen(PORT, HOST, () => {
   console.log(`  Webseite: http://localhost:${PORT}/`)
   for (const a of lanAddresses()) console.log(`            http://${a}:${PORT}/`)
   console.log(`  Monitor:  http://localhost:${PORT}/output.html?id=1`)
+  refreshScreens()
+  setInterval(refreshScreens, 3000)
   applyAtemIp()
   applyProPresenter()
   startMediamtx()

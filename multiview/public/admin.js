@@ -61,7 +61,8 @@ let config = null
 let atem = { connected: false, program: [], preview: [], inputs: {} }
 let page = 'uebersicht'
 let serverDevices = []
-let server = { addresses: [], ports: {}, mediamtx: { status: 'unknown', message: '' } }
+let detectedScreens = [] // Anschlüsse der Grafikkarte am Server { id, connected, mode }
+let server ={ addresses: [], ports: {}, mediamtx: { status: 'unknown', message: '' } }
 let lastLevels = { inputs: {}, master: null }
 let propresenter = { connected: false }
 let localDevices = []
@@ -96,6 +97,11 @@ function onMessage(msg) {
     serverDevices = msg.devices
     renderDatalists()
     renderDeviceGrid()
+  } else if (msg.type === 'screens') {
+    detectedScreens = msg.screens
+    if (!config) return
+    renderScreens()
+    renderCompanion()
   } else if (msg.type === 'churchtools') {
     churchtools = msg
     renderChurchTools()
@@ -203,6 +209,7 @@ function renderAll() {
   if (!config.layouts.some((l) => l.id === layoutId)) layoutId = config.layouts[0]?.id ?? null
   if (!currentLayout()?.tiles.some((t) => t.id === selectedTileId)) selectedTileId = null
   renderOutputs()
+  renderScreens()
   renderDeviceGrid()
   renderStreams()
   renderSources()
@@ -328,6 +335,7 @@ function onOutputField(e) {
   const output = config.outputs.find((o) => o.id === el.closest('.output-card').dataset.id)
   output[key] = el.value || null
   renderLayoutList()
+  renderScreens()
   renderCompanion()
   changed()
 }
@@ -358,6 +366,73 @@ $('#output-add').addEventListener('click', () => {
   renderAll()
   changed(0)
 })
+
+// ---------------------------------------------------------------------------
+// Übersicht: Bildschirme am Server (welcher Multiview auf welchem Anschluss)
+// ---------------------------------------------------------------------------
+
+/** "HDMI-A-1" → "HDMI 1", "DP-2" → "DisplayPort 2" */
+function connectorLabel(id) {
+  const m = /^([A-Za-z]+)(?:-[A-Z])?-(\d+)$/.exec(id)
+  if (!m) return id
+  const type = { DP: 'DisplayPort', eDP: 'Laptop-Display' }[m[1]] ?? m[1]
+  return `${type} ${m[2]}`
+}
+
+/** Erkannte Anschlüsse und solche, die schon einmal eingestellt wurden. */
+function screenRows() {
+  const ids = [...new Set([...detectedScreens.map((s) => s.id), ...config.screens.map((s) => s.id)])]
+  return ids.map((id) => ({
+    id,
+    detected: detectedScreens.find((s) => s.id === id),
+    saved: config.screens.find((s) => s.id === id),
+  }))
+}
+
+const screenName = ({ id, saved }) => saved?.name || connectorLabel(id)
+
+function renderScreens() {
+  const body = $('#screen-rows')
+  if (body.contains(document.activeElement) && document.activeElement.type === 'text') return
+  const rows = screenRows().map(({ id, detected, saved }) => {
+    const outputOptions = [
+      `<option value="">– aus (schwarz) –</option>`,
+      ...config.outputs.map(
+        (o) => `<option value="${esc(o.id)}" ${o.id === saved?.outputId ? 'selected' : ''}>${esc(o.name)}</option>`,
+      ),
+    ].join('')
+    const status = !detected
+      ? '<span class="pill">nicht gefunden</span>'
+      : detected.connected
+        ? `<span class="pill ok">angeschlossen${detected.mode ? ` · ${esc(detected.mode)}` : ''}</span>`
+        : '<span class="pill">kein Monitor</span>'
+    return `<tr data-id="${esc(id)}">
+      <td><code>${esc(id)}</code></td>
+      <td><input type="text" data-s="name" value="${esc(saved?.name)}" placeholder="${esc(connectorLabel(id))}"></td>
+      <td><select data-s="outputId">${outputOptions}</select></td>
+      <td>${status}</td>
+    </tr>`
+  })
+  body.innerHTML =
+    rows.join('') ||
+    `<tr><td colspan="4" class="muted">Keine Anschlüsse gefunden. Sie erscheinen hier, wenn der Multiview-Server
+      auf dem Linux-Rechner läuft, an dem die Monitore hängen.</td></tr>`
+}
+
+function onScreenField(e) {
+  const el = e.target
+  const key = el.dataset.s
+  if (!key) return
+  if ((e.type === 'input') !== (el.type === 'text')) return
+  const id = el.closest('tr').dataset.id
+  let screen = config.screens.find((s) => s.id === id)
+  if (!screen) config.screens.push((screen = { id, name: '', outputId: null }))
+  screen[key] = key === 'name' ? el.value : el.value || null
+  renderCompanion()
+  changed(key === 'name' ? 350 : 0)
+}
+$('#screen-rows').addEventListener('input', onScreenField)
+$('#screen-rows').addEventListener('change', onScreenField)
 
 // ---------------------------------------------------------------------------
 // Eingänge: erkannte Geräte
@@ -1783,6 +1858,13 @@ function renderCompanion() {
     ),
     ...config.outputs.map((o, oi) => [`${o.name}: nächstes Layout`, `${base}/api/output/${oi + 1}/next`]),
     ...config.outputs.map((o, oi) => [`${o.name}: vorheriges Layout`, `${base}/api/output/${oi + 1}/prev`]),
+    ...screenRows().flatMap((row) => {
+      const url = `${base}/api/screen/${encodeURIComponent(row.id)}/output`
+      return [
+        ...config.outputs.map((o, oi) => [`Bildschirm ${screenName(row)} → ${o.name}`, `${url}/${oi + 1}`]),
+        [`Bildschirm ${screenName(row)} aus`, `${url}/aus`],
+      ]
+    }),
     ['Kachel 1 in Layout 1 auf Quelle 2', `${base}/api/layout/1/tile/1/source/2`],
     ['Status abfragen (JSON)', `${base}/api/state`],
   ]

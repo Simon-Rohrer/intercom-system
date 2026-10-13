@@ -7,8 +7,12 @@ import {
   attachDevice, attachNetworkStream, makeVideo, makeTestPattern, mediaKey, releaseUnusedStreams, listVideoDevices,
 } from './media.js'
 
-// ?id=<ID, Name oder Nummer> wählt den Ausgang, ?embed=1 für die Vorschau auf der Webseite
+// ?id=<ID, Name oder Nummer> wählt den Ausgang, ?embed=1 für die Vorschau auf der Webseite.
+// ?screen=<Anschluss> (z. B. HDMI-A-1) zeigt den Multiview, der im Editor diesem Bildschirm
+// am Server zugeordnet ist, und schaltet live um. Der feste Fenstertitel sagt dem Kiosk,
+// auf welchen Anschluss das Fenster gehört.
 const params = new URLSearchParams(location.search)
+const screenRef = params.get('screen')
 const outputRef = params.get('id') || '1'
 const embedded = params.has('embed')
 document.body.classList.toggle('embedded', embedded)
@@ -70,13 +74,19 @@ const ws = connect(
 // ---------------------------------------------------------------------------
 
 function render() {
-  const output = findByRef(config.outputs, outputRef)
+  const screen = screenRef && config.screens?.find((s) => s.id === screenRef)
+  const output = screenRef
+    ? config.outputs.find((o) => o.id === screen?.outputId)
+    : findByRef(config.outputs, outputRef)
   const layout = output && config.layouts.find((l) => l.id === output.layoutId)
-  document.title = output ? `${output.name} – Multiview` : 'Multiview'
+  // Der Kiosk erkennt das Fenster am Anfang "Bildschirm <Anschluss> " – nicht ändern.
+  document.title = screenRef
+    ? `Bildschirm ${screenRef} · Multiview`
+    : output ? `${output.name} – Multiview` : 'Multiview'
 
   // Nur neu aufbauen, wenn sich für diesen Ausgang wirklich etwas geändert hat,
   // sonst würden die Videos bei jeder Änderung an anderen Layouts kurz flackern.
-  const key = JSON.stringify([outputRef, layout, config.sources])
+  const key = JSON.stringify([output?.id ?? outputRef, layout, config.sources])
   if (key === renderedKey) return updateOverlays()
   renderedKey = key
 
@@ -88,6 +98,11 @@ function render() {
   chatViews.clear()
   agendaViews.clear()
 
+  if (!output && screenRef) {
+    // Bildschirm aus: schwarz
+    stage.style.setProperty('--bg', '#000')
+    return releaseUnusedStreams(new Set())
+  }
   if (!output) return showMessage(`Ausgang „${outputRef}“ nicht gefunden`)
   if (!layout) return showMessage(`${output.name}\nKein Layout zugewiesen`)
 
