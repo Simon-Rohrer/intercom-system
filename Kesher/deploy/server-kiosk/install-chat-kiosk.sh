@@ -105,11 +105,12 @@ session  required pam_unix.so
 session  required pam_systemd.so
 EOF
 
-# Browser policy: never offer page translation on the display. The Chromium
-# snap and the deb package read different policy directories.
+# Browser policy: never offer page translation on the display, and no warning
+# bar about the --use-fake-ui-for-media-stream flag. The Chromium snap and the
+# deb package read different policy directories.
 for policy_dir in /etc/chromium/policies/managed /etc/chromium-browser/policies/managed; do
   install -d -m 0755 "${policy_dir}"
-  printf '{\n  "TranslateEnabled": false\n}\n' >"${policy_dir}/kesher-chat-kiosk.json"
+  printf '{\n  "TranslateEnabled": false,\n  "CommandLineFlagSecurityWarningsEnabled": false\n}\n' >"${policy_dir}/kesher-chat-kiosk.json"
 done
 
 if [[ "${DISPLAY_URL}" == "chat" ]]; then

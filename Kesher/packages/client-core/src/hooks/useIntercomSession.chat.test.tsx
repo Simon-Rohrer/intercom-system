@@ -193,22 +193,25 @@ describe("useIntercomSession chat", () => {
     act(() => {
       ws.receive(chatEvent("sd-1", "Bitte leiser", { source: "companion", timestamp: Date.now() }));
     });
-    expect(result.current.incomingAttention).toEqual({
-      kind: "chat",
-      title: "Stream Deck · Global",
-      detail: "Licht · Lighting: Bitte leiser",
-    });
+    expect(result.current.incomingAttention).toEqual({ kind: "chat" });
   });
 
-  it("does not flash for history, typed messages or the sender's own Stream Deck message", async () => {
+  it("flashes the screen for a new typed chat message", async () => {
+    const { result, ws } = await renderSession();
+    act(() => {
+      ws.receive(chatEvent("typed", "Getippt", { source: "web", timestamp: Date.now() }));
+    });
+    expect(result.current.incomingAttention).toEqual({ kind: "chat" });
+  });
+
+  it("does not flash for history or the sender's own message", async () => {
     const { result, ws } = await renderSession();
     act(() => {
       // replayed history after a (re)connect
       ws.receive(
         chatEvent("sd-old", "Alt", { source: "companion", timestamp: Date.now() - 60_000 }),
       );
-      // typed in a station
-      ws.receive(chatEvent("typed", "Getippt", { source: "web", timestamp: Date.now() }));
+      ws.receive(chatEvent("typed-old", "Getippt", { source: "web", timestamp: Date.now() - 60_000 }));
       // own message
       ws.receive(
         chatEvent("own", "Eigene", {

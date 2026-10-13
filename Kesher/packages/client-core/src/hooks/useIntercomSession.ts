@@ -680,8 +680,8 @@ export type UseIntercomSessionResult = {
   webrtcState: string;
   roomLevelById: Record<string, number>;
   activeVoiceRoutes: VoiceRoute[];
-  /** "call": incoming call/signal flash; "chat": Stream Deck chat message (border flash). */
-  incomingAttention: { title: string; detail: string; kind: IncomingAttentionKind } | null;
+  /** "call": incoming call/signal card; "chat": new chat message (border flash only). */
+  incomingAttention: IncomingAttention | null;
   lastCompanionCommand: {
     command: string;
     status: "executing" | "executed" | "rejected" | "failed";
@@ -741,12 +741,14 @@ export type UseIntercomSessionResult = {
 
 // ── Hook ────────────────────────────────────────────────────────────────────────────────
 
-/** Only Stream Deck chat messages this fresh flash; older ones are history. */
-const STREAM_DECK_CHAT_FLASH_MAX_AGE_MS = 15 * 1000;
+/** Only chat messages this fresh flash; older ones are history. */
+const CHAT_FLASH_MAX_AGE_MS = 15 * 1000;
 /** Matches the attention-chat-border-blink animation. */
-const STREAM_DECK_CHAT_FLASH_DURATION_MS = 4000;
+const CHAT_FLASH_DURATION_MS = 4000;
 
-export type IncomingAttentionKind = "call" | "chat";
+export type IncomingAttention =
+  | { kind: "call"; title: string; detail: string }
+  | { kind: "chat" };
 
 export function useIntercomSession({
   token,
@@ -1616,15 +1618,11 @@ export function useIntercomSession({
         ? `${event.fromUser.username} · ${event.signal}`
         : event.fromUser.username;
     }
-    showIncomingAttention(title, detail);
+    showIncomingAttention({ kind: "call", title, detail });
   }
 
-  function showIncomingAttention(
-    title: string,
-    detail: string,
-    kind: IncomingAttentionKind = "call",
-  ) {
-    setIncomingAttention({ title, detail, kind });
+  function showIncomingAttention(attention: IncomingAttention) {
+    setIncomingAttention(attention);
     setAttentionFlashKey((prev) => prev + 1);
     clearIncomingAttentionTimer();
     incomingAttentionTimeoutRef.current = window.setTimeout(
@@ -1632,33 +1630,19 @@ export function useIntercomSession({
         incomingAttentionTimeoutRef.current = null;
         setIncomingAttention(null);
       },
-      // The chat text stays a little longer so it can be read.
-      kind === "chat" ? STREAM_DECK_CHAT_FLASH_DURATION_MS : 2200,
+      attention.kind === "chat" ? CHAT_FLASH_DURATION_MS : 2200,
     );
   }
 
   /**
-   * A chat message sent from a Stream Deck key flashes every receiving view
-   * like an incoming call. History replayed on (re)connect and the sender's
-   * own message do not flash.
+   * Every new chat message from someone else flashes a yellow border around
+   * the receiving chat views. History replayed on (re)connect and the
+   * sender's own message do not flash.
    */
-  function triggerStreamDeckChatAttention(event: RoutedEvent, body: string) {
-    const ad = appDataRef.current;
-    if (event.source !== "companion" || event.fromUser.id === ad?.self.id) return;
-    if (Date.now() - event.timestamp > STREAM_DECK_CHAT_FLASH_MAX_AGE_MS) return;
-    const target =
-      event.scope === "global"
-        ? "Global"
-        : event.scope === "room"
-          ? ad?.rooms.find((room) => room.id === event.targetId)?.name || event.targetId
-          : "Direkt";
-    const roleName =
-      ad?.roles.find((role) => role.id === event.fromUser.roleId)?.name || "";
-    const sender =
-      roleName && roleName !== event.fromUser.username
-        ? `${event.fromUser.username} · ${roleName}`
-        : event.fromUser.username;
-    showIncomingAttention(`Stream Deck · ${target}`, `${sender}: ${body}`, "chat");
+  function triggerChatAttention(event: RoutedEvent) {
+    if (event.fromUser.id === appDataRef.current?.self.id) return;
+    if (Date.now() - event.timestamp > CHAT_FLASH_MAX_AGE_MS) return;
+    showIncomingAttention({ kind: "chat" });
   }
 
   // ── Room permission helpers ──
@@ -3172,7 +3156,7 @@ export function useIntercomSession({
             // (StrictMode), which previously dropped every message.
             if (!seenChatKeysRef.current.has(stableKey)) {
               seenChatKeysRef.current.add(stableKey);
-              triggerStreamDeckChatAttention(msg.data, chatBody);
+              triggerChatAttention(msg.data);
               setChatMessages((old) => {
                 const alreadyPresent = old.some((entry) => {
                   if (nextEntry.messageId && entry.messageId) {

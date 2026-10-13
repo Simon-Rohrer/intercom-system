@@ -12,3 +12,18 @@ export function resolveViewModeOverride(
   }
   return null;
 }
+
+/**
+ * Embedded as a window inside another page (e.g. a Multiview tile): the
+ * station view then fits everything into the window instead of scrolling.
+ */
+export function resolveEmbedMode(search: string): boolean {
+  const value = new URLSearchParams(search).get("embed");
+  return value === "1" || value === "true";
+}
+
+/** `controls=0` hides Hold to talk, Reply to caller and Always on. */
+export function resolveHideTalkControls(search: string): boolean {
+  const value = new URLSearchParams(search).get("controls");
+  return value === "0" || value === "false";
+}

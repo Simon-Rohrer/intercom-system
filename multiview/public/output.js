@@ -84,7 +84,7 @@ const ws = connect(
     } else if (msg.type === 'chatFlash') {
       for (const view of chatViews) {
         const role = view.roleId()
-        if (!role || !msg.audience || msg.audience.includes(role)) view.flash(msg)
+        if (!role || !msg.audience || msg.audience.includes(role)) view.flash()
       }
     } else if (msg.type === 'propresenter') {
       propresenter = msg
@@ -290,7 +290,9 @@ function kesherBase(tile) {
 }
 
 function kesherUrl(tile) {
-  const params = new URLSearchParams({ viewMode: tile.kesherView || 'station' })
+  // embed: Kesher passt sich dem Kachelfenster an (alle Kanäle sichtbar, nichts scrollt)
+  const params = new URLSearchParams({ viewMode: tile.kesherView || 'station', embed: '1' })
+  if (tile.kesherHideControls) params.set('controls', '0')
   // "@user": mit Namen und Rolle des angemeldeten Nutzers (nur wenn hier jemand mit Rolle angemeldet ist)
   const asViewer = tile.kesherRoleId === '@user'
   const roleId = asViewer ? (viewer && !viewer.admin ? viewer.roleId : '') : tile.kesherRoleId
@@ -299,9 +301,8 @@ function kesherUrl(tile) {
     params.set('autoLogin', '1')
     params.set('username', username)
     params.set('roleId', roleId)
-    // Mit der Rolle des angemeldeten Nutzers nie übernehmen: Kesher erlaubt pro Rolle nur ein Gerät,
-    // und sein eigenes Kesher (Handy, Laptop, Station) soll dadurch nicht rausfliegen. Ist die Rolle
-    // dort schon angemeldet, zeigt die Kachel „Rolle belegt“ – Chat lesen/schreiben geht über die Chat-Kachel.
+    // Mit der Rolle des angemeldeten Nutzers nie übernehmen: sein eigenes Kesher (Handy, Laptop,
+    // Station) soll dadurch nicht rausfliegen.
     if (tile.kesherTakeover !== false && !asViewer) params.set('autoTakeover', '1')
     // Als Zweitgerät: belegt die Rolle in Kesher nicht, das eigene Kesher-Gerät geht trotzdem
     if (asViewer) params.set('secondary', '1')

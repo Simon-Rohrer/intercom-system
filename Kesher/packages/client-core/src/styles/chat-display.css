@@ -225,21 +225,6 @@
   }
 }
 
-/* Stream Deck message: same yellow flash as an incoming call, sized for a monitor. */
-.chat-display-flash .attention-flash-card {
-  min-width: min(860px, 92vw);
-  padding: 1.4rem 2rem;
-  gap: 0.5rem;
-}
-.chat-display-flash .attention-flash-card strong {
-  font-size: clamp(1rem, 1.6vw, 1.4rem);
-}
-.chat-display-flash .attention-flash-card span {
-  font-size: clamp(1.6rem, 3.4vw, 3rem);
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
 /* Wichtige Meldung aus dem Multiview (z. B. Beamer-Meldung wartet in ProPresenter): rot */
 .chat-display-message.is-alert {
   border-color: var(--k-bad);
