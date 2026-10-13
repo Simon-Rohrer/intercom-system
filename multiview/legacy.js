@@ -6,7 +6,8 @@
 // alten Browser, liefert er stattdessen umgeschriebene Fassungen:
 //   - JavaScript: neue Schreibweisen (?. ?? ??= Klassenfelder …) per esbuild für Safari 12
 //   - CSS: clamp(), Container-Einheiten (cqw/cqh/cqmin/cqmax), inset, color-mix, aspect-ratio
-//   - HTML: lädt zusätzlich legacy-runtime.js (Container-Größen, Flex-Abstände, kleine Polyfills)
+//   - HTML: lädt zusätzlich legacy-runtime.js (Container-Größen, Seitenverhältnisse, Flex-Abstände,
+//     Vollbild, <dialog>, kleine Polyfills und eine Fehleranzeige)
 // Die Dateien in public/ bleiben dabei unberührt.
 //
 // Zum Testen auf einem neuen Browser: ?legacy=1 an die Adresse hängen (?legacy=0 schaltet zurück).
@@ -126,13 +127,10 @@ function lowerDeclarations(body) {
     return `${pre}top: ${t}${i}; right: ${r}${i}; bottom: ${b}${i}; left: ${l}${i}`
   })
 
-  // aspect-ratio → feste Höhe bzw. Padding-Trick
+  // aspect-ratio: die Höhe setzt legacy-runtime.js aus der Breite (Verhältnis Höhe/Breite)
   const ar = /(?:^|[;\s])aspect-ratio\s*:\s*([\d.]+)\s*\/\s*([\d.]+)/.exec(body)
   if (ar && !/(?:^|[;\s])height\s*:/.test(body)) {
-    const ratio = Number(ar[2]) / Number(ar[1])
-    const width = /(?:^|[;\s])width\s*:\s*([^;]+?)\s*(?=;|$)/.exec(body)
-    if (width && width[1] === '100%') body += `; height: 0; padding-top: ${+(ratio * 100).toFixed(4)}%`
-    else if (width && !/%/.test(width[1])) body += `; height: calc(${width[1]} * ${+ratio.toFixed(6)})`
+    body = `${body.replace(/;?\s*$/, '')}; --mv-aspect: ${+(Number(ar[2]) / Number(ar[1])).toFixed(6)} `
   }
 
   // container-type merkt sich legacy-runtime.js über eine eigene Variable

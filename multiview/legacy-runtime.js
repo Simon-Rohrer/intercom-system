@@ -2,8 +2,9 @@
 //  - Container-Einheiten: setzt --mv-cqw/-cqh/-cqmin/-cqmax an den Kindern jedes Containers
 //    (die umgeschriebenen Styles rechnen damit statt mit cqw/cqh …)
 //  - Abstände in Flex-Layouts (gap) als Außenabstand der Kinder
+//  - Höhe aus aspect-ratio (--mv-aspect)
 //  - kleine Polyfills: replaceChildren, structuredClone, Promise.allSettled,
-//    matchMedia(...).addEventListener und <dialog> (showModal/close)
+//    matchMedia(...).addEventListener, <dialog> (showModal/close) und Vollbild
 ;(function () {
   'use strict'
 
@@ -128,23 +129,59 @@
     })
   }
 
+  // Vollbild: iOS 12 kennt nur webkitRequestFullscreen (iPad). Ohne beides öffnet ein
+  // iframe (Vorschau im Editor) seine Seite direkt, das ist auf dem Gerät dann bildschirmfüllend.
+  if (!Element.prototype.requestFullscreen) {
+    Element.prototype.requestFullscreen = function () {
+      if (this.webkitRequestFullscreen) {
+        this.webkitRequestFullscreen()
+        return Promise.resolve()
+      }
+      if (this.tagName === 'IFRAME' && this.src) {
+        location.href = this.src.replace(/([?&])embed=[^&]*&?/, '$1').replace(/[?&]$/, '')
+        return Promise.resolve()
+      }
+      return Promise.reject(new Error('Vollbild wird von diesem Gerät nicht unterstützt'))
+    }
+  }
+  if (!document.exitFullscreen && document.webkitExitFullscreen) {
+    document.exitFullscreen = function () {
+      document.webkitExitFullscreen()
+      return Promise.resolve()
+    }
+  }
+  if (!('fullscreenElement' in document) && 'webkitFullscreenElement' in document) {
+    Object.defineProperty(Document.prototype, 'fullscreenElement', {
+      get: function () {
+        return this.webkitFullscreenElement || null
+      },
+    })
+    document.addEventListener('webkitfullscreenchange', function () {
+      document.dispatchEvent(new Event('fullscreenchange'))
+    })
+  }
+
   var docEl = document.documentElement
   docEl.style.setProperty('--mv-cqw', '1vw')
   docEl.style.setProperty('--mv-cqh', '1vh')
   docEl.style.setProperty('--mv-cqmin', '1vmin')
   docEl.style.setProperty('--mv-cqmax', '1vmax')
 
-  // Selektoren aus den Stylesheets: Container (--mv-container) und Regeln mit gap
+  // Selektoren aus den Stylesheets: Container (--mv-container), Seitenverhältnisse (--mv-aspect)
+  // und Regeln mit gap
   var containerSel = ''
   var gapSel = ''
+  var aspects = [] // { sel, ratio }
   var sheetCount = -1
 
-  function collect(rules, containers, gaps) {
+  function collect(rules, containers, gaps, found) {
     for (var i = 0; i < rules.length; i++) {
       var r = rules[i]
-      if (r.cssRules && !r.selectorText) collect(r.cssRules, containers, gaps) // @media, @supports
+      if (r.cssRules && !r.selectorText) collect(r.cssRules, containers, gaps, found) // @media, @supports
       if (!r.style || !r.selectorText) continue
       if (r.style.getPropertyValue('--mv-container')) containers.push(r.selectorText)
+      var ratio = parseFloat(r.style.getPropertyValue('--mv-aspect'))
+      if (ratio > 0) found.push({ sel: r.selectorText, ratio: ratio })
       if (r.style.getPropertyValue('gap') || r.style.getPropertyValue('column-gap') || r.style.getPropertyValue('row-gap')) {
         gaps.push(r.selectorText)
       }
@@ -156,10 +193,11 @@
     if (sheets.length === sheetCount) return
     var containers = []
     var gaps = []
+    var found = []
     var complete = true
     for (var i = 0; i < sheets.length; i++) {
       try {
-        collect(sheets[i].cssRules, containers, gaps)
+        collect(sheets[i].cssRules, containers, gaps, found)
       } catch (e) {
         complete = false // Stylesheet noch nicht geladen
       }
@@ -167,6 +205,29 @@
     if (complete) sheetCount = sheets.length
     containerSel = containers.join(',')
     gapSel = gaps.join(',')
+    aspects = found
+  }
+
+  // aspect-ratio: Höhe aus der Breite (spätere Regeln gewinnen, wie im CSS)
+  function updateAspects() {
+    var ratios = []
+    var els = []
+    for (var i = 0; i < aspects.length; i++) {
+      var list = document.querySelectorAll(aspects[i].sel)
+      for (var j = 0; j < list.length; j++) {
+        var k = els.indexOf(list[j])
+        if (k < 0) {
+          els.push(list[j])
+          ratios.push(aspects[i].ratio)
+        } else ratios[k] = aspects[i].ratio
+      }
+    }
+    for (var n = 0; n < els.length; n++) {
+      var w = els[n].getBoundingClientRect().width
+      if (!w) continue
+      var h = Math.round(w * ratios[n] * 100) / 100 + 'px'
+      if (els[n].style.height !== h) els[n].style.height = h
+    }
   }
 
   function px(value, el) {
@@ -253,6 +314,7 @@
     scheduled = false
     scanSheets()
     updateContainers()
+    updateAspects()
     updateGaps()
   }
   function schedule() {
