@@ -40,6 +40,9 @@ const chatViews = new Set() // Chat-Kacheln
 const composers = new Set() // Eingabefelder der Chat-Kacheln (angemeldet)
 // Angemeldeter Nutzer (falls diese Seite angemeldet geöffnet ist): Chat und Intercom gehen mit ihm mit
 let viewer = null
+// Ohne eigene Anmeldung (Kiosk am HDMI-Ausgang): wer gerade für diesen Multiview angemeldet ist
+let stationUser = null
+let currentOutputId = null
 fetch('/api/me', { cache: 'no-store' })
   .then((r) => r.json())
   .then((me) => {
@@ -110,6 +113,7 @@ function render() {
     ? config.outputs.find((o) => o.id === screen?.outputId)
     : findByRef(config.outputs, outputRef)
   const layout = output && config.layouts.find((l) => l.id === output.layoutId)
+  currentOutputId = output?.id ?? null
   // Der Kiosk erkennt das Fenster am Anfang "Bildschirm <Anschluss> " – nicht ändern.
   document.title = screenRef
     ? `Bildschirm ${screenRef} · Multiview`
@@ -202,7 +206,13 @@ function buildTile(tile, layout, usedStreams) {
     // Die Kesher-Seite selbst liegt in der Ebene #frames (syncFrames) über dieser Kachel
     media.classList.add('chat')
     media.append(
-      placeholder(embedded ? 'Kesher-Intercom\nnur auf dem Monitor bedienbar' : 'Kesher-Intercom\nwird geladen …'),
+      placeholder(
+        embedded
+          ? 'Kesher-Intercom\nnur auf dem Monitor bedienbar'
+          : tile.kesherRoleId === '@user' && !kesherPerson()
+            ? 'Kesher-Intercom\nniemand für diesen Multiview angemeldet'
+            : 'Kesher-Intercom\nwird geladen …',
+      ),
     )
   } else if (tile.kind === 'churchtools') {
     const view = createAgendaView(tile)
@@ -289,17 +299,46 @@ function kesherBase(tile) {
   return `https://${location.hostname}:8443`
 }
 
+/** Person für Kesher-Kacheln mit „angemeldeter Nutzer“: hier angemeldet, sonst die des Multiviews. */
+function kesherPerson() {
+  if (viewer) return viewer.admin ? null : viewer
+  return stationUser
+}
+
+const hasViewerKesher = () => {
+  const output = config?.outputs.find((o) => o.id === currentOutputId)
+  const layout = output && config.layouts.find((l) => l.id === output.layoutId)
+  return Boolean(layout?.tiles.some((t) => t.kind === 'kesher' && t.kesherRoleId === '@user'))
+}
+
+/** Ohne eigene Anmeldung regelmäßig nachsehen, wer für diesen Multiview angemeldet ist. */
+async function refreshStationUser() {
+  if (embedded || viewer || !currentOutputId || !hasViewerKesher()) return
+  const data = await fetch(`/api/output/${encodeURIComponent(currentOutputId)}/user`, { cache: 'no-store' })
+    .then((r) => r.json())
+    .catch(() => null)
+  if (!data) return
+  const next = data.user ?? null
+  if (JSON.stringify(next) === JSON.stringify(stationUser)) return
+  stationUser = next
+  renderedKey = '' // Kesher-Kachel mit der neuen Person anmelden
+  render()
+}
+setInterval(refreshStationUser, 10_000)
+
 function kesherUrl(tile) {
   // embed: Kesher passt sich dem Kachelfenster an (alle Kanäle sichtbar, nichts scrollt)
   const params = new URLSearchParams({ viewMode: tile.kesherView || 'station', embed: '1' })
   if (tile.kesherHideControls) params.set('controls', '0')
   // "@user": mit Namen und Rolle des angemeldeten Nutzers (nur wenn hier jemand mit Rolle angemeldet ist)
   const asViewer = tile.kesherRoleId === '@user'
-  const roleId = asViewer ? (viewer && !viewer.admin ? viewer.roleId : '') : tile.kesherRoleId
-  const username = asViewer ? String(viewer?.name ?? '').trim() : String(tile.kesherUser ?? 'Multiview').trim()
+  const person = kesherPerson()
+  const roleId = asViewer ? (person?.roleId ?? '') : tile.kesherRoleId
+  const username = asViewer ? String(person?.name ?? '').trim() : String(tile.kesherUser ?? 'Multiview').trim()
   if (roleId && username) {
     params.set('autoLogin', '1')
-    params.set('username', username)
+    // Kesher erlaubt keine Leerzeichen im Namen – geschütztes Leerzeichen sieht gleich aus
+    params.set('username', username.replace(/\s+/g, '\u00a0'))
     params.set('roleId', roleId)
     // Mit der Rolle des angemeldeten Nutzers nie übernehmen: sein eigenes Kesher (Handy, Laptop,
     // Station) soll dadurch nicht rausfliegen.
@@ -319,7 +358,12 @@ function kesherUrl(tile) {
  * In der Editor-Vorschau nie, sonst wäre die Rolle doppelt angemeldet.
  */
 function syncFrames(layout) {
-  const wanted = embedded || !layout ? [] : layout.tiles.filter((t) => t.kind === 'kesher')
+  // „Angemeldeter Nutzer“ ohne Person: keine Kesher-Anmeldeseite, die Kachel zeigt den Hinweis
+  const wanted =
+    embedded || !layout
+      ? []
+      : layout.tiles.filter((t) => t.kind === 'kesher' && (t.kesherRoleId !== '@user' || kesherPerson()))
+  refreshStationUser()
   const keep = new Set()
   for (const tile of wanted) {
     const url = kesherUrl(tile)

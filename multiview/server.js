@@ -1285,6 +1285,25 @@ function readProfiles() {
 
 const profileKey = (user) => `${user.roleId}:${String(user.name).trim().toLowerCase()}`
 
+/**
+ * Wer ist gerade für diesen Multiview angemeldet? Für Monitore ohne eigene Anmeldung (Kiosk am
+ * HDMI-Ausgang): Kesher-Kacheln mit „angemeldeter Nutzer“ melden sich dann als diese Person an.
+ * Aktive Anmeldungen (ohne Admin) mit Rechten auf den Multiview; bei mehreren die Rolle mit den
+ * wenigsten Multiviews (Licht 1 vor einer Rolle, die alles darf), sonst die zuletzt aktive.
+ */
+app.get('/api/output/:id/user', (req, res) => {
+  const output = findByRef(config.outputs, req.params.id)
+  if (!output) return res.status(404).json({ ok: false, user: null })
+  const active = access
+    .sessions()
+    .filter((s) => !s.admin && s.roleId && (s.live || Date.now() - s.seen < 2 * 60 * 1000))
+    .map((s) => ({ ...s, outputs: allowedOutputs(config, s) }))
+    .filter((s) => s.outputs.has(output.id))
+    .sort((a, b) => a.outputs.size - b.outputs.size || b.seen - a.seen)
+  const who = active[0]
+  res.json({ ok: true, user: who ? { name: who.name, roleId: who.roleId } : null })
+})
+
 app.get('/api/me', (req, res) => {
   const user = access.userOf(req)
   const rights = roleRights(config, user)
