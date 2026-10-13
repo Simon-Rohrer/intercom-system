@@ -1,5 +1,6 @@
 // ChurchTools-Ablauf als Kachel: Ablauf des heutigen Events, der laufende Punkt
-// ist hervorgehoben. Die Daten kommen vom Multiview-Server (ein Server-Konto).
+// ist hervorgehoben. Gibt es heute keinen Ablauf, steht der nächste Termin mit
+// Ablauf da (außer bei festem Datum). Die Daten kommen vom Multiview-Server.
 
 const views = new Set()
 
@@ -30,15 +31,20 @@ function fmtDuration(seconds) {
   return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')} h` : `${m}′`
 }
 
+/** Passt das Event zum Filter der Kachel (Name oder Kalender enthält)? */
+function matchesFilter(event, filter) {
+  const f = String(filter || '').trim().toLowerCase()
+  return !f || event.name.toLowerCase().includes(f) || (event.calendar || '').toLowerCase().includes(f)
+}
+
+const hasAgenda = (event) => Boolean(event.agenda?.items?.length)
+
 /**
  * Welches Event die Kachel zeigt: passend zum Filter (Name oder Kalender),
  * das laufende, sonst das nächste, sonst das letzte des Tages.
  */
 export function pickEvent(events, filter, now = Date.now()) {
-  const f = String(filter || '').trim().toLowerCase()
-  const list = (events || []).filter(
-    (e) => !f || e.name.toLowerCase().includes(f) || (e.calendar || '').toLowerCase().includes(f),
-  )
+  const list = (events || []).filter((e) => matchesFilter(e, filter))
   return (
     list.find((e) => Date.parse(e.startDate) <= now && now < Date.parse(e.endDate)) ||
     list.find((e) => Date.parse(e.startDate) > now) ||
@@ -93,6 +99,7 @@ export function createAgendaView(tile) {
     const tz = ct?.timeZone
     eventName.textContent = ''
     when.textContent = ''
+    label.textContent = 'Ablauf'
     if (!ct || ct.state === 'unconfigured') return message('ChurchTools ist nicht verbunden.\nEinstellungen → ChurchTools')
     const day = options.date || ct.date
     const events = ct.days?.[day]
@@ -101,7 +108,23 @@ export function createAgendaView(tile) {
       if (ct.state === 'error') return message(ct.error || 'ChurchTools nicht erreichbar')
       return message(ct.state === 'connected' ? `Lade ${fmtDay(day)} …` : 'Verbinde mit ChurchTools …')
     }
-    const event = pickEvent(events, options.filter)
+    let event = null
+    if (options.date) event = pickEvent(events, options.filter)
+    else {
+      // Aktuelles Datum: heutiges Event mit Ablauf, sonst der nächste Termin mit Ablauf
+      event = pickEvent(events.filter(hasAgenda), options.filter)
+      if (!event) {
+        event = (ct.upcoming || []).find((e) => matchesFilter(e, options.filter)) || null
+        if (event) {
+          live = false
+          label.textContent = 'Nächster Ablauf'
+        }
+      }
+      if (!event) {
+        const what = options.filter ? `kein Ablauf „${options.filter}“` : 'kein Ablauf'
+        return message(`Heute ${what} – auch nicht in den nächsten Wochen`)
+      }
+    }
     const dayText = live ? 'Heute' : `Am ${fmtDay(day)}`
     if (!event) return message(options.filter ? `${dayText} kein Event „${options.filter}“` : `${dayText} keine Events`)
     eventName.textContent = event.name

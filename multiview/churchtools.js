@@ -10,6 +10,8 @@ const path = require('path')
 
 const REFRESH_MS = 60 * 1000
 const MAX_DAYS = 10 // so viele verschiedene Tage werden höchstens abgefragt
+const LOOKAHEAD_DAYS = 42 // so weit voraus wird der nächste Ablauf gesucht
+const MAX_AGENDA_LOOKUPS = 12 // höchstens so viele Abläufe je Suche abfragen
 const RETRY_MS = 15 * 1000
 const TIMEOUT_MS = 10 * 1000
 
@@ -40,18 +42,34 @@ function nextDay(day) {
   return d.toISOString().slice(0, 10)
 }
 
+/** "2026-10-15", 3 → "2026-10-18" */
+function addDays(day, n) {
+  const d = new Date(`${day}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Passt ein Event zum Filter einer Kachel (Name oder Kalender enthält)? Wie pickEvent in agenda.js. */
+function matchesFilter(event, filter) {
+  const f = String(filter || '').trim().toLowerCase()
+  return !f || event.name.toLowerCase().includes(f) || (event.calendar || '').toLowerCase().includes(f)
+}
+
+const hasAgenda = (event) => Boolean(event.agenda?.items?.length)
+
 /** Gültiges Datum im Format YYYY-MM-DD? */
 function isDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && !Number.isNaN(Date.parse(value))
 }
 
-function createChurchTools({ dataDir, getConfig, getDates = () => [], onUpdate, log = console.log }) {
+function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters = () => [], onUpdate, log = console.log }) {
   const secretFile = path.join(dataDir, 'churchtools-secret.json')
   let secret = readSecret() // { url, token, user }
   let state = secret?.token ? 'connecting' : 'unconfigured'
   let error = ''
   let date = '' // heute
   let days = {} // { 'YYYY-MM-DD': events[] }
+  let upcoming = [] // nächste Events mit Ablauf, für Kacheln ohne heutigen Ablauf
   let daysKey = ''
   let lastPublished = ''
   let timer = null
@@ -87,6 +105,7 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], onUpdate, 
       // Events von heute (für die Übersicht in den Einstellungen)
       events: days[date] || [],
       days,
+      upcoming,
     }
   }
 
@@ -193,6 +212,7 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], onUpdate, 
     state = 'unconfigured'
     error = ''
     days = {}
+    upcoming = []
     publish()
   }
 
@@ -202,9 +222,18 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], onUpdate, 
     return [today, ...extra.slice(0, MAX_DAYS - 1)]
   }
 
-  /** Nach einer Änderung der Kacheln: neu gewählte Tage sofort laden. */
+  /** Filter der Kacheln ohne festes Datum (leer = alle Events). */
+  function wantedFilters() {
+    return [...new Set(getFilters().map((f) => String(f || '').trim().toLowerCase()))].sort()
+  }
+
+  function wantedKey(today) {
+    return JSON.stringify([wantedDays(today), wantedFilters()])
+  }
+
+  /** Nach einer Änderung der Kacheln: neu gewählte Tage und Filter sofort laden. */
   function datesChanged() {
-    const key = JSON.stringify(wantedDays(date || dateIn(timeZone())))
+    const key = wantedKey(date || dateIn(timeZone()))
     if (key === daysKey) return
     daysKey = key
     if (secret?.token) refresh()
@@ -275,6 +304,17 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], onUpdate, 
     }
   }
 
+  function eventInfo(e) {
+    const calendar = Array.isArray(e.calendar) ? e.calendar[0] : e.calendar
+    return {
+      id: e.id,
+      name: e.name || '',
+      startDate: e.startDate,
+      endDate: e.endDate,
+      calendar: calendar?.title || calendar?.name || '',
+    }
+  }
+
   /** Events eines Tages mit ihren Abläufen. */
   async function loadDay(base, token, tz, day) {
     // "to" ist je nach ChurchTools-Version inklusiv oder exklusiv: bis zum Folgetag
@@ -284,18 +324,36 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], onUpdate, 
       .filter((e) => !e.isCanceled && dateIn(tz, new Date(e.startDate)) === day)
       .sort((a, b) => Date.parse(a.startDate) - Date.parse(b.startDate))
     const result = []
-    for (const e of list) {
-      const calendar = Array.isArray(e.calendar) ? e.calendar[0] : e.calendar
-      result.push({
-        id: e.id,
-        name: e.name || '',
-        startDate: e.startDate,
-        endDate: e.endDate,
-        calendar: calendar?.title || calendar?.name || '',
-        ...(await loadAgenda(base, token, e)),
-      })
-    }
+    for (const e of list) result.push({ ...eventInfo(e), ...(await loadAgenda(base, token, e)) })
     return result
+  }
+
+  /**
+   * Für Kacheln ohne festes Datum, deren Filter heute keinen Ablauf findet:
+   * das nächste Event (ab morgen) mit Ablauf. Je Filter wird nur bis zum ersten
+   * Treffer gesucht, damit nicht jeder Ablauf der nächsten Wochen geladen wird.
+   */
+  async function loadUpcoming(base, token, tz, today, todays) {
+    const open = wantedFilters().filter((f) => !todays.some((e) => hasAgenda(e) && matchesFilter(e, f)))
+    if (!open.length) return []
+    const from = nextDay(today)
+    const { data } = await request(base, `/events?from=${from}&to=${addDays(from, LOOKAHEAD_DAYS)}`, { token })
+    const list = (data?.data || [])
+      .filter((e) => !e.isCanceled && dateIn(tz, new Date(e.startDate)) > today)
+      .sort((a, b) => Date.parse(a.startDate) - Date.parse(b.startDate))
+    const found = []
+    let lookups = 0
+    for (const e of list) {
+      if (!open.length || lookups >= MAX_AGENDA_LOOKUPS) break
+      const event = eventInfo(e)
+      if (!open.some((f) => matchesFilter(event, f))) continue
+      lookups++
+      const full = { ...event, ...(await loadAgenda(base, token, e)) }
+      if (!hasAgenda(full)) continue
+      found.push(full)
+      for (let i = open.length - 1; i >= 0; i--) if (matchesFilter(full, open[i])) open.splice(i, 1)
+    }
+    return found
   }
 
   async function refreshNow() {
@@ -303,6 +361,7 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], onUpdate, 
     if (!secret?.token || !secret?.url) {
       state = 'unconfigured'
       days = {}
+      upcoming = []
       publish()
       return
     }
@@ -311,9 +370,16 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], onUpdate, 
     const today = dateIn(tz)
     try {
       const wanted = wantedDays(today)
-      daysKey = JSON.stringify(wanted)
+      daysKey = wantedKey(today)
       const next = {}
       for (const day of wanted) next[day] = await loadDay(base, token, tz, day)
+      try {
+        upcoming = await loadUpcoming(base, token, tz, today, next[today])
+      } catch (err) {
+        // Der heutige Ablauf soll nicht an der Vorschau scheitern: alten Stand behalten
+        if (err.status === 401) throw err
+        log(`ChurchTools: nächste Abläufe nicht geladen: ${err.message}`)
+      }
       date = today
       days = next
       state = 'connected'

@@ -11,6 +11,7 @@
     "atem-connection": "^3.10.3",
     "esbuild": "0.28.2",
     "express": "^4.22.3",
+    "qrcode": "^1.5.4",
     "ws": "^8.22.0"
   },
   "private": true,
