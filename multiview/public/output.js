@@ -81,7 +81,7 @@ const ws = connect(
     } else if (msg.type === 'chatFlash') {
       for (const view of chatViews) {
         const role = view.roleId()
-        if (!role || !msg.audience || msg.audience.includes(role)) view.flash(msg)
+        if (!role || !msg.audience || msg.audience.includes(role)) view.flash()
       }
     } else if (msg.type === 'propresenter') {
       propresenter = msg

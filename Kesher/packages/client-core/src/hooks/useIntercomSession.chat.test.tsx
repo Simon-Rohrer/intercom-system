@@ -193,11 +193,7 @@ describe("useIntercomSession chat", () => {
     act(() => {
       ws.receive(chatEvent("sd-1", "Bitte leiser", { source: "companion", timestamp: Date.now() }));
     });
-    expect(result.current.incomingAttention).toEqual({
-      kind: "chat",
-      title: "Stream Deck · Global",
-      detail: "Licht · Lighting: Bitte leiser",
-    });
+    expect(result.current.incomingAttention).toEqual({ kind: "chat" });
   });
 
   it("flashes the screen for a new typed chat message", async () => {
@@ -205,11 +201,7 @@ describe("useIntercomSession chat", () => {
     act(() => {
       ws.receive(chatEvent("typed", "Getippt", { source: "web", timestamp: Date.now() }));
     });
-    expect(result.current.incomingAttention).toEqual({
-      kind: "chat",
-      title: "Chat · Global",
-      detail: "Licht · Lighting: Getippt",
-    });
+    expect(result.current.incomingAttention).toEqual({ kind: "chat" });
   });
 
   it("does not flash for history or the sender's own message", async () => {
