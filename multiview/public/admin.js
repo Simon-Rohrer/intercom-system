@@ -1640,6 +1640,7 @@ function chatLookSection(tile) {
         <input type="range" min="0.5" max="2.5" step="0.1" data-chat="size" value="${o.size}"></label>
       <label class="field"><span>Nachrichten <output>${o.count}</output></span>
         <input type="range" min="1" max="60" step="1" data-chat="count" value="${o.count}"></label>
+      ${check('follow', 'An neuester Nachricht hängen (immer die neueste zeigen)')}
       ${check('newest', 'Neueste Nachricht groß hervorheben')}
       ${check('meta', 'Absender, Ziel und Uhrzeit zeigen')}
       ${check('header', 'Kopfzeile (Logo, Titel, Uhr)')}

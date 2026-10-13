@@ -19,7 +19,7 @@ function shortTime(ts) {
 }
 
 /** Darstellung der Chat-Kachel (im Layout-Editor einstellbar). */
-export const CHAT_DEFAULTS = { size: 1, newest: true, header: true, meta: true, dimOld: true, count: 30 }
+export const CHAT_DEFAULTS = { size: 1, newest: true, header: true, meta: true, dimOld: true, count: 30, follow: true }
 
 export function chatOptions(options) {
   const o = { ...CHAT_DEFAULTS, ...options }
@@ -36,6 +36,7 @@ export function createChatView(options) {
   root.classList.toggle('no-meta', !o.meta)
   root.classList.toggle('no-newest', !o.newest)
   root.classList.toggle('no-dim', !o.dimOld)
+  root.classList.toggle('no-follow', !o.follow)
   const header = el('header', 'kchat-header')
   const logo = el('img', 'kchat-logo')
   logo.src = 'jms-logo.svg'
@@ -54,6 +55,22 @@ export function createChatView(options) {
 
   const firstSeen = new Map()
   let lastKey = ''
+  let feedEl = null
+
+  // An der neuesten Nachricht hängen: immer ganz nach unten – auch wenn die Kachel erst später
+  // ihre Größe bekommt, die Schrift nachlädt oder die Kachel größer/kleiner gezogen wird.
+  const stick = () => {
+    if (!o.follow || !feedEl) return
+    const newest = feedEl.lastElementChild
+    // Passt die neueste Nachricht nicht ganz hinein (riesige Schrift, kleine Kachel): ihren Anfang zeigen
+    feedEl.scrollTop =
+      newest && newest.offsetHeight > feedEl.clientHeight ? newest.offsetTop - feedEl.offsetTop : feedEl.scrollHeight
+  }
+  if (o.follow) {
+    if (typeof ResizeObserver === 'function') new ResizeObserver(stick).observe(body)
+    else window.addEventListener('resize', stick)
+    document.fonts?.ready.then(stick)
+  }
 
   const view = {
     el: root,
@@ -101,8 +118,13 @@ export function createChatView(options) {
         list.append(li)
       })
       lastKey = feed[feed.length - 1].key
+      // Ohne „hängen“: Scroll-Position behalten, damit man in Ruhe zurücklesen kann
+      const keep = !o.follow && feedEl ? feedEl.scrollTop : null
       body.replaceChildren(list)
-      list.scrollTop = list.scrollHeight
+      feedEl = list
+      if (keep != null) list.scrollTop = keep
+      stick()
+      requestAnimationFrame(stick)
     },
     /** Neue Nachricht: nur der gelbe Rahmen der Kachel blinkt. */
     flash() {

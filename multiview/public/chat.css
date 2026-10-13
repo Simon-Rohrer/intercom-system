@@ -276,3 +276,6 @@
 .kchat.no-newest .kchat-msg.is-newest .kchat-text { font-size: 1em; line-height: inherit; }
 .kchat.no-newest .kchat-msg.is-newest .kchat-meta { font-size: 1em; }
 .kchat.no-dim .kchat-msg.is-old { opacity: 1; }
+/* Nicht an der neuesten Nachricht hängen: selbst scrollen (Touch-Monitor), ohne Balken */
+.kchat.no-follow .kchat-feed { overflow-y: auto; scrollbar-width: none; overscroll-behavior: contain; }
+.kchat.no-follow .kchat-feed::-webkit-scrollbar { display: none; }
