@@ -1199,7 +1199,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   ]);
 
   useEffect(() => {
-    // Only calls pulse the incoming-call keys; a Stream Deck chat message is
+    // Only calls pulse the incoming-call keys; a chat message is
     // shown on screen only.
     const hasIncomingAttention = session.incomingAttention?.kind === "call";
     incomingAttentionRef.current = hasIncomingAttention;
@@ -2990,7 +2990,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     ).values(),
   ).sort((a, b) => a.username.localeCompare(b.username));
 
-  // Stream Deck chat messages flash inside the chat on stations; only the
+  // New chat messages flash inside the chat on stations; only the
   // chat display (server monitor) flashes the whole screen.
   const chatAttention =
     session.incomingAttention?.kind === "chat"

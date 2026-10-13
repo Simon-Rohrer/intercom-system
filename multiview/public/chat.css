@@ -187,7 +187,7 @@
   white-space: pre-wrap;
 }
 
-/* Stream-Deck-Nachricht: gleicher gelber Blink-Rahmen wie in Kesher, auf die Kachel begrenzt */
+/* Neue Chat-Nachricht: gleicher gelber Blink-Rahmen wie in Kesher, auf die Kachel begrenzt */
 .kchat-flash {
   position: absolute;
   inset: 0;
