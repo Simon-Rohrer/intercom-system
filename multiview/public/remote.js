@@ -14,7 +14,7 @@ const $$ = (sel) => [...document.querySelectorAll(sel)]
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
-const QUICK_MESSAGES = ['Noch 5 Minuten', 'Noch 2 Minuten', 'Bitte zum Ende kommen', 'Lauter sprechen', 'Mikrofon prüfen']
+const QUICK_MESSAGES = ['Noch 5 Minuten', 'Noch 2 Minuten', 'Bitte zum Ende kommen', 'Lauter sprechen', 'Mikrofon näher an den Mund']
 
 let user = { admin: false, open: false, name: '', roleId: '' } // wird in start() gesetzt
 let config = null
@@ -248,10 +248,25 @@ function renderOutputs() {
         })
       preview.dataset.id = output.id
       card.querySelector('.rm-card-head').after(preview)
+      previewScaler.observe(preview)
     }
     box.append(card)
   }
 }
+
+// Vorschau in Monitorgröße rendern und verkleinern – sonst wäre die Schrift im Verhältnis
+// zu den Kacheln viel zu groß (der Multiview rechnet Schriftgrößen mit Mindestwerten).
+const PREVIEW_WIDTH = 1920
+const scalePreview = (el) => el.style.setProperty('--rm-scale', String(el.clientWidth / PREVIEW_WIDTH))
+// Ältere iPhones (iOS 12) kennen ResizeObserver nicht – dann beim Drehen/Ändern der Größe neu rechnen
+const previewScaler =
+  typeof ResizeObserver === 'function'
+    ? new ResizeObserver((entries) => entries.forEach((entry) => scalePreview(entry.target)))
+    : {
+        observe: (el) => requestAnimationFrame(() => scalePreview(el)),
+      }
+if (typeof ResizeObserver !== 'function')
+  window.addEventListener('resize', () => document.querySelectorAll('.rm-preview').forEach(scalePreview))
 
 $('#outputs').addEventListener('click', async (e) => {
   const card = e.target.closest('.rm-card')
@@ -365,7 +380,7 @@ function renderChat() {
         lastDay = d
         lastFrom = `${m.from}|${m.fromRoleId}`
         const who = mine ? '' : `<b>${esc(m.from)}</b>${m.fromRole && m.fromRole !== m.from ? ` · ${esc(m.fromRole)}` : ''}`
-        return `${dayLine}<li class="rm-bubble ${mine ? 'mine' : ''} ${sameSender ? 'cont' : ''}">
+        return `${dayLine}<li class="rm-bubble ${mine ? 'mine' : ''} ${sameSender ? 'cont' : ''} ${m.source === 'multiview-alert' ? 'alert' : ''}">
           ${who && !sameSender ? `<div class="rm-bubble-from">${who}</div>` : ''}
           <div class="rm-bubble-body">${esc(m.body)}</div>
           <div class="rm-bubble-meta"><span class="rm-target">${esc(m.target)}</span>${esc(time(m.timestamp))}</div>
@@ -494,7 +509,6 @@ $('#beamer-templates').addEventListener('submit', async (e) => {
   const id = form.closest('[data-template]').dataset.template
   const values = Object.fromEntries(new FormData(form))
   const body = id ? { uuid: id, fields: values } : { text: values.Text }
-  body.notify = $('#beamer-notify').checked
   const button = form.querySelector('button')
   button.disabled = true
   const res = await fetch('/api/propresenter/announce', {

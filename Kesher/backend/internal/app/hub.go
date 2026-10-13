@@ -941,12 +941,14 @@ func (h *Hub) LatestRoleSession(roleID string) (Session, bool) {
 	return selected.session, true
 }
 
+// TokensForRole lists the connected devices of a role, without secondary
+// devices (see Session.Secondary).
 func (h *Hub) TokensForRole(roleID string) []string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	tokens := make([]string, 0)
 	for token, c := range h.clients {
-		if c.session.RoleID == roleID {
+		if c.session.RoleID == roleID && !c.session.Secondary {
 			tokens = append(tokens, token)
 		}
 	}

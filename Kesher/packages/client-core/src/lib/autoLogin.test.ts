@@ -19,7 +19,17 @@ describe("resolveAutoLoginConfiguration", () => {
       roleId: "audio",
       requestedRole: "audio",
       allowTakeover: true,
+      secondary: false,
     });
+  });
+
+  it("marks secondary devices (Multiview tile of the logged-in user)", () => {
+    const config = resolveAutoLoginConfiguration(
+      "?autoLogin=1&username=Lasse&roleId=audio&secondary=1",
+      roles,
+    );
+    expect(config.secondary).toBe(true);
+    expect(config.allowTakeover).toBe(false);
   });
 
   it("keeps role-name links backwards compatible", () => {

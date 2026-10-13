@@ -193,6 +193,10 @@ type Session struct {
 	Username  string
 	RoleID    string
 	ExpiresAt time.Time
+	// Secondary marks an additional device for a role that is already used
+	// elsewhere (e.g. the Kesher tile in the Multiview of the logged-in user).
+	// It never occupies the role: normal logins and takeovers ignore it.
+	Secondary bool
 }
 
 type StreamDeckActionType string
@@ -314,6 +318,8 @@ type PublicBootstrapResponse struct {
 type LoginRequest struct {
 	Username string `json:"username"`
 	RoleID   string `json:"roleId"`
+	// Secondary logs in as an additional device that does not occupy the role.
+	Secondary bool `json:"secondary,omitempty"`
 }
 
 type LoginResponse struct {

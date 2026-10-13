@@ -4504,7 +4504,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
-	if existing, conflict := s.sessions.LatestForRole(req.RoleID); conflict {
+	// Secondary devices never conflict; a real device only conflicts with another real one.
+	if existing, conflict := s.sessions.LatestForRole(req.RoleID); conflict && !req.Secondary && !existing.Secondary {
 		s.writeJSON(w, http.StatusConflict, LoginConflictResponse{
 			RequiresTakeover: true,
 			ConflictRoleID:   req.RoleID,
@@ -4522,7 +4523,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, err)
 		return
 	}
-	session := s.createOperatorSession(user)
+	session := s.createOperatorSession(user, req.Secondary)
 	s.writeJSON(w, http.StatusOK, LoginResponse{
 		Token:                session.Token,
 		User:                 user,
@@ -4538,8 +4539,13 @@ const operatorSessionConnectGrace = 2 * time.Minute
 // client opens its websocket in time (handleWS cancels the pending logout).
 // Without this, a login whose window is closed right away kept the role
 // occupied until the session TTL.
-func (s *Server) createOperatorSession(user User) Session {
-	session := s.sessions.Create(user)
+func (s *Server) createOperatorSession(user User, secondary bool) Session {
+	var session Session
+	if secondary {
+		session = s.sessions.CreateSecondary(user)
+	} else {
+		session = s.sessions.Create(user)
+	}
 	grace := operatorSessionConnectGrace
 	if s.cfg.DisconnectLogoutDelay > grace {
 		grace = s.cfg.DisconnectLogoutDelay
@@ -4617,7 +4623,7 @@ func (s *Server) handleLoginTakeover(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, err)
 		return
 	}
-	session := s.createOperatorSession(user)
+	session := s.createOperatorSession(user, false)
 	s.writeJSON(w, http.StatusOK, LoginResponse{
 		Token:                session.Token,
 		User:                 user,

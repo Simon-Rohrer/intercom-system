@@ -1459,12 +1459,28 @@ async function handleStageMessage(req, res, text) {
   try {
     await setStageMessage(value)
     console.log(`ProPresenter: Bühnennachricht ${value ? `„${value}“` : 'gelöscht'} (von ${req.ip})`)
+    if (value) notifyChat(access.userOf(req), `Bühnennachricht (Stage Display): „${value}“`)
     res.json({ ok: true, message: value })
   } catch (err) {
     res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
   }
 }
 app.all('/api/propresenter/stage-message/clear', (req, res) => handleStageMessage(req, res, ''))
+
+/**
+ * Wichtigen Hinweis in den Kesher-Chat schreiben (rot markiert) – als die Rolle des Nutzers,
+ * sonst (Admin, offener Zugang, Companion) als Chat-Monitor. Fehler nur protokollieren.
+ */
+async function notifyChat(user, message) {
+  const roleId = user && !user.open && !user.admin ? user.roleId : config.chat.roleId
+  try {
+    await kesherChat.sendText({ roleId, username: user && !user.open ? user.name : '', message, roomId: '', alert: true })
+    return true
+  } catch (err) {
+    console.log(`Kesher: Hinweis nicht gesendet (${err.message})`)
+    return false
+  }
+}
 
 // Beamer-Meldung vorbereiten: Text in die ProPresenter-Meldung eintragen (angezeigt wird sie nur
 // vom ProPresenter-Bediener) und im Kesher-Chat Bescheid geben.
@@ -1481,22 +1497,11 @@ app.post('/api/propresenter/announce', requireUser, async (req, res) => {
     return res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
   }
   console.log(`ProPresenter: Beamer-Meldung vorbereitet „${request.text}“ (${from || req.ip})`)
-  // Bescheid im Chat – als die eigene Rolle, sonst als Chat-Monitor
-  let notified = false
-  if (req.body?.notify !== false) {
-    const roleId = !user.open && !user.admin ? user.roleId : config.chat.roleId
-    try {
-      await kesherChat.sendText({
-        roleId,
-        username: user.open ? '' : user.name,
-        message: `Beamer-Meldung wartet in ProPresenter: „${request.text}“ – bitte „${FREE_MESSAGE_NAME}“ unter Meldungen anzeigen`,
-        roomId: '',
-      })
-      notified = true
-    } catch (err) {
-      console.log(`Kesher: Hinweis zur Beamer-Meldung nicht gesendet (${err.message})`)
-    }
-  }
+  // Immer im Chat Bescheid geben (rot)
+  const notified = await notifyChat(
+    user,
+    `Beamer-Meldung wartet in ProPresenter: „${request.text}“ – bitte „${FREE_MESSAGE_NAME}“ unter Meldungen anzeigen`,
+  )
   res.json({ ok: true, request: publicRequests().find((r) => r.id === request.id), notified })
 })
 app.all('/api/propresenter/stage-message', (req, res) => {

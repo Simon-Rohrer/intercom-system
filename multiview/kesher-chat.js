@@ -352,7 +352,8 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
    * nur vom Server selbst erreichbar). Ist die Rolle an einer Station online, erscheint
    * die Nachricht von dieser Station, sonst von der Rolle. roomId leer = global.
    */
-  async function sendText({ roleId, username, message, roomId }) {
+  /** alert: wichtige Meldung (Kesher und Multiview zeigen sie rot). */
+  async function sendText({ roleId, username, message, roomId, alert = false }) {
     const url = settings().url
     if (!url) throw new Error('Kesher-Adresse fehlt (Einstellungen → Kesher-Chat)')
     let res
@@ -360,7 +361,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
       res = await fetch(`${url}/api/companion/chat-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roleId, username, message, roomId: roomId || '' }),
+        body: JSON.stringify({ roleId, username, message, roomId: roomId || '', ...(alert ? { alert: true } : {}) }),
         signal: AbortSignal.timeout(5000),
       })
     } catch {
