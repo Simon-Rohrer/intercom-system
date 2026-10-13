@@ -513,3 +513,26 @@ body.booting .rm-main { opacity: 0; }
   transform: scale(var(--rm-scale, 0.18));
   transform-origin: 0 0;
 }
+
+/* ---- Ausklappbare Karten ------------------------------------------------------------- */
+.rm-fold { border: 0; background: none; padding: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.rm-fold-btn {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 0;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  color: var(--text-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.rm-fold-btn .icon { width: 18px; height: 18px; }
+.rm-chevron { transition: transform 0.18s ease; }
+.rm-card.folded .rm-chevron { transform: rotate(-90deg); }
+.rm-card.folded { gap: 10px; }
+.rm-card.folded .rm-layouts,
+.rm-card.folded .rm-segments { display: none; }
+.rm-foldbar { display: flex; align-items: center; justify-content: space-between; margin: -4px 4px 2px; font-size: 13.5px; color: var(--muted); }
+.rm-foldbar button { border: 0; background: none; color: var(--accent-text); font-weight: 650; font-size: 14px; padding: 6px 0; }

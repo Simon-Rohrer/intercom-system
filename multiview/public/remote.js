@@ -201,6 +201,26 @@ function layoutSketch(layout) {
   return `<span class="rm-sketch">${boxes}</span>`
 }
 
+// --- Ausklappen -----------------------------------------------------------------------
+// Jede Karte (Multiview bzw. Monitor) lässt sich zuklappen; gemerkt pro Gerät. Ohne eigene
+// Wahl sind bei mehr als zwei Karten alle zu – dann sieht man sofort die ganze Liste.
+let collapsed = readJson(localStorage, 'mv.remote.collapsed', {})
+
+const isCollapsed = (key, count) => collapsed[key] ?? count > 2
+
+function setCollapsed(keys, value) {
+  for (const key of keys) collapsed[key] = value
+  writeJson(localStorage, 'mv.remote.collapsed', collapsed)
+}
+
+/** Leiste „Alle auf/zu“ über einer Liste mit mehr als zwei Karten. */
+function foldBar(keys, count) {
+  if (count <= 2) return ''
+  const allOpen = keys.every((k) => !isCollapsed(k, count))
+  return `<div class="rm-foldbar"><span>${count} Einträge</span>
+    <button type="button" data-fold-all="${allOpen ? 'zu' : 'auf'}">${allOpen ? 'Alle zuklappen' : 'Alle aufklappen'}</button></div>`
+}
+
 function renderOutputs() {
   const outputs = visibleOutputs(config, user)
   const layouts = visibleLayouts(config, user)
@@ -212,21 +232,26 @@ function renderOutputs() {
     box.innerHTML = `<div class="rm-empty"><b>Noch kein Bildschirm freigegeben</b>Der Admin legt unter „Benutzer &amp; Rechte“ fest, welche Bildschirme deine Rolle bedienen darf.</div>`
     return
   }
+  const keys = outputs.map((o) => `o:${o.id}`)
+  box.insertAdjacentHTML('beforeend', foldBar(keys, outputs.length))
   for (const output of outputs) {
     const current = config.layouts.find((l) => l.id === output.layoutId)
+    const folded = isCollapsed(`o:${output.id}`, outputs.length)
     const card = document.createElement('article')
-    card.className = 'rm-card'
+    card.className = `rm-card${folded ? ' folded' : ''}`
     card.dataset.id = output.id
+    card.dataset.fold = `o:${output.id}`
     card.innerHTML = `
       <div class="rm-card-head">
-        <div class="rm-card-title">
+        <button type="button" class="rm-card-title rm-fold" data-fold aria-expanded="${!folded}">
           <h2>${esc(output.name)}</h2>
           <span class="rm-status ${current ? 'on' : ''}">${current ? `<i></i>${esc(current.name)}` : 'Aus'}</span>
-        </div>
+        </button>
         <button class="rm-pill ${previews.has(output.id) ? 'active' : ''}" data-preview aria-pressed="${previews.has(output.id)}">
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
           Vorschau
         </button>
+        <button type="button" class="rm-fold-btn" data-fold aria-label="${folded ? 'Aufklappen' : 'Zuklappen'}"><svg viewBox="0 0 24 24" class="icon rm-chevron" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
       </div>
       <div class="rm-layouts">
         ${layouts
@@ -239,6 +264,7 @@ function renderOutputs() {
           <span class="rm-sketch empty"><svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg></span><span>Aus</span>
         </button>
       </div>`
+    // Vorschau auch zugeklappt zeigen, wenn sie an ist – das ist der schnelle Blick auf den Monitor
     if (previews.has(output.id)) {
       const preview =
         keep.get(output.id) ??
@@ -268,7 +294,24 @@ const previewScaler =
 if (typeof ResizeObserver !== 'function')
   window.addEventListener('resize', () => document.querySelectorAll('.rm-preview').forEach(scalePreview))
 
+/** Klick auf Kopf oder Pfeil klappt die Karte; „Alle auf/zu“ alle Karten der Liste. */
+function handleFold(e, box, render) {
+  const all = e.target.closest('[data-fold-all]')
+  if (all) {
+    setCollapsed([...box.querySelectorAll('[data-fold]')].map((c) => c.dataset.fold).filter(Boolean), all.dataset.foldAll === 'zu')
+    render()
+    return true
+  }
+  const toggle = e.target.closest('[data-fold]:not(.rm-card)')
+  const card = toggle?.closest('.rm-card')
+  if (!card) return false
+  setCollapsed([card.dataset.fold], !card.classList.contains('folded'))
+  render()
+  return true
+}
+
 $('#outputs').addEventListener('click', async (e) => {
+  if (handleFold(e, $('#outputs'), renderOutputs)) return
   const card = e.target.closest('.rm-card')
   if (!card) return
   const id = card.dataset.id
@@ -308,13 +351,22 @@ function screenIds() {
 function renderScreens() {
   if (!config || !user.admin) return
   renderTabs()
-  $('#screens').innerHTML = screenIds()
+  const ids = screenIds()
+  $('#screens').innerHTML =
+    foldBar(
+      ids.map((id) => `s:${id}`),
+      ids.length,
+    ) +
+    ids
     .map((id) => {
       const saved = config.screens?.find((s) => s.id === id)
       const detected = screens.find((s) => s.id === id)
-      return `<article class="rm-card" data-screen="${esc(id)}">
-        <div class="rm-card-head"><div class="rm-card-title"><h2>${esc(saved?.name || connectorLabel(id))}</h2>
-          <span class="rm-status ${detected?.connected ? 'on' : ''}">${detected?.connected ? '<i></i>Monitor angeschlossen' : 'kein Monitor'}</span></div></div>
+      const folded = isCollapsed(`s:${id}`, ids.length)
+      const running = config.outputs.find((o) => o.id === saved?.outputId)
+      return `<article class="rm-card${folded ? ' folded' : ''}" data-screen="${esc(id)}" data-fold="s:${esc(id)}">
+        <div class="rm-card-head"><button type="button" class="rm-card-title rm-fold" data-fold aria-expanded="${!folded}"><h2>${esc(saved?.name || connectorLabel(id))}</h2>
+          <span class="rm-status ${detected?.connected ? 'on' : ''}">${detected?.connected ? `<i></i>${running ? esc(running.name) : 'Monitor angeschlossen'}` : 'kein Monitor'}</span></button>
+          <button type="button" class="rm-fold-btn" data-fold aria-label="${folded ? 'Aufklappen' : 'Zuklappen'}"><svg viewBox="0 0 24 24" class="icon rm-chevron" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button></div>
         <div class="rm-segments">
           ${config.outputs
             .map((o, i) => `<button class="${o.id === saved?.outputId ? 'active' : ''}" data-output="${i + 1}">${esc(o.name)}</button>`)
@@ -327,6 +379,7 @@ function renderScreens() {
 }
 
 $('#screens').addEventListener('click', async (e) => {
+  if (handleFold(e, $('#screens'), renderScreens)) return
   const btn = e.target.closest('[data-output]')
   const card = e.target.closest('[data-screen]')
   if (!btn || !card || btn.classList.contains('active')) return
