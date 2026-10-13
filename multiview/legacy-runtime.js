@@ -7,6 +7,36 @@
 ;(function () {
   'use strict'
 
+  // Skriptfehler sichtbar machen: auf alten Geräten gibt es keine Entwicklerkonsole.
+  // Roter Kasten unten, antippen blendet ihn aus.
+  var errorBox = null
+  function showError(text) {
+    if (!document.body) return document.addEventListener('DOMContentLoaded', function () { showError(text) })
+    if (!errorBox) {
+      errorBox = document.createElement('div')
+      errorBox.style.cssText =
+        'position:fixed;left:8px;right:8px;bottom:8px;z-index:2147483647;max-height:40vh;overflow:auto;' +
+        'background:#b00020;color:#fff;font:12px/1.4 -apple-system,sans-serif;padding:8px 10px;border-radius:8px;white-space:pre-wrap'
+      errorBox.addEventListener('click', function () {
+        errorBox.remove()
+        errorBox = null
+      })
+      document.body.appendChild(errorBox)
+    }
+    errorBox.textContent += (errorBox.textContent ? '\n' : 'Fehler (antippen zum Ausblenden):\n') + text
+  }
+  window.addEventListener('error', function (e) {
+    var t = e.target
+    if (t && t !== window && t.tagName) {
+      // Bilder/Videos ohne Quelle sind normal, nur fehlende Skripte und Styles melden
+      if (t.tagName === 'SCRIPT' || t.tagName === 'LINK') showError('Laden fehlgeschlagen: ' + (t.src || t.href))
+    } else showError((e.message || 'Fehler') + (e.filename ? ' – ' + e.filename.split('/').pop() + ':' + e.lineno : ''))
+  }, true)
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e.reason
+    showError('Promise: ' + (r && r.message ? r.message : String(r)))
+  })
+
   function replaceChildren() {
     while (this.firstChild) this.removeChild(this.firstChild)
     this.append.apply(this, arguments)
@@ -31,12 +61,13 @@
   }
 
   // matchMedia(...).addEventListener('change', …) gibt es erst ab Safari 14
-  var MQL = window.MediaQueryList
-  if (MQL && !MQL.prototype.addEventListener && MQL.prototype.addListener) {
-    MQL.prototype.addEventListener = function (type, fn) {
+  // (Safari 12 kennt kein globales MediaQueryList, darum über ein echtes Ergebnis von matchMedia)
+  var mqlProto = window.matchMedia && Object.getPrototypeOf(window.matchMedia('all'))
+  if (mqlProto && typeof mqlProto.addEventListener !== 'function' && typeof mqlProto.addListener === 'function') {
+    mqlProto.addEventListener = function (type, fn) {
       if (type === 'change') this.addListener(fn)
     }
-    MQL.prototype.removeEventListener = function (type, fn) {
+    mqlProto.removeEventListener = function (type, fn) {
       if (type === 'change') this.removeListener(fn)
     }
   }
