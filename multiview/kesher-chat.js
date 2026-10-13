@@ -47,6 +47,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
         id: r.id,
         name: r.name || r.id,
         listeners: [...new Set([...(r.receiverRoleIds ?? []), ...(r.forcedListenRoleIds ?? [])])],
+        talkers: r.senderRoleIds ?? [], // wer dort schreiben/sprechen darf
       })),
       // audience: Rollen, die die Nachricht in Kesher sehen (null = alle) – für den Chat pro Nutzer
       messages: messages.slice(0, 60).map((m) => ({ ...m, audience: audienceOf(m) })),
@@ -347,7 +348,34 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
     return true
   }
 
-  return { start: connect, reconfigure, stop, snapshot, verifyAdminPin }
+  /**
+   * Freien Chat-Text als Rolle schicken (Kesher-Schnittstelle /api/companion/chat-text,
+   * nur vom Server selbst erreichbar). Ist die Rolle an einer Station online, erscheint
+   * die Nachricht von dieser Station, sonst von der Rolle. roomId leer = global.
+   */
+  async function sendText({ roleId, username, message, roomId }) {
+    const url = settings().url
+    if (!url) throw new Error('Kesher-Adresse fehlt (Einstellungen → Kesher-Chat)')
+    let res
+    try {
+      res = await fetch(`${url}/api/companion/chat-text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roleId, username, message, roomId: roomId || '' }),
+        signal: AbortSignal.timeout(5000),
+      })
+    } catch {
+      throw new Error('Kesher ist nicht erreichbar')
+    }
+    if (res.ok) return
+    const text = (await res.text().catch(() => '')).trim()
+    if (res.status === 404 && /page not found/i.test(text)) throw new Error('Kesher kennt das Schreiben noch nicht – Kesher muss aktualisiert werden')
+    if (res.status === 403 && /room/.test(text)) throw new Error('Deine Rolle darf auf dieser Party Line nicht schreiben')
+    if (res.status === 404) throw new Error('Rolle in Kesher nicht gefunden')
+    throw new Error(`Kesher: ${text || `HTTP ${res.status}`}`)
+  }
+
+  return { start: connect, reconfigure, stop, snapshot, verifyAdminPin, sendText }
 }
 
 module.exports = { createKesherChat }

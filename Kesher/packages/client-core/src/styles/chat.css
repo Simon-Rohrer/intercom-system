@@ -535,3 +535,16 @@
     animation: attention-chat-border-steady 4s linear forwards;
   }
 }
+
+/* Wichtige Meldung aus dem Multiview (z. B. Beamer-Meldung wartet in ProPresenter): rot */
+.chat-feed-list > li.chat-feed-alert .chat-feed-message-row p {
+  border-color: var(--k-bad);
+  background: color-mix(in srgb, var(--k-bad) 22%, var(--k-face));
+  color: var(--k-ink);
+  font-weight: 600;
+}
+.chat-feed-alert-tag {
+  background: var(--k-bad);
+  color: #fff;
+  border-color: var(--k-bad);
+}
