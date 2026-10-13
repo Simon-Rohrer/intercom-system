@@ -134,7 +134,7 @@ function loadConfig() {
     return normalizeConfig(JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')))
   } catch (err) {
     if (err.code !== 'ENOENT') console.error('Konfiguration konnte nicht gelesen werden:', err.message)
-    return defaultConfig()
+    return normalizeConfig(defaultConfig()) // ergänzt fehlende Bereiche (ProPresenter, Chat, …)
   }
 }
 
