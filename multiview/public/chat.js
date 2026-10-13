@@ -76,6 +76,7 @@ export function createChatView() {
         meta.append(el('span', 'kchat-target', m.target))
         if (m.source === 'telegram') meta.append(el('span', 'kchat-target is-telegram', 'Telegram'))
         else if (m.source === 'companion') meta.append(el('span', 'kchat-target', 'Stream Deck'))
+        else if (m.source === 'multiview') meta.append(el('span', 'kchat-target', 'Multiview'))
         if (needsAck) meta.append(el('span', 'kchat-ack', 'Bestätigung erwartet'))
         meta.append(el('time', null, shortTime(m.timestamp)))
         li.append(meta, el('p', 'kchat-text', m.body))

@@ -199,6 +199,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain; /* Wischen bleibt in der Liste (iPad: sonst endet das Vollbild) */
   scrollbar-width: none;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(calc(clamp(110px, 22cqw, 320px) * var(--pr-size, 1)), 1fr));

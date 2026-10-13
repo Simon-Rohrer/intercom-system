@@ -224,3 +224,18 @@
     animation: none;
   }
 }
+
+/* Wichtige Meldung aus dem Multiview (z. B. Beamer-Meldung wartet in ProPresenter): rot */
+.chat-display-message.is-alert {
+  border-color: var(--k-bad);
+  border-left-color: var(--k-bad);
+  background: color-mix(in srgb, var(--k-bad) 20%, var(--k-face-hi));
+}
+.chat-display-message.is-alert .chat-display-body {
+  font-weight: 600;
+}
+.chat-display-target.is-alert {
+  background: var(--k-bad);
+  border-color: var(--k-bad);
+  color: #fff;
+}

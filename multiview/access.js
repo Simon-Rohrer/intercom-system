@@ -318,7 +318,7 @@ function visibleLayouts(config, user) {
     (l) =>
       l.owner === user.roleId ||
       l.shared === true ||
-      config.outputs.some((o) => outputs.has(o.id) && o.layoutId === l.id),
+      config.outputs.some((o) => outputs.has(o.id) && (o.layoutId === l.id || o.lastLayoutId === l.id)),
   )
 }
 

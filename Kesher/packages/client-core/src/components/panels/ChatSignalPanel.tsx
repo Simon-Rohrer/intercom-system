@@ -328,6 +328,7 @@ export function ChatSignalPanel({
                   className={[
                     entry.scope === "direct" ? "chat-feed-direct" : "",
                     entry.scope === "global" ? "chat-feed-global" : "",
+                    entry.source === "multiview-alert" ? "chat-feed-alert" : "",
                     entry.self ? "self" : "",
                     needsMyAck ? "chat-feed-ack-required" : "",
                     isNewest ? "chat-feed-newest" : "",
@@ -363,6 +364,20 @@ export function ChatSignalPanel({
                         title="Über Stream Deck gesendet"
                       >
                         Stream Deck
+                      </span>
+                    ) : entry.source === "multiview-alert" ? (
+                      <span
+                        className="chat-feed-source-icon chat-feed-alert-tag"
+                        title="Wichtige Meldung aus dem Multiview"
+                      >
+                        Wichtig
+                      </span>
+                    ) : entry.source === "multiview" ? (
+                      <span
+                        className="chat-feed-source-icon"
+                        title="Über den Multiview gesendet"
+                      >
+                        Multiview
                       </span>
                     ) : null}
                     {scopeTag(entry)}

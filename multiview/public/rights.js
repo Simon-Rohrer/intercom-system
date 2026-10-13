@@ -39,7 +39,8 @@ export function visibleLayouts(config, user) {
     (l) =>
       l.owner === user.roleId ||
       l.shared === true ||
-      config.outputs.some((o) => rights.outputs.includes(o.id) && o.layoutId === l.id),
+      // auch das zuletzt gelaufene, damit man nach „Aus“ wieder einschalten kann
+      config.outputs.some((o) => rights.outputs.includes(o.id) && (o.layoutId === l.id || o.lastLayoutId === l.id)),
   )
 }
 

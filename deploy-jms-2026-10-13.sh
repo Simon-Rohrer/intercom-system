@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Deploy auf den JMS-Server (192.168.0.21): Kesher-Embed im Multiview und
-# Chat-Blinken (nur gelber Rahmen, bei jeder Nachricht).
+# Deploy auf den JMS-Server (192.168.0.21): Kesher-Embed im Multiview,
+# Chat-Blinken (nur gelber Rahmen, bei jeder Nachricht), zusammengeführt mit
+# dem Stand des Kollegen. Die Compose-Datei (Port-Bindung 127.0.0.1) und das
+# Kiosk-Skript auf dem Server bleiben unangetastet.
 #
 # Auf dem Mac im Repo-Ordner ausführen, nachdem `git pull` den Stand von
 # main geholt hat:
 #   cd ~/Webseiten/jms-intercom && git pull && bash deploy-jms-2026-10-13.sh
 #
 # Ablauf:
-#   1. prüft per md5, ob die Dateien auf dem Server noch dem letzten
-#      bekannten Stand (Commit 09a916d) entsprechen – sonst Abbruch, damit
-#      keine Änderung des Kollegen überschrieben wird
+#   1. prüft per md5, ob die Dateien auf dem Server noch dem Stand
+#      entsprechen, den der Kollege dort hatte (Commit 78a0f3a, inzwischen
+#      in main zusammengeführt) – sonst Abbruch, damit nichts überschrieben
+#      wird, was danach noch auf dem Server geändert wurde
 #   2. sichert die Kesher-Datenbank
 #   3. kopiert die geänderten Dateien
 #   4. baut Multiview und Kesher neu und prüft beide
@@ -18,18 +21,19 @@ set -euo pipefail
 
 HOST=master@192.168.0.21
 REMOTE=/home/master/intercom-system
-BASE=09a916d
+BASE=78a0f3a # Stand des Kollegen auf dem Server (Branch server-stand-kollege)
 FILES=(
+  Dokumentationen/COMPANION-STREAM-DECK.md
   Kesher/packages/client-core/src/App.tsx
   Kesher/packages/client-core/src/components/StationIntercomView.tsx
-  Kesher/packages/client-core/src/components/panels/ChatSignalPanel.tsx
   Kesher/packages/client-core/src/components/panels/ChatSignalPanel.test.tsx
-  Kesher/packages/client-core/src/hooks/useIntercomSession.ts
+  Kesher/packages/client-core/src/components/panels/ChatSignalPanel.tsx
   Kesher/packages/client-core/src/hooks/useIntercomSession.chat.test.tsx
-  Kesher/packages/client-core/src/lib/keyGridFit.ts
+  Kesher/packages/client-core/src/hooks/useIntercomSession.ts
   Kesher/packages/client-core/src/lib/keyGridFit.test.ts
-  Kesher/packages/client-core/src/lib/runtimeMode.ts
+  Kesher/packages/client-core/src/lib/keyGridFit.ts
   Kesher/packages/client-core/src/lib/runtimeMode.test.ts
+  Kesher/packages/client-core/src/lib/runtimeMode.ts
   Kesher/packages/client-core/src/styles/app.css
   Kesher/packages/client-core/src/styles/chat-display.css
   Kesher/packages/client-core/src/styles/chat.css
@@ -39,7 +43,7 @@ FILES=(
   multiview/public/chat.css
   multiview/public/chat.js
   multiview/public/output.js
-  Dokumentationen/COMPANION-STREAM-DECK.md
+  multiview/server.js
 )
 
 cd "$(git rev-parse --show-toplevel)"
