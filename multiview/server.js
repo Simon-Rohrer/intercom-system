@@ -811,6 +811,67 @@ function configChanged(origin = null) {
   if (mediamtx.proc) writeMediamtxConfig()
 }
 
+// ---------------------------------------------------------------------------
+// Layout-Vorlagen: gespeicherte Ansichten, je eine JSON-Datei in data/vorlagen
+// ---------------------------------------------------------------------------
+
+const TEMPLATE_DIR = path.join(DATA_DIR, 'vorlagen')
+
+/** Dateiname aus dem Vorlagennamen: "Gottesdienst Sonntag" → "gottesdienst-sonntag" */
+function templateId(name) {
+  return String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9äöüß]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+}
+
+function templateFile(id) {
+  return path.join(TEMPLATE_DIR, `${id}.json`)
+}
+
+/** Nur das Raster und die Kacheln – Name und ID gehören dem Layout, in das geladen wird. */
+function normalizeTemplateLayout(l) {
+  const int = (v, min, max, fallback) => {
+    const n = Number(v)
+    return Number.isInteger(n) && n >= min && n <= max ? n : fallback
+  }
+  return {
+    cols: int(l?.cols, 1, 48, 12),
+    rows: int(l?.rows, 1, 48, 12),
+    gap: int(l?.gap, 0, 40, 4),
+    background: typeof l?.background === 'string' ? l.background : '#000000',
+    tiles: Array.isArray(l?.tiles) ? l.tiles.filter((t) => t && typeof t === 'object') : [],
+  }
+}
+
+function readTemplate(id) {
+  try {
+    const t = JSON.parse(fs.readFileSync(templateFile(id), 'utf8'))
+    return { id, name: String(t.name || id), savedAt: t.savedAt || null, layout: normalizeTemplateLayout(t.layout) }
+  } catch {
+    return null
+  }
+}
+
+function templateList() {
+  let files = []
+  try {
+    files = fs.readdirSync(TEMPLATE_DIR).filter((f) => f.endsWith('.json'))
+  } catch {
+    // noch keine Vorlagen
+  }
+  return files
+    .map((f) => readTemplate(f.slice(0, -5)))
+    .filter(Boolean)
+    .map(({ id, name, savedAt, layout }) => ({ id, name, savedAt, tiles: layout.tiles.length }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'de'))
+}
+
+function templatesChanged() {
+  broadcast({ type: 'templates', templates: templateList() })
+}
+
 wss.on('connection', (ws) => {
   send(ws, { type: 'config', config })
   send(ws, { type: 'atem', ...atemState })
@@ -820,6 +881,7 @@ wss.on('connection', (ws) => {
   send(ws, kesherChat.snapshot())
   send(ws, churchTools.snapshot())
   send(ws, { type: 'propresenter', ...ppState })
+  send(ws, { type: 'templates', templates: templateList() })
 
   ws.on('message', (raw) => {
     let msg
@@ -949,6 +1011,43 @@ app.post('/whep/:path', express.text({ type: () => true, limit: '1mb' }), async 
 app.put('/api/config', (req, res) => {
   config = normalizeConfig(req.body)
   configChanged(req.get('X-Client-Id') || null)
+  res.json({ ok: true })
+})
+
+app.get('/api/templates', (req, res) => res.json(templateList()))
+
+app.get('/api/templates/:id', (req, res) => {
+  const t = readTemplate(templateId(req.params.id))
+  if (!t) return res.status(404).json({ ok: false, error: 'Vorlage nicht gefunden' })
+  if (req.query.download !== undefined) {
+    res.attachment(`${t.id}.json`)
+    return res.send(JSON.stringify({ name: t.name, savedAt: t.savedAt, layout: t.layout }, null, 2))
+  }
+  res.json(t)
+})
+
+// Speichert unter dem Namen; eine Vorlage mit gleichem Namen wird überschrieben.
+app.post('/api/templates', (req, res) => {
+  const name = String(req.body?.name ?? '').trim()
+  const id = templateId(name)
+  if (!id) return res.status(400).json({ ok: false, error: 'Bitte einen Namen angeben' })
+  if (!Array.isArray(req.body?.layout?.tiles)) return res.status(400).json({ ok: false, error: 'Keine Kacheln in der Vorlage' })
+  const data = { name, savedAt: new Date().toISOString(), layout: normalizeTemplateLayout(req.body.layout) }
+  fs.mkdirSync(TEMPLATE_DIR, { recursive: true })
+  const tmp = `${templateFile(id)}.tmp`
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2))
+  fs.renameSync(tmp, templateFile(id))
+  templatesChanged()
+  res.json({ ok: true, id, name })
+})
+
+app.delete('/api/templates/:id', (req, res) => {
+  try {
+    fs.unlinkSync(templateFile(templateId(req.params.id)))
+  } catch {
+    return res.status(404).json({ ok: false, error: 'Vorlage nicht gefunden' })
+  }
+  templatesChanged()
   res.json({ ok: true })
 })
 

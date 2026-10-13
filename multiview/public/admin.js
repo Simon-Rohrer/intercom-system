@@ -75,6 +75,7 @@ let chat = { state: 'connecting', messages: [], stationName: '' }
 const chatViews = new Set()
 let churchtools = { state: 'connecting', events: [] }
 const agendaViews = new Set()
+let templates = [] // gespeicherte Layouts { id, name, savedAt, tiles }
 
 connect(onMessage, (online) => {
   if (!online) setSaveState('error', 'Server nicht erreichbar')
@@ -120,6 +121,9 @@ function onMessage(msg) {
     propresenter = msg
     for (const el of canvas.querySelectorAll('.etile')) el.ppView?.update(propresenter)
     renderProPresenter()
+  } else if (msg.type === 'templates') {
+    templates = msg.templates
+    renderTemplates()
   } else if (msg.type === 'levels') {
     setLevels(msg)
     lastLevels = msg
@@ -781,6 +785,136 @@ $('#layout-add').addEventListener('click', () => {
   selectedTileId = null
   renderAll()
   changed(0)
+})
+
+// ---------------------------------------------------------------------------
+// Layouts: gespeicherte Ansichten (liegen als JSON-Dateien auf dem Server)
+// ---------------------------------------------------------------------------
+
+function formatSavedAt(iso) {
+  const d = iso && new Date(iso)
+  if (!d || isNaN(d)) return ''
+  return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function renderTemplates() {
+  $('#template-list').innerHTML = templates.length
+    ? templates
+        .map(
+          (t) => `<li data-id="${esc(t.id)}">
+            <span class="name">${esc(t.name)}</span>
+            <span class="meta">${t.tiles} Kachel(n)${t.savedAt ? ` · ${esc(formatSavedAt(t.savedAt))}` : ''}</span>
+            <div class="btn-row">
+              <button class="btn small primary" data-action="load" title="In das gewählte Layout laden">Laden</button>
+              <a class="btn small" href="/api/templates/${encodeURIComponent(t.id)}?download" download title="Als Datei herunterladen">↓</a>
+              <button class="btn small danger" data-action="delete" title="Vorlage löschen">✕</button>
+            </div>
+          </li>`,
+        )
+        .join('')
+    : '<li class="muted empty">Noch nichts gespeichert.</li>'
+}
+
+async function postTemplate(name, layout) {
+  const res = await fetch('/api/templates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, layout }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
+  return body
+}
+
+/** Gleicher Dateiname wie auf dem Server – dort wird eine gleichnamige Vorlage überschrieben. */
+function existingTemplate(name) {
+  const id = name.toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
+  return templates.find((t) => t.id === id)
+}
+
+$('#template-save').addEventListener('click', async () => {
+  const layout = currentLayout()
+  if (!layout) return toast('Erst ein Layout anlegen.')
+  const name = prompt('Name für die gespeicherte Ansicht:', layout.name)?.trim()
+  if (!name) return
+  const existing = existingTemplate(name)
+  if (existing && !confirm(`„${existing.name}“ gibt es schon. Überschreiben?`)) return
+  try {
+    await postTemplate(name, layout)
+    toast(`„${name}“ gespeichert.`)
+  } catch (err) {
+    toast(`Speichern fehlgeschlagen: ${err.message}`)
+  }
+})
+
+$('#template-list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-action]')
+  if (!btn) return
+  const id = btn.closest('li').dataset.id
+  const entry = templates.find((t) => t.id === id)
+  if (!entry) return
+
+  if (btn.dataset.action === 'delete') {
+    if (!confirm(`Gespeicherte Ansicht „${entry.name}“ löschen?`)) return
+    const res = await fetch(`/api/templates/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null)
+    if (!res?.ok) toast('Löschen fehlgeschlagen.')
+    return
+  }
+
+  let layout = currentLayout()
+  if (layout && !confirm(`„${entry.name}“ in das Layout „${layout.name}“ laden?\nDie Kacheln dort werden ersetzt – auf den Monitoren sofort sichtbar.`)) return
+  let template
+  try {
+    const res = await fetch(`/api/templates/${encodeURIComponent(id)}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    template = await res.json()
+  } catch (err) {
+    return toast(`Laden fehlgeschlagen: ${err.message}`)
+  }
+  if (!layout) {
+    layout = { id: uid('l'), name: template.name, tiles: [] }
+    config.layouts.push(layout)
+    layoutId = layout.id
+  }
+  const { cols, rows, gap, background, tiles } = template.layout
+  Object.assign(layout, { cols, rows, gap, background })
+  layout.tiles = tiles.map((t) => ({
+    ...t,
+    id: uid('t'),
+    // Inzwischen gelöschte Quellen nicht mitnehmen
+    sourceId: config.sources.some((s) => s.id === t.sourceId) ? t.sourceId : null,
+  }))
+  selectedTileId = null
+  renderAll()
+  changed(0)
+  toast(`„${template.name}“ geladen.`)
+})
+
+$('#template-file').addEventListener('change', (e) => {
+  const input = e.target
+  const file = input.files[0]
+  input.value = ''
+  if (!file) return
+  // FileReader statt file.text() – das kennt iOS 12 noch nicht
+  const reader = new FileReader()
+  reader.onload = async () => {
+    let data
+    try {
+      data = JSON.parse(reader.result)
+    } catch {
+      return toast('Die Datei ist keine gültige Vorlage.')
+    }
+    const name = String(data?.name || file.name.replace(/\.json$/i, '')).trim()
+    const existing = existingTemplate(name)
+    if (existing && !confirm(`„${existing.name}“ gibt es schon. Überschreiben?`)) return
+    try {
+      await postTemplate(name, data?.layout)
+      toast(`„${name}“ importiert.`)
+    } catch (err) {
+      toast(`Import fehlgeschlagen: ${err.message}`)
+    }
+  }
+  reader.readAsText(file)
 })
 
 const livePreviewToggle = $('#live-preview')

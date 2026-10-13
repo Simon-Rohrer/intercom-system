@@ -146,13 +146,27 @@
         </label>
       </div>
       <div class="layout-editor">
-        <aside class="card list-panel">
-          <div class="panel-head">
-            <h3>Layouts</h3>
-            <button id="layout-add" class="btn small primary">+ Neu</button>
-          </div>
-          <ul id="layout-list" class="item-list"></ul>
-        </aside>
+        <div class="side-stack">
+          <aside class="card list-panel">
+            <div class="panel-head">
+              <h3>Layouts</h3>
+              <button id="layout-add" class="btn small primary">+ Neu</button>
+            </div>
+            <ul id="layout-list" class="item-list"></ul>
+          </aside>
+
+          <aside class="card list-panel">
+            <div class="panel-head">
+              <h3>Gespeichert</h3>
+              <button id="template-save" class="btn small primary" title="Aktuelles Layout unter einem Namen speichern">Speichern</button>
+            </div>
+            <ul id="template-list" class="template-list"></ul>
+            <label class="btn small block template-import" title="Vorlage aus einer .json-Datei übernehmen">
+              Datei importieren …
+              <input id="template-file" type="file" accept=".json,application/json" hidden>
+            </label>
+          </aside>
+        </div>
 
         <div class="editor">
           <div id="canvas" class="canvas"></div>

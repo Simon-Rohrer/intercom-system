@@ -321,6 +321,15 @@ main { flex: 1; padding-bottom: 48px; }
 .item-list li.active { background: var(--accent); color: #fff; }
 .item-list .meta { font-size: 12px; opacity: 0.75; white-space: nowrap; }
 
+.side-stack { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.template-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.template-list li { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); }
+.template-list .name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.template-list .meta { font-size: 12px; opacity: 0.75; }
+.template-list .btn-row { gap: 6px; }
+.template-list .empty { background: none; padding: 0; font-size: 13px; }
+.template-import { margin-top: 2px; }
+
 .editor { min-width: 0; }
 .canvas {
   --cols: 12;
