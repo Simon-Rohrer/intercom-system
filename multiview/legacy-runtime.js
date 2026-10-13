@@ -2,7 +2,8 @@
 //  - Container-Einheiten: setzt --mv-cqw/-cqh/-cqmin/-cqmax an den Kindern jedes Containers
 //    (die umgeschriebenen Styles rechnen damit statt mit cqw/cqh …)
 //  - Abstände in Flex-Layouts (gap) als Außenabstand der Kinder
-//  - kleine Polyfills: replaceChildren, structuredClone
+//  - kleine Polyfills: replaceChildren, structuredClone, Promise.allSettled,
+//    matchMedia(...).addEventListener und <dialog> (showModal/close)
 ;(function () {
   'use strict'
 
@@ -17,6 +18,83 @@
     window.structuredClone = function (value) {
       return value === undefined ? undefined : JSON.parse(JSON.stringify(value))
     }
+  }
+  if (!Promise.allSettled) {
+    Promise.allSettled = function (values) {
+      return Promise.all(Array.from(values, function (v) {
+        return Promise.resolve(v).then(
+          function (value) { return { status: 'fulfilled', value: value } },
+          function (reason) { return { status: 'rejected', reason: reason } }
+        )
+      }))
+    }
+  }
+
+  // matchMedia(...).addEventListener('change', …) gibt es erst ab Safari 14
+  var MQL = window.MediaQueryList
+  if (MQL && !MQL.prototype.addEventListener && MQL.prototype.addListener) {
+    MQL.prototype.addEventListener = function (type, fn) {
+      if (type === 'change') this.addListener(fn)
+    }
+    MQL.prototype.removeEventListener = function (type, fn) {
+      if (type === 'change') this.removeListener(fn)
+    }
+  }
+
+  // <dialog> mit showModal()/close() gibt es erst ab Safari 15.4
+  if (!window.HTMLDialogElement) {
+    var dialogStyle = document.createElement('style')
+    dialogStyle.textContent =
+      'dialog:not([open]){display:none}' +
+      'dialog[open]{display:block;position:fixed;z-index:1001;top:50%;left:50%;right:auto;bottom:auto;margin:0;' +
+      'max-height:calc(100vh - 32px);overflow:auto;-webkit-transform:translate(-50%,-50%);transform:translate(-50%,-50%)}' +
+      '.mv-dialog-backdrop{position:fixed;top:0;right:0;bottom:0;left:0;z-index:1000;background:rgba(10,12,16,.5)}'
+    document.head.appendChild(dialogStyle)
+
+    var isDialog = function (el) {
+      return el && el.tagName === 'DIALOG'
+    }
+    var openDialog = function (el, modal) {
+      if (el.hasAttribute('open')) return
+      el.setAttribute('open', '')
+      if (modal) {
+        var backdrop = document.createElement('div')
+        backdrop.className = 'mv-dialog-backdrop'
+        // Klick neben den Dialog wirkt wie ein Klick auf den Dialog selbst (wie im echten Browser)
+        backdrop.addEventListener('click', function () {
+          el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        })
+        el.parentNode.insertBefore(backdrop, el)
+        el.__mvBackdrop = backdrop
+      }
+    }
+    HTMLElement.prototype.showModal = function () {
+      if (isDialog(this)) openDialog(this, true)
+    }
+    HTMLElement.prototype.show = function () {
+      if (isDialog(this)) openDialog(this, false)
+    }
+    HTMLElement.prototype.close = function (returnValue) {
+      if (!isDialog(this) || !this.hasAttribute('open')) return
+      if (returnValue !== undefined) this.returnValue = returnValue
+      this.removeAttribute('open')
+      if (this.__mvBackdrop) this.__mvBackdrop.remove()
+      this.__mvBackdrop = null
+      this.dispatchEvent(new Event('close'))
+    }
+    // <form method="dialog"> schließt den Dialog statt die Seite neu zu laden
+    document.addEventListener('submit', function (e) {
+      var form = e.target
+      if ((form.getAttribute('method') || '').toLowerCase() !== 'dialog') return
+      e.preventDefault()
+      var dialog = form.closest('dialog')
+      if (dialog) dialog.close()
+    }, true)
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return
+      var open = document.querySelectorAll('dialog[open]')
+      if (open.length) open[open.length - 1].close()
+    })
   }
 
   var docEl = document.documentElement
