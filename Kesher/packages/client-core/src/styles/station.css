@@ -1517,23 +1517,33 @@ body.panel-resizing-row {
 .root.station-shell.station-embed .station-channel-meter {
   height: max(3px, calc(6px * var(--s)));
 }
+/* The head is a column whose lines never shrink: when the key is low, the
+   head clips at the bottom (listener count first) instead of squeezing the
+   channel name to zero height. */
 .root.station-shell.station-embed .station-card-head {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   min-height: 0;
   overflow: hidden;
   gap: calc(2px * var(--s));
-  padding: calc(24px * var(--s)) calc(10px * var(--s)) calc(6px * var(--s));
+  padding: calc(22px * var(--s)) calc(10px * var(--s)) calc(4px * var(--s));
+}
+.root.station-shell.station-embed .station-card-head > * {
+  flex: none;
 }
 .root.station-shell.station-embed .station-card-head small {
   font-size: max(9px, calc(11px * var(--s)));
 }
 .root.station-shell.station-embed .station-card-head strong {
   font-size: max(11px, calc(20px * var(--s)));
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  max-height: 2.04em; /* two lines at line-height 1.02 */
   overflow: hidden;
 }
 .root.station-shell.station-embed .station-presence-badge {
+  align-self: flex-start;
+  margin-top: 0;
   font-size: max(9px, calc(11px * var(--s)));
 }
 .root.station-shell.station-embed .station-gain-control {
@@ -1546,6 +1556,14 @@ body.panel-resizing-row {
 /* small keys: room for the name and Listen/Call, not for the volume */
 .root.station-shell.station-embed .station-keys-tight .station-gain-control {
   display: none;
+}
+/* tiny keys: the channel name only, no "Talk" label above it */
+.root.station-shell.station-embed .station-keys-tiny .station-card-head small {
+  display: none;
+}
+/* just below the level meter (top padding + meter height + a few px) */
+.root.station-shell.station-embed .station-keys-tiny .station-card-head {
+  padding-top: calc(13px * var(--s) + 5px);
 }
 
 /* talk strip at the bottom, in the window instead of over it */
@@ -1584,22 +1602,40 @@ body.panel-resizing-row {
 .root.station-shell.station-embed .station-ptt strong {
   font-size: clamp(11px, 3.4vh, 16px);
 }
-/* narrow window: Reply + Always on above, Hold to talk across */
+/* narrow window: no mic meter in the header */
 @media (max-width: 520px) {
+  .root.station-shell.station-embed .station-top-stats {
+    display: none;
+  }
+}
+/* narrow and tall: Reply + Always on above, Hold to talk across */
+@media (max-width: 520px) and (min-height: 421px),
+  (max-width: 360px) and (min-height: 300px) {
   .root.station-shell.station-embed .station-controls {
     grid-template-columns: 1fr 1fr;
     grid-template-areas:
       "reply always"
       "ptt ptt";
   }
-  .root.station-shell.station-embed .station-top-stats {
-    display: none;
-  }
 }
-/* low window: one line per button */
-@media (max-height: 360px) {
+/* low or very narrow window: one line per button, the party lines get the space */
+@media (max-height: 360px), (max-width: 360px) {
   .root.station-shell.station-embed .station-reply small,
   .root.station-shell.station-embed .station-ptt small {
+    display: none;
+  }
+  .root.station-shell.station-embed .station-always-on {
+    gap: 6px;
+    padding-inline: 6px;
+  }
+  .root.station-shell.station-embed .station-always-on-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+@media (max-height: 280px) {
+  .root.station-shell.station-embed .station-section-head {
     display: none;
   }
 }

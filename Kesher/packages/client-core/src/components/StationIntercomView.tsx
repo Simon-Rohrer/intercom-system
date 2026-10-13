@@ -2774,6 +2774,8 @@ export function StationIntercomView({
             <div
               className={`station-talk-grid ${
                 embedMode && talkFit && talkFit.keyHeight < 112 ? "station-keys-tight" : ""
+              } ${
+                embedMode && talkFit && talkFit.keyHeight < 72 ? "station-keys-tiny" : ""
               }`.trim()}
               ref={talkGridRef}
               style={embedMode ? embedKeyGridStyle(talkFit) : undefined}
