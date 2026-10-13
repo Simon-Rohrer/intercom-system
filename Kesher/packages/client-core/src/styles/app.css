@@ -3881,7 +3881,7 @@ button.secondary {
   );
   animation: attention-call-multi-flash 3.8s linear forwards;
 }
-/* Stream Deck chat message: thick yellow screen border blinks, text stays centred. */
+/* New chat message: thick yellow screen border blinks, text stays centred. */
 .attention-flash-chat {
   background: transparent;
 }

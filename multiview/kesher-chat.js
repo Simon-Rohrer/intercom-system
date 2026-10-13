@@ -8,7 +8,7 @@
 const WebSocket = require('ws')
 
 const MAX_MESSAGES = 120
-const FLASH_MAX_AGE_MS = 15 * 1000 // ältere Stream-Deck-Nachrichten (History) blinken nicht
+const FLASH_MAX_AGE_MS = 15 * 1000 // ältere Nachrichten (History) blinken nicht
 const RETRY_MS = 3000
 const REVOKED_RETRY_MS = 60 * 1000 // Rolle wurde übernommen: nicht sofort zurückholen
 // Kesher meldet neue oder umbenannte Rollen nicht von selbst (nur Änderungen an Party Lines):
@@ -174,10 +174,11 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
     messages = [entry, ...messages].sort((a, b) => b.timestamp - a.timestamp).slice(0, MAX_MESSAGES)
     publish()
 
-    // Stream-Deck-Nachricht blinkt wie ein Anruf (nicht bei History oder eigener Nachricht)
-    if (e.source === 'companion' && !isSelf && Date.now() - entry.timestamp <= FLASH_MAX_AGE_MS) {
+    // Jede neue Nachricht blinkt wie ein Anruf (nicht bei History oder eigener Nachricht)
+    if (!isSelf && Date.now() - entry.timestamp <= FLASH_MAX_AGE_MS) {
       const sender = entry.fromRole && entry.fromRole !== entry.from ? `${entry.from} · ${entry.fromRole}` : entry.from
-      onFlash({ type: 'chatFlash', title: `Stream Deck · ${entry.target}`, detail: `${sender}: ${body}`, key, audience: audienceOf(entry) })
+      const origin = e.source === 'companion' ? 'Stream Deck' : 'Chat'
+      onFlash({ type: 'chatFlash', title: `${origin} · ${entry.target}`, detail: `${sender}: ${body}`, key, audience: audienceOf(entry) })
     }
   }
 
