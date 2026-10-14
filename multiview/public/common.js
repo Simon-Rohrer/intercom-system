@@ -196,7 +196,25 @@ export function keepTouchScrollInside() {
 /** Standardfarbe der Trennlinien zwischen den Kacheln (wie beim ATEM-Multiview). */
 export const LINE_COLOR = '#8e8e93'
 
-/** Farbe der Trennlinien eines Layouts (transparent = aus). */
-export function layoutLine(layout) {
-  return layout?.lines === false ? 'transparent' : layout?.lineColor || LINE_COLOR
+/** Standardstärke der Trennlinien in Pixeln (auf dem Monitor). */
+export const LINE_WIDTH = 4
+
+/**
+ * Rahmen zwischen den Kacheln: mit Trennlinien ist der Spalt selbst die Linie (wie beim ATEM),
+ * jede Kachel trägt die halbe Stärke, außen herum kommt ein Rahmen in voller Stärke dazu.
+ * Ohne Trennlinien: der eingestellte Abstand in der Hintergrundfarbe.
+ */
+export function layoutBorder(layout) {
+  if (layout?.lines === false)
+    return { width: (Number(layout?.gap ?? 4) || 0) / 2, color: layout?.background || '#000', frame: 0 }
+  const width = Math.min(Math.max(Number(layout?.lineWidth) || LINE_WIDTH, 1), 16)
+  return { width: width / 2, color: layout?.lineColor || LINE_COLOR, frame: width / 2 }
+}
+
+/** Rahmen-Variablen an ein Element (Bühne, Kesher-Ebene, Editor-Fläche) hängen. */
+export function applyLayoutBorder(el, layout) {
+  const b = layoutBorder(layout)
+  el.style.setProperty('--tile-bw', `${b.width}px`)
+  el.style.setProperty('--tile-bc', b.color)
+  el.style.setProperty('--frame-bw', `${b.frame}px`)
 }

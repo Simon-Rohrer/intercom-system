@@ -1130,8 +1130,16 @@ a.status-tile:hover { border-color: var(--accent-line); }
 /* Grundschrift wie auf dem Monitor (output.css), damit Kacheln mit em-Größen gleich groß sind */
 .canvas-frame > .canvas { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, "Helvetica Neue", "Segoe UI", Roboto, sans-serif; font-size: 16px; line-height: normal; }
 
-/* Editor wie Monitor: graue Trennlinie je Kachel (--line vom Layout) */
-.canvas-frame .etile::after { box-shadow: inset 0 0 0 1px var(--line, transparent); }
+/* Editor wie Monitor: Kachelrahmen = Trennlinie bzw. Abstand, dazu der Außenrahmen */
+.canvas-frame .etile { border: var(--tile-bw, calc(var(--gap, 4px) / 2)) solid var(--tile-bc, var(--bg, #000)); }
+.canvas-frame > .canvas::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: var(--frame-bw, 0px) solid var(--tile-bc, transparent);
+  pointer-events: none;
+  z-index: 4;
+}
 
 /* QR-Fenster: nur noch der Code fürs Handy als Fernbedienung */
 .qr-grid.qr-single { grid-template-columns: minmax(0, 420px); justify-content: center; }

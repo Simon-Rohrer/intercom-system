@@ -22,7 +22,8 @@ body.idle { cursor: none; }
 
 .tile {
   position: absolute;
-  border: calc(var(--gap) / 2) solid var(--bg);
+  /* Rahmen = halber Abstand bzw. halbe Trennlinie (applyLayoutBorder) */
+  border: var(--tile-bw, calc(var(--gap) / 2)) solid var(--tile-bc, var(--bg));
   container-type: size;
   overflow: hidden;
 }
@@ -58,10 +59,8 @@ body.idle { cursor: none; }
 }
 .frame-tile {
   position: absolute;
-  border: calc(var(--gap) / 2) solid var(--bg);
+  border: var(--tile-bw, calc(var(--gap) / 2)) solid var(--tile-bc, var(--bg));
   pointer-events: auto;
-  outline: 1px solid var(--line, transparent);
-  outline-offset: -1px;
 }
 .frame-tile iframe {
   display: block;
@@ -72,13 +71,12 @@ body.idle { cursor: none; }
 }
 
 /* Tally-Rahmen liegt über dem Bild, damit sich nichts verschiebt.
-   Dazu die graue Trennlinie wie beim ATEM-Multiview (Farbe je Layout, --line). */
+   Die grauen Trennlinien sind der Rahmen der Kacheln (siehe .tile). */
 .tile::after {
   content: "";
   position: absolute;
   inset: 0;
   border: clamp(3px, 1.6cqmin, 8px) solid transparent;
-  box-shadow: inset 0 0 0 1px var(--line, transparent);
   pointer-events: none;
 }
 .tile.program::after { border-color: #ff1f1f; }
@@ -206,3 +204,20 @@ body {
 }
 .controls { top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); }
 #badges { top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right)); }
+
+/* Außenrahmen in voller Linienstärke, damit der Rand so dick ist wie die Linien dazwischen */
+#stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: var(--frame-bw, 0px) solid var(--tile-bc, transparent);
+  pointer-events: none;
+  z-index: 50;
+}
+#frames::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: var(--frame-bw, 0px) solid var(--tile-bc, transparent);
+  pointer-events: none;
+}

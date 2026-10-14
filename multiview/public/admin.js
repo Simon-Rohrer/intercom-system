@@ -1,4 +1,4 @@
-import { connect, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, layoutLine } from './common.js'
+import { connect, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
 import { createAgendaView } from './agenda.js'
@@ -1029,7 +1029,7 @@ function renderCanvas() {
   // Wie auf dem Monitor: Abstand und Hintergrund des Layouts
   canvas.style.setProperty('--gap', `${Number(layout.gap ?? 4) || 0}px`)
   canvas.style.setProperty('--bg', layout.background || '#000')
-  canvas.style.setProperty('--line', layoutLine(layout))
+  applyLayoutBorder(canvas, layout)
   canvas.style.backgroundColor = layout.background || '#000'
   const readonly = !canEditLayout(config, user, layout)
   canvas.classList.toggle('readonly', readonly)
@@ -1428,6 +1428,7 @@ function layoutInspector(layout) {
       </select></label>
       <label class="field"><span>Linienfarbe</span><input type="color" data-l="lineColor" value="${esc(layout.lineColor || LINE_COLOR)}" ${layout.lines === false ? 'disabled' : ''}></label>
     </div>
+    ${layout.lines !== false ? `<label class="field"><span>Linienstärke (px) – ersetzt den Abstand</span><input type="number" min="1" max="16" data-l="lineWidth" value="${layout.lineWidth ?? LINE_WIDTH}"></label>` : ''}
     ${isAdmin() ? layoutAccessFields(layout) : ''}
     <hr class="divider">
     <h3>Vorlagen</h3>
@@ -1906,6 +1907,8 @@ function onInspectorField(e) {
     if (key === 'cols' || key === 'rows') {
       resizeGrid(layout, key, clamp(parseInt(el.value, 10) || 1, 1, 48))
       renderInspector()
+    } else if (key === 'lineWidth') {
+      layout.lineWidth = clamp(parseInt(el.value, 10) || LINE_WIDTH, 1, 16)
     } else if (key === 'gap') {
       layout.gap = clamp(parseInt(el.value, 10) || 0, 0, 40)
     } else if (key === 'lines') {
