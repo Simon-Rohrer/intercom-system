@@ -400,3 +400,18 @@ test('Rolle belegt: die bisherige Anmeldung des Browsers bleibt bestehen', async
   assert.equal(access.userOf(fakeReq({ mv_session: anna }))?.roleId, 'lighting')
   assert.ok(tim)
 })
+
+test('ältere Anmeldung ohne MAC lernt sie bei der nächsten Anfrage mit Cookie', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
+  const macs = {}
+  const access = createAccess({ dataDir: dir, log: () => {}, macOf: (ip) => macs[ip] ?? null, ipOf: (req) => req.ip })
+  await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
+  const res = fakeRes()
+  await access.login({ name: 'Simon', roleId: 'lighting' }, { ...fakeReq(), ip: '192.168.0.127' }, res)
+  // Nachbartabelle kannte das Gerät bei der Anmeldung noch nicht
+  macs['192.168.0.127'] = 'cc:cc:cc:cc:cc:03'
+  macs['fe80::127'] = 'cc:cc:cc:cc:cc:03'
+  assert.equal(access.userOf({ ...fakeReq(), ip: 'fe80::127' }), null)
+  access.userOf({ ...fakeReq({ mv_session: res.cookies.mv_session }), ip: '192.168.0.127' })
+  assert.equal(access.userOf({ ...fakeReq(), ip: 'fe80::127' })?.name, 'Simon')
+})

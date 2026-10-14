@@ -298,6 +298,12 @@ function createAccess({
       s.ip = ip
       writeSoon()
     }
+    // … und das Gerät selbst (auch für Anmeldungen von vor dem Update oder nach einem Netzwechsel)
+    const mac = deviceMac(ip)
+    if (mac && s.mac !== mac) {
+      s.mac = mac
+      writeSoon()
+    }
     if (Date.now() - (s.seen ?? 0) > 60_000) {
       s.seen = Date.now()
       writeSoon()
