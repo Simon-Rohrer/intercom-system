@@ -1294,7 +1294,6 @@ const access = createAccess({
   verifyKesherPin: (pin) => kesherChat.verifyAdminPin(pin),
   // Eine Rolle nur einmal – auch gegenüber Geräten, die direkt bei Kesher angemeldet sind
   kesherActiveRoles: () => kesherChat.activeRoleIds(),
-  releaseKesherRole: (roleId, name) => kesherChat.releaseRole(roleId, name),
   isLive: (id) => [...wss.clients].some((ws) => ws.readyState === 1 && ws.sessionId === id),
   // Geräteadresse für die Liste der Anmeldungen (clientIp ist weiter unten definiert, wird erst bei Anfragen aufgerufen)
   ipOf: (req) => (req?.socket ? clientIp(req).replace(/^::ffff:/, '') : ''),
@@ -1409,7 +1408,13 @@ app.get(['/api/me', '/.jms-auth/api/me'], (req, res) => {
 })
 
 app.get(['/api/login/roles', '/.jms-auth/api/login/roles'], async (req, res) =>
-  res.set('Cache-Control', 'no-store').json({ enabled: access.enabled(), roles: loginRoles(), occupied: await access.occupiedForLogin(req) }),
+  res.set('Cache-Control', 'no-store').json({
+    enabled: access.enabled(),
+    roles: loginRoles(),
+    occupied: await access.occupiedForLogin(req),
+    // die eigene Rolle bleibt wählbar (neu anmelden mit anderem Namen)
+    mine: access.userOf(req)?.roleId ?? null,
+  }),
 )
 
 app.post(['/api/login', '/.jms-auth/api/login'], async (req, res) => {
@@ -1657,6 +1662,67 @@ app.get('/.jms-auth/login', (req, res) => res.sendFile(path.join(__dirname, 'pub
 app.get('/.jms-auth/logout', (req, res) => {
   access.logout(req, res)
   res.redirect(302, loginPath(req.query.next))
+})
+
+// ---------------------------------------------------------------------------
+// Abgleich der Anmeldung zwischen den Adressen. Unter der IP teilen sich alle Dienste ein Cookie
+// (Cookies kennen keine Ports), intercom.local, multiview.local usw. haben aber je ein eigenes.
+// Die Anmeldeseite holt die Anmeldung darum per Weiterleitung von der zentralen Adresse
+// (JMS_SSO_ORIGIN, z. B. https://192.168.0.21:8090) ab und bringt sie nach dem Anmelden dorthin.
+// Abmelden beendet die Anmeldung unter allen Adressen (gleiche ID, siehe access.js).
+// ---------------------------------------------------------------------------
+
+const SSO_ORIGIN = String(process.env.JMS_SSO_ORIGIN || '').replace(/\/+$/, '')
+const SSO_HOST = (() => {
+  try {
+    return SSO_ORIGIN ? new URL(SSO_ORIGIN).hostname : ''
+  } catch {
+    return ''
+  }
+})()
+const hostnameOf = (host) => String(host || '').replace(/:\d+$/, '').toLowerCase()
+/** Nur zurück zu den Namen des Servers (.local, .jms.de) oder zur zentralen Adresse, nie woandershin. */
+const ssoHostAllowed = (host) =>
+  /^[a-z0-9-]+\.(local|jms\.de)(:\d+)?$/i.test(String(host || '')) || (Boolean(SSO_HOST) && hostnameOf(host) === SSO_HOST)
+const isCentral = (req) => Boolean(SSO_HOST) && hostnameOf(req.get('host')) === SSO_HOST
+const withSsoDone = (p) => `${p}${p.includes('?') ? '&' : '?'}sso=0`
+
+app.get(['/api/sso', '/.jms-auth/api/sso'], (req, res) =>
+  res.set('Cache-Control', 'no-store').json({ origin: access.enabled() && SSO_ORIGIN ? SSO_ORIGIN : null, central: isCentral(req) }),
+)
+
+// Zentrale Adresse: die Anmeldung an eine andere Adresse weitergeben – oder sagen, dass es keine gibt
+app.get('/.jms-auth/sso/issue', (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  const host = String(req.query.host || '')
+  if (!isCentral(req) || !ssoHostAllowed(host)) return res.status(400).type('text').send('Ungültige Adresse')
+  const next = safeNext(req.query.next)
+  const back = safeNext(req.query.back, loginPath(next))
+  const ticket = access.createSsoTicket(clientIp(req), req)
+  if (!ticket) return res.redirect(302, `https://${host}${withSsoDone(back)}`)
+  const q = new URLSearchParams({ t: ticket, next, back })
+  res.redirect(302, `https://${host}/.jms-auth/sso/accept?${q}`)
+})
+
+// Ticket einlösen: hier gilt dann dieselbe Anmeldung. Mit host (an der zentralen Adresse) geht es
+// danach zurück zu der Adresse, an der man sich gerade angemeldet hat.
+app.get('/.jms-auth/sso/accept', (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  const ok = access.redeemSsoTicket(req.query.t, clientIp(req), req, res)
+  const next = safeNext(req.query.next)
+  const host = String(req.query.host || '')
+  if (host && isCentral(req) && ssoHostAllowed(host)) return res.redirect(302, `https://${host}${next}`)
+  res.redirect(302, ok ? next : withSsoDone(safeNext(req.query.back, loginPath(next))))
+})
+
+// Nach dem Anmelden an einer anderen Adresse: die Anmeldung zur zentralen Adresse bringen
+app.get('/.jms-auth/sso/push', (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  const next = safeNext(req.query.next)
+  const ticket = SSO_ORIGIN && !isCentral(req) && ssoHostAllowed(req.get('host')) && access.createSsoTicket(clientIp(req), req)
+  if (!ticket) return res.redirect(302, next)
+  const q = new URLSearchParams({ t: ticket, host: req.get('host'), next })
+  res.redirect(302, `${SSO_ORIGIN}/.jms-auth/sso/accept?${q}`)
 })
 
 // Tagescode: braucht dieses Gerät ihn noch?

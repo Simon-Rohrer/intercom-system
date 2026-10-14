@@ -18,6 +18,9 @@ services:
       KESHER_URL: "http://127.0.0.1:8080"
       # Zentrale Anmeldung: gemeinsames Geheimnis mit Kesher (aus .env, gleicher Wert wie dort)
       JMS_AUTH_SECRET: ${JMS_AUTH_SECRET:-}
+      # Zentrale Adresse für den Abgleich der Anmeldung zwischen IP und .local-Namen
+      # (dort gilt ein Cookie für alle Dienste; die .local-Seiten holen die Anmeldung von dort)
+      JMS_SSO_ORIGIN: "https://192.168.0.21:8090"
     volumes:
       - multiview-data:/data
     logging:

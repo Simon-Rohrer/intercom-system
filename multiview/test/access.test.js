@@ -250,50 +250,41 @@ test('Ticket für Kesher ist signiert und kurz gültig', async () => {
   assert.ok(data.exp > Date.now() && data.exp <= Date.now() + 60_000)
 })
 
-test('eine direkt in Kesher angemeldete Rolle ist auch hier belegt', async () => {
+test('eine direkt in Kesher angemeldete Rolle ist auch hier belegt – wegnehmen geht nicht', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
-  let inKesher = ['ton']
-  const released = []
-  const access = createAccess({
-    dataDir: dir,
-    log: () => {},
-    kesherActiveRoles: async () => inKesher,
-    releaseKesherRole: async (roleId, name) => {
-      released.push({ roleId, name })
-      inKesher = inKesher.filter((id) => id !== roleId)
-    },
-  })
+  const access = createAccess({ dataDir: dir, log: () => {}, kesherActiveRoles: async () => ['ton'] })
   await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
 
   assert.deepEqual(await access.occupiedForLogin(fakeReq()), { ton: 'in Kesher' })
-  // Ohne Übernehmen: abgelehnt, mit dem Hinweis auf Kesher
-  await assert.rejects(access.login({ name: 'Tim', roleId: 'ton' }, fakeReq(), fakeRes()), (err) => {
-    assert.equal(err.status, 409)
-    assert.equal(err.holder.kesher, true)
-    return true
-  })
-  assert.deepEqual(released, [])
-  // Übernehmen gibt die Rolle in Kesher frei
-  const res = fakeRes()
-  await access.login({ name: 'Tim', roleId: 'ton', takeover: true }, fakeReq(), res)
-  assert.deepEqual(released, [{ roleId: 'ton', name: 'Tim' }])
-  assert.ok(res.cookies.mv_session)
-  assert.deepEqual(await access.occupiedForLogin(fakeReq()), { ton: 'Tim' })
+  for (const takeover of [false, true]) {
+    await assert.rejects(access.login({ name: 'Tim', roleId: 'ton', takeover }, fakeReq(), fakeRes()), (err) => {
+      assert.equal(err.status, 409)
+      assert.equal(err.holder.kesher, true)
+      return true
+    })
+  }
+})
+
+test('belegte Rolle lässt sich nicht übernehmen', async () => {
+  const { access } = await setup()
+  await loginAs(access, 'Tim', 'video')
+  await assert.rejects(access.login({ name: 'Anna', roleId: 'video', takeover: true }, fakeReq(), fakeRes()), /schon angemeldet – von Tim/)
+  assert.deepEqual(access.occupiedRoles(), { video: 'Tim' })
 })
 
 test('die eigene Kesher-Seite blockiert die Rolle nicht', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
-  const access = createAccess({ dataDir: dir, log: () => {}, kesherActiveRoles: async () => ['ton'] })
+  let inKesher = []
+  const access = createAccess({ dataDir: dir, log: () => {}, kesherActiveRoles: async () => inKesher })
   await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
-  // Kesher hat "ton", weil Tims Kesher-Seite angemeldet ist – Tim meldet sich im selben Browser neu an
-  const token = await loginAs(access, 'Tim', 'ton').catch(() => null)
-  assert.equal(token, null) // erste Anmeldung: Kesher hat die Rolle schon (fremdes Gerät)
   const res = fakeRes()
-  await access.login({ name: 'Tim', roleId: 'ton', takeover: true }, fakeReq(), res)
+  await access.login({ name: 'Tim', roleId: 'ton' }, fakeReq(), res)
+  // Kesher hat "ton", weil Tims Kesher-Seite angemeldet ist – Tim meldet sich im selben Browser neu an
+  inKesher = ['ton']
   const again = fakeRes()
   await access.login({ name: 'Tim', roleId: 'ton' }, fakeReq({ mv_session: res.cookies.mv_session }), again)
   assert.ok(again.cookies.mv_session)
-  // Andere sehen die Rolle mit Tims Namen, er selbst auch
+  // Andere sehen die Rolle mit Tims Namen
   assert.deepEqual(await access.occupiedForLogin(fakeReq()), { ton: 'Tim' })
 })
 
@@ -414,4 +405,58 @@ test('ältere Anmeldung ohne MAC lernt sie bei der nächsten Anfrage mit Cookie'
   assert.equal(access.userOf({ ...fakeReq(), ip: 'fe80::127' }), null)
   access.userOf({ ...fakeReq({ mv_session: res.cookies.mv_session }), ip: '192.168.0.127' })
   assert.equal(access.userOf({ ...fakeReq(), ip: 'fe80::127' })?.name, 'Simon')
+})
+
+test('Abgleich zwischen Adressen: Ticket gibt dieselbe Anmeldung weiter, Abmelden gilt überall', async () => {
+  const { access } = await setup()
+  // an der zentralen Adresse (IP) angemeldet
+  const central = await loginAs(access, 'Simon', 'lighting')
+  const ticket = access.createSsoTicket('192.168.0.64', fakeReq({ mv_session: central }))
+  assert.ok(ticket)
+  // intercom.local löst das Ticket ein: eigenes Cookie, dieselbe Anmeldung
+  const res = fakeRes()
+  assert.equal(access.redeemSsoTicket(ticket, '192.168.0.111', fakeReq(), res), true)
+  const local = res.cookies.mv_session
+  assert.notEqual(local, central)
+  assert.equal(access.userOf(fakeReq({ mv_session: local }))?.sessionId, access.userOf(fakeReq({ mv_session: central }))?.sessionId)
+  // nur einmal einlösbar
+  assert.equal(access.redeemSsoTicket(ticket, '192.168.0.111', fakeReq(), fakeRes()), false)
+  // in der Liste der Geräte nur einmal
+  assert.equal(access.sessions().filter((s) => s.name === 'Simon').length, 1)
+  // Abmelden unter intercom.local meldet auch an der IP ab
+  access.logout(fakeReq({ mv_session: local }), fakeRes())
+  assert.equal(access.userOf(fakeReq({ mv_session: central })), null)
+  // ohne Anmeldung gibt es kein Ticket
+  assert.equal(access.createSsoTicket('192.168.0.64', fakeReq()), null)
+})
+
+test('Anmelden unter einer Adresse ersetzt die Anmeldung unter allen', async () => {
+  const { access } = await setup()
+  const central = await loginAs(access, 'Simon', 'lighting')
+  const res = fakeRes()
+  access.redeemSsoTicket(access.createSsoTicket('', fakeReq({ mv_session: central })), '', fakeReq(), res)
+  const local = res.cookies.mv_session
+  // unter intercom.local neu als Regie angemeldet
+  const res2 = fakeRes()
+  await access.login({ name: 'Simon', roleId: 'video' }, fakeReq({ mv_session: local }), res2)
+  // die alte Anmeldung gilt an der IP nicht mehr; nach dem Weitergeben gilt dort die neue
+  assert.equal(access.userOf(fakeReq({ mv_session: central })), null)
+  const res3 = fakeRes()
+  access.redeemSsoTicket(access.createSsoTicket('', fakeReq({ mv_session: res2.cookies.mv_session })), '', fakeReq({ mv_session: central }), res3)
+  assert.equal(access.userOf(fakeReq({ mv_session: res3.cookies.mv_session }))?.roleId, 'video')
+  assert.deepEqual(access.occupiedRoles(), { video: 'Simon' })
+})
+
+test('Ticket nimmt die Freischaltung per Tagescode mit', async () => {
+  const { access } = await setup()
+  access.setGateway({ enabled: true, exempt: [] })
+  const dev = fakeRes()
+  access.redeemDayCode(access.dayCode().code, '10.99.0.64', fakeReq(), dev)
+  const central = await loginAs(access, 'Simon', 'lighting')
+  const centralReq = fakeReq({ mv_session: central, jms_device: dev.cookies.jms_device })
+  const ticket = access.createSsoTicket('10.99.0.64', centralReq)
+  const res = fakeRes()
+  access.redeemSsoTicket(ticket, 'fe80::9999', fakeReq(), res)
+  assert.ok(res.cookies.jms_device)
+  assert.equal(access.check({ service: 'kesher', ip: 'fe80::9999' }, fakeReq(res.cookies)).action, 'allow')
 })

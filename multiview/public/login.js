@@ -59,9 +59,44 @@ const postJson = async (path, body) => {
   return { res, data: (await res?.json().catch(() => ({}))) ?? {} }
 }
 
+// --- Abgleich mit der zentralen Adresse ----------------------------------------
+// Jeder Name (192.168.0.21, intercom.local, multiview.local …) hat im Browser ein eigenes Cookie.
+// Ist man hier nicht angemeldet, holt die Seite die Anmeldung von der zentralen Adresse (eine
+// kurze Weiterleitung); nach dem Anmelden hier bringt sie sie dorthin.
+
+const ssoInfo = getJson('/api/sso')
+
+async function pullFromCentral() {
+  if (params.has('wechseln')) return false
+  const sso = await ssoInfo
+  if (!sso?.origin || sso.central) return false
+  const me = await getJson('/api/me')
+  if (me?.user && !me.user.open) return false
+  const back = location.pathname + location.search.replace(/[?&]sso=0/, '').replace(/^&/, '?')
+  const q = new URLSearchParams({ host: location.host, next, back })
+  location.replace(`${sso.origin}/.jms-auth/sso/issue?${q}`)
+  return true
+}
+
+/** Nach dem Anmelden weiter – an einer anderen Adresse über die zentrale, damit es dort auch gilt. */
+async function continueAfterLogin() {
+  const sso = await ssoInfo
+  if (sso?.origin && !sso.central) return location.replace(`/.jms-auth/sso/push?next=${encodeURIComponent(next)}`)
+  location.replace(next)
+}
+
+// In einem anderen Tab (z. B. über die IP) angemeldet: beim Zurückwechseln nachsehen – nicht bei
+// jedem kurzen Wechsel, sonst springt die Seite ständig einmal über die zentrale Adresse
+let hiddenAt = 0
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') hiddenAt = Date.now()
+  else if (params.has('sso') && Date.now() - hiddenAt > 3000) pullFromCentral()
+})
+
 main()
 
 async function main() {
+  if (!params.has('sso') && (await pullFromCentral())) return
   if (gateway) {
     const device = await getJson('/api/device')
     if (device?.required && !device.approved) return showCodeStep()
@@ -226,7 +261,7 @@ function setupScanner(onCode) {
 
 async function showLoginStep() {
   $('#code-form').hidden = true
-  const { enabled, roles = [], occupied = {} } = (await getJson('/api/login/roles')) ?? { enabled: true, roles: [] }
+  const { enabled, roles = [], occupied = {}, mine = null } = (await getJson('/api/login/roles')) ?? { enabled: true, roles: [] }
   if (!enabled) return location.replace(next) // Zugang offen: keine Anmeldung nötig
 
   // Schon angemeldet: auf einem anderen Dienst direkt weiter, sonst zeigen, als wer
@@ -245,13 +280,34 @@ async function showLoginStep() {
   const lastRole = remembered('role')
   $('#role').innerHTML = [
     `<option value="" disabled ${lastRole ? '' : 'selected'}>Rolle wählen …</option>`,
-    // Belegte Rollen markieren – eine Rolle kann nur einmal angemeldet sein (wie bei Kesher)
-    ...roles.map(
-      (r) =>
-        `<option value="${esc(r.id)}" ${r.id === lastRole ? 'selected' : ''}>${esc(r.name)}${occupied[r.id] ? ` – angemeldet: ${esc(occupied[r.id])}` : ''}</option>`,
-    ),
+    ...roles.map((r) => `<option value="${esc(r.id)}" ${r.id === lastRole ? 'selected' : ''}>${esc(r.name)}</option>`),
     `<option value="admin" ${lastRole === 'admin' ? 'selected' : ''}>Admin (mit PIN)</option>`,
   ].join('')
+
+  // Belegte Rollen markieren und sperren – eine Rolle kann nur einmal angemeldet sein, wegnehmen
+  // geht nicht. Die Liste bleibt aktuell, ohne die Seite neu zu laden.
+  const roleNames = new Map(roles.map((r) => [r.id, r.name]))
+  function showOccupied(taken, ownRole) {
+    for (const option of $('#role').options) {
+      if (!roleNames.has(option.value)) continue
+      const holder = option.value !== ownRole ? taken[option.value] : null
+      option.textContent = holder ? `${roleNames.get(option.value)} – angemeldet: ${holder}` : roleNames.get(option.value)
+      option.disabled = Boolean(holder)
+    }
+    const selected = $('#role').selectedOptions[0]
+    if (selected?.disabled && selected.value) {
+      $('#role').value = ''
+      $('#error').textContent = `${roleNames.get(selected.value)} ist gerade angemeldet – bitte eine andere Rolle wählen.`
+    }
+  }
+  showOccupied(occupied, mine)
+  const refreshOccupied = async () => {
+    if (document.visibilityState === 'hidden') return
+    const data = await getJson('/api/login/roles')
+    if (data?.occupied) showOccupied(data.occupied, data.mine)
+  }
+  setInterval(refreshOccupied, 3000)
+  document.addEventListener('visibilitychange', refreshOccupied)
   if (!roles.length) $('#error').textContent = 'Kesher ist gerade nicht erreichbar – nur die Admin-Anmeldung geht.'
   $('#name').value = remembered('name')
   // Großer Avatar über dem Formular, wächst beim Tippen des Namens mit
@@ -268,24 +324,20 @@ async function showLoginStep() {
   $('#role').addEventListener('change', syncPin)
   ;($('#name').value ? $('#role') : $('#name')).focus()
 
-  $('#role').addEventListener('change', () => ($('#takeover').hidden = true))
-  $('#takeover-btn').addEventListener('click', () => submit(true))
+  $('#role').addEventListener('change', () => ($('#error').textContent = ''))
   $('#login-form').addEventListener('submit', (e) => {
     e.preventDefault()
-    submit(false)
+    submit()
   })
 
-  async function submit(takeover) {
-    const body = { name: $('#name').value.trim(), roleId: $('#role').value, pin: $('#pin').value, takeover }
+  async function submit() {
+    const body = { name: $('#name').value.trim(), roleId: $('#role').value, pin: $('#pin').value }
     $('#error').textContent = ''
-    $('#takeover').hidden = true
     const { res, data } = await postJson('/api/login', body)
-    if (res?.status === 409 && data?.holder) {
-      // Rolle schon angemeldet: wie bei Kesher übernehmen lassen
-      const role = $('#role').selectedOptions[0]?.textContent.replace(/ – angemeldet:.*$/, '')
-      const who = data.holder.kesher ? 'direkt in Kesher (z. B. an einer Station)' : `von ${data.holder.name}`
-      $('#takeover-text').textContent = `${role} ist schon angemeldet – ${who}. Übernehmen meldet das andere Gerät ab.`
-      $('#takeover').hidden = false
+    if (res?.status === 409) {
+      // Rolle inzwischen belegt: Hinweis zeigen und die Liste gleich auffrischen
+      $('#error').textContent = data?.error || 'Die Rolle ist schon angemeldet – bitte eine andere wählen.'
+      refreshOccupied()
       return
     }
     if (!res?.ok || !data?.ok) {
@@ -295,6 +347,6 @@ async function showLoginStep() {
     }
     remember('name', body.name)
     remember('role', body.roleId)
-    location.replace(next)
+    continueAfterLogin()
   }
 }
