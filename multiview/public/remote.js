@@ -1,4 +1,5 @@
-// Fernbedienung fürs Handy – wie eine kleine App mit Leiste unten:
+// Fernbedienung fürs Handy, iPad und den Desktop – wie eine kleine App mit Leiste unten
+// (am Desktop als Seitenleiste links, siehe remote.css):
 //   Bildschirme: die eigenen Multiviews umschalten (welches Layout läuft)
 //   Chat:        Kesher-Chat lesen und als die angemeldete Rolle schreiben
 //   Bühne:       Bühnennachricht (Stage Display) in ProPresenter senden/löschen
@@ -528,6 +529,7 @@ let templatesKey = ''
 
 function renderBeamer() {
   const requests = (stage.requests ?? []).filter((r) => r.status !== 'ersetzt').slice(0, 4)
+  $('#beamer-status').hidden = !requests.length
   $('#beamer-requests').innerHTML = requests
     .map((r) => {
       const [kind, label] = REQUEST_STATUS[r.status] ?? ['done', r.status]
