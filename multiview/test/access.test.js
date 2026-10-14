@@ -341,48 +341,6 @@ test('Tagescode einmal eingegeben gilt auch unter dem anderen Namen (gleiche MAC
   assert.equal(access.check({ service: 'kesher', ip: 'fe80::127' }, fakeReq()).action, 'code')
 })
 
-test('Anmeldung gilt auf dem ganzen Gerät, auch unter den .local-Namen', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
-  const macs = { '192.168.0.127': 'cc:cc:cc:cc:cc:03', 'fe80::127': 'cc:cc:cc:cc:cc:03', '192.168.0.200': 'ee:ee:ee:ee:ee:05' }
-  const access = createAccess({ dataDir: dir, log: () => {}, macOf: (ip) => macs[ip] ?? null, ipOf: (req) => req.ip })
-  await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
-  const at = (ip, cookies = {}) => ({ ...fakeReq(cookies), ip })
-
-  // Anmelden über https://192.168.0.21:8443 (IPv4) …
-  const res = fakeRes()
-  await access.login({ name: 'Simon', roleId: 'lighting' }, at('192.168.0.127'), res)
-  const ipCookie = { mv_session: res.cookies.mv_session }
-  // … gilt auch über intercom.local (IPv6, ohne Cookie)
-  assert.equal(access.userOf(at('fe80::127'))?.name, 'Simon')
-  assert.ok(access.sessionIdOf(at('fe80::127')))
-  // ein anderes Gerät nicht
-  assert.equal(access.userOf(at('192.168.0.200')), null)
-
-  // Wechsel unter multiview.local: ersetzt die Anmeldung überall auf dem Gerät
-  const res2 = fakeRes()
-  await access.login({ name: 'Simon', roleId: 'video' }, at('fe80::127'), res2)
-  assert.equal(access.userOf(at('192.168.0.127', ipCookie))?.roleId, 'video')
-  assert.deepEqual(access.occupiedRoles(), { video: 'Simon' })
-
-  // Abmelden unter intercom.local meldet auch unter der IP ab
-  access.logout(at('fe80::127', { mv_session: res2.cookies.mv_session }), fakeRes())
-  assert.equal(access.userOf(at('192.168.0.127', ipCookie)), null)
-  assert.equal(access.userOf(at('fe80::127')), null)
-})
-
-test('feste Stationen ohne Anmeldung teilen keine Anmeldung über die MAC-Adresse', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
-  const macs = { '192.168.0.67': 'aa:aa:aa:aa:aa:01', 'fe80::67': 'aa:aa:aa:aa:aa:01' }
-  const access = createAccess({ dataDir: dir, log: () => {}, macOf: (ip) => macs[ip] ?? null, ipOf: (req) => req.ip })
-  await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
-  access.setGateway({ enabled: true, exempt: [{ network: '192.168.0.67', label: 'Station' }] })
-  const res = fakeRes()
-  await access.login({ name: 'Tim', roleId: 'video' }, { ...fakeReq(), ip: '192.168.0.67' }, res)
-  // ohne Cookie (anderes Fenster, anderer Name): nicht angemeldet
-  assert.equal(access.userOf({ ...fakeReq(), ip: 'fe80::67' }), null)
-  assert.equal(access.userOf({ ...fakeReq({ mv_session: res.cookies.mv_session }), ip: '192.168.0.67' })?.name, 'Tim')
-})
-
 test('Rolle belegt: die bisherige Anmeldung des Browsers bleibt bestehen', async () => {
   const { access } = await setup()
   const tim = await loginAs(access, 'Tim', 'video')
@@ -390,21 +348,6 @@ test('Rolle belegt: die bisherige Anmeldung des Browsers bleibt bestehen', async
   await assert.rejects(access.login({ name: 'Anna', roleId: 'video' }, fakeReq({ mv_session: anna }), fakeRes()), /schon angemeldet/)
   assert.equal(access.userOf(fakeReq({ mv_session: anna }))?.roleId, 'lighting')
   assert.ok(tim)
-})
-
-test('ältere Anmeldung ohne MAC lernt sie bei der nächsten Anfrage mit Cookie', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
-  const macs = {}
-  const access = createAccess({ dataDir: dir, log: () => {}, macOf: (ip) => macs[ip] ?? null, ipOf: (req) => req.ip })
-  await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
-  const res = fakeRes()
-  await access.login({ name: 'Simon', roleId: 'lighting' }, { ...fakeReq(), ip: '192.168.0.127' }, res)
-  // Nachbartabelle kannte das Gerät bei der Anmeldung noch nicht
-  macs['192.168.0.127'] = 'cc:cc:cc:cc:cc:03'
-  macs['fe80::127'] = 'cc:cc:cc:cc:cc:03'
-  assert.equal(access.userOf({ ...fakeReq(), ip: 'fe80::127' }), null)
-  access.userOf({ ...fakeReq({ mv_session: res.cookies.mv_session }), ip: '192.168.0.127' })
-  assert.equal(access.userOf({ ...fakeReq(), ip: 'fe80::127' })?.name, 'Simon')
 })
 
 test('Abgleich zwischen Adressen: Ticket gibt dieselbe Anmeldung weiter, Abmelden gilt überall', async () => {
@@ -459,4 +402,18 @@ test('Ticket nimmt die Freischaltung per Tagescode mit', async () => {
   access.redeemSsoTicket(ticket, 'fe80::9999', fakeReq(), res)
   assert.ok(res.cookies.jms_device)
   assert.equal(access.check({ service: 'kesher', ip: 'fe80::9999' }, fakeReq(res.cookies)).action, 'allow')
+})
+
+test('ohne Cookie keine Anmeldung – auch nicht vom selben Gerät (MAC-Adresse)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
+  const macs = { '172.22.0.2': 'fa:77:e7:14:66:02', '192.168.0.127': 'cc:cc:cc:cc:cc:03' }
+  const access = createAccess({ dataDir: dir, log: () => {}, macOf: (ip) => macs[ip] ?? null, ipOf: (req) => req.ip })
+  await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
+  const res = fakeRes()
+  await access.login({ name: 'Admin', roleId: 'admin', pin: '123456' }, { ...fakeReq(), ip: '172.22.0.2' }, res)
+  assert.equal(access.userOf({ ...fakeReq(), ip: '172.22.0.2' }), null)
+  assert.equal(access.userOf({ ...fakeReq({ mv_session: res.cookies.mv_session }), ip: '172.22.0.2' })?.admin, true)
+  // Abmelden ohne Cookie beendet keine fremde Anmeldung desselben Geräts
+  access.logout({ ...fakeReq(), ip: '172.22.0.2' }, fakeRes())
+  assert.equal(access.userOf({ ...fakeReq({ mv_session: res.cookies.mv_session }), ip: '172.22.0.2' })?.admin, true)
 })

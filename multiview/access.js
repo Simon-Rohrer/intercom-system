@@ -243,37 +243,14 @@ function createAccess({
       created: Date.now(),
       seen: Date.now(),
       ip: ip || undefined,
-      mac: deviceMac(ip) || undefined,
     }
     write()
     return token
   }
 
-  /**
-   * Die Anmeldung gilt für das ganze Gerät, nicht nur für eine Adresse: Das Cookie schickt der
-   * Browser nur an den Namen, unter dem es gesetzt wurde. Über die IP teilen sich alle Dienste
-   * eins (Cookies kennen keine Ports), intercom.local und multiview.local aber nicht. Darum
-   * erkennt der Server das Gerät zusätzlich an seiner MAC-Adresse (IPv4 und IPv6 gleich).
-   * Nicht bei festen Stationen ohne Anmeldung – dort laufen oft mehrere Fenster nebeneinander.
-   */
-  function deviceMac(ip) {
-    if (!ip || openIp(ip)) return null
-    return macOf(ip)
-  }
-
-  /** Sitzungen dieses Geräts (an der MAC-Adresse), neueste zuerst. */
-  function deviceSessions(req) {
-    const mac = deviceMac(ipOf(req))
-    if (!mac) return []
-    return Object.values(secret.sessions)
-      .filter((s) => s.mac === mac)
-      .sort((a, b) => b.created - a.created)
-  }
-
-  /** Sitzung zum Cookie, sonst die neueste Anmeldung dieses Geräts unter einer anderen Adresse. */
   function lookupSession(req) {
     const token = parseCookies(req.headers.cookie)[COOKIE]
-    return (token && secret.sessions[sha256(token)]) || deviceSessions(req)[0] || null
+    return (token && secret.sessions[sha256(token)]) || null
   }
 
   function deleteSessions(list) {
@@ -294,12 +271,6 @@ function createAccess({
     const ip = ipOf(req)
     if (ip && s.ip !== ip) {
       s.ip = ip
-      writeSoon()
-    }
-    // … und das Gerät selbst (auch für Anmeldungen von vor dem Update oder nach einem Netzwechsel)
-    const mac = deviceMac(ip)
-    if (mac && s.mac !== mac) {
-      s.mac = mac
       writeSoon()
     }
     if (Date.now() - (s.seen ?? 0) > 60_000) {
@@ -377,12 +348,12 @@ function createAccess({
 
     // Eine Rolle nur einmal. Wegnehmen kann man sie nicht – der andere meldet sich ab, oder der
     // Admin beendet die Anmeldung (Benutzer & Rechte → Angemeldete Geräte). Die bisherige
-    // Anmeldung dieses Browsers und dieses Geräts (unter anderen Adressen) zählt nicht – sie
-    // wird durch die neue ersetzt, damit überall dieselbe gilt.
+    // Anmeldung dieses Browsers zählt nicht – sie wird durch die neue ersetzt, unter allen
+    // Adressen (gleiche ID, siehe Abgleich unten).
     const own = parseCookies(req.headers.cookie)[COOKIE]
     const ownSession = own ? secret.sessions[sha256(own)] : null
-    const mine = [...new Set([ownSession, ...deviceSessions(req)].filter(Boolean))]
-    const ownRole = (ownSession ?? mine[0])?.roleId ?? null
+    const mine = ownSession ? [ownSession] : []
+    const ownRole = ownSession?.roleId ?? null
     if (!admin) {
       const holders = holdersOf(roleId).filter((s) => !mine.includes(s))
       const active = holders.filter(isActive)
@@ -410,13 +381,12 @@ function createAccess({
     log(`Zugang: ${cleanName} angemeldet als ${admin ? 'Admin' : roleId}`)
   }
 
-  /** Abmelden – auf diesem Gerät unter allen Adressen (wie über die IP, wo alle Dienste ein Cookie teilen). */
+  /** Abmelden – unter allen Adressen, an die diese Anmeldung weitergegeben wurde (gleiche ID). */
   function logout(req, res) {
     const token = parseCookies(req.headers.cookie)[COOKIE]
     const own = token && secret.sessions[sha256(token)]
     if (token) delete secret.sessions[sha256(token)]
-    // dieselbe Anmeldung unter den anderen Adressen (Abgleich über die zentrale Adresse)
-    deleteSessions([own, ...deviceSessions(req)].filter(Boolean))
+    if (own) deleteSessions([own])
     write()
     res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`)
   }
