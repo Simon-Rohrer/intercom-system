@@ -21,6 +21,8 @@ const clamp = (v, min, max) => Math.min(Math.max(v, min), max)
 const CLIENT_ID = uid('c')
 const PAGES = ['uebersicht', 'eingaenge', 'layouts', 'einstellungen', 'zugang']
 const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'zugang']
+// Unterseiten der Einstellungen: #/einstellungen/atem …
+const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'companion']
 const SOURCE_TYPES = {
   device: 'Capture-Gerät',
   stream: 'Netzwerk-Stream',
@@ -216,9 +218,18 @@ function toast(text) {
 // ---------------------------------------------------------------------------
 
 function showPage() {
-  const requested = location.hash.replace(/^#\/?/, '')
+  const [requested, sub] = location.hash.replace(/^#\/?/, '').split('/')
   page = PAGES.includes(requested) && (isAdmin() || !ADMIN_PAGES.includes(requested)) ? requested : 'uebersicht'
   for (const p of PAGES) $(`#page-${p}`).hidden = p !== page
+  if (page === 'einstellungen') {
+    const section = SETTINGS_SECTIONS.includes(sub) ? sub : SETTINGS_SECTIONS[0]
+    document.querySelectorAll('#page-einstellungen [data-section]').forEach((el) => (el.hidden = el.dataset.section !== section))
+    document.querySelectorAll('[data-section-link]').forEach((a) => {
+      a.classList.toggle('active', a.dataset.sectionLink === section)
+      if (a.dataset.sectionLink === section) a.setAttribute('aria-current', 'page')
+      else a.removeAttribute('aria-current')
+    })
+  }
   document.querySelectorAll('.site-nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === page))
   document.body.classList.remove('nav-open')
   if (page === 'eingaenge') autoScanDevices()
@@ -1524,7 +1535,7 @@ function ppSection(tile) {
       <label class="check"><input type="checkbox" data-p="showControls" ${o.showControls ? 'checked' : ''}> Steuer-Tasten einblenden (Zurück / Ausblenden / Weiter)</label>
       ${o.showControls ? blankModeField('data-p', o.blankMode) : ''}
       <p class="muted" style="margin:0;font-size:12px">„Mit Hintergrund“ springt zur nächsten Folie, die einen anderen Hintergrund startet (Video, Bild, PDF …) – nie zu reinem Text. Hat der Bediener in ProPresenter schon ein anderes Lied angeklickt (z. B. eins übersprungen), kommt sie aus diesem Lied.</p>
-      ${propresenter.connected ? '' : '<p class="muted" style="margin:0;font-size:12px">ProPresenter ist nicht verbunden – Adresse unter <a href="#/einstellungen">Einstellungen</a> prüfen.</p>'}
+      ${propresenter.connected ? '' : '<p class="muted" style="margin:0;font-size:12px">ProPresenter ist nicht verbunden – Adresse unter <a href="#/einstellungen/propresenter">Einstellungen</a> prüfen.</p>'}
     </div>`
 }
 
@@ -1568,7 +1579,7 @@ function stageSection(tile) {
       </div>
       <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
         <input type="range" min="0.5" max="2.5" step="0.1" data-st="size" value="${o.size}"></label>
-      ${propresenter.connected ? '' : '<p class="muted" style="margin:0;font-size:12px">ProPresenter ist nicht verbunden – Adresse unter <a href="#/einstellungen">Einstellungen</a> prüfen.</p>'}
+      ${propresenter.connected ? '' : '<p class="muted" style="margin:0;font-size:12px">ProPresenter ist nicht verbunden – Adresse unter <a href="#/einstellungen/propresenter">Einstellungen</a> prüfen.</p>'}
     </div>`
 }
 
@@ -1595,7 +1606,7 @@ function preacherSection(tile) {
         <input type="range" min="0.5" max="2.5" step="0.1" data-pr="size" value="${o.size}"></label>
       <label class="check"><input type="checkbox" data-pr="showControls" ${o.showControls ? 'checked' : ''}> Tasten Zurück / Ausblenden / Weiter</label>
       ${blankModeField('data-pr', o.blankMode)}
-      ${propresenter.connected ? '' : '<p class="muted" style="margin:0;font-size:12px">ProPresenter ist nicht verbunden – Adresse unter <a href="#/einstellungen">Einstellungen</a> prüfen.</p>'}
+      ${propresenter.connected ? '' : '<p class="muted" style="margin:0;font-size:12px">ProPresenter ist nicht verbunden – Adresse unter <a href="#/einstellungen/propresenter">Einstellungen</a> prüfen.</p>'}
     </div>`
 }
 
@@ -1765,7 +1776,7 @@ function tileInspector(tile, layout) {
       <label class="field"><span>Event (Name oder Kalender enthält, leer = laufendes/nächstes)</span><input type="text" data-t="ctFilter" value="${esc(tile.ctFilter)}" placeholder="z. B. Gottesdienst"></label>
       <label class="check"><input type="checkbox" data-t="ctResponsible" ${tile.ctResponsible !== false ? 'checked' : ''}> Verantwortliche anzeigen</label>
       <label class="check"><input type="checkbox" data-t="ctNotes" ${tile.ctNotes === true ? 'checked' : ''}> Notizen anzeigen</label>
-      <p class="muted">Zeigt den Ablauf des heutigen Events aus ChurchTools. Gibt es heute keinen, steht der nächste Termin mit Ablauf da (bis 6 Wochen voraus). Mit festem Datum nur dieser Tag. Verbindung unter <a href="#einstellungen">Einstellungen</a>.</p>`
+      <p class="muted">Zeigt den Ablauf des heutigen Events aus ChurchTools. Gibt es heute keinen, steht der nächste Termin mit Ablauf da (bis 6 Wochen voraus). Mit festem Datum nur dieser Tag. Verbindung unter <a href="#/einstellungen/churchtools">Einstellungen</a>.</p>`
         : ''
     }
     ${kind === 'chat' ? chatSection(tile) : ''}
@@ -2443,21 +2454,32 @@ function renderStatusStrip() {
   const ct = churchtools
   $('#status-strip').innerHTML = [
     !config.atem.ip
-      ? tile('off', 'ATEM', 'nicht eingerichtet', '#/einstellungen')
-      : tile(atem.connected ? 'ok' : 'bad', 'ATEM', atem.connected ? atem.model || 'verbunden' : 'getrennt', '#/einstellungen'),
+      ? tile('off', 'ATEM', 'nicht eingerichtet', '#/einstellungen/atem')
+      : tile(atem.connected ? 'ok' : 'bad', 'ATEM', atem.connected ? atem.model || 'verbunden' : 'getrennt', '#/einstellungen/atem'),
     !config.propresenter?.host
-      ? tile('off', 'ProPresenter', 'nicht eingerichtet', '#/einstellungen')
+      ? tile('off', 'ProPresenter', 'nicht eingerichtet', '#/einstellungen/propresenter')
       : tile(
           pp.connected ? 'ok' : 'bad',
           'ProPresenter',
           pp.connected ? (pp.presentation ? pp.presentation.name : 'verbunden') : 'nicht erreichbar',
-          '#/einstellungen',
+          '#/einstellungen/propresenter',
         ),
-    tile(chat.state === 'connected' ? 'ok' : 'bad', 'Kesher', chat.state === 'connected' ? 'verbunden' : 'getrennt', '#/einstellungen'),
+    tile(chat.state === 'connected' ? 'ok' : 'bad', 'Kesher', chat.state === 'connected' ? 'verbunden' : 'getrennt', '#/einstellungen/kesher'),
     ct.state === 'unconfigured'
-      ? tile('off', 'ChurchTools', 'nicht verbunden', '#/einstellungen')
-      : tile(ct.state === 'connected' ? 'ok' : 'bad', 'ChurchTools', ct.state === 'connected' ? 'verbunden' : ct.error || 'Fehler', '#/einstellungen'),
+      ? tile('off', 'ChurchTools', 'nicht verbunden', '#/einstellungen/churchtools')
+      : tile(ct.state === 'connected' ? 'ok' : 'bad', 'ChurchTools', ct.state === 'connected' ? 'verbunden' : ct.error || 'Fehler', '#/einstellungen/churchtools'),
   ].join('')
+  // Derselbe Zustand als Punkt in den Reitern der Einstellungen
+  const dots = {
+    atem: !config.atem.ip ? 'off' : atem.connected ? 'ok' : 'bad',
+    propresenter: !config.propresenter?.host ? 'off' : pp.connected ? 'ok' : 'bad',
+    kesher: chat.state === 'connected' ? 'ok' : 'bad',
+    churchtools: ct.state === 'unconfigured' ? 'off' : ct.state === 'connected' ? 'ok' : 'bad',
+  }
+  for (const [section, state] of Object.entries(dots)) {
+    const link = document.querySelector(`[data-section-link="${section}"]`)
+    if (link) link.dataset.state = state
+  }
 }
 
 // --- Benutzer & Rechte (Admin) ----------------------------------------------
@@ -2465,6 +2487,9 @@ function renderStatusStrip() {
 let pinChoice = null // im Formular gewählte PIN-Quelle
 const lockIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>'
 let accessKey = ''
+const pencilIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="m13.5 6.5 4 4"/></svg>'
+const copyIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>'
+const trashIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>'
 
 function renderAccess() {
   if (!config || !isAdmin() || page !== 'zugang') return
@@ -2523,7 +2548,12 @@ function renderAccess() {
             .map((r) => {
               const rights = roleRights(config, { roleId: r.id })
               return `<tr data-role="${esc(r.id)}">
-                <td class="role-name">${esc(r.name)}</td>
+                <td><div class="role-name">${esc(r.name)}</div>
+                  <div class="role-actions">
+                    <button type="button" class="icon-btn" data-role-rename title="Umbenennen" aria-label="${esc(r.name)} umbenennen">${pencilIcon}</button>
+                    <button type="button" class="icon-btn" data-role-copy title="Als Vorlage für eine neue Rolle" aria-label="${esc(r.name)} kopieren">${copyIcon}</button>
+                    <button type="button" class="icon-btn danger" data-role-delete title="Löschen" aria-label="${esc(r.name)} löschen">${trashIcon}</button>
+                  </div></td>
                 <td class="muted" style="font-size:12.5px">${esc(listensTo(r.id)) || '–'}</td>
                 <td><div class="chip-set">${
                   config.outputs
@@ -2614,6 +2644,81 @@ $('#page-zugang').addEventListener('click', (e) => {
   accessKey = ''
   renderAccess()
   changed(0)
+})
+
+// --- Rollen anlegen, umbenennen, löschen (gespeichert in Kesher) ---------------
+
+let roleDialogMode = null // { mode: 'create' | 'rename', roleId }
+
+function openRoleDialog(mode, roleId = '') {
+  roleDialogMode = { mode, roleId }
+  const role = kesherRoles().find((r) => r.id === roleId)
+  const create = mode !== 'rename'
+  $('#role-dialog-title').textContent = create ? 'Neue Rolle' : 'Rolle umbenennen'
+  $('#role-dialog-lead').textContent = create
+    ? 'Die Rolle erscheint sofort in Kesher und bei der Anmeldung. Mit einer Vorlage bekommt sie deren Party Lines, Stream-Deck-Tasten und Multiview-Rechte.'
+    : 'Rechte und Party Lines bleiben, nur der Name ändert sich – hier und in Kesher.'
+  $('#role-name').value = create ? '' : role?.name ?? ''
+  $('#role-copy-field').hidden = !create
+  $('#role-copy').innerHTML = `<option value="">– keine (leere Rolle) –</option>${kesherRoles()
+    .map((r) => `<option value="${esc(r.id)}" ${r.id === roleId ? 'selected' : ''}>${esc(r.name)}</option>`)
+    .join('')}`
+  $('#role-submit').textContent = create ? 'Anlegen' : 'Umbenennen'
+  $('#role-error').textContent = ''
+  $('#role-dialog').showModal()
+  setTimeout(() => $('#role-name').focus(), 50)
+}
+
+async function roleRequest(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  }).catch(() => null)
+  if (res?.status === 401) return goToLogin()
+  const data = (await res?.json().catch(() => null)) ?? {}
+  if (!res?.ok || !data.ok) throw new Error(data.error || 'Server nicht erreichbar')
+  return data
+}
+
+$('#role-new').addEventListener('click', () => openRoleDialog('create'))
+
+$('#role-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const { mode, roleId } = roleDialogMode ?? {}
+  const name = $('#role-name').value.trim()
+  const button = $('#role-submit')
+  button.disabled = true
+  try {
+    if (mode === 'rename') {
+      await roleRequest('PUT', `/api/access/roles/${encodeURIComponent(roleId)}`, { name })
+      toast(`Rolle heißt jetzt „${name}“`)
+    } else {
+      await roleRequest('POST', '/api/access/roles', { name, copyFrom: $('#role-copy').value })
+      toast(`Rolle „${name}“ angelegt`)
+    }
+    $('#role-dialog').close()
+  } catch (err) {
+    $('#role-error').textContent = err.message
+  } finally {
+    button.disabled = false
+  }
+})
+
+$('#page-zugang').addEventListener('click', async (e) => {
+  const button = e.target.closest('[data-role-rename], [data-role-copy], [data-role-delete]')
+  const roleId = button?.closest('tr[data-role]')?.dataset.role
+  if (!roleId) return
+  if ('roleRename' in button.dataset) return openRoleDialog('rename', roleId)
+  if ('roleCopy' in button.dataset) return openRoleDialog('create', roleId)
+  const name = roleLabel(roleId)
+  if (!confirm(`Rolle „${name}“ löschen?\nSie verschwindet auch aus Kesher – mit ihren Party-Line-Rechten und Stream-Deck-Tasten.`)) return
+  try {
+    await roleRequest('DELETE', `/api/access/roles/${encodeURIComponent(roleId)}`)
+    toast(`Rolle „${name}“ gelöscht`)
+  } catch (err) {
+    alert(err.message)
+  }
 })
 
 $('#page-zugang').addEventListener('submit', async (e) => {
@@ -2891,14 +2996,6 @@ for (const dialog of document.querySelectorAll('dialog')) {
 }
 
 // Menü-Taste (☰) und Abdunklung: siehe Skript am Ende von index.html – unabhängig von diesem Modul
-
-// Sprungmarken der Einstellungen ohne die Seiten-Navigation (#/…) zu stören
-document.addEventListener('click', (e) => {
-  const a = e.target.closest('a[data-jump]')
-  if (!a) return
-  e.preventDefault()
-  document.querySelector(a.getAttribute('href'))?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-})
 
 const qrUrl = (data) => `/api/qr.svg?data=${encodeURIComponent(data)}`
 let qrTimer = null

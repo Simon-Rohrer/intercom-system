@@ -307,6 +307,9 @@ type BootstrapResponse struct {
 	Users           []User           `json:"users"`
 	AckEnabled      bool             `json:"ackEnabled"`
 	AppVersion      VersionInfo      `json:"appVersion"`
+	// CentralRoles: roles are created, renamed and deleted in the Multiview
+	// (central login of the JMS server), not in Kesher's admin.
+	CentralRoles bool `json:"centralRoles,omitempty"`
 }
 
 type PublicBootstrapResponse struct {

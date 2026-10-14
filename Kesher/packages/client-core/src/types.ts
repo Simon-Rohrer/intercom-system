@@ -191,6 +191,8 @@ export type PublicBootstrap = {
 export type Bootstrap = PublicBootstrap & {
   self: User;
   users: User[];
+  /** Roles are managed in the Multiview (central login), not here. */
+  centralRoles?: boolean;
 };
 
 export type TelegramMapping = {

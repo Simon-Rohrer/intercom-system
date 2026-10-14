@@ -9,6 +9,7 @@ const express = require('express')
 const { WebSocketServer } = require('ws')
 const { Atem } = require('atem-connection')
 const { createKesherChat } = require('./kesher-chat')
+const { createKesherRoles } = require('./kesher-roles')
 const { createChurchTools } = require('./churchtools')
 const QRCode = require('qrcode')
 const {
@@ -1604,6 +1605,65 @@ app.post('/api/access/code/renew', requireAdmin, (req, res) => {
 app.get(['/vendor/jsQR.js', '/.jms-auth/vendor/jsQR.js'], (req, res) =>
   res.set('Cache-Control', 'public, max-age=86400').sendFile(require.resolve('jsqr/dist/jsQR.js')),
 )
+
+// Admin: Rollen anlegen, umbenennen und löschen. Sie werden in Kesher gespeichert (über eine kurze
+// Admin-Sitzung mit Ticket); die Multiview-Rechte der Rolle stehen hier in config.access.roles.
+const kesherRoles = createKesherRoles({
+  getUrl: () => config.chat?.url,
+  getTicket: () => access.createTicket({ name: 'Multiview', roleId: ADMIN, admin: true }, 'kesher', AUTH_SECRET),
+})
+
+/** Kesher-Rollen gleich neu laden, damit Anmeldung und Rechte-Tabelle sie sofort kennen. */
+const refreshRoles = () => kesherChat.refresh().catch((err) => console.log(`Kesher-Chat: Rollen nicht neu geladen – ${err.message}`))
+
+const roleError = (res, err) => res.status(err.status || 400).json({ ok: false, error: err.message })
+
+app.post('/api/access/roles', requireAdmin, async (req, res) => {
+  try {
+    const copyFrom = String(req.body?.copyFrom || '')
+    const role = await kesherRoles.create({ name: req.body?.name, copyFrom })
+    // Mit Vorlage: auch die Multiview-Rechte übernehmen
+    if (copyFrom && config.access?.roles?.[copyFrom]) {
+      config.access.roles[role.id] = structuredClone(config.access.roles[copyFrom])
+      configChanged()
+    }
+    console.log(`Zugang: Rolle „${role.name}“ (${role.id}) angelegt${copyFrom ? ` als Kopie von ${copyFrom}` : ''}`)
+    await refreshRoles()
+    res.json({ ok: true, role })
+  } catch (err) {
+    roleError(res, err)
+  }
+})
+
+app.put('/api/access/roles/:id', requireAdmin, async (req, res) => {
+  try {
+    const role = await kesherRoles.rename(req.params.id, req.body?.name)
+    console.log(`Zugang: Rolle ${role.id} heißt jetzt „${role.name}“`)
+    await refreshRoles()
+    res.json({ ok: true, role })
+  } catch (err) {
+    roleError(res, err)
+  }
+})
+
+app.delete('/api/access/roles/:id', requireAdmin, async (req, res) => {
+  const id = req.params.id
+  try {
+    if (id === config.chat?.roleId) throw Object.assign(new Error('Mit dieser Rolle zeigt der Multiview den Kesher-Chat – sie bleibt'), { status: 409 })
+    const holder = access.occupiedRoles()[id]
+    if (holder) throw Object.assign(new Error(`„${holder}“ ist gerade mit dieser Rolle angemeldet – erst abmelden (Angemeldete Geräte)`), { status: 409 })
+    await kesherRoles.remove(id)
+    if (config.access?.roles?.[id]) {
+      delete config.access.roles[id]
+      configChanged()
+    }
+    console.log(`Zugang: Rolle ${id} gelöscht`)
+    await refreshRoles()
+    res.json({ ok: true })
+  } catch (err) {
+    roleError(res, err)
+  }
+})
 
 // Anmeldeseite und ihre Dateien auch unter /.jms-auth (auf der Adresse jedes Dienstes)
 app.use('/.jms-auth', require('./legacy').legacyMiddleware(path.join(__dirname, 'public')))

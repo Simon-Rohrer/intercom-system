@@ -585,8 +585,13 @@ details.disclosure.inner > summary { font-size: 13.5px; color: var(--text-2); }
   font-size: 13px;
   font-weight: 600;
 }
+.subnav a { gap: 8px; }
 .subnav a:hover { border-color: var(--accent-line); color: var(--accent-text); }
-.settings-stack > .card { scroll-margin-top: 120px; }
+.subnav a.active { background: var(--text); border-color: var(--text); color: var(--bg); }
+.subnav .status-dot { width: 7px; height: 7px; box-shadow: none; }
+.subnav a[data-state="ok"] .status-dot { background: var(--green); }
+.subnav a[data-state="bad"] .status-dot { background: var(--red); }
+.subnav a[data-state="off"] .status-dot { background: var(--line-strong); }
 
 /* ------------------------------------------------------------------ Übersicht */
 
@@ -846,6 +851,10 @@ a.status-tile:hover { border-color: var(--accent-line); }
 
 .role-table td { vertical-align: top; }
 .role-name { font-weight: 650; white-space: nowrap; }
+.role-actions { display: flex; gap: 2px; margin: 6px 0 0 -8px; }
+.role-actions .icon-btn { width: 30px; height: 30px; }
+.role-actions .icon { width: 16px; height: 16px; }
+.icon-btn.danger:hover { color: var(--red); background: var(--red-soft); }
 .chip-set { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
   display: inline-flex;

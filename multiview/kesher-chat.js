@@ -292,6 +292,14 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
       .catch(() => {})
   }, BOOTSTRAP_REFRESH_MS).unref?.()
 
+  /** Rollen und Party Lines sofort neu holen (nach einer Änderung aus dem Multiview). */
+  async function refresh() {
+    if (stopped || !token) return
+    await loadBootstrap()
+    sendRoomMatrix()
+    publish()
+  }
+
   /** Nach einer Änderung der Einstellungen aufrufen. */
   function reconfigure() {
     const next = settings()
@@ -375,7 +383,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
     throw new Error(`Kesher: ${text || `HTTP ${res.status}`}`)
   }
 
-  return { start: connect, reconfigure, stop, snapshot, verifyAdminPin, sendText }
+  return { start: connect, reconfigure, refresh, stop, snapshot, verifyAdminPin, sendText }
 }
 
 module.exports = { createKesherChat }

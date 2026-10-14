@@ -65,7 +65,7 @@
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
         </button>
         <div class="topbar-status" id="topbar-status">
-          <a href="#/einstellungen" id="atem-pill" class="pill">ATEM</a>
+          <a href="#/einstellungen/atem" id="atem-pill" class="pill">ATEM</a>
         </div>
         <div class="topbar-actions">
           <span id="save-state" class="save-state"></span>
@@ -244,16 +244,16 @@
             </div>
           </div>
 
-          <nav class="subnav" aria-label="Abschnitte">
-            <a href="#set-atem" data-jump>ATEM</a>
-            <a href="#set-pp" data-jump>ProPresenter</a>
-            <a href="#set-kesher" data-jump>Kesher-Chat</a>
-            <a href="#set-ct" data-jump>ChurchTools</a>
-            <a href="#set-companion" data-jump>Companion</a>
+          <nav class="subnav" aria-label="Bereiche der Einstellungen">
+            <a href="#/einstellungen/atem" data-section-link="atem"><span class="status-dot"></span>ATEM</a>
+            <a href="#/einstellungen/propresenter" data-section-link="propresenter"><span class="status-dot"></span>ProPresenter</a>
+            <a href="#/einstellungen/kesher" data-section-link="kesher"><span class="status-dot"></span>Kesher-Chat</a>
+            <a href="#/einstellungen/churchtools" data-section-link="churchtools"><span class="status-dot"></span>ChurchTools</a>
+            <a href="#/einstellungen/companion" data-section-link="companion">Companion</a>
           </nav>
 
           <div class="settings-stack">
-            <div class="card" id="set-atem">
+            <div class="card" id="set-atem" data-section="atem">
               <div class="card-head">
                 <div>
                   <h2>ATEM</h2>
@@ -285,7 +285,7 @@
               </details>
             </div>
 
-            <div class="card" id="set-pp">
+            <div class="card" id="set-pp" data-section="propresenter">
               <div class="card-head">
                 <div>
                   <h2>ProPresenter</h2>
@@ -310,11 +310,11 @@
               </div>
             </div>
 
-            <div class="card" id="set-kesher">
+            <div class="card" id="set-kesher" data-section="kesher">
               <div class="card-head">
                 <div>
                   <h2>Kesher-Chat</h2>
-                  <p class="muted">Der Multiview-Server meldet sich einmal mit dieser Rolle an und verteilt den Chat an alle Monitore. Von hier kommen auch die Rollen für die Anmeldung am Multiview.</p>
+                  <p class="muted">Der Multiview-Server meldet sich einmal mit dieser Rolle an und verteilt den Chat an alle Monitore. Über diese Verbindung kommen auch die Rollen für die Anmeldung – angelegt werden sie unter <a href="#/zugang">Benutzer &amp; Rechte</a> und dann in Kesher gespeichert.</p>
                 </div>
               </div>
               <div class="form-grid">
@@ -331,7 +331,7 @@
               <div id="chat-status" class="atem-status"></div>
             </div>
 
-            <div class="card" id="set-ct">
+            <div class="card" id="set-ct" data-section="churchtools">
               <div class="card-head">
                 <div>
                   <h2>ChurchTools</h2>
@@ -361,7 +361,7 @@
               <div id="ct-events"></div>
             </div>
 
-            <div class="card" id="set-companion">
+            <div class="card" id="set-companion" data-section="companion">
               <div class="card-head">
                 <div>
                   <h2>Companion</h2>
@@ -388,9 +388,10 @@
               <div class="card-head">
                 <div>
                   <h2>Rollen</h2>
-                  <p class="muted">Die Rollen kommen aus Kesher. Neue Rollen in Kesher erscheinen hier automatisch. Der Admin sieht und darf immer alles.</p>
+                  <p class="muted">Rollen legst du hier an, benennst sie um oder löschst sie – Kesher übernimmt sie sofort. Auf welchen Party Lines eine Rolle spricht und hört, stellst du weiter im Kesher-Admin ein. Der Admin sieht und darf immer alles.</p>
                   <p class="muted"><b>Sehen</b>: Der Multiview erscheint in der Übersicht und auf dem Handy – mit Live-Bild, ohne Umschalten. <b>Bearbeiten</b>: zusätzlich Layout umschalten und das laufende Layout im Layout-Editor ändern. <b>Neue Layouts anlegen</b>: eigene Layouts erstellen und kopieren.</p>
                 </div>
+                <button class="btn primary small" type="button" id="role-new">+ Neue Rolle</button>
               </div>
               <div id="access-roles"></div>
             </div>
@@ -446,6 +447,27 @@
       </label>
       <div class="btn-row"><button class="btn primary" type="submit">Als Admin anmelden</button></div>
       <p class="form-error" id="admin-error"></p>
+    </form>
+  </dialog>
+
+  <!-- Rolle anlegen oder umbenennen -->
+  <dialog id="role-dialog" class="dialog small">
+    <form method="dialog" class="dialog-head">
+      <h2 id="role-dialog-title">Neue Rolle</h2>
+      <button class="icon-btn" aria-label="Schließen" value="close">
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </form>
+    <p class="muted" id="role-dialog-lead"></p>
+    <form id="role-form" class="auth-form" autocomplete="off">
+      <label class="field"><span>Name</span>
+        <input type="text" id="role-name" maxlength="60" placeholder="z. B. Licht 2" required>
+      </label>
+      <label class="field" id="role-copy-field"><span>Rechte übernehmen von</span>
+        <select id="role-copy"></select>
+      </label>
+      <div class="btn-row"><button class="btn primary" type="submit" id="role-submit">Anlegen</button></div>
+      <p class="form-error" id="role-error"></p>
     </form>
   </dialog>
 

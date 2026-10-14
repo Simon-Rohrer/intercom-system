@@ -4706,6 +4706,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request, session
 		Users:           users,
 		AckEnabled:      s.isAckEnabled(),
 		AppVersion:      GetVersionInfo(),
+		CentralRoles:    s.cfg.JMSAuthSecret != "",
 	})
 }
 

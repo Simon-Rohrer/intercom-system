@@ -126,7 +126,7 @@ Ein am Server angeschlossener Bildschirm kann den Kesher-Chat dauerhaft anzeigen
 
 Andere Dienste bleiben unberührt: Docker, Kesher, Caddy, Companion und SSH werden weder geändert noch neu gestartet. Die Anzeige läuft mit niedriger Priorität und höchstens 1,5 GB Arbeitsspeicher. Eine Konsole bleibt am Server über `Strg+Alt+F2` erreichbar.
 
-1. In Kesher im Admin-Bereich eine Rolle mit der ID `chat-monitor` anlegen und auf allen Party Lines als Empfänger eintragen. Ohne Empfangsrecht zeigt die Anzeige nur globale und direkte Nachrichten.
+1. Eine Rolle mit der ID `chat-monitor` anlegen (Multiview → *Benutzer & Rechte* → *+ Neue Rolle*, Name „Chat-Monitor“; ohne `JMS_AUTH_SECRET` im Kesher-Admin) und in Kesher auf allen Party Lines als Empfänger eintragen. Ohne Empfangsrecht zeigt die Anzeige nur globale und direkte Nachrichten.
 2. Auf dem Server installieren:
 
 ```sh
@@ -235,4 +235,5 @@ Wer über das WLAN (Handy, iPad, Laptop) auf Intercom, Dashboard oder die Techni
 - **Feste Geräte ohne Code:** Raspberry Pis, Kesher-Stationen, Kesher-Desktop-App und andere Geräte, die keinen Code eingeben können, **vor dem Einschalten** als Adresse oder Bereich eintragen (z. B. `192.168.0.50` oder `192.168.0.0/24`). Sie kommen ohne Code und Anmeldung an Intercom und Dashboard, an die Admin-Dienste nur mit Admin-Anmeldung. Der Server selbst (Kiosk, Companion, Multiview → Kesher) ist immer frei.
 - **Abmelden:** in Kesher über „Abmelden“, im Dashboard über *Konto → Abmelden*. Das meldet auf allen Diensten ab; die Freischaltung mit dem Code bleibt für den Tag.
 - **Technik:** Caddy fragt vor jeder Anfrage an einen Dienst den Multiview (`forward_auth` auf `/.jms-auth/check`, Baustein `jms_auth` in `Caddyfile.jms`), `/.jms-auth/*` geht auf jeder Adresse zum Multiview (Anmeldeseite). Jede Adresse (IP, `.local`, `.jms.de`) hat ihr eigenes Anmelde-Cookie. Kesher erkennt den Admin an einem signierten Ticket: In `Kesher/deploy/compose/.env` und `multiview/.env` muss derselbe Wert `JMS_AUTH_SECRET=` stehen, z. B. erzeugt mit `openssl rand -hex 32`. Ohne ihn meldet sich der Admin in Kesher weiter mit der Kesher-PIN an.
+- **Rollen:** werden im Multiview unter *Benutzer & Rechte* angelegt, umbenannt (die ID bleibt) und gelöscht; der Multiview speichert sie über ein Ticket sofort in Kesher. Mit „Rechte übernehmen von“ bekommt eine neue Rolle Party Lines, Stream-Deck-Tasten und Multiview-Rechte einer bestehenden. Beim Löschen gehen die Kesher-Benutzereinträge der Rolle mit; solange jemand mit ihr angemeldet oder in Kesher verbunden ist, geht es nicht. Im Kesher-Admin stellt man dann nur noch Party Lines und Standardwerte der Rolle ein. Braucht `JMS_AUTH_SECRET` wie oben.
 - **Telegram:** im Modus `polling` (Standard) nicht betroffen.

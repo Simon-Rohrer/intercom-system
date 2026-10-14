@@ -41,7 +41,9 @@ function nextDuplicateRoleIdentity(
 ): Pick<RoleEditorState, "id" | "name"> {
   const { base: nameBase } = splitRoleNameSequence(source.name);
   const idBase = duplicateRoleIdBase(source.id);
-  const usedNames = new Set(roles.map((role) => role.name.trim().toLowerCase()));
+  const usedNames = new Set(
+    roles.map((role) => role.name.trim().toLowerCase()),
+  );
   const usedIds = new Set(roles.map((role) => role.id.trim().toLowerCase()));
   let nextNumber = 2;
 
@@ -72,6 +74,9 @@ export function AdminRolesCard({
   refreshBootstrapData,
 }: AdminRolesCardProps) {
   const [isOpen, setIsOpen] = useAdminCardOpenState();
+  // JMS server: roles are created, renamed and deleted in the Multiview
+  // (Benutzer & Rechte); here only their Kesher defaults are edited
+  const central = !!appData.centralRoles;
   const [roleEditor, setRoleEditor] = useState<RoleEditorState | null>(null);
   const roleEditorTrigger = useRef<HTMLElement | null>(null);
   const {
@@ -214,15 +219,24 @@ export function AdminRolesCard({
           <div className="admin-block">
             <div className="admin-block-header">
               <h4>Rollen ({appData.roles.length})</h4>
-              <button
-                type="button"
-                className="secondary"
-                onClick={openCreateRole}
-                disabled={adminBusy}
-              >
-                + Neue Rolle
-              </button>
+              {central ? null : (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={openCreateRole}
+                  disabled={adminBusy}
+                >
+                  + Neue Rolle
+                </button>
+              )}
             </div>
+            {central ? (
+              <p className="admin-block-subtitle">
+                Rollen werden im Multiview unter „Benutzer &amp; Rechte“
+                angelegt, umbenannt und gelöscht. Hier stellst du nur ihre
+                Standardwerte in Kesher ein.
+              </p>
+            ) : null}
             {adminError && !roleEditor ? (
               <p className="admin-error">{adminError}</p>
             ) : null}
@@ -233,20 +247,22 @@ export function AdminRolesCard({
                     {role.name} <small>({role.id})</small>
                   </span>
                   <div className="admin-role-list-actions">
-                    <button
-                      type="button"
-                      className="secondary admin-role-duplicate"
-                      aria-label={`Duplicate role ${role.name}`}
-                      title={`Duplicate ${role.name}`}
-                      disabled={adminBusy}
-                      onClick={() => openDuplicateRole(role)}
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <rect x="8" y="8" width="11" height="11" rx="2" />
-                        <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
-                      </svg>
-                      <span>Duplizieren</span>
-                    </button>
+                    {central ? null : (
+                      <button
+                        type="button"
+                        className="secondary admin-role-duplicate"
+                        aria-label={`Duplicate role ${role.name}`}
+                        title={`Duplicate ${role.name}`}
+                        disabled={adminBusy}
+                        onClick={() => openDuplicateRole(role)}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <rect x="8" y="8" width="11" height="11" rx="2" />
+                          <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+                        </svg>
+                        <span>Duplizieren</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       disabled={adminBusy}
@@ -254,14 +270,16 @@ export function AdminRolesCard({
                     >
                       Bearbeiten
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => removeRoleConfig(role.id)}
-                      disabled={adminBusy}
-                      className="delete"
-                    >
-                      Löschen
-                    </button>
+                    {central ? null : (
+                      <button
+                        type="button"
+                        onClick={() => removeRoleConfig(role.id)}
+                        disabled={adminBusy}
+                        className="delete"
+                      >
+                        Löschen
+                      </button>
+                    )}
                   </div>
                 </li>
               ))}
@@ -287,9 +305,7 @@ export function AdminRolesCard({
             <header className="admin-role-modal-header">
               <div>
                 <h3 id="admin-role-modal-title">{roleEditorTitle}</h3>
-                <p id="admin-role-modal-description">
-                  {roleEditorDescription}
-                </p>
+                <p id="admin-role-modal-description">{roleEditorDescription}</p>
               </div>
               <button
                 type="button"
@@ -334,7 +350,13 @@ export function AdminRolesCard({
                       updateRoleEditor({ name: event.target.value })
                     }
                     placeholder="Role name"
-                    autoFocus={roleEditor.mode === "edit"}
+                    autoFocus={roleEditor.mode === "edit" && !central}
+                    readOnly={central && roleEditor.mode === "edit"}
+                    title={
+                      central
+                        ? "Umbenennen im Multiview unter „Benutzer & Rechte“"
+                        : undefined
+                    }
                     required
                   />
                 </label>
@@ -361,9 +383,7 @@ export function AdminRolesCard({
                     onChange={(event) =>
                       updateRoleEditor({
                         defaultVoiceMode: event.target.value as
-                          | "always_on"
-                          | "ptt"
-                          | "",
+                          "always_on" | "ptt" | "",
                       })
                     }
                   >

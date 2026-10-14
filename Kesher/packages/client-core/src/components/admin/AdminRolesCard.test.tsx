@@ -7,9 +7,7 @@ import { createRole, duplicateRole, updateRole } from "../../api";
 
 vi.mock("../../api", () => ({
   createRole: vi.fn().mockResolvedValue(undefined),
-  duplicateRole: vi
-    .fn()
-    .mockResolvedValue({ id: "op-2", name: "Operator 2" }),
+  duplicateRole: vi.fn().mockResolvedValue({ id: "op-2", name: "Operator 2" }),
   updateRole: vi.fn().mockResolvedValue(undefined),
   deleteRole: vi.fn().mockResolvedValue(undefined),
 }));
@@ -157,18 +155,13 @@ describe("AdminRolesCard", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
-      expect(duplicateRole).toHaveBeenCalledWith(
-        "token-123",
-        "1234",
-        "op",
-        {
-          id: "op-2",
-          name: "Operator Backup",
-          defaultRoomId: "",
-          defaultVoiceMode: "always_on",
-          defaultSimpleView: false,
-        },
-      );
+      expect(duplicateRole).toHaveBeenCalledWith("token-123", "1234", "op", {
+        id: "op-2",
+        name: "Operator Backup",
+        defaultRoomId: "",
+        defaultVoiceMode: "always_on",
+        defaultSimpleView: false,
+      });
     });
     expect(refreshBootstrapData).toHaveBeenCalledTimes(1);
   });
@@ -198,10 +191,37 @@ describe("AdminRolesCard", () => {
     expect(createRole).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "+ Neue Rolle" }));
-    await user.click(
-      screen.getByRole("button", { name: "Close role dialog" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Close role dialog" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(createRole).not.toHaveBeenCalled();
+  });
+
+  it("leaves creating, duplicating and deleting roles to the Multiview", async () => {
+    const user = userEvent.setup();
+    render(
+      <AdminRolesCard
+        token="token-123"
+        adminPin="1234"
+        appData={{ ...appData, centralRoles: true }}
+        refreshBootstrapData={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
+    expect(
+      screen.getByText(/im Multiview unter „Benutzer & Rechte“/),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "+ Neue Rolle" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Duplicate role/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Löschen" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Bearbeiten" }));
+    expect(screen.getByLabelText("Role name")).toHaveAttribute("readonly");
   });
 });
