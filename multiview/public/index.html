@@ -336,7 +336,7 @@
               <div class="card-head">
                 <div>
                   <h2>Kesher-Chat</h2>
-                  <p class="muted">Der Multiview-Server meldet sich einmal mit dieser Rolle an und verteilt den Chat an alle Monitore. Über diese Verbindung kommen auch die Rollen für die Anmeldung – angelegt werden sie unter <a href="#/zugang">Benutzer &amp; Rechte</a> und dann in Kesher gespeichert.</p>
+                  <p class="muted">Der Multiview-Server meldet sich einmal mit dieser Rolle an und verteilt den Chat an alle Monitore. Über diese Verbindung kommen auch die Rollen für die Anmeldung – angelegt werden sie unter <a href="#/zugang/rollen">Benutzer &amp; Rechte</a> und dann in Kesher gespeichert.</p>
                 </div>
               </div>
               <div class="form-grid">
@@ -403,10 +403,15 @@
               <p class="lead">Wie bei Kesher: Man meldet sich mit Namen und Rolle an. Pro Rolle legst du fest, welche Multiviews sie sieht und ob sie ihre Layouts selbst einrichten darf.</p>
             </div>
           </div>
+          <nav class="subnav" aria-label="Bereiche von Benutzer &amp; Rechte">
+            <a href="#/zugang/rollen" data-section-link="rollen">Rollen</a>
+            <a href="#/zugang/anmeldung" data-section-link="anmeldung">Anmeldung &amp; Admin-PIN</a>
+            <a href="#/zugang/dienste" data-section-link="dienste">Anmeldung für alle Dienste</a>
+          </nav>
           <div class="settings-stack">
-            <div class="card" id="access-pin-card"></div>
-            <div class="card" id="access-gateway-card"></div>
-            <div class="card">
+            <div class="card" id="access-pin-card" data-section="anmeldung"></div>
+            <div class="card" id="access-gateway-card" data-section="dienste"></div>
+            <div class="card" data-section="rollen">
               <div class="card-head">
                 <div>
                   <h2>Rollen</h2>

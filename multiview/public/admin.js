@@ -24,6 +24,8 @@ const PAGES = ['uebersicht', 'eingaenge', 'layouts', 'einstellungen', 'zugang']
 const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'zugang']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
 const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'companion', 'bildschirme', 'geraete']
+// Unterseiten von Benutzer & Rechte: #/zugang/rollen …
+const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste']
 const SOURCE_TYPES = {
   device: 'Capture-Gerät',
   stream: 'Netzwerk-Stream',
@@ -222,10 +224,11 @@ function showPage() {
   const [requested, sub] = location.hash.replace(/^#\/?/, '').split('/')
   page = PAGES.includes(requested) && (isAdmin() || !ADMIN_PAGES.includes(requested)) ? requested : 'uebersicht'
   for (const p of PAGES) $(`#page-${p}`).hidden = p !== page
-  if (page === 'einstellungen') {
-    const section = SETTINGS_SECTIONS.includes(sub) ? sub : SETTINGS_SECTIONS[0]
-    document.querySelectorAll('#page-einstellungen [data-section]').forEach((el) => (el.hidden = el.dataset.section !== section))
-    document.querySelectorAll('[data-section-link]').forEach((a) => {
+  const sectionsOf = { einstellungen: SETTINGS_SECTIONS, zugang: ZUGANG_SECTIONS }[page]
+  if (sectionsOf) {
+    const section = sectionsOf.includes(sub) ? sub : sectionsOf[0]
+    document.querySelectorAll(`#page-${page} [data-section]`).forEach((el) => (el.hidden = el.dataset.section !== section))
+    document.querySelectorAll(`#page-${page} [data-section-link]`).forEach((a) => {
       a.classList.toggle('active', a.dataset.sectionLink === section)
       if (a.dataset.sectionLink === section) a.setAttribute('aria-current', 'page')
       else a.removeAttribute('aria-current')
@@ -2383,7 +2386,7 @@ function renderUserCard() {
   if (user?.open) {
     card.innerHTML = `<div class="avatar" style="background:var(--amber)">!</div>
       <div class="user-meta"><b>Zugang offen</b><span>Ohne Anmeldung – alle dürfen alles</span></div>
-      <a class="icon-btn" href="#/zugang" title="Admin-PIN festlegen" aria-label="Admin-PIN festlegen">
+      <a class="icon-btn" href="#/zugang/anmeldung" title="Admin-PIN festlegen" aria-label="Admin-PIN festlegen">
         <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></a>`
     return
   }
