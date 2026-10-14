@@ -1262,6 +1262,9 @@ const access = createAccess({
   log: console.log,
   // Admin-PIN wie im Kesher-Admin: Kesher prüft sie
   verifyKesherPin: (pin) => kesherChat.verifyAdminPin(pin),
+  // Eine Rolle nur einmal – auch gegenüber Geräten, die direkt bei Kesher angemeldet sind
+  kesherActiveRoles: () => kesherChat.activeRoleIds(),
+  releaseKesherRole: (roleId, name) => kesherChat.releaseRole(roleId, name),
   isLive: (id) => [...wss.clients].some((ws) => ws.readyState === 1 && ws.sessionId === id),
   // Geräteadresse für die Liste der Anmeldungen (clientIp ist weiter unten definiert, wird erst bei Anfragen aufgerufen)
   ipOf: (req) => (req?.socket ? clientIp(req).replace(/^::ffff:/, '') : ''),
@@ -1373,8 +1376,8 @@ app.get(['/api/me', '/.jms-auth/api/me'], (req, res) => {
   })
 })
 
-app.get(['/api/login/roles', '/.jms-auth/api/login/roles'], (req, res) =>
-  res.json({ enabled: access.enabled(), roles: loginRoles(), occupied: access.occupiedRoles() }),
+app.get(['/api/login/roles', '/.jms-auth/api/login/roles'], async (req, res) =>
+  res.set('Cache-Control', 'no-store').json({ enabled: access.enabled(), roles: loginRoles(), occupied: await access.occupiedForLogin(req) }),
 )
 
 app.post(['/api/login', '/.jms-auth/api/login'], async (req, res) => {

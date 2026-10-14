@@ -10,6 +10,7 @@
 // die Konfiguration ist für die Monitor-Seiten ohne Anmeldung lesbar.
 
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
 
@@ -26,6 +27,8 @@ const CODE_FAIL_WINDOW_MS = 15 * 60 * 1000
 // Eine Rolle gilt als belegt, solange eine Seite von ihr offen ist (WebSocket) oder sie so
 // kurz zuvor noch etwas abgefragt hat
 const ACTIVE_MS = 2 * 60 * 1000
+// So steht eine direkt in Kesher angemeldete Rolle auf der Anmeldeseite
+const KESHER_HOLDER = 'in Kesher'
 const ADMIN = 'admin'
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex')
@@ -136,6 +139,17 @@ function ipInNetworks(ip, networks) {
 
 const isLoopback = (ip) => /^(127\.|::1$|::ffff:127\.)/.test(String(ip ?? ''))
 
+/**
+ * Eine eigene Adresse des Servers? Der Multiview läuft mit network_mode host, sieht also alle
+ * Netzwerkkarten. Was der Server selbst über Caddy anfragt (Companion → https://192.168.0.21:8443),
+ * kommt mit seiner LAN-Adresse an, nicht als Loopback.
+ */
+function isOwnAddress(ip) {
+  const addr = String(ip ?? '').replace(/^::ffff:/i, '').replace(/%.*$/, '').toLowerCase()
+  if (!addr) return false
+  return Object.values(os.networkInterfaces()).some((list) => (list ?? []).some((i) => i.address.toLowerCase() === addr))
+}
+
 function normalizeGateway(g) {
   const exempt = (Array.isArray(g?.exempt) ? g.exempt : [])
     .map((e) => ({ network: String(e?.network ?? e ?? '').trim(), label: String(e?.label ?? '').trim().slice(0, 60) }))
@@ -148,7 +162,20 @@ function normalizeGateway(g) {
   }
 }
 
-function createAccess({ dataDir, log = console.log, verifyKesherPin = async () => false, isLive = () => false, onRevoke = () => {}, ipOf = () => '' }) {
+/**
+ * kesherActiveRoles: Rollen, die in Kesher gerade an einem Gerät angemeldet sind.
+ * releaseKesherRole(roleId, name): die Rolle dort freigeben (meldet das andere Gerät ab).
+ */
+function createAccess({
+  dataDir,
+  log = console.log,
+  verifyKesherPin = async () => false,
+  isLive = () => false,
+  onRevoke = () => {},
+  kesherActiveRoles = async () => [],
+  releaseKesherRole = async () => {},
+  ipOf = () => '',
+}) {
   const file = path.join(dataDir, 'access-secret.json')
   // { adminPin: { salt, hash } | { kesher: true }, sessions: { sha256(token): session },
   //   gateway: { enabled, exempt, startUrl }, dayCode: { day, code, gen, prevGen },
@@ -274,6 +301,26 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
     return out
   }
 
+  /** Rollen in Kesher – ist Kesher nicht erreichbar, hält das die Anmeldung nicht auf. */
+  async function rolesInKesher() {
+    try {
+      return new Set(await kesherActiveRoles())
+    } catch {
+      return new Set()
+    }
+  }
+
+  /**
+   * Belegte Rollen für die Anmeldeseite, auch die direkt in Kesher angemeldeten (feste Stationen
+   * ohne zentrale Anmeldung). Die eigene Rolle dieses Browsers nicht – die hält ja er selbst.
+   */
+  async function occupiedForLogin(req) {
+    const out = occupiedRoles()
+    const ownRole = sessionOf(req)?.roleId
+    for (const roleId of await rolesInKesher()) if (!out[roleId] && roleId !== ownRole) out[roleId] = KESHER_HOLDER
+    return out
+  }
+
   function endSessions(list, why) {
     if (!list.length) return
     const ids = list.map((s) => s.id)
@@ -293,6 +340,7 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
 
     // Eine Rolle nur einmal: wie bei Kesher ablehnen oder (auf Wunsch) übernehmen
     const own = parseCookies(req.headers.cookie)[COOKIE]
+    const ownRole = own ? secret.sessions[sha256(own)]?.roleId : null
     if (own) delete secret.sessions[sha256(own)] // eigene alte Anmeldung in diesem Browser
     if (!admin) {
       const holders = holdersOf(roleId)
@@ -303,6 +351,18 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
           status: 409,
           holder: { name: who.name, seen: who.seen },
         })
+      }
+      // Hier hat sie niemand – vielleicht aber ein Gerät direkt in Kesher (ohne zentrale Anmeldung).
+      // Hatte dieser Browser die Rolle schon, ist das seine eigene Kesher-Seite.
+      const inKesher = !active.length && ownRole !== roleId && (await rolesInKesher()).has(roleId)
+      if (inKesher && !takeover)
+        throw Object.assign(new Error('Die Rolle ist schon angemeldet – direkt in Kesher.'), {
+          status: 409,
+          holder: { name: KESHER_HOLDER, kesher: true },
+        })
+      if (inKesher) {
+        await releaseKesherRole(roleId, cleanName)
+        log(`Zugang: ${cleanName} übernimmt die Rolle ${roleId} von einem Gerät in Kesher`)
       }
       // Übernehmen bzw. alte, nicht mehr aktive Anmeldungen derselben Rolle aufräumen
       endSessions(holders, active.length ? `übernommen von ${cleanName}` : 'abgelaufen')
@@ -497,7 +557,7 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
    * login: erst Name + Rolle. forbidden: angemeldet, aber nicht Admin.
    */
   /** Feste Geräte aus der Liste (und der Server selbst) brauchen keinen Tagescode. */
-  const exemptIp = (ip) => isLoopback(ip) || ipInNetworks(ip, secret.gateway.exempt.map((e) => parseNetwork(e.network)))
+  const exemptIp = (ip) => isLoopback(ip) || isOwnAddress(ip) || ipInNetworks(ip, secret.gateway.exempt.map((e) => parseNetwork(e.network)))
 
   /** Muss dieses Gerät den Tagescode eingeben, und hat es das schon? */
   function deviceStatus(ip, req) {
@@ -541,7 +601,7 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
   }
 
   return {
-    enabled, pinSource, userOf, sessionIdOf, occupiedRoles, login, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession,
+    enabled, pinSource, userOf, sessionIdOf, occupiedRoles, occupiedForLogin, login, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession,
     gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, approveDevice, check, trusted, createTicket,
     flush: write,
   }
