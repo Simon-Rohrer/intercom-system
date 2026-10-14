@@ -218,7 +218,11 @@ Ziel: Alle Weboberflächen unter `https://192.168.0.21:<gewohnter Port>`. Caddy 
 
 Die bisherigen Namens-Adressen (`kesher.jms.de`, `dashboard.jms.de`, `companion.jms.de`, … sowie `*.local`) bleiben erhalten; neu ist `multiview.jms.de` / `multiview.local`.
 
-Vorlage: `Kesher/server-config/Caddyfile.jms` (aufgebaut auf der aktiven Server-Konfiguration vom 12.10.2026, mit `caddy adapt --validate` auf dem Server geprüft). Umsetzung vor Ort, in dieser Reihenfolge (sonst ist ein Port doppelt belegt):
+Vorlage: `Kesher/server-config/Caddyfile.jms` (aufgebaut auf der aktiven Server-Konfiguration vom 12.10.2026, mit `caddy adapt --validate` auf dem Server geprüft).
+
+**Stand 14.10.2026: auf dem JMS-Server umgesetzt.** Sicherung unter `~/backups/20261014-165617-https-zentrale-anmeldung`. Companion lauscht über `--admin-address 127.0.0.1` in `/usr/local/src/companionpi/launch.sh` nur lokal (nach einem CompanionPi-Update prüfen, ob die Option noch drin ist, sonst startet die Companion-Oberfläche nicht). HTTP/3 ist auf den Port-Adressen aus (`protocols h1 h2`), weil Caddy sonst UDP auf denselben Ports belegt – UDP 8000 braucht MediaMTX im Multiview. Beim ersten Umstellen geht `systemctl reload caddy` nicht (Adressen wechseln), dann einmal `systemctl restart caddy`.
+
+Umsetzung vor Ort, in dieser Reihenfolge (sonst ist ein Port doppelt belegt):
 
 1. Sicherung: `/etc/caddy/Caddyfile`, Compose-Dateien in `/opt/homelab/compose`, Companion-Konfiguration.
 2. Dienste auf `127.0.0.1` umstellen: Homepage-Compose `127.0.0.1:3000:3000`, Portainer-Compose `127.0.0.1:9443:9443`, Glances, Companion (Admin-Oberfläche nur lokal), Multiview (in `multiview/docker-compose.yml` die Zeile `HOST: "127.0.0.1"` einkommentieren, dann `docker compose up -d`).
