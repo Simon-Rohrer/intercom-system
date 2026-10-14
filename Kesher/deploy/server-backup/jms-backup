@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+# Sicherung des JMS-Servers.
+#
+#   sudo jms-backup            Vollsicherung als Ordner unter /home/master/backups/full-<Datum>
+#                              (zum Kopieren auf den Mac, wie bisher)
+#   sudo jms-backup --cloud    Sicherung verschlüsselt nach Google Drive (restic über rclone),
+#                              danach Aufräumen: 7 tägliche + 4 wöchentliche bleiben.
+#                              Läuft jede Nacht über jms-backup-cloud.timer.
+#   sudo jms-backup --list     Sicherungen in Google Drive anzeigen
+#   sudo jms-backup --restore <Ziel>   neueste Cloud-Sicherung nach <Ziel> holen
+#
+# Kesher und Companion sind während des Kopierens der Daten ca. 1 Minute aus.
+set -euo pipefail
+
+CONFIG_FILE="${JMS_BACKUP_CONFIG:-/etc/jms-backup/cloud.env}"
+BACKUP_DIR="${JMS_BACKUP_DIR:-/home/master/backups}"
+STAGE="${JMS_BACKUP_STAGE:-/var/lib/jms-backup/stage}"
+INTERCOM_DIR="${JMS_INTERCOM_DIR:-/home/master/intercom-system}"
+KEEP_DAILY=7
+KEEP_WEEKLY=4
+
+SYSTEM_PATHS=(
+  /etc/caddy /etc/netplan /etc/wireguard /etc/kesher /etc/pam.d/kesher-chat-kiosk
+  /etc/systemd/system /etc/chromium/policies/managed /etc/chromium-browser/policies/managed
+  /opt/homelab/compose /opt/homelab/config /usr/local/sbin/jms-backup
+)
+COMPANION_PATHS=(
+  /home/companion/.config/companion-nodejs
+  /opt/companion-module-dev/companion-module-kesher
+)
+
+MODE="local"
+RESTORE_TARGET=""
+case "${1:-}" in
+  "") ;;
+  --cloud) MODE="cloud" ;;
+  --list) MODE="list" ;;
+  --restore)
+    MODE="restore"
+    RESTORE_TARGET="${2:-}"
+    [[ -n "${RESTORE_TARGET}" ]] || { echo "Ziel fehlt: jms-backup --restore /home/master/restore" >&2; exit 1; }
+    ;;
+  *) echo "Unbekannte Option: $1" >&2; exit 1 ;;
+esac
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "Bitte mit sudo ausführen." >&2
+  exit 1
+fi
+
+existing() {
+  local path
+  for path in "$@"; do
+    [[ -e "${path}" ]] && printf '%s\n' "${path}"
+  done
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Cloud-Einstellungen (restic-Repository, Passwort, rclone, Telegram)
+# ---------------------------------------------------------------------------
+load_cloud_config() {
+  if [[ ! -r "${CONFIG_FILE}" ]]; then
+    echo "${CONFIG_FILE} fehlt – erst install-backup.sh ausführen." >&2
+    exit 1
+  fi
+  # shellcheck source=/dev/null
+  source "${CONFIG_FILE}"
+  export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE RCLONE_CONFIG
+  : "${RESTIC_REPOSITORY:?RESTIC_REPOSITORY fehlt in ${CONFIG_FILE}}"
+  : "${RESTIC_PASSWORD_FILE:?RESTIC_PASSWORD_FILE fehlt in ${CONFIG_FILE}}"
+}
+
+notify() {
+  [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]] || return 0
+  curl -fsS --max-time 15 "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+    --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+    --data-urlencode "text=$1" >/dev/null || echo "Telegram-Meldung konnte nicht gesendet werden." >&2
+}
+
+if [[ "${MODE}" == "list" ]]; then
+  load_cloud_config
+  exec restic snapshots
+fi
+if [[ "${MODE}" == "restore" ]]; then
+  load_cloud_config
+  mkdir -p "${RESTORE_TARGET}"
+  restic restore latest --target "${RESTORE_TARGET}"
+  echo "Wiederhergestellt nach ${RESTORE_TARGET} (Daten unter ${RESTORE_TARGET}${STAGE})."
+  exit 0
+fi
+
+[[ "${MODE}" == "cloud" ]] && load_cloud_config
+
+# Nie zwei Sicherungen gleichzeitig (Timer und Handstart)
+exec 9>/run/jms-backup.lock
+flock -n 9 || { echo "Es läuft bereits eine Sicherung." >&2; exit 1; }
+
+STEP="Vorbereitung"
+SERVICES_STOPPED="false"
+start_services() {
+  if [[ "${SERVICES_STOPPED}" == "true" ]]; then
+    docker start kesher >/dev/null || true
+    systemctl start companion || true
+    SERVICES_STOPPED="false"
+    echo "==> Kesher und Companion laufen wieder"
+  fi
+}
+on_exit() {
+  local rc=$?
+  start_services
+  rm -rf "${STAGE}"
+  if [[ "${rc}" -ne 0 && "${MODE}" == "cloud" ]]; then
+    notify "JMS-Server: Cloud-Backup fehlgeschlagen (${STEP}). Details: journalctl -u jms-backup-cloud"
+  fi
+  exit "${rc}"
+}
+trap on_exit EXIT
+
+# ---------------------------------------------------------------------------
+# 1. Daten bei angehaltenem Kesher/Companion kopieren (saubere Datenbank)
+# ---------------------------------------------------------------------------
+rm -rf "${STAGE}"
+mkdir -p "${STAGE}/volumes" "${STAGE}/companion"
+chmod 700 "${STAGE}"
+
+STEP="Kesher und Companion anhalten"
+echo "==> Kesher und Companion kurz anhalten (saubere Datenbank-Kopie)"
+SERVICES_STOPPED="true"
+docker stop kesher >/dev/null || true
+systemctl stop companion || true
+
+STEP="Docker-Volumes kopieren"
+echo "==> Docker-Volumes"
+for volume in $(docker volume ls -q); do
+  docker run --rm -v "${volume}":/data:ro -v "${STAGE}/volumes":/out alpine:3.21 \
+    sh -c "mkdir -p '/out/${volume}' && cp -a /data/. '/out/${volume}/'"
+done
+
+STEP="Companion kopieren"
+mapfile -t companion_paths < <(existing "${COMPANION_PATHS[@]}")
+for path in "${companion_paths[@]}"; do
+  mkdir -p "${STAGE}/companion$(dirname "${path}")"
+  cp -a "${path}" "${STAGE}/companion${path}"
+done
+
+start_services
+
+STEP="Kesher-Quellstand"
+{ git -C "${INTERCOM_DIR}" branch --show-current; git -C "${INTERCOM_DIR}" rev-parse HEAD; } \
+  >"${STAGE}/kesher-version.txt"
+git -C "${INTERCOM_DIR}" diff >"${STAGE}/kesher-lokale-aenderungen.patch"
+
+mapfile -t system_paths < <(existing "${SYSTEM_PATHS[@]}")
+
+# ---------------------------------------------------------------------------
+# 2a. Vollsicherung als Ordner (zum Kopieren auf den Mac)
+# ---------------------------------------------------------------------------
+if [[ "${MODE}" == "local" ]]; then
+  STEP="Vollsicherung schreiben"
+  OUT="${BACKUP_DIR}/full-$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "${OUT}/volumes"
+  for dir in "${STAGE}/volumes"/*/; do
+    [[ -d "${dir}" ]] || continue
+    tar czf "${OUT}/volumes/$(basename "${dir}").tgz" -C "${dir}" .
+  done
+  tar czf "${OUT}/companion.tgz" -C "${STAGE}/companion" .
+  tar czf "${OUT}/system.tgz" --ignore-failed-read "${system_paths[@]}" 2>/dev/null
+  tar czf "${OUT}/intercom-system.tgz" --exclude=node_modules \
+    -C "$(dirname "${INTERCOM_DIR}")" "$(basename "${INTERCOM_DIR}")"
+  cp "${STAGE}/kesher-version.txt" "${STAGE}/kesher-lokale-aenderungen.patch" "${OUT}/"
+  chown -R master:master "${OUT}" 2>/dev/null || true
+  du -sh "${OUT}"
+  echo "Fertig: ${OUT}"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# 2b. Cloud: verschlüsselt hochladen (nur Änderungen), dann aufräumen
+# ---------------------------------------------------------------------------
+STEP="Hochladen nach Google Drive"
+echo "==> Hochladen (${RESTIC_REPOSITORY})"
+restic backup --host server --tag nightly \
+  --exclude node_modules --exclude-caches \
+  "${STAGE}" "${system_paths[@]}" "${INTERCOM_DIR}"
+
+STEP="Alte Sicherungen löschen"
+echo "==> Aufräumen: ${KEEP_DAILY} tägliche + ${KEEP_WEEKLY} wöchentliche behalten"
+restic forget --host server --keep-daily "${KEEP_DAILY}" --keep-weekly "${KEEP_WEEKLY}" --prune
+
+# Sonntags einen Teil der hochgeladenen Daten zurücklesen und prüfen
+if [[ "$(date +%u)" == "7" ]]; then
+  STEP="Prüfung der Sicherungen"
+  echo "==> Prüfung (10 % der Daten)"
+  restic check --read-data-subset=10%
+fi
+
+STEP="fertig"
+echo "Fertig: Cloud-Backup $(date '+%d.%m.%Y %H:%M')"
+if [[ "${NOTIFY_SUCCESS:-false}" == "true" ]]; then
+  notify "JMS-Server: Cloud-Backup erfolgreich ($(date '+%d.%m.%Y %H:%M'))."
+fi

@@ -1,0 +1,12 @@
+[Unit]
+Description=JMS-Server: verschlüsselte Sicherung nach Google Drive
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jms-backup --cloud
+# Hochladen soll den laufenden Betrieb nicht ausbremsen
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=3h

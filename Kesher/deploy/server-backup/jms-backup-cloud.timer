@@ -1,0 +1,10 @@
+[Unit]
+Description=JMS-Server: Cloud-Sicherung jede Nacht um 3:30 Uhr
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+# Bewusst nicht nachholen (kein Persistent=true): Die Sicherung hält Kesher
+# kurz an und darf nicht nach einem Einschalten mitten in einer Veranstaltung laufen.
+
+[Install]
+WantedBy=timers.target

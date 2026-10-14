@@ -66,7 +66,39 @@ docker compose -f deploy/compose/docker-compose.yml down
 
 ## Daten sichern
 
-Vor größeren Updates das Docker-Volume mit der SQLite-Datenbank sichern.
+Der JMS-Server sichert sich jede Nacht um 3:30 Uhr verschlüsselt in Google Drive (restic über rclone, Ordner `JMS-Backup`). Kesher und Companion sind dabei ca. 1 Minute aus. Hochgeladen werden nur Änderungen; es bleiben 7 tägliche und 4 wöchentliche Sicherungen, sonntags wird ein Teil der Daten zurückgelesen und geprüft. Schlägt eine Sicherung fehl, kommt eine Telegram-Nachricht (wenn in `/etc/jms-backup/cloud.env` eingetragen). Eine verpasste Sicherung (Server war um 3:30 aus) wird bewusst nicht beim Einschalten nachgeholt.
+
+Gesichert werden alle Docker-Volumes (u. a. Kesher-Datenbank, Multiview-Einstellungen, Portainer), Companion, Caddy, Netzwerk, WireGuard, Kiosk, systemd-Dienste, `/opt/homelab` und der Quellstand `~/intercom-system` mit lokalen Änderungen.
+
+Einrichten (einmalig am Server, Google-Anmeldung über einen Rechner mit Browser):
+
+```sh
+cd ~/intercom-system/Kesher/deploy/server-backup
+sudo ./install-backup.sh
+```
+
+Das Skript zeigt am Ende das **Backup-Passwort**. Es muss außerhalb des Servers aufbewahrt werden – ohne es ist keine Sicherung lesbar.
+
+```sh
+sudo systemctl start jms-backup-cloud     # Sicherung jetzt
+journalctl -u jms-backup-cloud -n 50      # letzter Lauf
+systemctl list-timers jms-backup-cloud    # nächster Lauf
+sudo jms-backup --list                    # Sicherungen in Google Drive
+sudo jms-backup --restore /home/master/restore   # neueste Sicherung holen
+sudo jms-backup                           # Vollsicherung als Ordner unter /home/master/backups (für den Mac)
+```
+
+Nach `--restore` liegen die Daten unter `/home/master/restore/var/lib/jms-backup/stage` (Volumes, Companion, Kesher-Version und lokale Änderungen), Systemdateien und Quellstand unter ihrem ursprünglichen Pfad in `/home/master/restore`. Ein Volume zurückspielen (Kesher vorher anhalten):
+
+```sh
+R=/home/master/restore/var/lib/jms-backup/stage/volumes
+docker stop kesher
+docker run --rm -v compose_intercom_data:/data -v "$R/compose_intercom_data":/src:ro alpine:3.21 \
+  sh -c 'rm -rf /data/* /data/.[!.]* 2>/dev/null; cp -a /src/. /data/'
+docker start kesher
+```
+
+Vor größeren Updates zusätzlich das Docker-Volume mit der SQLite-Datenbank sichern.
 
 Nützliche Prüfung:
 
