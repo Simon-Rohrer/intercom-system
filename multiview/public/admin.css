@@ -3,30 +3,31 @@
    Die Akzentfarbe setzt theme.js als --accent, alles andere leitet sich davon ab. */
 
 :root {
-  --accent: #2563eb;
-  --bg: #f6f7f9;
+  /* Farben wie macOS/iOS (hell): neutrale Grautöne, Apple-Blau als Akzent */
+  --accent: #007aff;
+  --bg: #f5f5f7;
   --surface: #ffffff;
-  --surface-2: #f2f4f7;
-  --surface-3: #e9ecf1;
-  --line: #e4e7ec;
-  --line-strong: #d0d5dd;
-  --text: #101828;
-  --text-2: #344054;
-  --muted: #667085;
-  --red: #d92d20;
-  --green: #12a150;
-  --amber: #c27a00;
-  --red-soft: #fef0ef;
-  --green-soft: #e8f7ee;
-  --amber-soft: #fff6e0;
+  --surface-2: #f2f2f7;
+  --surface-3: #e5e5ea;
+  --line: #e5e5ea;
+  --line-strong: #d1d1d6;
+  --text: #1d1d1f;
+  --text-2: #3a3a3c;
+  --muted: #6e6e73;
+  --red: #e5342a;
+  --green: #248a3d;
+  --amber: #b25000;
+  --red-soft: #fdecea;
+  --green-soft: #e7f6eb;
+  --amber-soft: #fff3e0;
   --accent-hover: color-mix(in srgb, var(--accent) 86%, #000);
-  --accent-soft: color-mix(in srgb, var(--accent) 11%, var(--surface));
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--surface));
   --accent-line: color-mix(in srgb, var(--accent) 35%, var(--surface));
   --accent-text: var(--accent);
   --on-accent: #fff;
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 6px 20px -6px rgba(16, 24, 40, 0.08);
-  --shadow-lg: 0 24px 60px -12px rgba(16, 24, 40, 0.25);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px -4px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 24px 60px -12px rgba(0, 0, 0, 0.25);
   --radius: 14px;
   --radius-sm: 10px;
   --sidebar-w: 248px;
@@ -34,53 +35,53 @@
 }
 
 :root[data-theme="dark"] {
-  --bg: #0b0d10;
-  --surface: #14171c;
-  --surface-2: #1a1e25;
-  --surface-3: #222730;
-  --line: #262b34;
-  --line-strong: #333a45;
-  --text: #e9ebef;
-  --text-2: #c5cad3;
-  --muted: #8b93a1;
-  --red: #f0564b;
-  --green: #36c46f;
-  --amber: #e6a23c;
-  --red-soft: #2c1615;
-  --green-soft: #12281b;
-  --amber-soft: #2b2112;
-  --accent-soft: color-mix(in srgb, var(--accent) 20%, var(--surface));
-  --accent-line: color-mix(in srgb, var(--accent) 45%, var(--surface));
-  --accent-text: color-mix(in srgb, var(--accent) 65%, #fff);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 24px 60px -12px rgba(0, 0, 0, 0.7);
+  --bg: #000000;
+  --surface: #1c1c1e;
+  --surface-2: #2c2c2e;
+  --surface-3: #3a3a3c;
+  --line: #38383a;
+  --line-strong: #48484a;
+  --text: #f5f5f7;
+  --text-2: #d1d1d6;
+  --muted: #98989d;
+  --red: #ff453a;
+  --green: #30d158;
+  --amber: #ff9f0a;
+  --red-soft: #3a1513;
+  --green-soft: #0f2a17;
+  --amber-soft: #33240b;
+  --accent-soft: color-mix(in srgb, var(--accent) 22%, var(--surface));
+  --accent-line: color-mix(in srgb, var(--accent) 50%, var(--surface));
+  --accent-text: color-mix(in srgb, var(--accent) 70%, #fff);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 24px 60px -12px rgba(0, 0, 0, 0.8);
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] {
-    --bg: #0b0d10;
-    --surface: #14171c;
-    --surface-2: #1a1e25;
-    --surface-3: #222730;
-    --line: #262b34;
-    --line-strong: #333a45;
-    --text: #e9ebef;
-    --text-2: #c5cad3;
-    --muted: #8b93a1;
-    --red: #f0564b;
-    --green: #36c46f;
-    --amber: #e6a23c;
-    --red-soft: #2c1615;
-    --green-soft: #12281b;
-    --amber-soft: #2b2112;
-    --accent-soft: color-mix(in srgb, var(--accent) 20%, var(--surface));
-    --accent-line: color-mix(in srgb, var(--accent) 45%, var(--surface));
-    --accent-text: color-mix(in srgb, var(--accent) 65%, #fff);
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.5);
-    --shadow-lg: 0 24px 60px -12px rgba(0, 0, 0, 0.7);
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --surface-2: #2c2c2e;
+    --surface-3: #3a3a3c;
+    --line: #38383a;
+    --line-strong: #48484a;
+    --text: #f5f5f7;
+    --text-2: #d1d1d6;
+    --muted: #98989d;
+    --red: #ff453a;
+    --green: #30d158;
+    --amber: #ff9f0a;
+    --red-soft: #3a1513;
+    --green-soft: #0f2a17;
+    --amber-soft: #33240b;
+    --accent-soft: color-mix(in srgb, var(--accent) 22%, var(--surface));
+    --accent-line: color-mix(in srgb, var(--accent) 50%, var(--surface));
+    --accent-text: color-mix(in srgb, var(--accent) 70%, #fff);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+    --shadow-lg: 0 24px 60px -12px rgba(0, 0, 0, 0.8);
     color-scheme: dark;
   }
 }
@@ -92,7 +93,8 @@ body {
   min-height: 100vh;
   background: var(--bg);
   color: var(--text);
-  font: 14.5px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  font: 14.5px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
+  letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
 }
 body.booting .app { visibility: hidden; }
@@ -756,7 +758,7 @@ a.status-tile:hover { border-color: var(--accent-line); }
 .etile {
   position: absolute;
   border: 2px solid #000;
-  background: linear-gradient(160deg, #2a3140, #1c212b);
+  background: linear-gradient(160deg, #2c2c2e, #1c1c1e);
   container-type: size;
   cursor: move;
   overflow: hidden;
@@ -1126,4 +1128,7 @@ a.status-tile:hover { border-color: var(--accent-line); }
   transform-origin: 0 0;
 }
 /* Grundschrift wie auf dem Monitor (output.css), damit Kacheln mit em-Größen gleich groß sind */
-.canvas-frame > .canvas { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 16px; line-height: normal; }
+.canvas-frame > .canvas { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, "Helvetica Neue", "Segoe UI", Roboto, sans-serif; font-size: 16px; line-height: normal; }
+
+/* Editor wie Monitor: graue Trennlinie je Kachel (--line vom Layout) */
+.canvas-frame .etile::after { box-shadow: inset 0 0 0 1px var(--line, transparent); }

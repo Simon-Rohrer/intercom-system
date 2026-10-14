@@ -3,16 +3,17 @@
 // damit Handy und Rechner gleich aussehen.
 
 export const ACCENTS = [
-  { name: 'Blau', value: '#2563eb' },
-  { name: 'Indigo', value: '#4f46e5' },
-  { name: 'Violett', value: '#7c3aed' },
-  { name: 'Pink', value: '#db2777' },
-  { name: 'Rot', value: '#dc2626' },
-  { name: 'Orange', value: '#ea580c' },
-  { name: 'Bernstein', value: '#b45309' },
-  { name: 'Grün', value: '#16a34a' },
-  { name: 'Türkis', value: '#0d9488' },
-  { name: 'Graphit', value: '#475569' },
+  // Systemfarben von Apple
+  { name: 'Blau', value: '#007aff' },
+  { name: 'Indigo', value: '#5856d6' },
+  { name: 'Violett', value: '#af52de' },
+  { name: 'Pink', value: '#ff2d55' },
+  { name: 'Rot', value: '#ff3b30' },
+  { name: 'Orange', value: '#ff9500' },
+  { name: 'Bernstein', value: '#c27c0e' },
+  { name: 'Grün', value: '#34c759' },
+  { name: 'Türkis', value: '#30b0c7' },
+  { name: 'Graphit', value: '#8e8e93' },
 ]
 
 export const THEMES = [
@@ -22,6 +23,13 @@ export const THEMES = [
 ]
 
 const DEFAULT_ACCENT = ACCENTS[0].value
+
+// Frühere Akzentfarben (vor dem Apple-Stil) auf die neuen abbilden – gespeicherte Wahl bleibt erhalten
+const OLD_ACCENTS = {
+  '#2563eb': '#007aff', '#4f46e5': '#5856d6', '#7c3aed': '#af52de', '#db2777': '#ff2d55', '#dc2626': '#ff3b30',
+  '#ea580c': '#ff9500', '#b45309': '#c27c0e', '#16a34a': '#34c759', '#0d9488': '#30b0c7', '#475569': '#8e8e93',
+}
+const modernAccent = (value) => (value && OLD_ACCENTS[String(value).toLowerCase()]) || value
 
 function read(key, fallback) {
   try {
@@ -44,7 +52,7 @@ export function currentPrefs() {
   const theme = read('theme', 'system')
   return {
     theme: THEMES.some((t) => t.value === theme) ? theme : 'system',
-    accent: read('accent', null) || DEFAULT_ACCENT,
+    accent: modernAccent(read('accent', null)) || DEFAULT_ACCENT,
   }
 }
 
@@ -57,8 +65,8 @@ export function effectiveTheme(theme = currentPrefs().theme) {
 export function applyPrefs({ theme, accent }) {
   const root = document.documentElement
   root.dataset.theme = THEMES.some((t) => t.value === theme) ? theme : 'system'
-  root.style.setProperty('--accent', accent || DEFAULT_ACCENT)
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', effectiveTheme(theme) === 'dark' ? '#0b0d10' : '#f6f7f9')
+  root.style.setProperty('--accent', modernAccent(accent) || DEFAULT_ACCENT)
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', effectiveTheme(theme) === 'dark' ? '#000000' : '#f5f5f7')
   for (const fn of listeners) fn({ theme, accent })
 }
 

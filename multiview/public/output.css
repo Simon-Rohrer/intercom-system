@@ -6,7 +6,8 @@ html, body {
   overflow: hidden;
   background: #000;
   color: #fff;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 body.idle { cursor: none; }
@@ -29,7 +30,7 @@ body.idle { cursor: none; }
 .media {
   position: absolute;
   inset: 0;
-  background: #0b0b0b;
+  background: #000;
   display: grid;
   place-items: center;
 }
@@ -43,7 +44,7 @@ body.idle { cursor: none; }
   display: block;
 }
 
-.media.chat { background: #090b0e; }
+.media.chat { background: #000000; }
 
 .tile.fit-cover .media video,
 .tile.fit-cover .media img { object-fit: cover; }
@@ -59,21 +60,25 @@ body.idle { cursor: none; }
   position: absolute;
   border: calc(var(--gap) / 2) solid var(--bg);
   pointer-events: auto;
+  outline: 1px solid var(--line, transparent);
+  outline-offset: -1px;
 }
 .frame-tile iframe {
   display: block;
   width: 100%;
   height: 100%;
   border: 0;
-  background: #090b0e;
+  background: #000000;
 }
 
-/* Tally-Rahmen liegt über dem Bild, damit sich nichts verschiebt */
+/* Tally-Rahmen liegt über dem Bild, damit sich nichts verschiebt.
+   Dazu die graue Trennlinie wie beim ATEM-Multiview (Farbe je Layout, --line). */
 .tile::after {
   content: "";
   position: absolute;
   inset: 0;
   border: clamp(3px, 1.6cqmin, 8px) solid transparent;
+  box-shadow: inset 0 0 0 1px var(--line, transparent);
   pointer-events: none;
 }
 .tile.program::after { border-color: #ff1f1f; }
@@ -85,15 +90,17 @@ body.idle { cursor: none; }
   bottom: clamp(4px, 3cqh, 16px);
   transform: translateX(-50%);
   max-width: 92%;
-  padding: 0.15em 0.6em;
-  background: rgba(0, 0, 0, 0.72);
+  padding: 0.12em 0.6em;
+  background: rgba(0, 0, 0, 0.62);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   font-size: clamp(11px, 6.5cqh, 30px);
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: -0.005em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-radius: 3px;
+  border-radius: 0.35em;
 }
 .tile.program .label { background: #c40000; }
 .tile.preview .label { background: #0f8f33; }

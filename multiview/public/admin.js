@@ -1,4 +1,4 @@
-import { connect, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox } from './common.js'
+import { connect, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, layoutLine } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
 import { createAgendaView } from './agenda.js'
@@ -1029,6 +1029,7 @@ function renderCanvas() {
   // Wie auf dem Monitor: Abstand und Hintergrund des Layouts
   canvas.style.setProperty('--gap', `${Number(layout.gap ?? 4) || 0}px`)
   canvas.style.setProperty('--bg', layout.background || '#000')
+  canvas.style.setProperty('--line', layoutLine(layout))
   canvas.style.backgroundColor = layout.background || '#000'
   const readonly = !canEditLayout(config, user, layout)
   canvas.classList.toggle('readonly', readonly)
@@ -1419,6 +1420,13 @@ function layoutInspector(layout) {
     <div class="row">
       <label class="field"><span>Abstand (px)</span><input type="number" min="0" max="40" data-l="gap" value="${layout.gap ?? 4}"></label>
       <label class="field"><span>Hintergrund</span><input type="color" data-l="background" value="${esc(layout.background || '#000000')}"></label>
+    </div>
+    <div class="row">
+      <label class="field"><span>Trennlinien (ATEM)</span><select data-l="lines">
+        <option value="on" ${layout.lines !== false ? 'selected' : ''}>An</option>
+        <option value="off" ${layout.lines === false ? 'selected' : ''}>Aus</option>
+      </select></label>
+      <label class="field"><span>Linienfarbe</span><input type="color" data-l="lineColor" value="${esc(layout.lineColor || LINE_COLOR)}" ${layout.lines === false ? 'disabled' : ''}></label>
     </div>
     ${isAdmin() ? layoutAccessFields(layout) : ''}
     <hr class="divider">
@@ -1900,6 +1908,9 @@ function onInspectorField(e) {
       renderInspector()
     } else if (key === 'gap') {
       layout.gap = clamp(parseInt(el.value, 10) || 0, 0, 40)
+    } else if (key === 'lines') {
+      layout.lines = el.value !== 'off'
+      renderInspector()
     } else if (key === 'shared') {
       layout.shared = el.checked
     } else if (key === 'owner') {

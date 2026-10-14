@@ -192,3 +192,11 @@ export function keepTouchScrollInside() {
     glide = requestAnimationFrame(step)
   })
 }
+
+/** Standardfarbe der Trennlinien zwischen den Kacheln (wie beim ATEM-Multiview). */
+export const LINE_COLOR = '#8e8e93'
+
+/** Farbe der Trennlinien eines Layouts (transparent = aus). */
+export function layoutLine(layout) {
+  return layout?.lines === false ? 'transparent' : layout?.lineColor || LINE_COLOR
+}

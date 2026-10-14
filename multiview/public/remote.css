@@ -153,10 +153,10 @@
   width: 100%;
   padding-top: 56.25%; /* 16:9, auch ohne aspect-ratio (alte iPads) */
   border-radius: 9px;
-  background: #0d1015;
+  background: #0a0a0a;
   overflow: hidden;
 }
-.rm-sketch i { position: absolute; box-sizing: border-box; border: 1.5px solid #0d1015; border-radius: 4px; background: #3a4352; }
+.rm-sketch i { position: absolute; box-sizing: border-box; border: 1.5px solid #0a0a0a; border-radius: 4px; background: #3a4352; }
 .rm-sketch .k-source { background: #4b5668; }
 .rm-sketch .k-chat, .rm-sketch .k-kesher { background: #3b82f6; }
 .rm-sketch .k-propresenter, .rm-sketch .k-playlist, .rm-sketch .k-preacher, .rm-sketch .k-stage { background: #f59e0b; }

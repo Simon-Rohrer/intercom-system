@@ -1,4 +1,4 @@
-import { connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside } from './common.js'
+import { connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, layoutLine } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions } from './meters.js'
 import { createChatView } from './chat.js'
 import { chatFor, chatRoleFor } from './rights.js'
@@ -147,6 +147,7 @@ function render() {
   for (const el of [stage, frameLayer]) {
     el.style.setProperty('--bg', layout.background || '#000')
     el.style.setProperty('--gap', `${Number(layout.gap) || 0}px`)
+    el.style.setProperty('--line', layoutLine(layout))
   }
 
   const usedStreams = new Set()

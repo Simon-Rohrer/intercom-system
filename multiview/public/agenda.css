@@ -2,10 +2,10 @@
    (Schriften und Farben aus chat.css). */
 
 .agenda {
-  --k-bg: #090b0e;
-  --k-rack: #0f1217;
-  --k-line: #262c35;
-  --k-line-strong: #3a4250;
+  --k-bg: #000000;
+  --k-rack: #0a0a0a;
+  --k-line: #2c2c2e;
+  --k-line-strong: #48484a;
   --k-ink: #eceff3;
   --k-ink-2: #a9b2be;
   --k-ink-3: #6c7581;
@@ -13,7 +13,7 @@
   --k-ok: #30d158;
   --k-bad: #ff5a4f;
   --k-call: #ffb020;
-  --k-face-hi: #1d222a;
+  --k-face-hi: #1c1c1e;
   --k-font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
   --k-font-label: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
   --k-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
