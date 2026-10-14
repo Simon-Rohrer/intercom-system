@@ -40,6 +40,16 @@ for name in ${outputs}; do
   fi
 done
 
+# The onboard VGA (a DisplayPort-to-VGA bridge, shows up as DP-1/DP-2) can stay
+# black after the first mode set although the monitor reports a signal. Turning
+# every output off and on once more sets the mode again and brings up the picture.
+sleep 3
+for name in ${outputs}; do
+  swaymsg "output ${name} power off" >/dev/null 2>&1
+  sleep 1
+  swaymsg "output ${name} power on" >/dev/null 2>&1
+done
+
 while sleep 5; do
   if [[ "$(connected_outputs)" != "${outputs}" ]] || { [[ -n "${outputs}" ]] && ! browser_running; }; then
     swaymsg exit >/dev/null 2>&1

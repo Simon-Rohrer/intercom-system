@@ -102,6 +102,11 @@ if [[ "${KIOSK_URL}" == "screens" ]]; then
       [[ "${name}" == Writeback* ]] && continue
       echo "for_window [title=\"^Bildschirm ${name} \"] move container to output ${name}, fullscreen enable"
     done
+    # Fixed modes, e.g. KIOSK_OUTPUT_MODES="DP-2=1920x1080@60Hz HDMI-A-1=1280x720@60Hz";
+    # otherwise sway takes the monitor's preferred mode.
+    for entry in ${KIOSK_OUTPUT_MODES:-}; do
+      echo "output ${entry%%=*} mode ${entry#*=}"
+    done
     echo "exec $(dirname "$(readlink -f "$0")")/kesher-screens-session.sh"
   } >"${SWAY_CONFIG}"
   export KIOSK_BROWSER="${BROWSER}" KIOSK_BROWSER_FLAGS="${BROWSER_FLAGS[*]}" MULTIVIEW_URL

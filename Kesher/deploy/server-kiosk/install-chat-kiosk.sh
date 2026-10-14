@@ -119,6 +119,10 @@ elif [[ -z "${DISPLAY_URL}" && -f "${CONFIG_FILE}" ]]; then
   # Keep a configured display page when only other options change.
   DISPLAY_URL="$(sed -n 's/^KIOSK_URL="\(.*\)"$/\1/p' "${CONFIG_FILE}")"
 fi
+OUTPUT_MODES=""
+if [[ -f "${CONFIG_FILE}" ]]; then
+  OUTPUT_MODES="$(sed -n 's/^KIOSK_OUTPUT_MODES="\(.*\)"$/\1/p' "${CONFIG_FILE}")"
+fi
 
 if [[ ! -f "${CONFIG_FILE}" || "${UPDATE_CONFIG}" == "true" ]]; then
   cat >"${CONFIG_FILE}" <<EOF
@@ -130,6 +134,8 @@ KESHER_ROLE_ID="${ROLE_ID}"
 # Page shown on the monitor; empty = plain Kesher chat;
 # "screens" = each monitor shows the multiview chosen for it in the multiview editor.
 KIOSK_URL="${DISPLAY_URL}"
+# Only with "screens": fixed resolution per connector, e.g. "DP-2=1920x1080@60Hz".
+KIOSK_OUTPUT_MODES="${OUTPUT_MODES}"
 EOF
   chmod 0644 "${CONFIG_FILE}"
 fi

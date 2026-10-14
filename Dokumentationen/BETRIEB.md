@@ -168,7 +168,7 @@ cd ~/intercom-system/Kesher/deploy/server-kiosk
 sudo ./install-chat-kiosk.sh --display-url screens
 ```
 
-Statt `cage` läuft dann `sway`, weil `cage` nur einen Monitor ansteuern kann. Es läuft ein einziger Chromium mit einem Vollbildfenster pro angeschlossenem Monitor, so können sich mehrere Monitore dieselbe Capture-Karte teilen. Wird ein Monitor ein- oder ausgesteckt, startet die Anzeige nach wenigen Sekunden neu. Zurück zu einem einzelnen Monitor: `--display-url "http://127.0.0.1:8090/output.html?id=1"`.
+Statt `cage` läuft dann `sway`, weil `cage` nur einen Monitor ansteuern kann. Es läuft ein einziger Chromium mit einem Vollbildfenster pro angeschlossenem Monitor, so können sich mehrere Monitore dieselbe Capture-Karte teilen. Wird ein Monitor ein- oder ausgesteckt, startet die Anzeige nach wenigen Sekunden neu. Kurz nach dem Start schaltet sie jeden Ausgang einmal aus und wieder ein, weil der VGA-Ausgang sonst trotz Signal schwarz bleiben kann. Eine feste Auflösung pro Anschluss steht in `/etc/kesher/chat-kiosk.env`, z. B. `KIOSK_OUTPUT_MODES="DP-2=1920x1080@60Hz"` (danach `sudo systemctl restart kesher-chat-kiosk`). Zurück zu einem einzelnen Monitor: `--display-url "http://127.0.0.1:8090/output.html?id=1"`.
 
 ### ChurchTools-Ablauf im Multiview
 
