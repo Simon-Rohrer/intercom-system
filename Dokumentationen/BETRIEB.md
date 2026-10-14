@@ -228,7 +228,7 @@ Umsetzung vor Ort, in dieser Reihenfolge (sonst ist ein Port doppelt belegt):
 2. Dienste auf `127.0.0.1` umstellen: Homepage-Compose `127.0.0.1:3000:3000`, Portainer-Compose `127.0.0.1:9443:9443`, Glances, Companion (Admin-Oberfläche nur lokal), Multiview (in `multiview/docker-compose.yml` die Zeile `HOST: "127.0.0.1"` einkommentieren, dann `docker compose up -d`).
 3. `sudo cp Caddyfile.jms /etc/caddy/Caddyfile && sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy`
 4. Prüfen: jede Adresse per `https://` und die Weiterleitung von `http://`; Kiosk-Anzeige, Companion-Tasten (Generic HTTP auf `http://127.0.0.1:8090`), Kesher-Clients und Raspberry Pis.
-5. Links im Dashboard und in Notion auf `https://` umstellen: Vorlage `Kesher/server-config/homepage-services.yaml` in `/opt/homelab/config/homepage/services.yaml` übernehmen.
+5. Links im Dashboard und in Notion auf `https://` umstellen: Dateien aus `Kesher/server-config/homepage/` übernehmen (siehe [Dashboard](#dashboard)).
 
 ## Anmeldung für alle Dienste
 
@@ -241,3 +241,14 @@ Wer über das WLAN (Handy, iPad, Laptop) auf Intercom, Dashboard oder die Techni
 - **Technik:** Caddy fragt vor jeder Anfrage an einen Dienst den Multiview (`forward_auth` auf `/.jms-auth/check`, Baustein `jms_auth` in `Caddyfile.jms`), `/.jms-auth/*` geht auf jeder Adresse zum Multiview (Anmeldeseite). Jede Adresse (IP, `.local`, `.jms.de`) hat ihr eigenes Anmelde-Cookie. Kesher erkennt den Admin an einem signierten Ticket: In `Kesher/deploy/compose/.env` und `multiview/.env` muss derselbe Wert `JMS_AUTH_SECRET=` stehen, z. B. erzeugt mit `openssl rand -hex 32`. Ohne ihn meldet sich der Admin in Kesher weiter mit der Kesher-PIN an.
 - **Rollen:** werden im Multiview unter *Benutzer & Rechte* angelegt, umbenannt (die ID bleibt) und gelöscht; der Multiview speichert sie über ein Ticket sofort in Kesher. Mit „Rechte übernehmen von“ bekommt eine neue Rolle Party Lines, Stream-Deck-Tasten und Multiview-Rechte einer bestehenden. Beim Löschen gehen die Kesher-Benutzereinträge der Rolle mit; solange jemand mit ihr angemeldet oder in Kesher verbunden ist, geht es nicht. Im Kesher-Admin stellt man dann nur noch Party Lines und Standardwerte der Rolle ein. Braucht `JMS_AUTH_SECRET` wie oben.
 - **Telegram:** im Modus `polling` (Standard) nicht betroffen.
+
+## Dashboard
+
+Das Dashboard (Homepage, `https://192.168.0.21:3000`) hat oben zwei Seiten zum Umschalten:
+
+- **Start** – für alle: Intercom, Multiview, Fernbedienung, Prediger-Ansicht sowie *Konto* (Abmelden, Konto wechseln).
+- **Admin** – Companion, Portainer, Glances, lokaler DNS, Router; Serverwerte (Prozessor, Arbeitsspeicher, Temperatur, Laufwerk, Prozesse, Container-Auslastung) und der Zustand jedes Containers.
+
+Die Admin-Seite sieht nur, wer im Dashboard als Admin angemeldet ist (`custom.js` fragt `/.jms-auth/api/me`); alle anderen sehen nur „Start“ ohne Umschaltleiste – als Admin anmelden über *Konto → Konto wechseln*. Ist die zentrale Anmeldung aus, sehen alle beide Seiten. Die Admin-Dienste selbst prüft Caddy unabhängig davon.
+
+Konfiguration im Repo unter `Kesher/server-config/homepage/` (`settings.yaml`: welche Gruppe auf welcher Seite, `services.yaml`: Kacheln, `custom.js`, `custom.css`). Auf dem Server liegen sie in `/opt/homelab/config/homepage/` (gehört root – ohne sudo per `docker cp <datei> homepage:/app/config/` kopieren). Änderungen an `settings.yaml` wirken erst nach `docker restart homepage`.
