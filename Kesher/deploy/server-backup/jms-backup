@@ -182,7 +182,8 @@ fi
 # ---------------------------------------------------------------------------
 STEP="Hochladen nach Google Drive"
 echo "==> Hochladen (${RESTIC_REPOSITORY})"
-restic backup --host server --tag nightly \
+# Größere Pakete = weniger Anfragen an Google Drive (dort gibt es ein Limit pro Minute)
+restic backup --host server --tag nightly --pack-size 64 \
   --exclude node_modules --exclude-caches \
   "${STAGE}" "${system_paths[@]}" "${INTERCOM_DIR}"
 

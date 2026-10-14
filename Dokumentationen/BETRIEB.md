@@ -79,6 +79,8 @@ sudo ./install-backup.sh
 
 Das Skript zeigt am Ende das **Backup-Passwort**. Es muss außerhalb des Servers aufbewahrt werden – ohne es ist keine Sicherung lesbar.
 
+**Eigener Google-Zugang (nötig):** Der eingebaute Zugang von rclone wird von Google oft gebremst („rateLimitExceeded“). Einmalig mit dem Technik-Konto in der [Google Cloud Console](https://console.cloud.google.com): Projekt anlegen → *APIs & Dienste* → *Google Drive API* aktivieren → *OAuth-Zustimmungsbildschirm*: extern, App-Name, E-Mail, Bereich `…/auth/drive.file`, danach **„App veröffentlichen“** (sonst läuft die Anmeldung nach 7 Tagen ab) → *Anmeldedaten* → *OAuth-Client-ID* vom Typ **Desktop-App**. Dann auf dem Server `sudo ./install-backup.sh --client-id <ID> --client-secret <Secret>` und neu anmelden. Mit `drive.file` sieht ein neuer Zugang die Dateien des alten nicht – einen alten Ordner `JMS-Backup` vorher in Drive löschen; das Skript legt ihn neu an.
+
 ```sh
 sudo systemctl start jms-backup-cloud     # Sicherung jetzt
 journalctl -u jms-backup-cloud -n 50      # letzter Lauf

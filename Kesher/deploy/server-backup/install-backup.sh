@@ -10,6 +10,9 @@
 #
 # Nochmal ausführen ist unschädlich: Vorhandene Einstellungen, Passwort und
 # Google-Anmeldung bleiben erhalten.
+#   sudo ./install-backup.sh --client-id <ID> --client-secret <SECRET>
+#       eigener Google-Zugang (Google Cloud Console, siehe BETRIEB.md) – der
+#       gemeinsame Zugang von rclone ist oft überlastet; danach neu anmelden
 #   sudo ./install-backup.sh --uninstall   Timer abschalten (Daten in Drive bleiben)
 set -euo pipefail
 
@@ -26,12 +29,26 @@ RCLONE_CONF="${CONFIG_DIR}/rclone.conf"
 REMOTE="gdrive"
 FOLDER="JMS-Backup"
 
-if [[ "${1:-}" == "--uninstall" ]]; then
-  systemctl disable --now jms-backup-cloud.timer 2>/dev/null || true
-  rm -f /etc/systemd/system/jms-backup-cloud.timer /etc/systemd/system/jms-backup-cloud.service
-  systemctl daemon-reload
-  echo "Nächtliche Cloud-Sicherung abgeschaltet. ${CONFIG_DIR} und die Daten in Google Drive bleiben erhalten."
-  exit 0
+CLIENT_ID=""
+CLIENT_SECRET=""
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --client-id) CLIENT_ID="${2:-}"; shift ;;
+    --client-secret) CLIENT_SECRET="${2:-}"; shift ;;
+    --uninstall)
+      systemctl disable --now jms-backup-cloud.timer 2>/dev/null || true
+      rm -f /etc/systemd/system/jms-backup-cloud.timer /etc/systemd/system/jms-backup-cloud.service
+      systemctl daemon-reload
+      echo "Nächtliche Cloud-Sicherung abgeschaltet. ${CONFIG_DIR} und die Daten in Google Drive bleiben erhalten."
+      exit 0
+      ;;
+    *) echo "Unbekannte Option: $1" >&2; exit 1 ;;
+  esac
+  shift
+done
+if [[ -n "${CLIENT_ID}" && -z "${CLIENT_SECRET}" ]] || [[ -z "${CLIENT_ID}" && -n "${CLIENT_SECRET}" ]]; then
+  echo "--client-id und --client-secret gehören zusammen." >&2
+  exit 1
 fi
 
 echo "==> Programme (restic, rclone)"
@@ -77,8 +94,20 @@ fi
 
 echo "==> Google Drive verbinden"
 export RCLONE_CONFIG="${RCLONE_CONF}"
+FORCE_LOGIN="false"
+if [[ -n "${CLIENT_ID}" ]]; then
+  # Eigener Google-Zugang: die alte Anmeldung gehört zum alten Zugang und gilt nicht mehr
+  if rclone listremotes 2>/dev/null | grep -qx "${REMOTE}:"; then
+    rclone config update "${REMOTE}" client_id="${CLIENT_ID}" client_secret="${CLIENT_SECRET}" token= --non-interactive >/dev/null
+  else
+    rclone config create "${REMOTE}" drive client_id="${CLIENT_ID}" client_secret="${CLIENT_SECRET}" \
+      scope=drive.file use_trash=false --non-interactive >/dev/null
+  fi
+  FORCE_LOGIN="true"
+  echo "   eigener Google-Zugang eingetragen"
+fi
 # Verbunden heißt: Drive antwortet. Nur angelegt, aber ohne Anmeldung, zählt nicht.
-if rclone lsd "${REMOTE}:" >/dev/null 2>&1; then
+if [[ "${FORCE_LOGIN}" != "true" ]] && rclone lsd "${REMOTE}:" >/dev/null 2>&1; then
   echo "   schon verbunden"
 else
   if ! rclone listremotes 2>/dev/null | grep -qx "${REMOTE}:"; then
