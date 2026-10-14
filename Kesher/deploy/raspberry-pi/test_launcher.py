@@ -296,6 +296,38 @@ class LauncherTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate client IP"):
             launcher.resolve_client(self.config, ["192.168.1.51"])
 
+    def test_resolves_station_from_mac_when_ip_changed(self):
+        self.config["clients"][0]["mac_addresses"] = ["B8:27:EB:B2:AA:2D", "b8-27-eb-e7-ff-78"]
+        client = launcher.resolve_client(
+            self.config, ["192.168.0.157"], ["b8:27:eb:e7:ff:78"]
+        )
+        self.assertEqual(client["device_id"], "foh-pi")
+        self.assertEqual(client["ip_address"], "192.168.0.157")
+
+    def test_mac_only_client_needs_device_id(self):
+        client = self.config["clients"][0]
+        del client["ip_address"]
+        client["mac_addresses"] = ["b8:27:eb:b2:aa:2d"]
+        resolved = launcher.resolve_client(self.config, ["10.0.0.5"], ["b8:27:eb:b2:aa:2d"])
+        self.assertEqual(resolved["device_id"], "foh-pi")
+        del client["device_id"]
+        with self.assertRaisesRegex(ValueError, "device_id is required"):
+            launcher.resolve_client(self.config, ["10.0.0.5"], ["b8:27:eb:b2:aa:2d"])
+
+    def test_rejects_invalid_and_duplicate_mac(self):
+        self.config["clients"][0]["mac_addresses"] = ["not-a-mac"]
+        with self.assertRaisesRegex(ValueError, "must be a MAC address"):
+            launcher.resolve_client(self.config, ["192.168.1.51"])
+        self.config["clients"][0]["mac_addresses"] = ["b8:27:eb:b2:aa:2d"]
+        other = dict(self.config["clients"][0], ip_address="192.168.1.52", device_id="other")
+        self.config["clients"].append(other)
+        with self.assertRaisesRegex(ValueError, "duplicate client MAC"):
+            launcher.resolve_client(self.config, ["192.168.1.51"])
+
+    def test_unknown_pi_error_lists_macs(self):
+        with self.assertRaisesRegex(ValueError, "detected MACs: aa:bb:cc:dd:ee:ff"):
+            launcher.resolve_client(self.config, ["192.168.1.99"], ["aa:bb:cc:dd:ee:ff"])
+
 
 if __name__ == "__main__":
     unittest.main()

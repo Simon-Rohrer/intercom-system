@@ -33,6 +33,7 @@ Beispiel:
 {
   "device_id": "kamera-2-pi",
   "ip_address": "192.168.178.191",
+  "mac_addresses": ["b8:27:eb:00:00:01", "b8:27:eb:00:00:02"],
   "name": "Kamera-2",
   "role_id": "cam 2",
   "audio_input_match": "Headset",
@@ -44,7 +45,7 @@ Beispiel:
 
 Wichtig:
 
-- `ip_address` muss zur festen Pi-IP passen.
+- Der Pi findet seinen Eintrag über `ip_address` oder `mac_addresses`. Mit MAC-Adressen (LAN und WLAN, `ip -br link`) ist die IP egal, die DHCP gerade vergibt; `ip_address` darf dann fehlen, `device_id` ist dann Pflicht. Ohne `mac_addresses` muss `ip_address` zur festen Pi-IP passen.
 - `name` und `device_id` dürfen keine Leerzeichen enthalten.
 - `role_id` ist die Rollen-ID aus Kesher Admin.
 - `server_url` muss auf den Kesher-Server zeigen.

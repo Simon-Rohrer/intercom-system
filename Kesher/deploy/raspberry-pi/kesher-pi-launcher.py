@@ -20,7 +20,7 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
-LAUNCHER_VERSION = "8"
+LAUNCHER_VERSION = "9"
 HEARTBEAT_INTERVAL_SECONDS = 4
 AUDIO_RUNTIME_WAIT_SECONDS = 3
 DISPLAY_RUNTIME_WAIT_SECONDS = 15
@@ -111,21 +111,64 @@ def detect_ipv4_addresses() -> list[str]:
     return addresses
 
 
-def resolve_client(config: dict[str, Any], addresses: list[str]) -> dict[str, Any]:
+def normalize_mac(value: Any, field: str) -> str:
+    text = require_text(value, field).lower().replace("-", ":")
+    parts = text.split(":")
+    if len(parts) != 6 or not all(
+        len(part) == 2 and all(c in "0123456789abcdef" for c in part) for part in parts
+    ):
+        raise ValueError(f"{field} must be a MAC address like b8:27:eb:12:34:56")
+    return text
+
+
+def detect_mac_addresses() -> list[str]:
+    macs: list[str] = []
+    for address_file in sorted(Path("/sys/class/net").glob("*/address")):
+        if address_file.parent.name == "lo":
+            continue
+        try:
+            mac = address_file.read_text(encoding="utf-8").strip().lower()
+        except OSError:
+            continue
+        if mac and mac != "00:00:00:00:00:00":
+            macs.append(mac)
+    return macs
+
+
+def resolve_client(
+    config: dict[str, Any],
+    addresses: list[str],
+    mac_addresses: Optional[list[str]] = None,
+) -> dict[str, Any]:
     local_addresses = set(addresses)
+    local_macs = {mac.lower() for mac in mac_addresses or []}
     matches: list[dict[str, Any]] = []
     seen_config_ips: set[str] = set()
+    seen_config_macs: set[str] = set()
     for index, raw_client in enumerate(config["clients"]):
         if not isinstance(raw_client, dict):
             raise ValueError(f"clients[{index}] must be an object")
-        configured_ip = str(
-            ipaddress.ip_address(
-                require_text(raw_client.get("ip_address"), f"clients[{index}].ip_address")
+        raw_macs = raw_client.get("mac_addresses", [])
+        if not isinstance(raw_macs, list):
+            raise ValueError(f"clients[{index}].mac_addresses must be a list")
+        configured_macs = [
+            normalize_mac(value, f"clients[{index}].mac_addresses[{mac_index}]")
+            for mac_index, value in enumerate(raw_macs)
+        ]
+        for mac in configured_macs:
+            if mac in seen_config_macs:
+                raise ValueError(f"duplicate client MAC in config: {mac}")
+            seen_config_macs.add(mac)
+        configured_ip = ""
+        if raw_client.get("ip_address") or not configured_macs:
+            configured_ip = str(
+                ipaddress.ip_address(
+                    require_text(raw_client.get("ip_address"), f"clients[{index}].ip_address")
+                )
             )
-        )
-        if configured_ip in seen_config_ips:
-            raise ValueError(f"duplicate client IP in config: {configured_ip}")
-        seen_config_ips.add(configured_ip)
+            if configured_ip in seen_config_ips:
+                raise ValueError(f"duplicate client IP in config: {configured_ip}")
+            seen_config_ips.add(configured_ip)
         name = require_text(raw_client.get("name"), f"clients[{index}].name")
         if any(character.isspace() for character in name):
             raise ValueError(f"clients[{index}].name must not contain whitespace")
@@ -133,8 +176,10 @@ def resolve_client(config: dict[str, Any], addresses: list[str]) -> dict[str, An
         device_id = raw_client.get("device_id")
         if isinstance(device_id, str) and device_id.strip():
             device_id = device_id.strip()
-        else:
+        elif configured_ip:
             device_id = configured_ip
+        else:
+            raise ValueError(f"clients[{index}].device_id is required without ip_address")
         if any(character.isspace() for character in device_id):
             raise ValueError(f"clients[{index}].device_id must not contain whitespace")
         client = {
@@ -155,13 +200,21 @@ def resolve_client(config: dict[str, Any], addresses: list[str]) -> dict[str, An
             value = raw_client.get(optional_field)
             if isinstance(value, str) and value.strip():
                 client[optional_field] = value.strip()
-        if configured_ip in local_addresses:
+        if local_macs.intersection(configured_macs):
+            # Matched by hardware address: report the IP the Pi has right now,
+            # since DHCP and LAN/WLAN changes move it.
+            client["ip_address"] = sorted(local_addresses)[0] if local_addresses else configured_ip
+            matches.append(client)
+        elif configured_ip and configured_ip in local_addresses:
             matches.append(client)
     if not matches:
         detected = ", ".join(sorted(local_addresses)) or "none"
-        raise ValueError(f"no client entry matches this Pi; detected IPs: {detected}")
+        detected_macs = ", ".join(sorted(local_macs)) or "none"
+        raise ValueError(
+            f"no client entry matches this Pi; detected IPs: {detected}; detected MACs: {detected_macs}"
+        )
     if len(matches) > 1:
-        matched = ", ".join(client["ip_address"] for client in matches)
+        matched = ", ".join(client["device_id"] for client in matches)
         raise ValueError(f"multiple client entries match this Pi: {matched}")
     return matches[0]
 
@@ -918,7 +971,7 @@ def main() -> int:
             return 0
         config = load_config(args.config)
         addresses = detect_ipv4_addresses()
-        client = resolve_client(config, addresses)
+        client = resolve_client(config, addresses, detect_mac_addresses())
         kesher_url = build_kesher_url(config["server_url"], client)
         if args.print_url:
             print(kesher_url)
