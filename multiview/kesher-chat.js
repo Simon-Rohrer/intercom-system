@@ -383,7 +383,47 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
     throw new Error(`Kesher: ${text || `HTTP ${res.status}`}`)
   }
 
-  return { start: connect, reconfigure, refresh, stop, snapshot, verifyAdminPin, sendText }
+  /** Rollen, die in Kesher gerade an einem Gerät angemeldet sind (Zweitgeräte zählen nicht). */
+  async function activeRoleIds() {
+    const url = settings().url
+    if (!url) return []
+    const res = await fetch(`${url}/api/public-bootstrap`, { signal: AbortSignal.timeout(2000) })
+    if (!res.ok) throw new Error(`Kesher antwortet mit HTTP ${res.status}`)
+    const ids = (await res.json())?.activeRoleIds
+    return Array.isArray(ids) ? ids : []
+  }
+
+  /**
+   * Rolle in Kesher freigeben, wenn jemand sie in der zentralen Anmeldung übernimmt: Kesher
+   * übernimmt sie (das andere Gerät wird abgemeldet), die neue Sitzung endet gleich wieder.
+   * Danach meldet sich die Kesher-Seite des neuen Nutzers ganz normal an.
+   */
+  async function releaseRole(roleId, username) {
+    const url = settings().url
+    if (!url) throw new Error('Kesher-Adresse fehlt (Einstellungen → Kesher-Chat)')
+    const name = String(username ?? '').replace(/\s+/g, '') || 'Anmeldung' // Kesher-Namen ohne Leerzeichen
+    let res
+    try {
+      res = await fetch(`${url}/api/login/takeover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: name, roleId }),
+        signal: AbortSignal.timeout(5000),
+      })
+    } catch {
+      throw new Error('Kesher ist nicht erreichbar – die Rolle lässt sich dort gerade nicht übernehmen')
+    }
+    if (!res.ok) throw new Error(`Kesher: Rolle nicht übernommen (HTTP ${res.status})`)
+    const sessionToken = (await res.json().catch(() => ({})))?.token
+    if (sessionToken)
+      await fetch(`${url}/api/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${sessionToken}` },
+        signal: AbortSignal.timeout(3000),
+      }).catch(() => {})
+  }
+
+  return { start: connect, reconfigure, refresh, stop, snapshot, verifyAdminPin, sendText, activeRoleIds, releaseRole }
 }
 
 module.exports = { createKesherChat }

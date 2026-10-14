@@ -274,7 +274,8 @@ async function showLoginStep() {
     if (res?.status === 409 && data?.holder) {
       // Rolle schon angemeldet: wie bei Kesher übernehmen lassen
       const role = $('#role').selectedOptions[0]?.textContent.replace(/ – angemeldet:.*$/, '')
-      $('#takeover-text').textContent = `${role} ist schon angemeldet – von ${data.holder.name}. Übernehmen meldet das andere Gerät ab.`
+      const who = data.holder.kesher ? 'direkt in Kesher (z. B. an einer Station)' : `von ${data.holder.name}`
+      $('#takeover-text').textContent = `${role} ist schon angemeldet – ${who}. Übernehmen meldet das andere Gerät ab.`
       $('#takeover').hidden = false
       return
     }

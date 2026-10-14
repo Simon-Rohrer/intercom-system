@@ -204,3 +204,64 @@ test('Ticket für Kesher ist signiert und kurz gültig', async () => {
   assert.equal(data.aud, 'kesher')
   assert.ok(data.exp > Date.now() && data.exp <= Date.now() + 60_000)
 })
+
+test('eine direkt in Kesher angemeldete Rolle ist auch hier belegt', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
+  let inKesher = ['ton']
+  const released = []
+  const access = createAccess({
+    dataDir: dir,
+    log: () => {},
+    kesherActiveRoles: async () => inKesher,
+    releaseKesherRole: async (roleId, name) => {
+      released.push({ roleId, name })
+      inKesher = inKesher.filter((id) => id !== roleId)
+    },
+  })
+  await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
+
+  assert.deepEqual(await access.occupiedForLogin(fakeReq()), { ton: 'in Kesher' })
+  // Ohne Übernehmen: abgelehnt, mit dem Hinweis auf Kesher
+  await assert.rejects(access.login({ name: 'Tim', roleId: 'ton' }, fakeReq(), fakeRes()), (err) => {
+    assert.equal(err.status, 409)
+    assert.equal(err.holder.kesher, true)
+    return true
+  })
+  assert.deepEqual(released, [])
+  // Übernehmen gibt die Rolle in Kesher frei
+  const res = fakeRes()
+  await access.login({ name: 'Tim', roleId: 'ton', takeover: true }, fakeReq(), res)
+  assert.deepEqual(released, [{ roleId: 'ton', name: 'Tim' }])
+  assert.ok(res.cookies.mv_session)
+  assert.deepEqual(await access.occupiedForLogin(fakeReq()), { ton: 'Tim' })
+})
+
+test('die eigene Kesher-Seite blockiert die Rolle nicht', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
+  const access = createAccess({ dataDir: dir, log: () => {}, kesherActiveRoles: async () => ['ton'] })
+  await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
+  // Kesher hat "ton", weil Tims Kesher-Seite angemeldet ist – Tim meldet sich im selben Browser neu an
+  const token = await loginAs(access, 'Tim', 'ton').catch(() => null)
+  assert.equal(token, null) // erste Anmeldung: Kesher hat die Rolle schon (fremdes Gerät)
+  const res = fakeRes()
+  await access.login({ name: 'Tim', roleId: 'ton', takeover: true }, fakeReq(), res)
+  const again = fakeRes()
+  await access.login({ name: 'Tim', roleId: 'ton' }, fakeReq({ mv_session: res.cookies.mv_session }), again)
+  assert.ok(again.cookies.mv_session)
+  // Andere sehen die Rolle mit Tims Namen, er selbst auch
+  assert.deepEqual(await access.occupiedForLogin(fakeReq()), { ton: 'Tim' })
+})
+
+test('ist Kesher nicht erreichbar, geht die Anmeldung trotzdem', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
+  const access = createAccess({
+    dataDir: dir,
+    log: () => {},
+    kesherActiveRoles: async () => {
+      throw new Error('offline')
+    },
+  })
+  await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
+  assert.ok(await loginAs(access, 'Tim', 'ton'))
+  assert.deepEqual(await access.occupiedForLogin(fakeReq()), { ton: 'Tim' })
+})
