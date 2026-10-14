@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import ssl
 import subprocess
 import sys
@@ -20,7 +21,7 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
-LAUNCHER_VERSION = "9"
+LAUNCHER_VERSION = "10"
 HEARTBEAT_INTERVAL_SECONDS = 4
 AUDIO_RUNTIME_WAIT_SECONDS = 3
 DISPLAY_RUNTIME_WAIT_SECONDS = 15
@@ -29,6 +30,20 @@ BROWSER_CONNECT_TIMEOUT_SECONDS = 25
 BROWSER_CONNECT_POLL_SECONDS = 2
 BROWSER_CONNECTED_CHECKS = 2
 BROWSER_RESTART_DELAY_SECONDS = 2
+# Settings managed in the Multiview (Einstellungen → Raspberry Pis), see config_url
+MANAGED_CONFIG_BOOT_WAIT_SECONDS = 15
+MANAGED_CONFIG_POLL_SECONDS = 15
+MANAGED_CONFIG_KEYS = (
+    "server_url",
+    "browser_binary",
+    "allow_insecure_tls",
+    "audio_runtime_wait_seconds",
+    "display_runtime_wait_seconds",
+    "display_runtime_settle_seconds",
+    "browser_connect_timeout_seconds",
+    "browser_restart_delay_seconds",
+    "clients",
+)
 
 
 def require_text(value: Any, field: str) -> str:
@@ -48,7 +63,7 @@ def normalize_server_url(value: Any) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
 
-def load_config(path: Path) -> dict[str, Any]:
+def read_config_file(path: Path) -> dict[str, Any]:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as error:
@@ -57,6 +72,15 @@ def load_config(path: Path) -> dict[str, Any]:
         raise ValueError(f"invalid JSON in {path}: {error}") from error
     if not isinstance(raw, dict):
         raise ValueError("config root must be an object")
+    return raw
+
+
+def load_config(path: Path) -> dict[str, Any]:
+    return validate_config(read_config_file(path))
+
+
+def validate_config(raw: dict[str, Any]) -> dict[str, Any]:
+    raw = dict(raw)
     raw["server_url"] = normalize_server_url(raw.get("server_url"))
     clients = raw.get("clients")
     if not isinstance(clients, list) or not clients:
@@ -217,6 +241,188 @@ def resolve_client(
         matched = ", ".join(client["device_id"] for client in matches)
         raise ValueError(f"multiple client entries match this Pi: {matched}")
     return matches[0]
+
+
+def normalize_config_url(value: Any) -> str:
+    config_url = require_text(value, "config_url")
+    parsed = urlsplit(config_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("config_url must be an http or https URL")
+    return config_url
+
+
+def managed_config_request(
+    local_raw: dict[str, Any],
+    addresses: list[str],
+    mac_addresses: list[str],
+) -> dict[str, Any]:
+    """What the Pi tells the Multiview about itself (to find and offer its entry)."""
+    local_client: Optional[dict[str, Any]] = None
+    try:
+        local_client = resolve_client(validate_config(local_raw), addresses, mac_addresses)
+    except ValueError:
+        pass
+    if local_client is not None and not local_client.get("ip_address"):
+        local_client.pop("ip_address", None)
+    return {
+        "macs": sorted(mac_addresses),
+        "ips": sorted(addresses),
+        "hostname": socket.gethostname(),
+        "launcherVersion": LAUNCHER_VERSION,
+        "local": local_client,
+        "localServerUrl": local_raw.get("server_url") if isinstance(local_raw.get("server_url"), str) else "",
+    }
+
+
+def fetch_managed_config(
+    config_url: str,
+    request_body: dict[str, Any],
+    allow_insecure_tls: bool,
+) -> Optional[dict[str, Any]]:
+    """Answer of the Multiview, or None when it cannot be reached."""
+    request = Request(
+        config_url,
+        data=json.dumps(request_body, separators=(",", ":")).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": f"Kesher-Pi-Launcher/{LAUNCHER_VERSION}",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(
+            request,
+            timeout=3,
+            context=ssl_context_for_url(config_url, allow_insecure_tls),
+        ) as response:
+            payload = json.load(response)
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError):
+        return None
+    if not isinstance(payload, dict) or not isinstance(payload.get("managed"), bool):
+        return None
+    if payload["managed"] and not isinstance(payload.get("config"), dict):
+        return None
+    return payload
+
+
+def merge_managed_config(
+    local_raw: dict[str, Any],
+    response: Optional[dict[str, Any]],
+) -> dict[str, Any]:
+    """Managed settings replace the file's; config_url and heartbeat_secret stay local."""
+    merged = dict(local_raw)
+    if not response or response.get("managed") is not True:
+        return merged
+    remote = response.get("config") or {}
+    for key in MANAGED_CONFIG_KEYS:
+        if key in remote:
+            merged[key] = remote[key]
+    return merged
+
+
+def managed_config_cache_path() -> Path:
+    return Path.home() / ".cache" / "kesher-pi" / "managed-config.json"
+
+
+def read_managed_config_cache(path: Optional[Path] = None) -> Optional[dict[str, Any]]:
+    try:
+        payload = json.loads((path or managed_config_cache_path()).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) and isinstance(payload.get("managed"), bool) else None
+
+
+def write_managed_config_cache(payload: dict[str, Any], path: Optional[Path] = None) -> None:
+    target = path or managed_config_cache_path()
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_suffix(".tmp")
+        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        temporary.replace(target)
+    except OSError:
+        pass
+
+
+def load_effective_config(
+    path: Path,
+    addresses: list[str],
+    mac_addresses: list[str],
+    wait_seconds: int = MANAGED_CONFIG_BOOT_WAIT_SECONDS,
+) -> tuple[dict[str, Any], dict[str, Any], str]:
+    """Validated config, the merged raw config and where the settings came from.
+
+    With config_url the Multiview's settings win; without an answer (network not
+    up yet, server down) the last answer from the cache, then the file alone.
+    """
+    local_raw = read_config_file(path)
+    if not local_raw.get("config_url"):
+        return validate_config(local_raw), local_raw, "file"
+    config_url = normalize_config_url(local_raw.get("config_url"))
+    allow_insecure_tls = local_raw.get("allow_insecure_tls") is True
+    deadline = time.monotonic() + max(0, int(wait_seconds))
+    while True:
+        response = fetch_managed_config(
+            config_url,
+            managed_config_request(local_raw, addresses, mac_addresses),
+            allow_insecure_tls,
+        )
+        if response is not None:
+            write_managed_config_cache(response)
+            source = "multiview" if response.get("managed") else "file"
+            break
+        if time.monotonic() >= deadline:
+            response = read_managed_config_cache()
+            source = "cache" if response and response.get("managed") else "file"
+            print(
+                f"Multiview not reachable at {config_url}; using the "
+                f"{'cached Multiview settings' if source == 'cache' else 'config file'}",
+                flush=True,
+            )
+            break
+        time.sleep(2)
+    merged = merge_managed_config(local_raw, response)
+    return validate_config(merged), merged, source
+
+
+def start_managed_config_watch(
+    path: Path,
+    current_raw: dict[str, Any],
+    reload_event: threading.Event,
+    on_change: Any,
+    stop_event: threading.Event,
+    poll_seconds: int = MANAGED_CONFIG_POLL_SECONDS,
+) -> Optional[threading.Thread]:
+    """Polls the Multiview; a change for this Pi calls on_change (restart with it)."""
+    try:
+        local_raw = read_config_file(path)
+        config_url = normalize_config_url(local_raw.get("config_url"))
+    except ValueError:
+        return None
+    allow_insecure_tls = local_raw.get("allow_insecure_tls") is True
+
+    def run() -> None:
+        while not stop_event.wait(poll_seconds):
+            try:
+                addresses = detect_ipv4_addresses()
+            except (OSError, subprocess.SubprocessError, ValueError):
+                addresses = []
+            response = fetch_managed_config(
+                config_url,
+                managed_config_request(local_raw, addresses, detect_mac_addresses()),
+                allow_insecure_tls,
+            )
+            if response is None:
+                continue
+            write_managed_config_cache(response)
+            if merge_managed_config(local_raw, response) != current_raw:
+                print("Settings changed in the Multiview; restarting the station", flush=True)
+                reload_event.set()
+                on_change()
+                return
+
+    thread = threading.Thread(target=run, name="kesher-pi-config", daemon=True)
+    thread.start()
+    return thread
 
 
 def build_kesher_url(server_url: str, client: dict[str, Any]) -> str:
@@ -666,10 +872,14 @@ def update_heartbeat_state(
             state["login_error"] = login_error
 
 
-def wait_for_server(server_url: str, allow_insecure_tls: bool) -> None:
+def wait_for_server(
+    server_url: str,
+    allow_insecure_tls: bool,
+    stop_event: Optional[threading.Event] = None,
+) -> None:
     health_url = f"{server_url}/api/healthz"
     ssl_context = ssl_context_for_url(health_url, allow_insecure_tls)
-    while True:
+    while not (stop_event and stop_event.is_set()):
         try:
             request = Request(
                 health_url,
@@ -958,6 +1168,7 @@ def main() -> int:
     parser.add_argument("--print-url", action="store_true")
     parser.add_argument("--print-heartbeat", action="store_true")
     parser.add_argument("--print-audio", action="store_true")
+    parser.add_argument("--print-config", action="store_true")
     args = parser.parse_args()
     try:
         if args.version:
@@ -969,9 +1180,20 @@ def main() -> int:
             status["summary"] = audio_runtime_summary(status)
             print(json.dumps(status, indent=2, sort_keys=True))
             return 0
-        config = load_config(args.config)
         addresses = detect_ipv4_addresses()
-        client = resolve_client(config, addresses, detect_mac_addresses())
+        mac_addresses = detect_mac_addresses()
+        diagnostic = args.print_url or args.print_heartbeat or args.print_config
+        config, merged_raw, config_source = load_effective_config(
+            args.config,
+            addresses,
+            mac_addresses,
+            0 if diagnostic else MANAGED_CONFIG_BOOT_WAIT_SECONDS,
+        )
+        if args.print_config:
+            shown = {key: value for key, value in config.items() if key != "heartbeat_secret"}
+            print(json.dumps({"source": config_source, "config": shown}, indent=2, sort_keys=True))
+            return 0
+        client = resolve_client(config, addresses, mac_addresses)
         kesher_url = build_kesher_url(config["server_url"], client)
         if args.print_url:
             print(kesher_url)
@@ -1001,13 +1223,34 @@ def main() -> int:
         )
         print(
             f'Starting Kesher station {client["name"]} '
-            f'with role {client["role_id"]} for {client["ip_address"]}',
+            f'with role {client["role_id"]} for {client["ip_address"]} '
+            f"(settings from {config_source})",
             flush=True,
         )
+        # Changes in the Multiview: stop the browser and start over with the new settings
+        reload_event = threading.Event()
+        browser: dict[str, Optional[subprocess.Popen[Any]]] = {"process": None}
+
+        def stop_for_reload() -> None:
+            process = browser["process"]
+            if process is not None:
+                stop_browser_process(process)
+
+        config_watch = None
+        if merged_raw.get("config_url"):
+            config_watch = start_managed_config_watch(
+                args.config,
+                merged_raw,
+                reload_event,
+                stop_for_reload,
+                heartbeat_stop,
+            )
+        reload_requested = False
         try:
             wait_for_server(
                 config["server_url"],
                 config.get("allow_insecure_tls") is True,
+                reload_event,
             )
             wait_for_display_runtime(
                 config.get("display_runtime_wait_seconds", DISPLAY_RUNTIME_WAIT_SECONDS),
@@ -1033,7 +1276,8 @@ def main() -> int:
                 login_status="starting_browser",
                 login_error="",
             )
-            while True:
+            return_code = 0
+            while not reload_event.is_set():
                 cleanup_chromium_singletons()
                 process = subprocess.Popen(
                     browser_command(
@@ -1042,6 +1286,9 @@ def main() -> int:
                         client.get("low_power_mode") is True,
                     )
                 )
+                browser["process"] = process
+                if reload_event.is_set():
+                    stop_browser_process(process)
                 update_heartbeat_state(
                     heartbeat_state,
                     heartbeat_state_lock,
@@ -1089,6 +1336,9 @@ def main() -> int:
                         BROWSER_RESTART_DELAY_SECONDS,
                     )
                 )
+            if reload_event.is_set():
+                reload_requested = True
+                return 0
             update_heartbeat_state(
                 heartbeat_state,
                 heartbeat_state_lock,
@@ -1107,6 +1357,11 @@ def main() -> int:
         finally:
             heartbeat_stop.set()
             heartbeat_thread.join(timeout=1)
+            if config_watch is not None:
+                config_watch.join(timeout=1)
+            if reload_requested:
+                # Start over in this process (same service, new settings)
+                os.execv(sys.executable, [sys.executable, os.path.abspath(__file__), *sys.argv[1:]])
     except (ValueError, subprocess.SubprocessError, OSError) as error:
         print(f"Kesher Pi configuration error: {error}", file=sys.stderr, flush=True)
         return 1

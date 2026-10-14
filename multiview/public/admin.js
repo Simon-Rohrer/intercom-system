@@ -23,7 +23,7 @@ const CLIENT_ID = uid('c')
 const PAGES = ['uebersicht', 'eingaenge', 'layouts', 'einstellungen', 'zugang']
 const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'zugang']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
-const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'companion', 'bildschirme', 'geraete']
+const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'raspberry', 'companion', 'bildschirme', 'geraete']
 // Unterseiten von Benutzer & Rechte: #/zugang/rollen …
 const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste']
 const SOURCE_TYPES = {
@@ -126,6 +126,7 @@ function onMessage(msg) {
     renderChatStatus()
     renderStatusStrip()
     renderAccess()
+    if (config) renderRaspberry() // Rollen für die Auswahl kommen mit dem Chat
     for (const view of chatViews) {
       if (view.el.isConnected) view.update(chatFor(chat, view.roleId?.() ?? ''))
       else chatViews.delete(view)
@@ -238,6 +239,7 @@ function showPage() {
   document.body.classList.remove('nav-open')
   if (page === 'eingaenge') autoScanDevices()
   if (page === 'einstellungen' && sub === 'geraete') loadSessions()
+  if (page === 'einstellungen' && sub === 'raspberry') loadRaspberryStatus()
   if (page === 'zugang') loadGateway()
   renderAll()
   window.scrollTo(0, 0)
@@ -262,6 +264,7 @@ function renderAll() {
   renderChat()
   renderChurchTools()
   renderProPresenter()
+  renderRaspberry()
   renderCompanion()
   renderAtemPill()
   renderDatalists()
@@ -2295,6 +2298,266 @@ for (const id of ['#pp-host', '#pp-port']) {
   })
 }
 
+// ---------------------------------------------------------------------------
+// Einstellungen: Raspberry Pis (die Launcher auf den Pis holen sich das über /api/raspberry-pis/config)
+// ---------------------------------------------------------------------------
+
+const PI_VIEWS = { standard: 'Wie bei der Rolle eingestellt', station: 'Station', simple: 'Einfach' }
+let piStatus = { seen: [], stations: null, error: '' }
+
+function piSettings() {
+  config.raspberry ??= {}
+  const r = config.raspberry
+  r.managed ??= false
+  r.allowInsecureTls ??= true
+  r.clients ??= []
+  return r
+}
+
+const splitList = (value) => String(value || '').split(/[\s,;]+/).filter(Boolean)
+const isMac = (v) => /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i.test(v)
+const isIp = (v) => /^(\d{1,3}\.){3}\d{1,3}$/.test(v)
+const piDeviceId = (pi) =>
+  pi.deviceId ||
+  (String(pi.name || '').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '-pi').replace(/^-pi$/, '')
+
+function agoText(ms) {
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `vor ${s} s`
+  if (s < 3600) return `vor ${Math.round(s / 60)} min`
+  return `vor ${Math.round(s / 3600)} h`
+}
+
+/** Was mit dem Eintrag nicht stimmt – ohne Namen, Rolle oder MAC/IP bekommt der Pi ihn nicht. */
+function piProblems(pi, all) {
+  const problems = []
+  if (!pi.name) problems.push('Name fehlt')
+  if (!pi.roleId) problems.push('Rolle fehlt')
+  if (!pi.macAddresses?.length && !pi.ipAddress) problems.push('MAC-Adresse oder IP fehlt')
+  const bad = (pi.macAddresses ?? []).filter((m) => !isMac(m))
+  if (bad.length) problems.push(`keine gültige MAC: ${bad.join(', ')}`)
+  if (pi.ipAddress && !isIp(pi.ipAddress)) problems.push('IP-Adresse ungültig')
+  const others = all.filter((o) => o !== pi)
+  const macs = new Set((pi.macAddresses ?? []).map((m) => m.toLowerCase().replace(/-/g, ':')))
+  if (others.some((o) => (o.macAddresses ?? []).some((m) => macs.has(m.toLowerCase().replace(/-/g, ':')))))
+    problems.push('MAC-Adresse steht auch bei einem anderen Pi')
+  if (pi.ipAddress && others.some((o) => o.ipAddress === pi.ipAddress)) problems.push('IP-Adresse steht auch bei einem anderen Pi')
+  if (piDeviceId(pi) && others.some((o) => piDeviceId(o) === piDeviceId(pi))) problems.push('Geräte-ID doppelt')
+  return problems
+}
+
+/** Gehört der Pi, der gefragt hat, zu diesem Eintrag? (wie auf dem Server: MAC, ohne MACs die IP) */
+function piSeenMatches(pi, seen) {
+  const macs = (pi.macAddresses ?? []).map((m) => m.toLowerCase().replace(/-/g, ':'))
+  if (macs.length) return macs.some((m) => seen.macs.includes(m))
+  return Boolean(pi.ipAddress) && seen.ips.includes(pi.ipAddress)
+}
+
+/** Zustand laut Kesher (Heartbeat des Launchers und Intercom-Verbindung). */
+function piStationPill(pi) {
+  if (!piStatus.stations) return ''
+  const station = piStatus.stations.find((s) => s.deviceId === piDeviceId(pi))
+  if (!station) return '<span class="pill">nicht gemeldet</span>'
+  if (station.online && station.intercomConnected) return '<span class="pill ok">im Intercom</span>'
+  if (station.online) return '<span class="pill warn">läuft, nicht im Intercom</span>'
+  return '<span class="pill bad">offline</span>'
+}
+
+function renderRaspberry() {
+  if (!config) return
+  const r = piSettings()
+  const managed = $('#pi-managed')
+  managed.checked = r.managed
+  $('#pi-managed-label').textContent = r.managed ? 'Hier verwaltet' : 'Hier verwalten'
+  $('#pi-managed-note').hidden = r.managed
+  for (const key of ['serverUrl', 'browserBinary', 'audioWaitSeconds', 'displaySettleSeconds', 'connectTimeoutSeconds']) {
+    const input = $(`#pi-${key}`)
+    if (document.activeElement !== input) input.value = r[key] ?? ''
+  }
+  $('#pi-allowInsecureTls').checked = r.allowInsecureTls !== false
+  $('#pi-config-line').textContent = `"config_url": "${location.origin}/api/raspberry-pis/config"`
+
+  const list = $('#pi-list')
+  if (!list.contains(document.activeElement) || document.activeElement.tagName === 'BUTTON') {
+    const roles = kesherRoles()
+    list.innerHTML =
+      r.clients
+        .map((pi) => {
+          const roleOptions = [
+            '<option value="">– Rolle wählen –</option>',
+            ...roles.map((role) => `<option value="${esc(role.id)}" ${role.id === pi.roleId ? 'selected' : ''}>${esc(role.name)}</option>`),
+            // Rolle, die Kesher (noch) nicht kennt: trotzdem anzeigen statt still zu verlieren
+            ...(pi.roleId && !roles.some((role) => role.id === pi.roleId) ? [`<option value="${esc(pi.roleId)}" selected>${esc(pi.roleId)} (unbekannt)</option>`] : []),
+          ].join('')
+          const seen = piStatus.seen.find((p) => piSeenMatches(pi, p))
+          const problems = piProblems(pi, r.clients)
+          const remote = r.serverUrl ? `<a class="btn small" href="${esc(r.serverUrl)}/?login=raspberry" target="_blank" rel="noopener">Fernsteuern</a>` : ''
+          return `<div class="pi-item" data-pi="${esc(pi.id)}">
+            <div class="pi-item-head">
+              <h4>${esc(pi.name || 'Neuer Raspberry Pi')}</h4>
+              ${piStationPill(pi)}
+              ${seen ? `<span class="muted">fragt ${esc(agoText(seen.ageMs))}${seen.ips.length ? ` · <code class="ip">${esc(seen.ips.join(', '))}</code>` : ''}</span>` : ''}
+              <span class="pi-spacer"></span>
+              ${remote}
+              <button class="btn small danger" type="button" data-pi-remove>Entfernen</button>
+            </div>
+            <div class="pi-grid">
+              <label class="field"><span>Name in Kesher <small>(ohne Leerzeichen)</small></span>
+                <input type="text" data-p="name" value="${esc(pi.name)}" placeholder="Kamera-1" spellcheck="false"></label>
+              <label class="field"><span>Rolle</span><select data-p="roleId">${roleOptions}</select></label>
+              <label class="field"><span>Ansicht</span><select data-p="view">${Object.entries(PI_VIEWS)
+                .map(([value, label]) => `<option value="${value}" ${value === (pi.view || 'standard') ? 'selected' : ''}>${esc(label)}</option>`)
+                .join('')}</select></label>
+              <label class="field"><span>MAC-Adressen <small>(LAN und WLAN, mit Komma)</small></span>
+                <input type="text" data-p="macAddresses" value="${esc((pi.macAddresses ?? []).join(', '))}" placeholder="b8:27:eb:12:34:56" spellcheck="false"></label>
+              <label class="field"><span>Feste IP <small>(nur ohne MAC nötig)</small></span>
+                <input type="text" data-p="ipAddress" value="${esc(pi.ipAddress)}" placeholder="192.168.0.157" spellcheck="false"></label>
+              <label class="field"><span>Geräte-ID</span>
+                <input type="text" data-p="deviceId" value="${esc(pi.deviceId)}" placeholder="${esc(piDeviceId({ name: pi.name }) || 'kamera-1-pi')}" spellcheck="false"></label>
+              <label class="field"><span>Mikrofon <small>(Name enthält)</small></span>
+                <input type="text" data-p="audioInputMatch" value="${esc(pi.audioInputMatch)}" placeholder="Headset" spellcheck="false"></label>
+              <label class="field"><span>Kopfhörer <small>(Name enthält)</small></span>
+                <input type="text" data-p="audioOutputMatch" value="${esc(pi.audioOutputMatch)}" placeholder="Headset" spellcheck="false"></label>
+              <label class="check pi-check"><input type="checkbox" data-p="lowPowerMode" ${pi.lowPowerMode ? 'checked' : ''}> Sparmodus (schwache Pis)</label>
+            </div>
+            ${problems.length ? `<p class="pi-problem">⚠ ${esc(problems.join(' · '))}</p>` : ''}
+          </div>`
+        })
+        .join('') || '<p class="muted">Noch keine Station eingetragen.</p>'
+  }
+  renderRaspberrySeen()
+}
+
+function renderRaspberrySeen() {
+  const r = piSettings()
+  const box = $('#pi-seen')
+  const rows = piStatus.seen.map((p) => {
+    const client = r.clients.find((c) => piSeenMatches(c, p))
+    const file = p.local ? `${esc(p.local.name)} · ${esc(p.local.roleId)}` : '<span class="muted">–</span>'
+    const action = client
+      ? `<span class="badge accent">${esc(client.name || 'eingetragen')}</span>`
+      : `<button class="btn small primary" type="button" data-pi-adopt="${esc(p.macs.join(',') || p.ips.join(','))}">Übernehmen</button>`
+    return `<tr>
+      <td><b>${esc(p.hostname || 'Raspberry Pi')}</b>${p.launcherVersion ? ` <span class="muted">v${esc(p.launcherVersion)}</span>` : ''}</td>
+      <td><code class="ip">${esc(p.ips.join(', ') || p.remoteIp || '–')}</code></td>
+      <td><code>${esc(p.macs.join(', ') || '–')}</code></td>
+      <td>${file}</td>
+      <td class="muted">${esc(agoText(p.ageMs))}</td>
+      <td style="text-align:right">${action}</td>
+    </tr>`
+  })
+  box.innerHTML =
+    (piStatus.error ? `<p class="muted">${esc(piStatus.error)}</p>` : '') +
+    `<div class="table-wrap"><table class="table pi-seen-table">
+      <thead><tr><th>Pi</th><th>IP-Adresse</th><th>MAC-Adressen</th><th>In seiner Datei</th><th>Zuletzt</th><th></th></tr></thead>
+      <tbody>${rows.join('') || '<tr><td colspan="6" class="muted">Noch kein Pi hat gefragt – erst Pis mit dem neuen Launcher und eingetragener <code>config_url</code> tauchen hier auf.</td></tr>'}</tbody>
+    </table></div>`
+}
+
+async function loadRaspberryStatus() {
+  if (!isAdmin()) return
+  try {
+    const res = await fetch('/api/raspberry-pis/status', { cache: 'no-store' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    piStatus = await res.json()
+  } catch (err) {
+    piStatus = { seen: piStatus.seen, stations: null, error: `Status nicht ladbar (${err.message})` }
+  }
+  renderRaspberry()
+}
+// Online/offline ändert sich laufend – solange der Reiter offen ist, alle 10 s neu laden
+setInterval(() => {
+  if (document.visibilityState === 'visible' && page === 'einstellungen' && !$('#set-raspberry').hidden) loadRaspberryStatus()
+}, 10_000)
+
+$('#pi-managed').addEventListener('change', (e) => {
+  const r = piSettings()
+  if (e.target.checked && !r.clients.some((c) => !piProblems(c, r.clients).length)) {
+    const ok = confirm('Es ist noch keine vollständige Station eingetragen. Eingeschaltet startet ein Pi ohne Eintrag hier nicht mehr. Trotzdem einschalten?')
+    if (!ok) return (e.target.checked = false)
+  }
+  r.managed = e.target.checked
+  renderRaspberry()
+  renderStatusStrip()
+  changed(0)
+})
+
+for (const key of ['serverUrl', 'browserBinary', 'audioWaitSeconds', 'displaySettleSeconds', 'connectTimeoutSeconds']) {
+  $(`#pi-${key}`).addEventListener('change', (e) => {
+    const value = e.target.value.trim()
+    piSettings()[key] = e.target.type === 'number' ? (value === '' ? null : Number(value)) : key === 'serverUrl' ? value.replace(/\/+$/, '') : value
+    renderRaspberry()
+    changed(0)
+  })
+}
+$('#pi-allowInsecureTls').addEventListener('change', (e) => {
+  piSettings().allowInsecureTls = e.target.checked
+  changed(0)
+})
+
+$('#pi-add').addEventListener('click', () => {
+  piSettings().clients.push({ id: uid('pi'), name: '', roleId: '', macAddresses: [], ipAddress: '', view: 'standard', lowPowerMode: false })
+  renderRaspberry()
+  $('#pi-list .pi-item:last-child [data-p="name"]')?.focus()
+})
+
+function onPiField(e) {
+  const el = e.target
+  const key = el.dataset.p
+  if (!key) return
+  const isText = el.type === 'text'
+  if ((e.type === 'input') !== isText) return
+  const pi = piSettings().clients.find((c) => c.id === el.closest('[data-pi]').dataset.pi)
+  if (!pi) return
+  if (key === 'lowPowerMode') pi.lowPowerMode = el.checked
+  else if (key === 'macAddresses') pi.macAddresses = splitList(el.value).map((m) => m.toLowerCase())
+  else if (key === 'name' || key === 'deviceId') pi[key] = el.value.replace(/\s+/g, '-')
+  else pi[key] = el.value.trim()
+  changed(isText ? 600 : 0)
+}
+$('#pi-list').addEventListener('input', onPiField)
+$('#pi-list').addEventListener('change', onPiField)
+// Nach dem Tippen Überschrift und Hinweise nachziehen
+$('#pi-list').addEventListener('focusout', () => setTimeout(() => !$('#pi-list').contains(document.activeElement) && renderRaspberry()))
+
+$('#set-raspberry').addEventListener('click', (e) => {
+  if (e.target.closest('#pi-refresh')) return loadRaspberryStatus()
+  const remove = e.target.closest('[data-pi-remove]')
+  if (remove) {
+    const r = piSettings()
+    const pi = r.clients.find((c) => c.id === remove.closest('[data-pi]').dataset.pi)
+    if (!pi || !confirm(`${pi.name || 'Diesen Pi'} entfernen?${r.managed ? ' Er startet dann nicht mehr als Station.' : ''}`)) return
+    r.clients = r.clients.filter((c) => c !== pi)
+    renderRaspberry()
+    return changed(0)
+  }
+  const adopt = e.target.closest('[data-pi-adopt]')
+  if (adopt) {
+    const p = piStatus.seen.find((s) => (s.macs.join(',') || s.ips.join(',')) === adopt.dataset.piAdopt)
+    if (!p) return
+    const r = piSettings()
+    const local = p.local || {}
+    r.clients.push({
+      id: uid('pi'),
+      name: local.name || '',
+      deviceId: local.deviceId || '',
+      roleId: local.roleId || '',
+      // Alle MACs des Pi (LAN und WLAN) – dann ist egal, welche IP er gerade hat
+      macAddresses: p.macs.length ? p.macs : local.macAddresses || [],
+      ipAddress: p.macs.length ? '' : local.ipAddress || p.ips[0] || '',
+      audioInputMatch: local.audioInputMatch || '',
+      audioOutputMatch: local.audioOutputMatch || '',
+      lowPowerMode: Boolean(local.lowPowerMode),
+      view: local.view || 'standard',
+    })
+    if (!r.serverUrl && p.localServerUrl) r.serverUrl = p.localServerUrl
+    renderRaspberry()
+    changed(0)
+    toast(`${local.name || p.hostname || 'Pi'} übernommen – Angaben prüfen und oben „Hier verwalten“ einschalten`)
+  }
+})
+
 function renderCompanion() {
   // Companion läuft auf demselben Server: dort direkt und ohne Zertifikat über 127.0.0.1
   const base = location.protocol === 'https:' ? `http://127.0.0.1:${location.port || 8090}` : location.origin
@@ -2413,6 +2676,7 @@ const SEARCH_ENTRIES = [
   { label: 'ProPresenter', href: '#/einstellungen/propresenter', admin: true, words: 'einstellungen folien stage display beamer nachricht' },
   { label: 'Kesher-Chat', href: '#/einstellungen/kesher', admin: true, words: 'einstellungen intercom chat rolle' },
   { label: 'ChurchTools', href: '#/einstellungen/churchtools', admin: true, words: 'einstellungen ablauf agenda gottesdienst' },
+  { label: 'Raspberry Pis', href: '#/einstellungen/raspberry', admin: true, words: 'einstellungen raspberry pi station kiosk intercom rolle mac fernsteuern' },
   { label: 'Companion', href: '#/einstellungen/companion', admin: true, words: 'einstellungen stream deck tasten' },
   { label: 'Bildschirme am Server', href: '#/einstellungen/bildschirme', admin: true, words: 'einstellungen hdmi monitor anschluss' },
   { label: 'Angemeldete Geräte', href: '#/einstellungen/geraete', admin: true, words: 'einstellungen online ip sitzung abmelden' },
@@ -2654,6 +2918,7 @@ function renderStatusStrip() {
     propresenter: !config.propresenter?.host ? 'off' : pp.connected ? 'ok' : 'bad',
     kesher: chat.state === 'connected' ? 'ok' : 'bad',
     churchtools: ct.state === 'unconfigured' ? 'off' : ct.state === 'connected' ? 'ok' : 'bad',
+    raspberry: config.raspberry?.managed ? 'ok' : 'off',
   }
   for (const [section, state] of Object.entries(dots)) {
     const link = document.querySelector(`[data-section-link="${section}"]`)

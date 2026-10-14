@@ -76,7 +76,11 @@ import {
   fetchCentralIdentity,
   type CentralIdentity,
 } from "./lib/centralLogin";
-import { resolveLowPowerMode, resolveViewModeOverride } from "./lib/runtimeMode";
+import {
+  resolveLowPowerMode,
+  resolveRaspberryRemoteLogin,
+  resolveViewModeOverride,
+} from "./lib/runtimeMode";
 import { resolveInputDeviceChannelCount } from "./lib/audioDeviceChannels";
 import type {
   Bootstrap,
@@ -466,6 +470,12 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   useEffect(() => {
     isUserSettingsOpenRef.current = isUserSettingsOpen;
   }, [isUserSettingsOpen]);
+
+  // Opened from the dashboard to remote-control a Raspberry Pi (?login=raspberry)
+  const raspberryRemoteLogin = useMemo(
+    () => resolveRaspberryRemoteLogin(window.location.search),
+    [],
+  );
 
   const showDebug = (() => {
     const params = new URLSearchParams(window.location.search);
@@ -1458,7 +1468,13 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
   // ── Central admin: Kesher admin without the PIN (signed ticket) ──
   useEffect(() => {
-    if (!centralChecked || token || !centralIdentity?.admin || centralAdminTriedRef.current) {
+    if (
+      !centralChecked ||
+      token ||
+      !centralIdentity?.admin ||
+      centralAdminTriedRef.current ||
+      raspberryRemoteLogin
+    ) {
       return;
     }
     centralAdminTriedRef.current = true;
@@ -1479,7 +1495,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         );
       }
     })();
-  }, [centralChecked, centralIdentity, token]);
+  }, [centralChecked, centralIdentity, token, raspberryRemoteLogin]);
 
 
   // ── Bootstrap on login ──
@@ -3029,7 +3045,13 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         }}
         onLogin={() => void handleOperatorLogin()}
         adminPin={adminPinInput}
-        initialMode={authMode === "admin" ? "admin" : "operator"}
+        initialMode={
+          authMode === "admin"
+            ? "admin"
+            : raspberryRemoteLogin
+              ? "raspberry"
+              : "operator"
+        }
         onAdminPinChange={setAdminPinInput}
         onAdminLogin={() => void handleAdminLogin()}
         loginError={operatorLoginError}

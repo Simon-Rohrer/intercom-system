@@ -35,7 +35,7 @@ RUN set -eu; \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
-COPY server.js kesher-chat.js kesher-roles.js churchtools.js access.js neighbors.js legacy.js legacy-runtime.js ./
+COPY server.js kesher-chat.js kesher-roles.js churchtools.js access.js neighbors.js raspberry-pis.js legacy.js legacy-runtime.js ./
 COPY public ./public
 COPY seed ./seed
 COPY wallpapers/*.jpg ./wallpapers/

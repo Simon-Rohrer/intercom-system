@@ -328,6 +328,109 @@ class LauncherTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "detected MACs: aa:bb:cc:dd:ee:ff"):
             launcher.resolve_client(self.config, ["192.168.1.99"], ["aa:bb:cc:dd:ee:ff"])
 
+    def write_local_config(self, directory, **extra):
+        path = Path(directory) / "raspberry-pis.json"
+        local = dict(self.config, heartbeat_secret="geheim", **extra)
+        path.write_text(launcher.json.dumps(local), encoding="utf-8")
+        return path
+
+    def managed_response(self):
+        return {
+            "managed": True,
+            "config": {
+                "server_url": "https://192.168.0.21:8443",
+                "clients": [
+                    {
+                        "device_id": "kamera-1-pi",
+                        "name": "Kamera-1",
+                        "role_id": "cam1",
+                        "mac_addresses": ["b8:27:eb:b2:aa:2d"],
+                        "low_power_mode": True,
+                    }
+                ],
+            },
+        }
+
+    def test_managed_settings_replace_the_file_but_keep_local_secrets(self):
+        local = dict(self.config, config_url="https://mv/api", heartbeat_secret="geheim")
+        merged = launcher.merge_managed_config(local, self.managed_response())
+        self.assertEqual(merged["server_url"], "https://192.168.0.21:8443")
+        self.assertEqual(merged["clients"][0]["name"], "Kamera-1")
+        self.assertEqual(merged["heartbeat_secret"], "geheim")
+        self.assertEqual(merged["config_url"], "https://mv/api")
+        self.assertEqual(merged["browser_binary"], "python3")
+        self.assertEqual(launcher.merge_managed_config(local, {"managed": False}), local)
+        self.assertEqual(launcher.merge_managed_config(local, None), local)
+
+    def test_effective_config_comes_from_the_multiview_and_is_cached(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_local_config(directory, config_url="https://192.168.0.21:8090/api/raspberry-pis/config")
+            cache = Path(directory) / "cache.json"
+            with mock.patch.object(launcher, "fetch_managed_config", return_value=self.managed_response()) as fetch, \
+                mock.patch.object(launcher, "managed_config_cache_path", return_value=cache):
+                config, merged, source = launcher.load_effective_config(
+                    path, ["192.168.0.157"], ["b8:27:eb:b2:aa:2d"], 0
+                )
+            self.assertEqual(source, "multiview")
+            self.assertEqual(config["clients"][0]["role_id"], "cam1")
+            self.assertEqual(merged["heartbeat_secret"], "geheim")
+            body = fetch.call_args.args[1]
+            self.assertEqual(body["macs"], ["b8:27:eb:b2:aa:2d"])
+            self.assertIsNone(body["local"])  # this Pi has no entry in the file
+            self.assertEqual(launcher.read_managed_config_cache(cache), self.managed_response())
+            client = launcher.resolve_client(config, ["192.168.0.157"], ["b8:27:eb:b2:aa:2d"])
+            self.assertEqual(client["name"], "Kamera-1")
+
+    def test_effective_config_falls_back_to_cache_then_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_local_config(directory, config_url="https://192.168.0.21:8090/api/raspberry-pis/config")
+            cache = Path(directory) / "cache.json"
+            with mock.patch.object(launcher, "fetch_managed_config", return_value=None), \
+                mock.patch.object(launcher, "managed_config_cache_path", return_value=cache):
+                config, _, source = launcher.load_effective_config(path, ["192.168.1.51"], [], 0)
+                self.assertEqual(source, "file")
+                self.assertEqual(config["clients"][0]["name"], "FOH")
+                launcher.write_managed_config_cache(self.managed_response())
+                config, _, source = launcher.load_effective_config(path, ["192.168.1.51"], [], 0)
+            self.assertEqual(source, "cache")
+            self.assertEqual(config["clients"][0]["name"], "Kamera-1")
+
+    def test_without_config_url_only_the_file_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_local_config(directory)
+            with mock.patch.object(launcher, "fetch_managed_config") as fetch:
+                _, _, source = launcher.load_effective_config(path, ["192.168.1.51"], [], 0)
+            fetch.assert_not_called()
+            self.assertEqual(source, "file")
+
+    def test_managed_request_offers_the_local_entry(self):
+        body = launcher.managed_config_request(self.config, ["192.168.1.51"], ["b8:27:eb:00:00:01"])
+        self.assertEqual(body["local"]["name"], "FOH")
+        self.assertEqual(body["local"]["role_id"], "audio")
+        self.assertEqual(body["localServerUrl"], "http://192.168.1.10:8080")
+        self.assertEqual(body["launcherVersion"], launcher.LAUNCHER_VERSION)
+
+    def test_config_watch_restarts_on_changes_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_local_config(directory, config_url="https://192.168.0.21:8090/api/raspberry-pis/config")
+            local = launcher.read_config_file(path)
+            current = launcher.merge_managed_config(local, self.managed_response())
+            changed = self.managed_response()
+            changed["config"]["clients"][0]["role_id"] = "cam2"
+            reload_event = launcher.threading.Event()
+            stop_event = launcher.threading.Event()
+            calls = []
+            with mock.patch.object(launcher, "fetch_managed_config", side_effect=[None, self.managed_response(), changed]), \
+                mock.patch.object(launcher, "write_managed_config_cache"), \
+                mock.patch.object(launcher, "detect_ipv4_addresses", return_value=["192.168.0.157"]), \
+                mock.patch.object(launcher, "detect_mac_addresses", return_value=["b8:27:eb:b2:aa:2d"]):
+                thread = launcher.start_managed_config_watch(
+                    path, current, reload_event, lambda: calls.append(1), stop_event, poll_seconds=0.01
+                )
+                thread.join(timeout=2)
+            self.assertTrue(reload_event.is_set())
+            self.assertEqual(calls, [1])
+
 
 if __name__ == "__main__":
     unittest.main()

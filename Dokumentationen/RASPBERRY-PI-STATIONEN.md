@@ -19,7 +19,40 @@ IP prüfen:
 hostname -I
 ```
 
-## Konfiguration ergänzen
+## Einstellungen im Multiview (empfohlen)
+
+Seit Launcher-Version 10 stehen die Einstellungen der Pis im Multiview unter
+**Einstellungen → Raspberry Pis** (`https://192.168.0.21:8090/#/einstellungen/raspberry`, nur Admin):
+Kesher-Adresse, Zertifikat, Wartezeiten und pro Station Name, Rolle, Ansicht, MAC-Adressen,
+Audio-Geräte und Sparmodus. Der Launcher fragt beim Start und danach alle 15 Sekunden nach;
+ändert sich etwas für seinen Pi, startet er den Browser mit den neuen Einstellungen neu.
+
+Dafür steht in `/etc/kesher/raspberry-pis.json` auf dem Pi zusätzlich:
+
+```json
+"config_url": "https://192.168.0.21:8090/api/raspberry-pis/config"
+```
+
+So funktioniert es:
+
+- Solange der Schalter **Hier verwalten** aus ist, nehmen die Pis weiter ihre Datei. Unter
+  **Pis im Netz** erscheinen trotzdem alle Pis mit `config_url`; **Übernehmen** legt die
+  Station mit den Werten aus ihrer Datei und allen ihren MAC-Adressen an. Danach einschalten.
+- Eingeschaltet gilt der Multiview. In der Datei bleiben nur `config_url`,
+  `allow_insecure_tls` (für die Verbindung zum Multiview) und ggf. `heartbeat_secret`
+  maßgeblich – der Rest ist die Reserve, falls der Multiview beim Start nicht erreichbar ist.
+- Die letzte Antwort des Multiview liegt auf dem Pi in `~/.cache/kesher-pi/managed-config.json`
+  und wird genommen, wenn der Multiview beim Start nicht antwortet.
+- Ein Pi bekommt nur seinen eigenen Eintrag (über MAC oder IP). Ein Pi ohne Eintrag startet
+  bei eingeschaltetem Schalter nicht als Station und taucht unter „Pis im Netz“ auf.
+- Prüfen auf dem Pi: `sudo -u <user> /opt/kesher-pi/kesher-pi-launcher.py --print-config`
+  zeigt die wirksamen Einstellungen und woher sie kommen (`multiview`, `cache` oder `file`).
+
+Fernsteuern: Im Dashboard **Raspberry fernsteuern** öffnet Kesher direkt im Reiter
+*Raspberry* (`https://192.168.0.21:8443/?login=raspberry`), ohne automatische Anmeldung mit der
+eigenen Rolle. Dort mit **Steuern** eine verbundene Station übernehmen.
+
+## Konfiguration in der Datei (ohne Multiview)
 
 Auf dem Entwicklungsrechner diese Datei bearbeiten:
 
