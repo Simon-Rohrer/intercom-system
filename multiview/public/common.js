@@ -17,8 +17,11 @@ export function connect(onMessage, onStatus) {
         console.error(err)
       }
     }
-    ws.onclose = () => {
+    ws.onclose = (e) => {
       onStatus?.(false)
+      // Ohne Anmeldung lässt der Server nur feste Geräte zu: zur Anmeldeseite statt endlos neu zu verbinden
+      if (e.code === 4401)
+        return location.replace(`/login.html?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`)
       setTimeout(open, 1500)
     }
   }

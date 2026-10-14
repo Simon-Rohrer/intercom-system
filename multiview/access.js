@@ -493,6 +493,15 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
     return { required, approved: !required || deviceApproved(req) }
   }
 
+  /**
+   * Darf diese Anfrage an die Schnittstellen des Multiview selbst (Zustand, Chat, Companion-Befehle,
+   * ProPresenter)? Angemeldete Nutzer, feste Geräte und der Server selbst (Kiosk, Companion).
+   * Ohne eingeschaltete Anmeldung jeder.
+   */
+  function trusted(ip, req) {
+    return Boolean(userOf(req)) || exemptIp(ip)
+  }
+
   function check({ service, ip }, req) {
     if (!gatewayActive()) return { action: 'allow', user: null }
     const level = SERVICE_LEVELS[service] ?? 'admin'
@@ -521,7 +530,7 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
 
   return {
     enabled, pinSource, userOf, sessionIdOf, occupiedRoles, login, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession,
-    gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, check, createTicket,
+    gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, check, trusted, createTicket,
     flush: write,
   }
 }
