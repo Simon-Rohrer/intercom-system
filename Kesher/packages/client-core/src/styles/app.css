@@ -157,7 +157,7 @@ button {
   background: var(--panel);
   border: 1px solid rgba(74, 100, 140, 0.08);
   padding: 1rem;
-  box-shadow: 0 8px 26px rgba(15, 18, 23, 0.5);
+  box-shadow: 0 8px 26px rgba(13, 13, 14, 0.5);
 }
 .admin-panel-compact {
   margin-top: 0;
@@ -527,7 +527,7 @@ button {
   padding: 0.46rem 0.86rem;
 }
 .admin-tab-button.active .admin-tab-badge {
-  background: rgba(15, 18, 23, 0.95);
+  background: rgba(13, 13, 14, 0.95);
   color: var(--accent);
 }
 .admin-tab-badge {
@@ -737,14 +737,14 @@ button {
   background:
     radial-gradient(circle at 20% 20%, rgba(255, 186, 73, 0.22), transparent 40%),
     radial-gradient(circle at 85% 10%, rgba(169, 178, 190, 0.25), transparent 35%),
-    linear-gradient(140deg, #161a20 0%, #1d222a 55%, #1d222a 100%);
+    linear-gradient(140deg, #1c1c1e 0%, #2c2c2e 55%, #2c2c2e 100%);
 }
 
 .birthday-gate-card {
   width: min(560px, 100%);
   display: grid;
   gap: 0.85rem;
-  background: rgba(15, 18, 23, 0.72);
+  background: rgba(13, 13, 14, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 16px;
   padding: 1.35rem;
@@ -839,7 +839,7 @@ button {
   display: grid;
   place-items: center;
   padding: 1.25rem;
-  background: rgba(15, 18, 23, 0.78);
+  background: rgba(13, 13, 14, 0.78);
   backdrop-filter: blur(6px);
 }
 
@@ -993,7 +993,7 @@ button {
   border: 1px dashed rgba(62, 84, 116, 0.36);
   border-radius: 12px;
   padding: 1rem;
-  background: rgba(15, 18, 23, 0.4);
+  background: rgba(13, 13, 14, 0.4);
 }
 
 .admin-room-form {
@@ -1023,7 +1023,7 @@ button {
 .admin-room-form-roles {
   border: 1px solid rgba(72, 97, 136, 0.35);
   border-radius: 11px;
-  background: rgba(15, 18, 23, 0.42);
+  background: rgba(13, 13, 14, 0.42);
   padding: 0.8rem;
 }
 
@@ -1171,7 +1171,7 @@ button {
   margin-top: 0.2rem;
   padding: 0.35rem 0.55rem;
   border-radius: 8px;
-  background: rgba(15, 18, 23, 0.85);
+  background: rgba(13, 13, 14, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.06);
   color: var(--text-bright-alt2);
   font-size: 0.84rem;
@@ -1322,7 +1322,7 @@ button {
 .role-multiselect-details {
   border: 1px solid rgba(51, 72, 101, 0.3);
   border-radius: 12px;
-  background: rgba(15, 18, 23, 0.35);
+  background: rgba(13, 13, 14, 0.35);
   padding: 0;
   overflow: hidden;
 }
@@ -1445,7 +1445,7 @@ button.secondary {
   padding: 0.32rem 0.72rem;
   border: 1px solid rgba(169, 178, 190, 0.42);
   border-radius: 999px;
-  background: rgba(15, 18, 23, 0.94);
+  background: rgba(13, 13, 14, 0.94);
   color: #a9b2be;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
   font-size: 0.7rem;
@@ -1568,14 +1568,14 @@ button.secondary {
   position: fixed;
   inset: 0;
   z-index: 90;
-  background: rgba(15, 18, 23, 0.78);
+  background: rgba(13, 13, 14, 0.78);
   display: grid;
   place-items: center;
   padding: clamp(0.5rem, 1.4vw, 1.1rem);
   backdrop-filter: blur(10px);
 }
 .station-modal-backdrop-low-power {
-  background: rgba(15, 18, 23, 0.92);
+  background: rgba(13, 13, 14, 0.92);
   backdrop-filter: none;
 }
 .station-modal-backdrop-low-power .station-modal.panel {
@@ -1583,7 +1583,7 @@ button.secondary {
   box-shadow: none;
 }
 .station-modal-backdrop-low-power .station-settings-card {
-  background: rgba(15, 18, 23, 0.98);
+  background: rgba(13, 13, 14, 0.98);
   box-shadow: none;
 }
 .station-modal-backdrop-low-power .station-settings-nav button.active {
@@ -1627,7 +1627,7 @@ button.secondary {
   gap: 0.42rem;
   overflow-y: auto;
   border-right: 1px solid rgba(169, 178, 190, 0.12);
-  background: rgba(15, 18, 23, 0.36);
+  background: rgba(13, 13, 14, 0.36);
 }
 
 .station-settings-nav button {
@@ -1705,7 +1705,7 @@ button.secondary {
   border: 1px solid rgba(169, 178, 190, 0.13);
   border-radius: 10px;
   background:
-    linear-gradient(180deg, rgba(40, 44, 49, 0.72), rgba(15, 18, 23, 0.68)),
+    linear-gradient(180deg, rgba(40, 44, 49, 0.72), rgba(13, 13, 14, 0.68)),
     rgba(255, 255, 255, 0.025);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
@@ -1777,7 +1777,7 @@ button.secondary {
   padding: 0.62rem 0.72rem;
   border: 1px solid rgba(169, 178, 190, 0.12);
   border-radius: 8px;
-  background: rgba(15, 18, 23, 0.48);
+  background: rgba(13, 13, 14, 0.48);
 }
 
 .station-settings-status-card span {
@@ -1828,7 +1828,7 @@ button.secondary {
 }
 .audio-box {
   min-width: 0;
-  background: rgba(15, 18, 23, 0.46);
+  background: rgba(13, 13, 14, 0.46);
   border: 1px solid rgba(169, 178, 190, 0.13);
   border-radius: 9px;
   overflow: hidden;
@@ -1890,7 +1890,7 @@ button.secondary {
 .audio-subsection {
   border: 1px solid rgba(169, 178, 190, 0.12);
   border-radius: 8px;
-  background: rgba(15, 18, 23, 0.34);
+  background: rgba(13, 13, 14, 0.34);
   overflow: hidden;
 }
 .audio-subsection-toggle {
@@ -1936,7 +1936,7 @@ button.secondary {
   border: 1px solid rgba(169, 178, 190, 0.12);
   border-radius: 8px;
   background:
-    linear-gradient(180deg, rgba(32, 36, 41, 0.68), rgba(15, 18, 23, 0.64)),
+    linear-gradient(180deg, rgba(32, 36, 41, 0.68), rgba(13, 13, 14, 0.64)),
     rgba(255, 255, 255, 0.02);
 }
 .audio-device-card-input {
@@ -1952,7 +1952,7 @@ button.secondary {
 .audio-gate-card.active {
   border-color: rgba(0, 209, 255, 0.26);
   background:
-    linear-gradient(180deg, rgba(40, 44, 49, 0.78), rgba(15, 18, 23, 0.72)),
+    linear-gradient(180deg, rgba(40, 44, 49, 0.78), rgba(13, 13, 14, 0.72)),
     rgba(0, 209, 255, 0.035);
 }
 .audio-gate-card.disabled {
@@ -2034,7 +2034,7 @@ button.secondary {
   min-width: 0;
   border: 1px solid rgba(169, 178, 190, 0.1);
   border-radius: 8px;
-  background: rgba(15, 18, 23, 0.36);
+  background: rgba(13, 13, 14, 0.36);
 }
 .audio-meter-card {
   padding: 0.7rem;
@@ -2102,7 +2102,7 @@ button.secondary {
 }
 .audio-gate-switch input:disabled + .station-setting-toggle {
   border-color: rgba(119, 134, 161, 0.25);
-  background: rgba(15, 18, 23, 0.64);
+  background: rgba(13, 13, 14, 0.64);
 }
 .audio-gate-copy,
 .audio-gate-status {
@@ -2115,7 +2115,7 @@ button.secondary {
   padding: 0.52rem 0.6rem;
   border: 1px solid rgba(169, 178, 190, 0.1);
   border-radius: 8px;
-  background: rgba(15, 18, 23, 0.42);
+  background: rgba(13, 13, 14, 0.42);
 }
 .audio-gate-readout strong {
   color: #eceff3;
@@ -2397,7 +2397,7 @@ button.secondary {
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgba(15, 18, 23, 0.66);
+  background: rgba(13, 13, 14, 0.66);
 }
 .channel-audio-room-editor {
   width: min(720px, 100%);
@@ -2408,7 +2408,7 @@ button.secondary {
   padding: 1rem;
   border: 1px solid rgba(169, 178, 190, 0.22);
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(33, 37, 42, 0.98), rgba(15, 18, 23, 0.98));
+  background: linear-gradient(180deg, rgba(33, 37, 42, 0.98), rgba(13, 13, 14, 0.98));
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.46);
 }
 .channel-audio-feed-editor {
@@ -2445,7 +2445,7 @@ button.secondary {
   padding: 0.75rem;
   border: 1px solid rgba(169, 178, 190, 0.12);
   border-radius: 8px;
-  background: rgba(15, 18, 23, 0.28);
+  background: rgba(13, 13, 14, 0.28);
 }
 .channel-audio-feed-name-control input {
   min-height: 46px;
@@ -2739,7 +2739,7 @@ button.secondary {
   flex: 0 0 auto;
   border: 1px solid rgba(159, 176, 203, 0.48);
   border-radius: 999px;
-  background: rgba(15, 18, 23, 0.9);
+  background: rgba(13, 13, 14, 0.9);
   transition:
     background 140ms ease,
     border-color 140ms ease,
@@ -2802,7 +2802,7 @@ button.secondary {
 }
 .station-setting.disabled .station-setting-toggle {
   border-color: rgba(119, 134, 161, 0.25);
-  background: rgba(15, 18, 23, 0.64);
+  background: rgba(13, 13, 14, 0.64);
 }
 .station-modal .station-modal-hint {
   grid-column: 1 / -1;
@@ -2824,7 +2824,7 @@ button.secondary {
   padding: 0.75rem;
   border: 1px solid rgba(169, 178, 190, 0.16);
   border-radius: 8px;
-  background: rgba(15, 18, 23, 0.58);
+  background: rgba(13, 13, 14, 0.58);
 }
 
 .streamdeck-settings-title {
@@ -2889,7 +2889,7 @@ button.secondary {
   padding: 0.65rem 0.75rem;
   border-radius: 8px;
   border: 1px solid rgba(169, 178, 190, 0.16);
-  background: rgba(15, 18, 23, 0.72);
+  background: rgba(13, 13, 14, 0.72);
 }
 
 .streamdeck-notice.success {
@@ -2955,7 +2955,7 @@ button.secondary {
   padding: 0.62rem 0.72rem 0.62rem 0.9rem;
   border: 1px solid rgba(169, 178, 190, 0.14);
   border-radius: 8px;
-  background: rgba(15, 18, 23, 0.62);
+  background: rgba(13, 13, 14, 0.62);
   overflow: hidden;
 }
 
@@ -3013,7 +3013,7 @@ button.secondary {
   display: grid;
   place-items: center;
   padding: clamp(1rem, 4vw, 2rem);
-  background: rgba(15, 18, 23, 0.72);
+  background: rgba(13, 13, 14, 0.72);
   backdrop-filter: blur(10px);
 }
 
@@ -3026,7 +3026,7 @@ button.secondary {
   border: 1px solid rgba(169, 178, 190, 0.28);
   border-radius: 9px;
   background:
-    linear-gradient(180deg, rgba(46, 50, 55, 0.98), rgba(15, 18, 23, 0.98)),
+    linear-gradient(180deg, rgba(46, 50, 55, 0.98), rgba(13, 13, 14, 0.98)),
     var(--panel);
   box-shadow:
     0 24px 70px rgba(0, 0, 0, 0.55),
@@ -3110,7 +3110,7 @@ button.secondary {
   min-width: 0;
   border: 1px solid rgba(169, 178, 190, 0.16);
   border-radius: 8px;
-  background: rgba(15, 18, 23, 0.46);
+  background: rgba(13, 13, 14, 0.46);
 }
 
 .streamdeck-confirm-summary > div {
@@ -3186,7 +3186,7 @@ button.secondary {
   padding: 0.68rem;
   border: 1px solid rgba(169, 178, 190, 0.13);
   border-radius: 8px;
-  background: rgba(15, 18, 23, 0.58);
+  background: rgba(13, 13, 14, 0.58);
 }
 
 .streamdeck-page-nav {
@@ -3232,7 +3232,7 @@ button.secondary {
 .streamdeck-editor.panel {
   border: 1px solid rgba(169, 178, 190, 0.14);
   border-radius: 8px;
-  background: rgba(15, 18, 23, 0.66);
+  background: rgba(13, 13, 14, 0.66);
 }
 
 .streamdeck-deck-panel {
@@ -3287,7 +3287,7 @@ button.secondary {
   aspect-ratio: 1 / 1;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  background: #0f1217;
+  background: #0d0d0e;
   min-height: 68px;
   padding: 0;
   overflow: hidden;
@@ -3383,7 +3383,7 @@ button.secondary {
   min-height: 34px;
   border-radius: 7px;
   border: 1px solid rgba(255, 255, 255, 0.13);
-  background: rgba(15, 18, 23, 0.9);
+  background: rgba(13, 13, 14, 0.9);
   color: #fff;
   padding: 0.45rem 0.55rem;
 }
@@ -3632,7 +3632,7 @@ button.secondary {
   margin-bottom: 0;
   padding: 0.95rem 1rem;
   border-bottom: 1px solid rgba(169, 178, 190, 0.12);
-  background: rgba(15, 18, 23, 0.42);
+  background: rgba(13, 13, 14, 0.42);
 }
 .station-modal-title {
   min-width: 0;
@@ -3685,7 +3685,7 @@ button.secondary {
     overflow-y: hidden;
     border-right: 0;
     border-bottom: 1px solid rgba(169, 178, 190, 0.12);
-    background: rgba(15, 18, 23, 0.92);
+    background: rgba(13, 13, 14, 0.92);
     scrollbar-width: none;
     scroll-snap-type: x proximity;
   }
@@ -3868,7 +3868,7 @@ button.secondary {
     circle at 50% 50%,
     rgba(255, 239, 170, 0.32),
     rgba(227, 34, 42, 0.2) 46%,
-    rgba(15, 18, 23, 0.04) 74%
+    rgba(13, 13, 14, 0.04) 74%
   );
   animation: attention-flash-fade 2.2s ease-out forwards;
 }
@@ -4088,3 +4088,239 @@ button.secondary {
      so you may need to adjust those manually if needed
 
    ========================================== */
+
+/* ==========================================================
+   Stream Deck (Einstellungen) – Überarbeitung 2026-10
+   Hauptaktionen oben (bleiben beim Scrollen sichtbar), Nebenaktionen
+   als kleine Knöpfe, Beschriftungen über den Feldern, Rückmeldung als Leiste.
+   ========================================================== */
+.streamdeck-panel-body {
+  display: grid;
+  gap: 14px;
+}
+.streamdeck-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--k-line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--k-rack) 92%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.streamdeck-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--k-ink-2);
+  font-size: 0.86rem;
+}
+.streamdeck-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.streamdeck-steps b {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--k-face-hi);
+  color: var(--k-ink);
+  font-size: 0.75rem;
+}
+.streamdeck-toolbar-main {
+  display: flex;
+  gap: 8px;
+}
+.streamdeck-panel .shortcut-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.streamdeck-panel .shortcut-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.streamdeck-panel .shortcut-btn-primary {
+  border-color: var(--k-accent);
+  background: var(--k-accent);
+  color: var(--k-accent-ink);
+  box-shadow: none;
+}
+.streamdeck-panel .shortcut-btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--k-accent) 85%, #fff);
+}
+.streamdeck-panel .streamdeck-publish-btn {
+  border-color: color-mix(in srgb, var(--k-accent) 55%, var(--k-line));
+  color: var(--k-accent);
+  background: transparent;
+}
+.streamdeck-panel .shortcut-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.streamdeck-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.streamdeck-tools .shortcut-btn {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  background: transparent;
+  color: var(--k-ink-2);
+}
+.streamdeck-tools .shortcut-btn:hover:not(:disabled) {
+  background: var(--k-face);
+  color: var(--k-ink);
+}
+
+/* Felder: Beschriftung immer über dem Eingabefeld */
+.streamdeck-panel .streamdeck-control {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  align-items: stretch;
+  gap: 5px;
+}
+.streamdeck-panel .streamdeck-control > span {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--k-ink-3);
+}
+.streamdeck-panel .streamdeck-control input,
+.streamdeck-panel .streamdeck-control select,
+.streamdeck-panel .streamdeck-control textarea {
+  min-height: 36px;
+  border-color: var(--k-line);
+  background: var(--k-face);
+}
+.streamdeck-panel .streamdeck-color-control {
+  grid-template-columns: 44px minmax(0, 1fr) !important;
+}
+.streamdeck-panel .streamdeck-color-control > span {
+  grid-column: 1 / -1;
+}
+.streamdeck-panel .streamdeck-color-control input[type="color"] {
+  padding: 2px;
+  height: 36px;
+  cursor: pointer;
+}
+.streamdeck-panel .streamdeck-page-bar {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  border-color: var(--k-line);
+  background: var(--k-rack);
+}
+.streamdeck-panel .streamdeck-page-nav {
+  justify-content: flex-start;
+}
+.streamdeck-panel .streamdeck-page-nav .shortcut-btn {
+  min-width: 36px;
+  padding: 0;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+.streamdeck-panel .streamdeck-deck-panel,
+.streamdeck-panel .streamdeck-editor.panel {
+  border-color: var(--k-line);
+  background: var(--k-rack);
+}
+.streamdeck-panel .streamdeck-editor.panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+.streamdeck-panel .streamdeck-editor-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.streamdeck-panel .streamdeck-editor-actions .shortcut-btn {
+  justify-content: center;
+  padding: 0 6px;
+  min-height: 32px;
+  font-size: 0.78rem;
+  background: transparent;
+}
+/* Leere Tasten zeigen ihre Nummer */
+.streamdeck-button {
+  position: relative;
+}
+.streamdeck-button-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--k-ink-off);
+  font-family: var(--k-font-mono);
+  font-size: 0.85rem;
+}
+.streamdeck-button.active .streamdeck-button-empty {
+  color: var(--k-accent);
+}
+
+/* Rückmeldung nach Speichern / Senden: Leiste unten statt Dialog */
+.streamdeck-toast {
+  position: sticky;
+  bottom: 12px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--k-line);
+  background: var(--k-face-hi);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+.streamdeck-toast.success {
+  border-color: color-mix(in srgb, var(--k-ok) 55%, var(--k-line));
+}
+.streamdeck-toast.error {
+  border-color: color-mix(in srgb, var(--k-bad) 60%, var(--k-line));
+}
+.streamdeck-toast-icon svg {
+  width: 18px;
+  height: 18px;
+}
+.streamdeck-toast.success .streamdeck-toast-icon {
+  color: var(--k-ok);
+}
+.streamdeck-toast.error .streamdeck-toast-icon {
+  color: var(--k-bad);
+}
+.streamdeck-toast-text {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+.streamdeck-toast-text small {
+  color: var(--k-ink-2);
+}
+.streamdeck-toast-close {
+  border: 0;
+  background: transparent;
+  color: var(--k-ink-3);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}

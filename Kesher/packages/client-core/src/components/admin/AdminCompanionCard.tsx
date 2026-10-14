@@ -151,7 +151,7 @@ export function AdminCompanionCard({
   return (
     <div className="admin-card">
       <AdminCardHeader
-        title="Integration · Companion"
+        title="Companion-Anbindung"
         isOpen={isOpen}
         onToggle={() => setIsOpen((value) => !value)}
       />
@@ -159,11 +159,10 @@ export function AdminCompanionCard({
         <div className="admin-card-body">
           <div className="admin-block">
             <div className="admin-block-header">
-              <h4>Publish profile</h4>
+              <h4>1 · Profil an Companion senden</h4>
             </div>
             <p>
-              Publish a role profile for the Companion module and expose the exact
-              connection values needed on the Companion side.
+              Wählt eine Rolle und stellt deren Stream-Deck-Profil für das Companion-Modul bereit.
             </p>
             <div className="admin-grid">
               <select
@@ -172,7 +171,7 @@ export function AdminCompanionCard({
                 onChange={(event) => setSelectedRoleId(event.target.value)}
                 disabled={publishing || loading}
               >
-                <option value="">Select role…</option>
+                <option value="">Rolle wählen …</option>
                 {appData.roles.map((role) => (
                   <option key={role.id} value={role.id}>
                     {role.name} ({role.id})
@@ -186,7 +185,7 @@ export function AdminCompanionCard({
                 onClick={() => void handlePublish()}
                 disabled={!selectedRoleId || publishing || loading}
               >
-                {publishing ? "Publishing…" : "Publish to Companion"}
+                {publishing ? "Sende …" : "An Companion senden"}
               </button>
               <button
                 type="button"
@@ -194,7 +193,7 @@ export function AdminCompanionCard({
                 onClick={() => void refreshSummary()}
                 disabled={publishing || loading}
               >
-                {loading ? "Refreshing…" : "Refresh status"}
+                {loading ? "Aktualisiere …" : "Status aktualisieren"}
               </button>
             </div>
             {message ? <p>{message}</p> : null}
@@ -203,11 +202,10 @@ export function AdminCompanionCard({
 
           <div className="admin-block">
             <div className="admin-block-header">
-              <h4>Module config</h4>
+              <h4>2 · Werte für das Companion-Modul</h4>
             </div>
             <p>
-              Use these values in the Kesher Companion module. When exactly one
-              profile is published, the module can run in auto-target mode.
+              Diese Werte im Kesher-Modul in Companion eintragen. Ist genau ein Profil veröffentlicht, findet das Modul es automatisch.
             </p>
             <div className="admin-grid">
               <label>
@@ -219,22 +217,22 @@ export function AdminCompanionCard({
                 <input readOnly value={locationPort} />
               </label>
               <label>
-                <span>Use TLS</span>
+                <span>TLS</span>
                 <input readOnly value={useTls ? "true" : "false"} />
               </label>
               <label>
-                <span>Shared secret</span>
+                <span>Gemeinsames Geheimnis</span>
                 <input readOnly value={summary?.sharedSecret || ""} />
               </label>
               <label>
-                <span>Role ID</span>
+                <span>Rollen-ID</span>
                 <input
                   readOnly
                   value={effectiveRoleId || "auto (leave empty in Companion)"}
                 />
               </label>
               <label>
-                <span>Mode</span>
+                <span>Modus</span>
                 <input
                   readOnly
                   value={minimalModeAvailable ? "auto-target" : "explicit role"}
@@ -247,31 +245,31 @@ export function AdminCompanionCard({
                 className="secondary"
                 onClick={() => void copyValue("module", moduleConfigText)}
               >
-                {copiedField === "module" ? "Copied" : "Copy module config"}
+                {copiedField === "module" ? "Kopiert ✓" : "Modul-Konfiguration kopieren"}
               </button>
               <button
                 type="button"
                 className="secondary"
                 onClick={() => void copyValue("discovery", discoveryUrl)}
               >
-                {copiedField === "discovery" ? "Copied" : "Copy discovery URL"}
+                {copiedField === "discovery" ? "Kopiert ✓" : "Discovery-URL kopieren"}
               </button>
               <button
                 type="button"
                 className="secondary"
                 onClick={() => void copyValue("profile", profileUrl)}
               >
-                {copiedField === "profile" ? "Copied" : "Copy profile URL"}
+                {copiedField === "profile" ? "Kopiert ✓" : "Profil-URL kopieren"}
               </button>
             </div>
           </div>
 
           <div className="admin-block">
             <div className="admin-block-header">
-              <h4>Published profiles ({publishedProfiles.length})</h4>
+              <h4>Veröffentlichte Profile ({publishedProfiles.length})</h4>
             </div>
             {publishedProfiles.length === 0 ? (
-              <p>No Companion profile has been published yet.</p>
+              <p>Noch kein Profil an Companion gesendet.</p>
             ) : (
               <ul className="admin-list">
                 {appData.roles.map((role) => {

@@ -20,19 +20,20 @@
      ========================================== */
 
   /* Surfaces: page → rack (panels) → face (keys) */
-  --k-bg: #090b0e;
-  --k-rack: #0f1217;
-  --k-face: #161a20;
-  --k-face-hi: #1d222a;
-  --k-line: #262c35;
-  --k-line-soft: #1b2028;
-  --k-line-strong: #3a4250;
+  /* neutrale Grautöne wie macOS/iOS (dunkel): reines Schwarz statt Blaustich */
+  --k-bg: #000000;
+  --k-rack: #0d0d0e;
+  --k-face: #1c1c1e;
+  --k-face-hi: #2c2c2e;
+  --k-line: #2c2c2e;
+  --k-line-soft: #1c1c1e;
+  --k-line-strong: #48484a;
 
   /* Ink */
-  --k-ink: #eceff3;
-  --k-ink-2: #a9b2be;
-  --k-ink-3: #6c7581;
-  --k-ink-off: #3c434e;
+  --k-ink: #f5f5f7;
+  --k-ink-2: #aeaeb2;
+  --k-ink-3: #8e8e93;
+  --k-ink-off: #48484a;
 
   /* Accent (JMS) */
   --k-accent: #00d1ff;

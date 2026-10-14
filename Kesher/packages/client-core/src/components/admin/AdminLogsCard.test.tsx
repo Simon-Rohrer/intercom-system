@@ -30,7 +30,7 @@ describe("AdminLogsCard", () => {
     const user = userEvent.setup();
     render(<AdminLogsCard token="token-123" adminPin="1234" />);
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
 
     await waitFor(() => {
       expect(getAdminLogs).toHaveBeenCalledWith(
@@ -56,7 +56,7 @@ describe("AdminLogsCard", () => {
 
     render(<AdminLogsCard token="token-123" adminPin="1234" />);
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
     await user.click(screen.getByRole("button", { name: "Download TXT" }));
 
     await waitFor(() => {

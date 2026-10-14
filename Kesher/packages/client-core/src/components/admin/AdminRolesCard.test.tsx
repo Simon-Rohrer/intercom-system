@@ -52,11 +52,11 @@ describe("AdminRolesCard", () => {
     expect(
       screen.queryByRole("heading", { name: /Roles/i }),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Show" }));
-    expect(screen.getByRole("heading", { name: "Roles (1)" })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Hide" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
+    expect(screen.getByRole("heading", { name: "Rollen (1)" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Ausblenden" }));
     expect(
-      screen.queryByRole("heading", { name: "Roles (1)" }),
+      screen.queryByRole("heading", { name: "Rollen (1)" }),
     ).not.toBeInTheDocument();
   });
 
@@ -73,8 +73,8 @@ describe("AdminRolesCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
-    await user.click(screen.getByRole("button", { name: "Create role" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
+    await user.click(screen.getByRole("button", { name: "+ Neue Rolle" }));
     expect(screen.getByRole("dialog")).toBeVisible();
     await user.type(screen.getByLabelText("Role ID"), "editor");
     await user.type(screen.getByLabelText("Role name"), "Editor");
@@ -103,8 +103,8 @@ describe("AdminRolesCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
-    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
+    await user.click(screen.getByRole("button", { name: "Bearbeiten" }));
     expect(screen.getByRole("dialog")).toHaveAccessibleName("Edit role");
     expect(screen.getByLabelText("Role ID")).toHaveAttribute("readonly");
     const roleNameInput = screen.getByLabelText("Role name");
@@ -136,11 +136,11 @@ describe("AdminRolesCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
     const duplicateButton = screen.getByRole("button", {
       name: "Duplicate role Operator",
     });
-    const editButton = screen.getByRole("button", { name: "Edit" });
+    const editButton = screen.getByRole("button", { name: "Bearbeiten" });
     expect(
       duplicateButton.compareDocumentPosition(editButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -185,8 +185,8 @@ describe("AdminRolesCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
-    await user.click(screen.getByRole("button", { name: "Create role" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
+    await user.click(screen.getByRole("button", { name: "+ Neue Rolle" }));
     const cancelButton = screen.getByRole("button", { name: "Cancel" });
     const saveButton = screen.getByRole("button", { name: "Save" });
     expect(
@@ -197,7 +197,7 @@ describe("AdminRolesCard", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(createRole).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "Create role" }));
+    await user.click(screen.getByRole("button", { name: "+ Neue Rolle" }));
     await user.click(
       screen.getByRole("button", { name: "Close role dialog" }),
     );

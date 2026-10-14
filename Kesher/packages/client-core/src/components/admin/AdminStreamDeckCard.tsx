@@ -45,25 +45,24 @@ export function AdminStreamDeckCard({
   return (
     <div className="admin-card">
       <AdminCardHeader
-        title="Stream Deck Profiles"
+        title="Stream-Deck-Profile"
         isOpen={isOpen}
         onToggle={() => setIsOpen((value) => !value)}
       />
       {isOpen ? (
         <div className="admin-card-body">
           <p>
-            Each operator configures their own Stream Deck layout via the user settings
-            panel. Use this to reset a role's layout back to defaults if needed.
+            Jede Station belegt ihr Stream Deck selbst (Einstellungen → Stream Deck). Hier lässt sich die Belegung einer Rolle auf den Standard zurücksetzen.
           </p>
           <div className="admin-grid">
             <label>
-              <span>Role</span>
+              <span>Rolle</span>
               <select
                 value={selectedRoleId}
                 onChange={(event) => setSelectedRoleId(event.target.value)}
                 disabled={resetting}
               >
-                <option value="">Select role…</option>
+                <option value="">Rolle wählen …</option>
                 {appData.roles.map((role) => (
                   <option key={role.id} value={role.id}>
                     {role.name} ({role.id})
@@ -79,7 +78,7 @@ export function AdminStreamDeckCard({
               onClick={() => void handleReset()}
               disabled={!selectedRoleId || resetting}
             >
-              {resetting ? "Resetting…" : "Reset to defaults"}
+              {resetting ? "Setze zurück …" : "Auf Standard zurücksetzen"}
             </button>
           </div>
           {error ? <p className="admin-error">{error}</p> : null}

@@ -162,7 +162,7 @@ export function UsersPanel({
                   title={u.online ? "Cannot delete an active user" : `Delete ${u.username}`}
                   onClick={() => handleDelete(u)}
                 >
-                  Delete
+                  Löschen
                 </button>
               </li>
             ))}

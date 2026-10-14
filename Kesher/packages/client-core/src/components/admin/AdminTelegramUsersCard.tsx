@@ -86,7 +86,7 @@ export function AdminTelegramUsersCard({
   return (
     <div className="admin-card">
       <AdminCardHeader
-        title="Telegram User Allowlist"
+        title="Erlaubte Telegram-Benutzer"
         isOpen={isOpen}
         onToggle={() => setIsOpen((v) => !v)}
       />
@@ -112,7 +112,7 @@ export function AdminTelegramUsersCard({
                 }}
                 disabled={busy}
               >
-                {showCreateForm ? "Cancel" : "Add user"}
+                {showCreateForm ? "Abbrechen" : "Benutzer hinzufügen"}
               </button>
             </div>
             {error ? <p className="admin-error">{error}</p> : null}

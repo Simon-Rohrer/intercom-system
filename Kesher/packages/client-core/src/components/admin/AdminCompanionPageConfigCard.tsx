@@ -1,3 +1,4 @@
+import { AdminCardHeader } from "./AdminCardHeader";
 import { useEffect, useState } from "react";
 import {
   getAdminCompanionRolePages,
@@ -68,88 +69,93 @@ export function AdminCompanionPageConfigCard({
         selectedPageNumber
       );
       setMessage(
-        `Saved ${selectedRoleId} → Streamdeck Page ${selectedPageNumber}`
+        `Gespeichert: ${roleName(selectedRoleId)} → Seite ${selectedPageNumber}`
       );
       await loadRolePages();
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to save role page"
+        err instanceof Error ? err.message : "Zuordnung konnte nicht gespeichert werden"
       );
     } finally {
       setSaving(false);
     }
   }
 
+  const roleName = (roleId: string) =>
+    appData.roles.find((role) => role.id === roleId)?.name ?? roleId;
+
   return (
-    <div className="card">
-      <div
-        className="card-header"
-        style={{ cursor: "pointer" }}
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <h3 style={{ margin: 0 }}>
-          Companion Page Configuration {isOpen ? "▼" : "▶"}
-        </h3>
-      </div>
+    <div className="admin-card">
+      <AdminCardHeader
+        title="Companion · Stream-Deck-Seite je Rolle"
+        isOpen={isOpen}
+        onToggle={() => setIsOpen(!isOpen)}
+      />
       {isOpen && (
-        <div className="card-content">
-          {error && <div className="error-message">{error}</div>}
-          {message && <div className="success-message">{message}</div>}
+        <div className="admin-card-body">
+          <p className="admin-card-subtitle" style={{ margin: 0 }}>
+            Auf welcher Stream-Deck-Seite in Companion die Tasten einer Rolle landen.
+          </p>
+          {error && <p className="admin-error">{error}</p>}
+          {message && <p className="admin-success">{message}</p>}
 
-          <div className="form-group">
-            <label>Select Role:</label>
-            <select
-              value={selectedRoleId}
-              onChange={(e) => setSelectedRoleId(e.target.value)}
-              disabled={saving}
+          <div className="admin-inline-form">
+            <label>
+              <span>Rolle</span>
+              <select
+                value={selectedRoleId}
+                onChange={(e) => setSelectedRoleId(e.target.value)}
+                disabled={saving}
+              >
+                {appData.roles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Seite (0–14)</span>
+              <input
+                type="number"
+                min="0"
+                max="14"
+                value={selectedPageNumber}
+                onChange={(e) => setSelectedPageNumber(Math.min(14, Math.max(0, parseInt(e.target.value) || 0)))}
+                disabled={saving}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handleSavePage}
+              disabled={saving || !selectedRoleId}
+              className="primary"
             >
-              {appData.roles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.name} ({role.id})
-                </option>
-              ))}
-            </select>
+              {saving ? "Speichere …" : "Zuordnung speichern"}
+            </button>
           </div>
 
-          <div className="form-group">
-            <label>Streamdeck Page (0-14):</label>
-            <input
-              type="number"
-              min="0"
-              max="14"
-              value={selectedPageNumber}
-              onChange={(e) => setSelectedPageNumber(Math.min(14, Math.max(0, parseInt(e.target.value) || 0)))}
-              disabled={saving}
-            />
-          </div>
-
-          <button
-            onClick={handleSavePage}
-            disabled={saving || !selectedRoleId}
-            className="button"
-          >
-            {saving ? "Saving..." : "Save Page Mapping"}
-          </button>
-
-          <div style={{ marginTop: "1.5rem" }}>
-            <h4>Current Mappings:</h4>
+          <div className="admin-block">
+            <div className="admin-block-header">
+              <h4>Aktuelle Zuordnungen</h4>
+            </div>
             {loading ? (
-              <p>Loading...</p>
+              <p>Lade …</p>
             ) : Object.keys(rolePages).length === 0 ? (
-              <p>No role page mappings configured yet.</p>
+              <p>Noch keine Rolle einer Seite zugeordnet.</p>
             ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <table>
                 <thead>
                   <tr>
-                    <th style={{ textAlign: "left", padding: "8px", borderBottom: "1px solid #ccc" }}>Role ID</th>
-                    <th style={{ textAlign: "left", padding: "8px", borderBottom: "1px solid #ccc" }}>Page Number</th>
+                    <th>Rolle</th>
+                    <th>Seite</th>
                   </tr>
                 </thead>
                 <tbody>
                   {Object.entries(rolePages).map(([roleId, pageNum]) => (
                     <tr key={roleId}>
-                      <td style={{ padding: "8px", borderBottom: "1px solid #eee" }}>{roleId}</td>
-                      <td style={{ padding: "8px", borderBottom: "1px solid #eee" }}>{pageNum}</td>
+                      <td>{roleName(roleId)}</td>
+                      <td>{pageNum}</td>
                     </tr>
                   ))}
                 </tbody>

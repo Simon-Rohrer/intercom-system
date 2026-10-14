@@ -186,7 +186,7 @@ export function AdminRoutingMatrixCard({
   return (
     <div className="admin-card">
       <AdminCardHeader
-        title="Routing Matrix"
+        title="Routing-Matrix"
         isOpen={isOpen}
         onToggle={() => setIsOpen((v) => !v)}
       />

@@ -48,9 +48,9 @@ describe("AdminRoomsCard", () => {
     expect(
       screen.queryByRole("heading", { name: "Party Lines (1)" }),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Show" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
     expect(screen.getByRole("heading", { name: "Party Lines (1)" })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Hide" }));
+    await user.click(screen.getByRole("button", { name: "Ausblenden" }));
     expect(
       screen.queryByRole("heading", { name: "Party Lines (1)" }),
     ).not.toBeInTheDocument();
@@ -69,8 +69,8 @@ describe("AdminRoomsCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
-    await user.click(screen.getByRole("button", { name: "Create party line" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
+    await user.click(screen.getByRole("button", { name: "+ Neue Party Line" }));
     await user.type(screen.getByPlaceholderText("party-line-id"), "new-room");
     await user.type(screen.getByPlaceholderText("Party line name"), "New Room");
     await user.click(screen.getByRole("button", { name: "Create party line" }));
@@ -103,8 +103,8 @@ describe("AdminRoomsCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
-    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
+    await user.click(screen.getByRole("button", { name: "Bearbeiten" }));
     const roomNameInput = screen.getByDisplayValue("Party Line 1");
     await user.clear(roomNameInput);
     await user.type(roomNameInput, "Main Stage");

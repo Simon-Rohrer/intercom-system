@@ -32,7 +32,8 @@ export function AdminConfigCard({
   section,
 }: AdminConfigCardProps) {
   const shared = { token, adminPin, appData, refreshBootstrapData };
-  const cards: Record<AdminSectionId, ReactNode> = {
+  // Live-Zustand und Admin-PIN zeigt AdminMenu selbst
+  const cards: Record<Exclude<AdminSectionId, "status" | "security">, ReactNode> = {
     showfile: (
       <AdminShowfileCard
         token={token}
@@ -65,16 +66,16 @@ export function AdminConfigCard({
   if (section) {
     return (
       <div className="admin-section-cards" key={section}>
-        {cards[section]}
+        {section in cards ? cards[section as keyof typeof cards] : null}
       </div>
     );
   }
 
   return (
     <div className="admin-theme-groups">
-      {ADMIN_SECTIONS.map((info) => (
+      {ADMIN_SECTIONS.filter((info) => info.id in cards).map((info) => (
         <section key={info.id} className="admin-theme-group" aria-label={info.label}>
-          {cards[info.id]}
+          {cards[info.id as keyof typeof cards]}
         </section>
       ))}
     </div>

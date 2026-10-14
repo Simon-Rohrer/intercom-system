@@ -44,8 +44,8 @@ describe("AdminChannelsCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
-    await user.click(screen.getByRole("button", { name: "Create channel" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
+    await user.click(screen.getByRole("button", { name: "+ Neuer Kanal" }));
     const createButton = screen.getByRole("button", { name: "Create channel" });
     expect(createButton).toBeDisabled();
 
@@ -73,8 +73,8 @@ describe("AdminChannelsCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
-    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
+    await user.click(screen.getByRole("button", { name: "Bearbeiten" }));
     const channelNameInput = screen.getByDisplayValue("All Call");
     await user.clear(channelNameInput);
     await user.type(channelNameInput, "Stage Call");
@@ -107,8 +107,8 @@ describe("AdminChannelsCard", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
-    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
+    await user.click(screen.getByRole("button", { name: "Löschen" }));
 
     await waitFor(() => {
       expect(deleteBroadcastGroup).toHaveBeenCalledWith(

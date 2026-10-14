@@ -10,7 +10,9 @@ export type AdminSectionId =
   | "streamdeck"
   | "telegram"
   | "chat"
-  | "logs";
+  | "logs"
+  | "status"
+  | "security";
 
 export type AdminSectionInfo = {
   id: AdminSectionId;
@@ -30,5 +32,7 @@ export const ADMIN_SECTIONS: AdminSectionInfo[] = [
   { id: "streamdeck", group: "Geräte", label: "Stream Deck", description: "Stream-Deck-Profile der Rollen." },
   { id: "telegram", group: "Dienste", label: "Telegram", description: "Bot, Gruppen-Zuordnung und Telegram-Benutzer." },
   { id: "chat", group: "Dienste", label: "Chatverlauf", description: "Chatverlauf einsehen und aufräumen." },
+  { id: "status", group: "Betrieb", label: "Live-Zustand", description: "Verbindungen, Audio und Raspberry Pis – live alle 2 Sekunden." },
   { id: "logs", group: "Betrieb", label: "Logs", description: "Admin- und Laufzeit-Logs durchsuchen." },
+  { id: "security", group: "Betrieb", label: "Admin-PIN", description: "PIN für den Admin-Bereich ändern." },
 ];

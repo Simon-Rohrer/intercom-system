@@ -95,216 +95,93 @@ export function AdminMonitoringCard({
     raspberryStations?.filter((station) => station.intercomConnected).length ??
     0;
 
+  const dash = "—";
+  const pair = (a?: number, b?: number, unit = "") =>
+    stats && a !== undefined && b !== undefined ? `${a} / ${b}${unit}` : dash;
+  const droppedCritical = stats?.hub.droppedCriticalMessages ?? 0;
+  // Auf einen Blick: was im Betrieb zählt. Alles Weitere unter „Technische Details“.
+  const overview: { label: string; value: string; hint?: string; tone?: "ok" | "warn" }[] = [
+    {
+      label: "Verbundene Stationen",
+      value: stats ? String(stats.hub.connectedClients) : dash,
+    },
+    {
+      label: "Raspberry Pis",
+      value: raspberryStations ? `${raspberryOnlineCount} / ${raspberryStations.length}` : dash,
+      hint: raspberryStations ? `${raspberryIntercomCount} im Intercom` : undefined,
+    },
+    { label: "Aktive Routen", value: String(activeRoutesCount) },
+    {
+      label: "Audio ein / aus",
+      value: `${audioStats.inKbps} / ${audioStats.outKbps}`,
+      hint: "kbps",
+    },
+    {
+      label: "Jitter / Laufzeit",
+      value: `${audioStats.jitterMs} / ${audioStats.roundTripMs}`,
+      hint: "ms",
+    },
+    {
+      label: "Verworfene Nachrichten",
+      value: stats ? String(droppedCritical) : dash,
+      hint: "kritisch",
+      tone: stats ? (droppedCritical > 0 ? "warn" : "ok") : undefined,
+    },
+  ];
+  const details: [string, string][] = [
+    ["Wiedergabe-Verzögerung", `${audioStats.playoutDelayMs} ms`],
+    ["Pi im Intercom", raspberryStations ? `${raspberryIntercomCount} / ${raspberryStations.length}` : dash],
+    ["Warteschlange normal (gesamt / max)", pair(stats?.hub.normalQueueDepthTotal, stats?.hub.normalQueueDepthMax)],
+    ["Warteschlange Priorität (gesamt / max)", pair(stats?.hub.priorityQueueDepthTotal, stats?.hub.priorityQueueDepthMax)],
+    ["Verworfen normal", stats ? String(stats.hub.droppedNormalMessages) : dash],
+    ["Presence gesendet / zusammengefasst", pair(stats?.hub.presenceBroadcasts, stats?.hub.presenceBroadcastsMerged)],
+    ["Media-Peers / Quellen", pair(stats?.media.peers, stats?.media.sources)],
+    ["Routing-Sync Anfragen / Läufe", pair(stats?.media.syncRequests, stats?.media.syncRuns)],
+    ["Sync-Anfragen zusammengefasst", stats ? String(stats.media.syncRequestsCoalesced) : dash],
+    ["Sync-Lauf Ø / max", pair(stats?.media.syncRunAvgMs, stats?.media.syncRunMaxMs, " ms")],
+    ["Sprechzustand bis Sync Ø / max", pair(stats?.media.voiceStateToSyncAvgMs, stats?.media.voiceStateToSyncMaxMs, " ms")],
+    ["Neuverhandlungen", stats ? String(stats.media.renegotiations) : dash],
+    ["Neuverhandlung Ø / max", pair(stats?.media.renegotiationAvgMs, stats?.media.renegotiationMaxMs, " ms")],
+    ["Cache Party-Line-Rechte", stats ? formatHitRate(stats.storePolicyCache.roomPolicyHits, stats.storePolicyCache.roomPolicyMisses) : dash],
+    ["Cache Broadcast erlaubt", stats ? formatHitRate(stats.storePolicyCache.broadcastAllowedHits, stats.storePolicyCache.broadcastAllowedMisses) : dash],
+    ["Cache Broadcast-Party-Line", stats ? formatHitRate(stats.storePolicyCache.broadcastRoomHits, stats.storePolicyCache.broadcastRoomMisses) : dash],
+    ["Cache Pflicht-Hören", stats ? formatHitRate(stats.storePolicyCache.forcedListenHits, stats.storePolicyCache.forcedListenMisses) : dash],
+    [
+      "Verworfene Nachrichtentypen",
+      droppedByType.length > 0
+        ? droppedByType.slice(0, 3).map(([msgType, count]) => `${msgType}: ${count}`).join(", ")
+        : "keine",
+    ],
+  ];
+
   return (
-    <div className="admin-card">
+    <div className="admin-card admin-monitoring">
       <AdminCardHeader
-        title="Monitoring · Audio / RTP"
+        title="Live-Zustand"
         isOpen={isOpen}
         onToggle={() => setIsOpen((v) => !v)}
       />
       {isOpen ? (
-        <div className="admin-card-body admin-metrics">
-          <div className="admin-metric">
-            <div className="admin-metric-label">Inbound</div>
-            <div className="admin-metric-value">{audioStats.inKbps} kbps</div>
+        <div className="admin-card-body">
+          <div className="admin-overview-grid">
+            {overview.map((item) => (
+              <div className={`admin-overview-tile ${item.tone ?? ""}`} key={item.label}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                {item.hint ? <small>{item.hint}</small> : null}
+              </div>
+            ))}
           </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Outbound</div>
-            <div className="admin-metric-value">{audioStats.outKbps} kbps</div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">RTP jitter</div>
-            <div className="admin-metric-value">{audioStats.jitterMs} ms</div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">RTT</div>
-            <div className="admin-metric-value">{audioStats.roundTripMs} ms</div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Playout delay</div>
-            <div className="admin-metric-value">{audioStats.playoutDelayMs} ms</div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Active routes</div>
-            <div className="admin-metric-value">{activeRoutesCount}</div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Connected clients</div>
-            <div className="admin-metric-value">
-              {stats ? stats.hub.connectedClients : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Raspberry Pis online</div>
-            <div className="admin-metric-value">
-              {raspberryStations
-                ? `${raspberryOnlineCount} / ${raspberryStations.length}`
-                : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Pi intercom connected</div>
-            <div className="admin-metric-value">
-              {raspberryStations
-                ? `${raspberryIntercomCount} / ${raspberryStations.length}`
-                : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Queue normal (total/max)</div>
-            <div className="admin-metric-value">
-              {stats
-                ? `${stats.hub.normalQueueDepthTotal} / ${stats.hub.normalQueueDepthMax}`
-                : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Queue priority (total/max)</div>
-            <div className="admin-metric-value">
-              {stats
-                ? `${stats.hub.priorityQueueDepthTotal} / ${stats.hub.priorityQueueDepthMax}`
-                : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Dropped critical</div>
-            <div className="admin-metric-value">
-              {stats ? stats.hub.droppedCriticalMessages : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Dropped normal</div>
-            <div className="admin-metric-value">
-              {stats ? stats.hub.droppedNormalMessages : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Presence broadcasts/merged</div>
-            <div className="admin-metric-value">
-              {stats
-                ? `${stats.hub.presenceBroadcasts} / ${stats.hub.presenceBroadcastsMerged}`
-                : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Media peers/sources</div>
-            <div className="admin-metric-value">
-              {stats ? `${stats.media.peers} / ${stats.media.sources}` : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Routing sync req/runs</div>
-            <div className="admin-metric-value">
-              {stats
-                ? `${stats.media.syncRequests} / ${stats.media.syncRuns}`
-                : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Sync requests coalesced</div>
-            <div className="admin-metric-value">
-              {stats ? stats.media.syncRequestsCoalesced : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Sync run avg/max</div>
-            <div className="admin-metric-value">
-              {stats
-                ? `${stats.media.syncRunAvgMs} / ${stats.media.syncRunMaxMs} ms`
-                : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Voice state to sync avg/max</div>
-            <div className="admin-metric-value">
-              {stats
-                ? `${stats.media.voiceStateToSyncAvgMs} / ${stats.media.voiceStateToSyncMaxMs} ms`
-                : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Renegotiations</div>
-            <div className="admin-metric-value">
-              {stats ? stats.media.renegotiations : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Renegotiation avg/max</div>
-            <div className="admin-metric-value">
-              {stats
-                ? `${stats.media.renegotiationAvgMs} / ${stats.media.renegotiationMaxMs} ms`
-                : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Party line policy cache hit rate</div>
-            <div className="admin-metric-value">
-              {stats
-                ? formatHitRate(
-                    stats.storePolicyCache.roomPolicyHits,
-                    stats.storePolicyCache.roomPolicyMisses,
-                  )
-                : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Broadcast allowed hit rate</div>
-            <div className="admin-metric-value">
-              {stats
-                ? formatHitRate(
-                    stats.storePolicyCache.broadcastAllowedHits,
-                    stats.storePolicyCache.broadcastAllowedMisses,
-                  )
-                : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Broadcast party line hit rate</div>
-            <div className="admin-metric-value">
-              {stats
-                ? formatHitRate(
-                    stats.storePolicyCache.broadcastRoomHits,
-                    stats.storePolicyCache.broadcastRoomMisses,
-                  )
-                : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Forced listen hit rate</div>
-            <div className="admin-metric-value">
-              {stats
-                ? formatHitRate(
-                    stats.storePolicyCache.forcedListenHits,
-                    stats.storePolicyCache.forcedListenMisses,
-                  )
-                : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Last update</div>
-            <div className="admin-metric-value">
-              {stats
-                ? new Date(stats.timestampUnixMs).toLocaleTimeString()
-                : "—"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Runtime poll</div>
-            <div className="admin-metric-value">
-              {loading ? "Loading…" : "Live (2s)"}
-            </div>
-          </div>
-          <div className="admin-metric">
-            <div className="admin-metric-label">Dropped message types</div>
-            <div className="admin-metric-value">
-              {droppedByType.length > 0
-                ? droppedByType
-                    .slice(0, 3)
-                    .map(([msgType, count]) => `${msgType}:${count}`)
-                    .join(", ")
-                : "none"}
-            </div>
-          </div>
+          <p className="admin-monitoring-status">
+            {error
+              ? `Abfrage fehlgeschlagen: ${error}`
+              : loading
+                ? "Lade …"
+                : `Live · alle 2 s · Stand ${
+                    stats ? new Date(stats.timestampUnixMs).toLocaleTimeString() : dash
+                  }`}
+          </p>
+
           <div className="admin-monitoring-dropdown">
             <button
               type="button"
@@ -315,23 +192,25 @@ export function AdminMonitoringCard({
               <span>Raspberry Pis</span>
               <small>
                 {raspberryStations
-                  ? `${raspberryIntercomCount} connected / ${raspberryStations.length} known`
-                  : "Loading"}
+                  ? `${raspberryIntercomCount} verbunden / ${raspberryStations.length} bekannt`
+                  : "Lade …"}
               </small>
-              <span className={`chev ${isRaspberryOpen ? "open" : ""}`}>
-                ▾
-              </span>
+              <span className={`chev ${isRaspberryOpen ? "open" : ""}`}>▾</span>
             </button>
-            {isRaspberryOpen ? (
-              <RaspberryPiStationsPanel stations={raspberryStations} />
-            ) : null}
+            {isRaspberryOpen ? <RaspberryPiStationsPanel stations={raspberryStations} /> : null}
           </div>
-          {error ? (
-            <div className="admin-metric">
-              <div className="admin-metric-label">Runtime poll error</div>
-              <div className="admin-metric-value">{error}</div>
-            </div>
-          ) : null}
+
+          <details className="admin-details">
+            <summary>Technische Details</summary>
+            <dl className="admin-details-list">
+              {details.map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
         </div>
       ) : null}
     </div>

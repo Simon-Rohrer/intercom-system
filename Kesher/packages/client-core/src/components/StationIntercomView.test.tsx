@@ -345,7 +345,7 @@ describe("StationIntercomView", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Interaction" }));
+    await user.click(screen.getByRole("button", { name: "Bedienung" }));
     await user.click(
       screen.getByRole("checkbox", { name: "Swap PTT and reply buttons" }),
     );
@@ -535,16 +535,16 @@ describe("StationIntercomView", () => {
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
 
     expect(
-      screen.getByRole("option", { name: "Volume +/-" }),
+      screen.getByRole("option", { name: "Lautstärke +/−" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("option", { name: "Page up" }),
+      screen.getByRole("option", { name: "Seite hoch" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("option", { name: "Page down" }),
+      screen.getByRole("option", { name: "Seite runter" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("option", { name: "Open page / folder" }),
+      screen.getByRole("option", { name: "Seite / Ordner öffnen" }),
     ).toBeInTheDocument();
   });
 
@@ -577,9 +577,9 @@ describe("StationIntercomView", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
-    await user.click(screen.getByRole("button", { name: "Copy" }));
+    await user.click(screen.getByRole("button", { name: "Kopieren" }));
     await user.click(screen.getByRole("button", { name: "Deck key 2" }));
-    await user.click(screen.getByRole("button", { name: "Paste" }));
+    await user.click(screen.getByRole("button", { name: "Einfügen" }));
 
     const calls = onStreamDeckSettingsChange.mock.calls;
     const lastCallArg = calls[calls.length - 1]?.[0];
@@ -615,7 +615,7 @@ describe("StationIntercomView", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await user.click(screen.getByRole("button", { name: "Rückgängig" }));
 
     const undoCallArg = onStreamDeckSettingsChange.mock.calls[1]?.[0];
     expect(undoCallArg?.pages?.[0]?.buttons?.[0]?.action).toBeUndefined();
@@ -696,7 +696,7 @@ describe("StationIntercomView", () => {
     expect(screen.queryByRole("button", { name: "+ Page" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "- Page" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: ">" }));
+    await user.click(screen.getByRole("button", { name: "Nächste Seite" }));
 
     const nextPageArg = onStreamDeckSettingsChange.mock.calls[0]?.[0];
     expect(nextPageArg?.pages?.length).toBe(2);
@@ -718,7 +718,7 @@ describe("StationIntercomView", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
-    await user.click(screen.getByRole("button", { name: ">" }));
+    await user.click(screen.getByRole("button", { name: "Nächste Seite" }));
 
     const nextPageArg = onStreamDeckSettingsChange.mock.calls[0]?.[0];
     rerender(
@@ -731,7 +731,7 @@ describe("StationIntercomView", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Speichern" }));
 
     const savedArg = onSaveStreamDeckSettings.mock.calls[0]?.[0];
     expect(savedArg?.pages).toHaveLength(1);
@@ -752,7 +752,7 @@ describe("StationIntercomView", () => {
 
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
 
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Speichern" }));
 
     expect(onSaveStreamDeckSettings).toHaveBeenCalledTimes(1);
   });
@@ -769,10 +769,10 @@ describe("StationIntercomView", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Speichern" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Stream Deck profile saved.",
+      "Stream-Deck-Profil gespeichert.",
     );
   });
 
@@ -790,7 +790,7 @@ describe("StationIntercomView", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Speichern" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Save endpoint unavailable.",
@@ -816,20 +816,20 @@ describe("StationIntercomView", () => {
 
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
     await user.click(
-      screen.getByRole("button", { name: "Publish to Companion" }),
+      screen.getByRole("button", { name: "An Companion senden" }),
     );
 
     const dialog = screen.getByRole("dialog", {
-      name: "Publish this Stream Deck profile?",
+      name: "Stream-Deck-Profil an Companion senden?",
     });
     expect(dialog).toHaveTextContent("Buttons / Presets / kesher");
     expect(dialog).toHaveTextContent("Kesher / Operator / tim");
     expect(onPublishCompanionProfile).not.toHaveBeenCalled();
 
-    await user.click(within(dialog).getByRole("button", { name: "Save & publish" }));
+    await user.click(within(dialog).getByRole("button", { name: "Speichern und senden" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Stream Deck profile saved and published as Companion v12 for role audio.",
+      "Gespeichert und an Companion gesendet (Version 12, Rolle audio).",
     );
     expect(onPublishCompanionProfile).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -857,20 +857,20 @@ describe("StationIntercomView", () => {
 
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
     await user.click(
-      screen.getByRole("button", { name: "Publish to Companion" }),
+      screen.getByRole("button", { name: "An Companion senden" }),
     );
     const dialog = screen.getByRole("dialog", {
-      name: "Publish this Stream Deck profile?",
+      name: "Stream-Deck-Profil an Companion senden?",
     });
     await user.click(
       within(dialog).getByRole("button", {
-        name: "Cancel",
+        name: "Abbrechen",
       }),
     );
 
     expect(
       screen.queryByRole("dialog", {
-        name: "Publish this Stream Deck profile?",
+        name: "Stream-Deck-Profil an Companion senden?",
       }),
     ).toBeNull();
     expect(onPublishCompanionProfile).not.toHaveBeenCalled();
@@ -892,7 +892,7 @@ describe("StationIntercomView", () => {
     render(<StationIntercomView {...baseProps} isUserSettingsOpen />);
 
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
-    await user.click(screen.getByRole("button", { name: "Export" }));
+    await user.click(screen.getByRole("button", { name: "Exportieren" }));
 
     expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:streamdeck-export");
@@ -1023,7 +1023,7 @@ describe("StationIntercomView", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
-    await user.click(screen.getByRole("button", { name: "Test mode off" }));
+    await user.click(screen.getByRole("button", { name: "Testmodus aus" }));
 
     const key = screen.getByRole("button", {
       name: "Deck key 1",
@@ -1059,7 +1059,7 @@ describe("StationIntercomView", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /Sound settings/ }));
+    await user.click(screen.getByRole("button", { name: /Ton & Mikrofon/ }));
     await user.click(screen.getByRole("checkbox", { name: "Noise gate" }));
     fireEvent.change(
       screen.getByRole("slider", { name: "Microphone gate threshold" }),
@@ -1082,7 +1082,7 @@ describe("StationIntercomView", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /Sound settings/ }));
+    await user.click(screen.getByRole("button", { name: /Ton & Mikrofon/ }));
 
     expect(screen.getByText("Low power mode keeps metering off.")).toBeVisible();
     expect(screen.getByRole("button", { name: "Audio test paused" })).toBeDisabled();
@@ -1109,7 +1109,7 @@ describe("StationIntercomView", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /Sound settings/ }));
+    await user.click(screen.getByRole("button", { name: /Ton & Mikrofon/ }));
 
     expect(screen.getByText("-42.0 dBFS")).toBeVisible();
     const testButton = screen.getByRole("button", { name: "Test microphone" });
@@ -1132,7 +1132,7 @@ describe("StationIntercomView", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /Sound settings/ }));
+    await user.click(screen.getByRole("button", { name: /Ton & Mikrofon/ }));
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Interface input" }),
       "2",
@@ -1178,7 +1178,7 @@ describe("StationIntercomView", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /Sound settings/ }));
+    await user.click(screen.getByRole("button", { name: /Ton & Mikrofon/ }));
 
     expect(screen.getByRole("button", { name: /My audio/ })).toBeVisible();
     await user.click(
@@ -1222,7 +1222,7 @@ describe("StationIntercomView", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /Sound settings/ }));
+    await user.click(screen.getByRole("button", { name: /Ton & Mikrofon/ }));
     await user.click(
       screen.getByRole("button", { name: /Channel audio feeds/ }),
     );

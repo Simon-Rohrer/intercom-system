@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AdminMenu } from "./AdminMenu";
 import type { Bootstrap } from "../../types";
@@ -59,7 +59,8 @@ describe("AdminMenu", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("renders composed admin cards when token is present", () => {
+  it("shows the selected section and moves monitoring and PIN into their own sections", () => {
+    window.localStorage.removeItem("kesher.admin.section");
     render(
       <AdminMenu
         token="token-123"
@@ -79,7 +80,12 @@ describe("AdminMenu", () => {
     );
 
     expect(screen.getByTestId("admin-config-card")).toBeVisible();
-    expect(screen.getByTestId("admin-pin-card")).toBeVisible();
+    expect(screen.queryByTestId("admin-monitoring-card")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Live-Zustand" }));
     expect(screen.getByTestId("admin-monitoring-card")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Admin-PIN" }));
+    expect(screen.getByTestId("admin-pin-card")).toBeVisible();
   });
 });

@@ -1,7 +1,7 @@
 /* ==========================================================
    ADMIN
    Header rail, section navigation on the left, the selected
-   section in the middle, live state + PIN on the right.
+   section next to it. Live state and admin PIN are sections of their own.
    Card internals keep their own layout rules (app.css) and pick
    up the palette through the legacy aliases in theme.css.
    ========================================================== */
@@ -101,7 +101,7 @@
 }
 .admin-settings-layout {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 320px;
+  grid-template-columns: 232px minmax(0, 1fr);
   min-height: 100%;
   align-items: start;
 }
@@ -117,6 +117,7 @@
   border-right: 1px solid var(--k-line-soft);
   background: var(--k-rack);
   min-height: calc(100vh - 59px);
+  align-content: start;
 }
 .admin-nav-group {
   display: grid;
@@ -389,7 +390,7 @@
 /* ---------- responsive ---------- */
 @media (max-width: 1180px) {
   .admin-settings-layout {
-    grid-template-columns: 200px minmax(0, 1fr);
+    grid-template-columns: 210px minmax(0, 1fr);
   }
   .admin-settings-side {
     grid-column: 1 / -1;
@@ -439,4 +440,224 @@
   .admin-layout-intro h2 {
     font-size: 24px;
   }
+}
+
+/* ==========================================================
+   Überarbeitung 2026-10: ruhiger und übersichtlicher
+   ========================================================== */
+
+/* Inhalt nicht endlos breit */
+.admin-settings-main {
+  max-width: 1180px;
+  gap: 18px;
+  padding-top: 24px;
+}
+.admin-nav-group + .admin-nav-group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--k-line-soft);
+}
+.admin-shell .admin-nav-item {
+  min-height: 36px;
+  align-items: center;
+}
+.admin-nav-item small {
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--k-face);
+  text-align: center;
+}
+
+/* Bereiche mit nur einer Karte: kein zweiter Kopf („Configuration · …“ + Ausblenden) */
+.admin-section-cards > .admin-card:only-child {
+  border: 0;
+  background: transparent;
+}
+.admin-section-cards > .admin-card:only-child > .admin-card-header {
+  display: none;
+}
+.admin-section-cards > .admin-card:only-child > .admin-card-body {
+  border-top: 0;
+  padding: 0;
+}
+
+/* Karten */
+.admin-card {
+  border-radius: 10px;
+  background: var(--k-rack);
+}
+.admin-card-header {
+  padding: 12px 16px;
+}
+.admin-card-body {
+  padding: 16px;
+}
+
+/* Listen-Blöcke (Rollen, Party Lines, Kanäle …) */
+.admin-shell .admin-block {
+  gap: 12px;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid var(--k-line);
+  background: var(--k-rack);
+  box-shadow: none;
+}
+.admin-shell .admin-block-header h4 {
+  color: var(--k-ink);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+}
+.admin-shell .admin-list {
+  gap: 0;
+  border: 1px solid var(--k-line-soft);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.admin-shell .admin-list li {
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  transform: none;
+}
+.admin-shell .admin-list li + li {
+  border-top: 1px solid var(--k-line-soft);
+}
+.admin-shell .admin-list li:hover {
+  background: var(--k-face);
+  transform: none;
+}
+.admin-shell .admin-list button {
+  min-width: 0;
+}
+/* Zeilen-Knöpfe dezent, Löschen erst beim Drüberfahren rot */
+.admin-shell .admin-list .secondary,
+.admin-shell .admin-list .delete {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+.admin-shell .admin-list .secondary {
+  background: transparent;
+}
+.admin-shell .admin-list .delete {
+  border-color: var(--k-line);
+  background: transparent;
+  color: var(--k-ink-3);
+}
+.admin-shell .admin-list li:hover .delete {
+  border-color: var(--k-talk-deep);
+  color: #ffb3ad;
+}
+
+/* Live-Zustand */
+.admin-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+.admin-overview-tile {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--k-line);
+  background: var(--k-face);
+}
+.admin-overview-tile span {
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  color: var(--k-ink-3);
+}
+.admin-overview-tile strong {
+  font-family: var(--k-font-mono);
+  font-size: 22px;
+  color: var(--k-ink);
+}
+.admin-overview-tile small {
+  color: var(--k-ink-3);
+  font-size: 12px;
+}
+.admin-overview-tile.ok {
+  box-shadow: inset 3px 0 0 var(--k-ok);
+}
+.admin-overview-tile.warn {
+  box-shadow: inset 3px 0 0 var(--k-bad);
+}
+.admin-overview-tile.warn strong {
+  color: var(--k-bad);
+}
+.admin-monitoring-status {
+  margin: 0;
+  color: var(--k-ink-3);
+  font-size: 13px;
+}
+.admin-details {
+  border: 1px solid var(--k-line);
+  border-radius: 8px;
+  background: var(--k-face);
+}
+.admin-details > summary {
+  cursor: pointer;
+  padding: 10px 14px;
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 13px;
+  color: var(--k-ink-2);
+}
+.admin-details-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0;
+  margin: 0;
+  padding: 0 14px 10px;
+}
+.admin-details-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--k-line-soft);
+  font-size: 13px;
+}
+.admin-details-list dt {
+  color: var(--k-ink-3);
+}
+.admin-details-list dd {
+  margin: 0;
+  font-family: var(--k-font-mono);
+  color: var(--k-ink);
+  text-align: right;
+}
+
+/* Formular in einer Zeile (Companion-Seitenzuordnung u. ä.) */
+.admin-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+.admin-inline-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+}
+.admin-inline-form label span {
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  color: var(--k-ink-3);
+}
+.admin-success {
+  margin: 0;
+  color: var(--k-ok);
 }

@@ -117,7 +117,7 @@ export function AdminTelegramCard({
   return (
     <div className="admin-card">
       <AdminCardHeader
-        title="Telegram Bot Integration"
+        title="Telegram-Bot"
         isOpen={isOpen}
         onToggle={() => setIsOpen((v) => !v)}
       />
@@ -179,7 +179,7 @@ export function AdminTelegramCard({
                   }}
                   disabled={busy}
                 >
-                  {showCreateForm ? "Cancel" : "Add mapping"}
+                  {showCreateForm ? "Abbrechen" : "Zuordnung hinzufügen"}
                 </button>
               ) : null}
             </div>
@@ -306,7 +306,7 @@ export function AdminTelegramCard({
                         setEditRoomId(m.roomId);
                       }}
                     >
-                      Edit
+                      Bearbeiten
                     </button>
                     <span>
                       {m.label}{" "}
@@ -320,7 +320,7 @@ export function AdminTelegramCard({
                       </small>
                     </span>
                     <button onClick={() => handleDelete(m.id)} disabled={busy}>
-                      Delete
+                      Löschen
                     </button>
                   </li>
                 ))

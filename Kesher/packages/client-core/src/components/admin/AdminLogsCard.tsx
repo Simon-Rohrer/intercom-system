@@ -119,7 +119,7 @@ export function AdminLogsCard({ token, adminPin }: AdminLogsCardProps) {
   return (
     <div className="admin-card">
       <AdminCardHeader
-        title="Logs · Request / Audit / Errors"
+        title="Logs · Anfragen / Audit / Fehler"
         isOpen={isOpen}
         onToggle={() => void handleToggleOpen()}
       />

@@ -29,7 +29,7 @@ export function AdminCardHeader({
           onClick={handleButtonClick}
           aria-expanded={isOpen}
         >
-          {isOpen ? "Hide" : "Show"}
+          {isOpen ? "Ausblenden" : "Einblenden"}
         </button>
       </div>
     </div>

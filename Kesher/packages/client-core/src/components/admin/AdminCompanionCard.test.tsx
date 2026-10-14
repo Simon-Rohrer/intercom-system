@@ -52,14 +52,14 @@ describe("AdminCompanionCard", () => {
       <AdminCompanionCard token="token-123" adminPin="1234" appData={appData} />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
 
     await waitFor(() => {
       expect(getCompanionAdminSummary).toHaveBeenCalledWith("token-123", "1234");
     });
 
     expect(screen.getByDisplayValue("topsecret")).toBeVisible();
-    expect(screen.getByText(/Published profiles \(1\)/)).toBeVisible();
+    expect(screen.getByText(/Veröffentlichte Profile \(1\)/)).toBeVisible();
     expect(
       screen.getByText(/Selected role regie is currently on version 3\./),
     ).toBeVisible();
@@ -93,7 +93,7 @@ describe("AdminCompanionCard", () => {
       <AdminCompanionCard token="token-123" adminPin="1234" appData={appData} />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
+    await user.click(screen.getByRole("button", { name: "Einblenden" }));
     await waitFor(() => {
       expect(getCompanionAdminSummary).toHaveBeenCalled();
     });
@@ -102,7 +102,7 @@ describe("AdminCompanionCard", () => {
       screen.getByLabelText("Companion target role"),
       "stage",
     );
-    await user.click(screen.getByRole("button", { name: "Publish to Companion" }));
+    await user.click(screen.getByRole("button", { name: "An Companion senden" }));
 
     await waitFor(() => {
       expect(publishCompanionProfile).toHaveBeenCalledWith(

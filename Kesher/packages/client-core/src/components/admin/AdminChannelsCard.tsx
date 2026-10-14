@@ -114,7 +114,7 @@ export function AdminChannelsCard({
   return (
     <div className="admin-card">
       <AdminCardHeader
-        title="Configuration · Broadcast Channels"
+        title="Broadcast-Kanäle"
         isOpen={isOpen}
         onToggle={() => setIsOpen((v) => !v)}
       />
@@ -135,7 +135,7 @@ export function AdminChannelsCard({
                   }}
                   disabled={adminBusy}
                 >
-                  {showGroupCreateForm ? "Cancel" : "Create channel"}
+                  {showGroupCreateForm ? "Abbrechen" : "+ Neuer Kanal"}
                 </button>
               ) : null}
             </div>
@@ -292,14 +292,14 @@ export function AdminChannelsCard({
                       setGroupEditAllowedRoleIds(group.allowedRoleIds || []);
                     }}
                   >
-                    Edit
+                    Bearbeiten
                   </button>
                   <button
                     onClick={() => removeBroadcastGroupConfig(group.id)}
                     disabled={adminBusy}
                     className="delete"
                   >
-                    Delete
+                    Löschen
                   </button>
                 </li>
               ))}

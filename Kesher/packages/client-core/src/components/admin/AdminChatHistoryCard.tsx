@@ -72,7 +72,7 @@ export function AdminChatHistoryCard({
   return (
     <div className="admin-card">
       <AdminCardHeader
-        title="Chat · Maintenance"
+        title="Chatverlauf"
         isOpen={isOpen}
         onToggle={() => setIsOpen((v) => !v)}
       />

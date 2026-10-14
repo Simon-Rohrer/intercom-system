@@ -128,7 +128,7 @@ export function AdminRoomsCard({
   return (
     <div className="admin-card">
       <AdminCardHeader
-        title="Configuration · Party Lines"
+        title="Party Lines"
         isOpen={isOpen}
         onToggle={() => setIsOpen((v) => !v)}
       />
@@ -149,7 +149,7 @@ export function AdminRoomsCard({
                   }}
                   disabled={adminBusy}
                 >
-                  {showRoomCreateForm ? "Cancel" : "Create party line"}
+                  {showRoomCreateForm ? "Abbrechen" : "+ Neue Party Line"}
                 </button>
               ) : null}
             </div>
@@ -372,14 +372,14 @@ export function AdminRoomsCard({
                       setRoomEditPriorityLevel(room.priorityLevel ?? 1);
                     }}
                   >
-                    Edit
+                    Bearbeiten
                   </button>
                   <button
                     onClick={() => removeRoomConfig(room.id)}
                     disabled={adminBusy}
                     className="delete"
                   >
-                    Delete
+                    Löschen
                   </button>
                 </li>
               ))}

@@ -49,7 +49,7 @@ export function AdminPinCard({ onUpdateAdminPin }: AdminPinCardProps) {
   return (
     <div className="admin-card">
       <AdminCardHeader
-        title="Security · Admin PIN"
+        title="Admin-PIN"
         isOpen={isOpen}
         onToggle={() => setIsOpen((v) => !v)}
       />

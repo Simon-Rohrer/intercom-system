@@ -78,7 +78,7 @@ export function AdminMenu({
           ))}
         </nav>
 
-        <section className="admin-settings-main" aria-label="Configuration settings">
+        <section className="admin-settings-main" aria-label="Einstellungen">
           <div className="admin-layout-intro">
             <span className="admin-layout-eyebrow">{active.group}</span>
             <h2>{active.label}</h2>
@@ -86,33 +86,30 @@ export function AdminMenu({
           </div>
 
           <AdminCardDefaultOpenContext.Provider value={true}>
-            <AdminConfigCard
-              token={token}
-              adminPin={adminPin}
-              appData={appData}
-              refreshBootstrapData={refreshBootstrapData}
-              section={active.id}
-            />
+            {active.id === "status" ? (
+              <div className="admin-section-cards">
+              <AdminMonitoringCard
+                token={token}
+                adminPin={adminPin}
+                audioStats={audioStats}
+                activeRoutesCount={activeRoutesCount}
+              />
+              </div>
+            ) : active.id === "security" ? (
+              <div className="admin-section-cards">
+                <AdminPinCard onUpdateAdminPin={onUpdateAdminPin} />
+              </div>
+            ) : (
+              <AdminConfigCard
+                token={token}
+                adminPin={adminPin}
+                appData={appData}
+                refreshBootstrapData={refreshBootstrapData}
+                section={active.id}
+              />
+            )}
           </AdminCardDefaultOpenContext.Provider>
         </section>
-
-        <aside className="admin-settings-side" aria-label="Security and monitoring">
-          <div className="admin-layout-intro admin-layout-intro-compact">
-            <span className="admin-layout-eyebrow">Betrieb</span>
-            <h2>Live-Zustand</h2>
-          </div>
-
-          <AdminCardDefaultOpenContext.Provider value={true}>
-            <AdminMonitoringCard
-              token={token}
-              adminPin={adminPin}
-              audioStats={audioStats}
-              activeRoutesCount={activeRoutesCount}
-            />
-          </AdminCardDefaultOpenContext.Provider>
-
-          <AdminPinCard onUpdateAdminPin={onUpdateAdminPin} />
-        </aside>
       </div>
     </div>
   );

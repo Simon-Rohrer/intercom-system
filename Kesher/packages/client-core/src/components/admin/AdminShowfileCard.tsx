@@ -256,7 +256,7 @@ export function AdminShowfileCard({
 	return (
 		<div className="admin-card">
 			<AdminCardHeader
-				title="Configuration · Showfile"
+				title="Showfile"
 				isOpen={isOpen}
 				onToggle={() => setIsOpen((value) => !value)}
 			/>

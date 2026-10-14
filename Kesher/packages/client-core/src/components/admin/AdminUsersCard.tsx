@@ -22,7 +22,7 @@ export function AdminUsersCard({
   return (
     <div className="admin-card">
       <AdminCardHeader
-        title="Configuration · Users"
+        title="Benutzer"
         isOpen={isOpen}
         onToggle={() => setIsOpen((v) => !v)}
       />

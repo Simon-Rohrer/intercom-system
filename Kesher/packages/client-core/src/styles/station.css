@@ -350,7 +350,7 @@
   width: 42px;
   height: 24px;
   border-radius: 999px;
-  background: #262c35;
+  background: #2c2c2e;
   transition: background 0.15s;
 }
 .station-always-on-indicator::after {
@@ -672,7 +672,7 @@
   background: linear-gradient(
     90deg,
     var(--k-ink-2) var(--fill, 70%),
-    #262c35 var(--fill, 70%)
+    #2c2c2e var(--fill, 70%)
   );
 }
 .station-gain-control input[type="range"]::-moz-range-track {
@@ -681,7 +681,7 @@
   background: linear-gradient(
     90deg,
     var(--k-ink-2) var(--fill, 70%),
-    #262c35 var(--fill, 70%)
+    #2c2c2e var(--fill, 70%)
   );
 }
 .station-gain-control input[type="range"]::-webkit-slider-thumb {
@@ -1652,7 +1652,7 @@ body.panel-resizing-row {
   padding: 18px 22px;
   border: 2px solid var(--k-call);
   border-radius: 10px;
-  background: rgba(9, 11, 14, 0.92);
+  background: rgba(0, 0, 0, 0.92);
   box-shadow: 0 0 0 6px rgba(255, 176, 32, 0.18), 0 20px 60px rgba(0, 0, 0, 0.6);
   gap: 6px;
 }

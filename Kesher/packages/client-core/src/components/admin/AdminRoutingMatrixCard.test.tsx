@@ -54,7 +54,7 @@ describe("AdminRoutingMatrixCard", () => {
     expect(screen.getByRole("grid")).toBeVisible();
     // header corner should mention party line instead of room
     expect(screen.getByText("Role ╲ Party Line")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Hide" }));
+    await user.click(screen.getByRole("button", { name: "Ausblenden" }));
     expect(screen.queryByRole("grid")).not.toBeInTheDocument();
   });
 

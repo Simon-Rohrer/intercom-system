@@ -205,7 +205,7 @@ export function AdminRolesCard({
   return (
     <div className="admin-card">
       <AdminCardHeader
-        title="Configuration · Roles"
+        title="Rollen"
         isOpen={isOpen}
         onToggle={() => setIsOpen((value) => !value)}
       />
@@ -213,14 +213,14 @@ export function AdminRolesCard({
         <div className="admin-card-body">
           <div className="admin-block">
             <div className="admin-block-header">
-              <h4>Roles ({appData.roles.length})</h4>
+              <h4>Rollen ({appData.roles.length})</h4>
               <button
                 type="button"
                 className="secondary"
                 onClick={openCreateRole}
                 disabled={adminBusy}
               >
-                Create role
+                + Neue Rolle
               </button>
             </div>
             {adminError && !roleEditor ? (
@@ -245,14 +245,14 @@ export function AdminRolesCard({
                         <rect x="8" y="8" width="11" height="11" rx="2" />
                         <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
                       </svg>
-                      <span>Duplicate</span>
+                      <span>Duplizieren</span>
                     </button>
                     <button
                       type="button"
                       disabled={adminBusy}
                       onClick={() => openEditRole(role)}
                     >
-                      Edit
+                      Bearbeiten
                     </button>
                     <button
                       type="button"
@@ -260,7 +260,7 @@ export function AdminRolesCard({
                       disabled={adminBusy}
                       className="delete"
                     >
-                      Delete
+                      Löschen
                     </button>
                   </div>
                 </li>

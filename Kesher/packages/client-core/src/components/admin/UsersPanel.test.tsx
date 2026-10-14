@@ -82,7 +82,7 @@ describe("UsersPanel", () => {
       expect(screen.getByText("tim")).toBeVisible();
     });
 
-    const deleteButtons = screen.getAllByRole("button", { name: "Delete" });
+    const deleteButtons = screen.getAllByRole("button", { name: "Löschen" });
     expect(deleteButtons[0]).toBeDisabled();
     expect(deleteButtons[1]).not.toBeDisabled();
 
