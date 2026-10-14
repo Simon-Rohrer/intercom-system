@@ -38,6 +38,11 @@
         description: Auslastung und Temperaturen (nur Admin)
         icon: mdi-chart-line
         target: _self
+    - Router:
+        href: http://192.168.0.250
+        description: Speedport, WLAN „JMS Interkom“ (Gerätepasswort nötig)
+        icon: mdi-router-wireless
+        target: _self
 
 - Konto:
     - Abmelden:
