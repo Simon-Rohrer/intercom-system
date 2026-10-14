@@ -16,6 +16,10 @@
         icon: mdi-headset
         server: local-docker
         container: kesher
+    - Raspberry fernsteuern:
+        href: https://192.168.0.21:8443/?login=raspberry
+        description: Kesher – eine Raspberry-Station übernehmen und steuern
+        icon: mdi-raspberry-pi
     - Multiview einstellen:
         href: https://192.168.0.21:8090
         description: Bildschirme, Layouts und Monitore

@@ -11,6 +11,7 @@ const { Atem } = require('atem-connection')
 const { createKesherChat } = require('./kesher-chat')
 const { createKesherRoles } = require('./kesher-roles')
 const { createNeighbors } = require('./neighbors')
+const { normalizeRaspberry, launcherConfig, parsePiRequest, createPiRegistry } = require('./raspberry-pis')
 const { createChurchTools } = require('./churchtools')
 const QRCode = require('qrcode')
 const {
@@ -110,6 +111,7 @@ function normalizeConfig(c) {
     churchtools: normalizeChurchTools(c?.churchtools),
     access: normalizeAccess(c?.access),
     dayQr: normalizeDayQr(c?.dayQr),
+    raspberry: normalizeRaspberry(c?.raspberry),
   }
 }
 
@@ -1253,6 +1255,33 @@ app.use(require('./legacy').legacyMiddleware(path.join(__dirname, 'public')))
 app.use(express.static(path.join(__dirname, 'public')))
 
 app.get('/api/config', requireTrusted, (req, res) => res.json(config))
+
+// ---------------------------------------------------------------------------
+// Raspberry-Pi-Stationen (raspberry-pis.js): der Launcher auf dem Pi holt hier seine Konfiguration
+// ---------------------------------------------------------------------------
+
+const piRegistry = createPiRegistry()
+
+// Ohne Anmeldung (der Pi hat keine) – es kommen nur die Einträge zurück, die zu seinen MACs/IPs passen
+app.post('/api/raspberry-pis/config', (req, res) => {
+  const request = parsePiRequest(req.body)
+  piRegistry.record(request, clientIp(req))
+  res.set('Cache-Control', 'no-store').json(launcherConfig(config.raspberry, request))
+})
+
+// Für den Reiter in den Einstellungen: welche Pis gefragt haben und wie Kesher sie gerade sieht
+app.get('/api/raspberry-pis/status', requireAdmin, async (req, res) => {
+  let stations = null
+  let error = ''
+  try {
+    const r = await fetch(`${config.chat.url}/api/raspberry-pis/remote`, { signal: AbortSignal.timeout(3000) })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    stations = (await r.json())?.stations ?? []
+  } catch (err) {
+    error = `Kesher nicht erreichbar (${err.message})`
+  }
+  res.set('Cache-Control', 'no-store').json({ seen: piRegistry.list(), stations, error })
+})
 
 // ---------------------------------------------------------------------------
 // Benutzer und Rechte (access.js): Anmeldung mit Name + Kesher-Rolle, Admin mit PIN

@@ -847,6 +847,23 @@ a.status-tile:hover { border-color: var(--accent-line); }
 #ct-form { grid-template-columns: 1fr 1fr; }
 #ct-form .btn-row { grid-column: 1 / -1; }
 
+/* Raspberry Pis */
+.pi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; align-items: end; margin-bottom: 18px; }
+.pi-check { padding-bottom: 10px; }
+#set-raspberry > .card-head .switch { flex-shrink: 0; white-space: nowrap; }
+#set-raspberry .section-head { margin-top: 26px; }
+#set-raspberry .section-head h3 { margin: 0; }
+.pi-list { display: grid; gap: 12px; }
+.pi-item { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); padding: 14px 16px; }
+.pi-item-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.pi-item-head h4 { margin: 0; font-size: 15px; }
+.pi-item-head .pi-spacer { flex: 1; }
+.pi-item .pi-grid { margin-bottom: 0; }
+.pi-item .field small { font-weight: 400; color: var(--muted); }
+.pi-item .field input.invalid { border-color: var(--red); }
+.pi-problem { margin: 10px 0 0; color: var(--amber); font-size: 13px; }
+.pi-seen-table td { vertical-align: middle; }
+
 /* ------------------------------------------------------------------ Benutzer & Rechte */
 
 .role-table td { vertical-align: top; }

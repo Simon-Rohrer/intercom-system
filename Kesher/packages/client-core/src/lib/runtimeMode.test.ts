@@ -3,6 +3,7 @@ import {
   resolveEmbedMode,
   resolveHideTalkControls,
   resolveLowPowerMode,
+  resolveRaspberryRemoteLogin,
   resolveViewModeOverride,
 } from "./runtimeMode";
 
@@ -50,5 +51,13 @@ describe("resolveHideTalkControls", () => {
     expect(resolveHideTalkControls("?controls=false")).toBe(true);
     expect(resolveHideTalkControls("?controls=1")).toBe(false);
     expect(resolveHideTalkControls("")).toBe(false);
+  });
+});
+
+describe("resolveRaspberryRemoteLogin", () => {
+  it("opens the Raspberry tab only for login=raspberry", () => {
+    expect(resolveRaspberryRemoteLogin("?login=raspberry")).toBe(true);
+    expect(resolveRaspberryRemoteLogin("")).toBe(false);
+    expect(resolveRaspberryRemoteLogin("?login=admin")).toBe(false);
   });
 });

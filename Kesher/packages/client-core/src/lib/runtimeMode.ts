@@ -27,3 +27,12 @@ export function resolveHideTalkControls(search: string): boolean {
   const value = new URLSearchParams(search).get("controls");
   return value === "0" || value === "false";
 }
+
+/**
+ * `login=raspberry` opens the login screen on the Raspberry tab (remote
+ * control of a Pi station, e.g. from the dashboard) and skips any automatic
+ * login, including the central one.
+ */
+export function resolveRaspberryRemoteLogin(search: string): boolean {
+  return new URLSearchParams(search).get("login") === "raspberry";
+}

@@ -1,5 +1,6 @@
 import type { Role } from "../types";
 import type { CentralIdentity } from "./centralLogin";
+import { resolveRaspberryRemoteLogin } from "./runtimeMode";
 
 export type AutoLoginConfiguration = {
   enabled: boolean;
@@ -24,6 +25,18 @@ export function resolveAutoLoginConfiguration(
   central: CentralIdentity | null = null,
 ): AutoLoginConfiguration {
   const params = new URLSearchParams(search);
+  // Opened to remote-control a Raspberry Pi: stay on the login screen
+  if (resolveRaspberryRemoteLogin(search)) {
+    return {
+      enabled: false,
+      username: "",
+      roleId: "",
+      requestedRole: "",
+      allowTakeover: false,
+      secondary: false,
+      central: false,
+    };
+  }
   const enabled =
     params.get("autoLogin") === "1" || params.get("autoLogin") === "true";
   if (!enabled && central && !central.admin) {

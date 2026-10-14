@@ -243,7 +243,7 @@
           <div class="page-head">
             <div>
               <h1>Einstellungen</h1>
-              <p class="lead">Verbindungen zu ATEM, ProPresenter, Kesher und ChurchTools, die Steuerung über Companion und die Bildschirme am Server.</p>
+              <p class="lead">Verbindungen zu ATEM, ProPresenter, Kesher und ChurchTools, die Raspberry-Pi-Stationen, die Steuerung über Companion und die Bildschirme am Server.</p>
             </div>
           </div>
 
@@ -252,6 +252,7 @@
             <a href="#/einstellungen/propresenter" data-section-link="propresenter"><span class="status-dot"></span>ProPresenter</a>
             <a href="#/einstellungen/kesher" data-section-link="kesher"><span class="status-dot"></span>Kesher-Chat</a>
             <a href="#/einstellungen/churchtools" data-section-link="churchtools"><span class="status-dot"></span>ChurchTools</a>
+            <a href="#/einstellungen/raspberry" data-section-link="raspberry"><span class="status-dot"></span>Raspberry Pis</a>
             <a href="#/einstellungen/companion" data-section-link="companion">Companion</a>
             <a href="#/einstellungen/bildschirme" data-section-link="bildschirme">Bildschirme am Server</a>
             <a href="#/einstellungen/geraete" data-section-link="geraete" data-admin>Angemeldete Geräte</a>
@@ -388,6 +389,69 @@
                 </div>
               </form>
               <div id="ct-events"></div>
+            </div>
+
+            <div class="card" id="set-raspberry" data-section="raspberry">
+              <div class="card-head">
+                <div>
+                  <h2>Raspberry Pis</h2>
+                  <p class="muted">Die festen Intercom-Stationen. Bisher stand das in der Datei <code>/etc/kesher/raspberry-pis.json</code> auf jedem Pi – eingeschaltet holt sich jeder Pi seine Einstellungen von hier und übernimmt Änderungen nach wenigen Sekunden (der Browser auf dem Pi startet dafür neu). Fernsteuern geht in Kesher unter <b>Anmelden → Raspberry</b>.</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="pi-managed">
+                  <span class="switch-track" aria-hidden="true"></span>
+                  <span id="pi-managed-label">Hier verwalten</span>
+                </label>
+              </div>
+              <div id="pi-managed-note" class="notice warn" hidden>Ausgeschaltet: Die Pis nehmen weiter ihre Datei. Trag die Stationen hier ein (oder übernimm sie unten aus „Pis im Netz“) und schalte dann oben ein.</div>
+
+              <div class="pi-grid">
+                <label class="field"><span>Kesher-Adresse für die Pis</span>
+                  <input id="pi-serverUrl" type="text" placeholder="leer = wie in der Datei auf dem Pi" spellcheck="false">
+                </label>
+                <label class="field"><span>Browser auf dem Pi</span>
+                  <input id="pi-browserBinary" type="text" placeholder="chromium" spellcheck="false">
+                </label>
+                <label class="check pi-check"><input type="checkbox" id="pi-allowInsecureTls"> Eigenes Zertifikat des Servers akzeptieren</label>
+              </div>
+              <details class="disclosure inner">
+                <summary>Wartezeiten beim Start</summary>
+                <div class="pi-grid">
+                  <label class="field"><span>Auf Audio warten (s)</span>
+                    <input id="pi-audioWaitSeconds" type="number" min="0" max="600" placeholder="3">
+                  </label>
+                  <label class="field"><span>Nach Desktop-Start warten (s)</span>
+                    <input id="pi-displaySettleSeconds" type="number" min="0" max="600" placeholder="8">
+                  </label>
+                  <label class="field"><span>Browser neu starten nach (s ohne Verbindung)</span>
+                    <input id="pi-connectTimeoutSeconds" type="number" min="0" max="600" placeholder="25">
+                  </label>
+                </div>
+              </details>
+
+              <div class="section-head">
+                <div>
+                  <h3>Stationen</h3>
+                  <p class="muted">Der Pi erkennt seinen Eintrag an einer MAC-Adresse (LAN und WLAN, egal welche IP er gerade hat) oder – ohne MAC – an seiner festen IP.</p>
+                </div>
+                <button class="btn primary" type="button" id="pi-add">+ Raspberry Pi</button>
+              </div>
+              <div id="pi-list" class="pi-list"></div>
+
+              <div class="section-head">
+                <div>
+                  <h3>Pis im Netz</h3>
+                  <p class="muted">Pis, die in letzter Zeit nach ihren Einstellungen gefragt haben. Einen neuen Pi übernimmst du mit einem Klick – mit den Werten aus seiner Datei.</p>
+                </div>
+                <button class="btn small" type="button" id="pi-refresh">Aktualisieren</button>
+              </div>
+              <div id="pi-seen"></div>
+
+              <div class="callout">
+                <b>Einmal auf jedem Pi:</b> In <code>/etc/kesher/raspberry-pis.json</code> die Zeile
+                <code id="pi-config-line">"config_url": "…/api/raspberry-pis/config"</code> eintragen und den Launcher aktualisieren
+                (<code>sudo ./install.sh &lt;user&gt; --update-config</code>, siehe Dokumentation). Alles andere in der Datei ist dann nur noch die Reserve, falls der Multiview nicht erreichbar ist.
+              </div>
             </div>
 
             <div class="card" id="set-companion" data-section="companion">
