@@ -1597,8 +1597,12 @@ body::before {
 
 /* Seitenleiste ausblenden (Knopf links in der Kopfleiste, nur auf großen Bildschirmen) */
 .sidebar-btn { display: none; }
+.sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sidebar-head .brand { min-width: 0; }
 @media (min-width: 981px) {
-  .icon-btn.sidebar-btn { display: inline-grid; }
+  /* in der Seitenleiste zum Ausblenden, in der Kopfleiste nur zum Wiedereinblenden */
+  .icon-btn.sidebar-collapse { display: inline-grid; flex: none; color: var(--muted); }
+  .icon-btn.sidebar-collapse:hover { color: var(--text); }
+  body.sidebar-collapsed .icon-btn.sidebar-expand { display: inline-grid; }
   body.sidebar-collapsed .sidebar { display: none; }
-  body.sidebar-collapsed .sidebar-btn { color: var(--accent-text); }
 }

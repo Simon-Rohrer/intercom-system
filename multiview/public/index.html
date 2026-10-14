@@ -17,10 +17,15 @@
   <div class="app">
     <!-- Seitenleiste -->
     <aside class="sidebar" id="sidebar">
-      <a href="#/" class="brand">
-        <span class="brand-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-        <span class="brand-text">Multiview<small>Technik</small></span>
-      </a>
+      <div class="sidebar-head">
+        <a href="#/" class="brand">
+          <span class="brand-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span class="brand-text">Multiview<small>Technik</small></span>
+        </a>
+        <button type="button" class="icon-btn sidebar-btn sidebar-collapse" aria-label="Seitenleiste ausblenden" title="Seitenleiste ausblenden">
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></svg>
+        </button>
+      </div>
 
       <nav class="site-nav" aria-label="Bereiche">
         <a href="#/" data-page="uebersicht">
@@ -64,7 +69,7 @@
         <button type="button" class="icon-btn menu-btn" id="menu-btn" aria-label="Menü">
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
         </button>
-        <button type="button" class="icon-btn sidebar-btn" id="sidebar-btn" aria-label="Seitenleiste aus- oder einblenden" title="Seitenleiste aus-/einblenden" aria-pressed="false">
+        <button type="button" class="icon-btn sidebar-btn sidebar-expand" id="sidebar-btn" aria-label="Seitenleiste einblenden" title="Seitenleiste einblenden">
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></svg>
         </button>
         <div class="topbar-status" id="topbar-status">
@@ -510,17 +515,16 @@
           document.body.classList.remove('nav-open')
         })
       // Seitenleiste auf großen Bildschirmen ausblenden (wird pro Gerät gemerkt)
-      var side = document.getElementById('sidebar-btn')
+      var sideBtns = document.querySelectorAll('.sidebar-btn')
       function setCollapsed(on) {
         document.body.classList.toggle('sidebar-collapsed', on)
-        if (side) side.setAttribute('aria-pressed', on ? 'true' : 'false')
         try { localStorage.setItem('mv.sidebarCollapsed', on ? '1' : '0') } catch (e) {}
         // Editor-Vorschauen neu skalieren
         try { window.dispatchEvent(new Event('resize')) } catch (e) {}
       }
       try { if (localStorage.getItem('mv.sidebarCollapsed') === '1') setCollapsed(true) } catch (e) {}
-      if (side)
-        side.addEventListener('click', function () {
+      for (var i = 0; i < sideBtns.length; i++)
+        sideBtns[i].addEventListener('click', function () {
           setCollapsed(!document.body.classList.contains('sidebar-collapsed'))
         })
     })()
