@@ -7,6 +7,8 @@
 const { execFileSync } = require('child_process')
 
 const CACHE_MS = 3000
+// Container-Netze auf dem Server selbst (Docker-Brücken) zählen nicht als Geräte im LAN
+const DOCKER_DEV = /^(docker\d*|br-|veth)/
 
 const normalize = (ip) =>
   String(ip ?? '')
@@ -26,7 +28,8 @@ function createNeighbors({
     loadedAt = Date.now()
     try {
       const next = new Map()
-      for (const n of JSON.parse(read() || '[]')) if (n?.dst && n?.lladdr) next.set(normalize(n.dst), String(n.lladdr).toLowerCase())
+      for (const n of JSON.parse(read() || '[]'))
+        if (n?.dst && n?.lladdr && !DOCKER_DEV.test(n.dev ?? '')) next.set(normalize(n.dst), String(n.lladdr).toLowerCase())
       table = next
     } catch (err) {
       if (!warned) log(`Zugang: Nachbartabelle nicht lesbar (${err.message}) – Geräte nur an ihrer Adresse erkannt`)

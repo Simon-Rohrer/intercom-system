@@ -18,6 +18,8 @@ const COOKIE = 'mv_session'
 const DEVICE_COOKIE = 'jms_device'
 const SESSION_DAYS = 30
 const QR_TTL_MS = 10 * 60 * 1000
+// Ticket für den Abgleich der Anmeldung zwischen den Adressen (nur für eine Weiterleitung)
+const SSO_TTL_MS = 60 * 1000
 // Tagescode: neu um Mitternacht (deutsche Zeit); wer ihn am Vortag eingegeben hat, bleibt bis
 // 5 Uhr freigeschaltet, damit niemand mitten in einer Veranstaltung rausfliegt
 const TIME_ZONE = 'Europe/Berlin'
@@ -163,10 +165,7 @@ function normalizeGateway(g) {
   }
 }
 
-/**
- * kesherActiveRoles: Rollen, die in Kesher gerade an einem Gerät angemeldet sind.
- * releaseKesherRole(roleId, name): die Rolle dort freigeben (meldet das andere Gerät ab).
- */
+/** kesherActiveRoles: Rollen, die in Kesher gerade an einem Gerät angemeldet sind. */
 function createAccess({
   dataDir,
   log = console.log,
@@ -174,7 +173,6 @@ function createAccess({
   isLive = () => false,
   onRevoke = () => {},
   kesherActiveRoles = async () => [],
-  releaseKesherRole = async () => {},
   ipOf = () => '',
   // MAC-Adresse zur Geräteadresse (oder null): erkennt ein Gerät auch unter seiner anderen Adresse
   macOf = () => null,
@@ -248,37 +246,14 @@ function createAccess({
       created: Date.now(),
       seen: Date.now(),
       ip: ip || undefined,
-      mac: deviceMac(ip) || undefined,
     }
     write()
     return token
   }
 
-  /**
-   * Die Anmeldung gilt für das ganze Gerät, nicht nur für eine Adresse: Das Cookie schickt der
-   * Browser nur an den Namen, unter dem es gesetzt wurde. Über die IP teilen sich alle Dienste
-   * eins (Cookies kennen keine Ports), intercom.local und multiview.local aber nicht. Darum
-   * erkennt der Server das Gerät zusätzlich an seiner MAC-Adresse (IPv4 und IPv6 gleich).
-   * Nicht bei festen Stationen ohne Anmeldung – dort laufen oft mehrere Fenster nebeneinander.
-   */
-  function deviceMac(ip) {
-    if (!ip || openIp(ip)) return null
-    return macOf(ip)
-  }
-
-  /** Sitzungen dieses Geräts (an der MAC-Adresse), neueste zuerst. */
-  function deviceSessions(req) {
-    const mac = deviceMac(ipOf(req))
-    if (!mac) return []
-    return Object.values(secret.sessions)
-      .filter((s) => s.mac === mac)
-      .sort((a, b) => b.created - a.created)
-  }
-
-  /** Sitzung zum Cookie, sonst die neueste Anmeldung dieses Geräts unter einer anderen Adresse. */
   function lookupSession(req) {
     const token = parseCookies(req.headers.cookie)[COOKIE]
-    return (token && secret.sessions[sha256(token)]) || deviceSessions(req)[0] || null
+    return (token && secret.sessions[sha256(token)]) || null
   }
 
   function deleteSessions(list) {
@@ -299,12 +274,6 @@ function createAccess({
     const ip = ipOf(req)
     if (ip && s.ip !== ip) {
       s.ip = ip
-      writeSoon()
-    }
-    // … und das Gerät selbst (auch für Anmeldungen von vor dem Update oder nach einem Netzwechsel)
-    const mac = deviceMac(ip)
-    if (mac && s.mac !== mac) {
-      s.mac = mac
       writeSoon()
     }
     if (Date.now() - (s.seen ?? 0) > 60_000) {
@@ -371,7 +340,7 @@ function createAccess({
     onRevoke(ids, why)
   }
 
-  async function login({ name, roleId, pin, takeover }, req, res, { pinChecked = false } = {}) {
+  async function login({ name, roleId, pin }, req, res, { pinChecked = false } = {}) {
     const cleanName = String(name || '').trim().slice(0, 60)
     if (!cleanName) throw Object.assign(new Error('Bitte einen Namen eingeben'), { status: 400 })
     const admin = roleId === ADMIN
@@ -380,19 +349,20 @@ function createAccess({
       if (!pinChecked && !(await checkPin(pin))) throw Object.assign(new Error('PIN falsch'), { status: 403 })
     } else if (!roleId) throw Object.assign(new Error('Bitte eine Rolle wählen'), { status: 400 })
 
-    // Eine Rolle nur einmal: wie bei Kesher ablehnen oder (auf Wunsch) übernehmen.
-    // Die bisherige Anmeldung dieses Browsers und dieses Geräts (unter anderen Adressen) zählt
-    // nicht – sie wird durch die neue ersetzt, damit überall dieselbe gilt.
+    // Eine Rolle nur einmal. Wegnehmen kann man sie nicht – der andere meldet sich ab, oder der
+    // Admin beendet die Anmeldung (Benutzer & Rechte → Angemeldete Geräte). Die bisherige
+    // Anmeldung dieses Browsers zählt nicht – sie wird durch die neue ersetzt, unter allen
+    // Adressen (gleiche ID, siehe Abgleich unten).
     const own = parseCookies(req.headers.cookie)[COOKIE]
     const ownSession = own ? secret.sessions[sha256(own)] : null
-    const mine = [...new Set([ownSession, ...deviceSessions(req)].filter(Boolean))]
-    const ownRole = (ownSession ?? mine[0])?.roleId ?? null
+    const mine = ownSession ? [ownSession] : []
+    const ownRole = ownSession?.roleId ?? null
     if (!admin) {
       const holders = holdersOf(roleId).filter((s) => !mine.includes(s))
       const active = holders.filter(isActive)
-      if (active.length && !takeover) {
+      if (active.length) {
         const who = active.sort((a, b) => b.seen - a.seen)[0]
-        throw Object.assign(new Error(`Die Rolle ist schon angemeldet – von ${who.name}.`), {
+        throw Object.assign(new Error(`Die Rolle ist schon angemeldet – von ${who.name}. Bitte eine andere Rolle wählen.`), {
           status: 409,
           holder: { name: who.name, seen: who.seen },
         })
@@ -400,18 +370,13 @@ function createAccess({
       // Hier hat sie niemand – vielleicht aber ein Gerät direkt in Kesher (ohne zentrale Anmeldung).
       // Hatte dieser Browser die Rolle schon, ist das seine eigene Kesher-Seite.
       const inKesher = !active.length && ownRole !== roleId && (await rolesInKesher()).has(roleId)
-      if (inKesher && !takeover)
-        throw Object.assign(new Error('Die Rolle ist schon angemeldet – direkt in Kesher.'), {
+      if (inKesher)
+        throw Object.assign(new Error('Die Rolle ist schon angemeldet – direkt in Kesher. Bitte eine andere Rolle wählen.'), {
           status: 409,
           holder: { name: KESHER_HOLDER, kesher: true },
         })
-      if (inKesher) {
-        await releaseKesherRole(roleId, cleanName)
-        log(`Zugang: ${cleanName} übernimmt die Rolle ${roleId} von einem Gerät in Kesher`)
-      }
-      // Übernehmen bzw. alte, nicht mehr aktive Anmeldungen derselben Rolle aufräumen
-      endSessions(holders, active.length ? `übernommen von ${cleanName}` : 'abgelaufen')
-      if (active.length) log(`Zugang: ${cleanName} übernimmt die Rolle ${roleId} von ${active.map((s) => s.name).join(', ')}`)
+      // Alte, nicht mehr aktive Anmeldungen derselben Rolle aufräumen
+      endSessions(holders, 'abgelaufen')
     }
     deleteSessions(mine)
     const token = newSession({ name: cleanName, roleId, admin }, ipOf(req))
@@ -419,11 +384,12 @@ function createAccess({
     log(`Zugang: ${cleanName} angemeldet als ${admin ? 'Admin' : roleId}`)
   }
 
-  /** Abmelden – auf diesem Gerät unter allen Adressen (wie über die IP, wo alle Dienste ein Cookie teilen). */
+  /** Abmelden – unter allen Adressen, an die diese Anmeldung weitergegeben wurde (gleiche ID). */
   function logout(req, res) {
     const token = parseCookies(req.headers.cookie)[COOKIE]
+    const own = token && secret.sessions[sha256(token)]
     if (token) delete secret.sessions[sha256(token)]
-    deleteSessions(deviceSessions(req))
+    if (own) deleteSessions([own])
     write()
     res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`)
   }
@@ -478,8 +444,53 @@ function createAccess({
     return true
   }
 
+  /**
+   * Abgleich zwischen den Adressen: Ein Browser hat pro Name ein eigenes Cookie (192.168.0.21,
+   * intercom.local, multiview.local …). Die Seiten holen sich die Anmeldung per Weiterleitung
+   * von der zentralen Adresse ab bzw. bringen sie dorthin – mit einem kurzen Einmal-Ticket.
+   * Die Anmeldung bekommt dort ein weiteres Cookie, bleibt aber dieselbe (gleiche ID): Abmelden
+   * unter einer Adresse beendet sie unter allen.
+   */
+  const ssoTickets = new Map() // sha256(ticket) -> { id, device, expires }
+
+  function createSsoTicket(ip, req) {
+    const s = sessionOf(req)
+    if (!s) return null
+    for (const [key, t] of ssoTickets) if (t.expires < Date.now()) ssoTickets.delete(key)
+    const ticket = randomToken()
+    const device = deviceStatus(ip, req)
+    ssoTickets.set(sha256(ticket), { id: s.id, device: device.required && device.approved, expires: Date.now() + SSO_TTL_MS })
+    return ticket
+  }
+
+  function redeemSsoTicket(ticket, ip, req, res) {
+    const key = sha256(String(ticket || ''))
+    const entry = ssoTickets.get(key)
+    ssoTickets.delete(key)
+    if (!entry || entry.expires < Date.now()) return false
+    const s = Object.values(secret.sessions).find((x) => x.id === entry.id)
+    if (!s) return false
+    // eigene, andere Anmeldung dieses Browsers unter dieser Adresse ersetzen
+    const own = parseCookies(req.headers.cookie)[COOKIE]
+    const ownSession = own ? secret.sessions[sha256(own)] : null
+    if (ownSession && ownSession.id !== s.id) deleteSessions([ownSession])
+    const token = randomToken()
+    secret.sessions[sha256(token)] = s
+    write()
+    res.append('Set-Cookie', cookieFor(token, req))
+    // Tagescode gilt dann auch hier
+    if (entry.device) {
+      const device = deviceStatus(ip, req)
+      if (device.required && !device.approved) approveDevice(ip, req, res)
+    }
+    return true
+  }
+
+  /** Angemeldete Geräte – jede Anmeldung einmal, auch wenn sie unter mehreren Adressen gilt. */
   function sessions() {
-    return Object.values(secret.sessions)
+    const byId = new Map()
+    for (const s of Object.values(secret.sessions)) if (!byId.has(s.id) || byId.get(s.id).seen < s.seen) byId.set(s.id, s)
+    return [...byId.values()]
       .map(({ id, name, roleId, admin, created, seen, ip }) => ({ id, name, roleId, admin, created, seen, ip: ip || null, live: isLive(id) }))
       .sort((a, b) => b.seen - a.seen)
   }
@@ -670,7 +681,7 @@ function createAccess({
   }
 
   return {
-    enabled, pinSource, userOf, sessionIdOf, occupiedRoles, occupiedForLogin, login, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession,
+    enabled, pinSource, userOf, sessionIdOf, occupiedRoles, occupiedForLogin, login, createSsoTicket, redeemSsoTicket, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession,
     gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, approveDevice, check, trusted, createTicket,
     flush: write,
   }
