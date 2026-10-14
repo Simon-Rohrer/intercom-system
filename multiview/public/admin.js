@@ -2878,9 +2878,6 @@ const qrUrl = (data) => `/api/qr.svg?data=${encodeURIComponent(data)}`
 let qrTimer = null
 
 async function renderQr() {
-  const origin = publicOrigin(server)
-  $('#qr-site').src = qrUrl(`${origin}/`)
-  $('#qr-site-url').textContent = `${origin}/`
   $('#qr-login-user').textContent = user?.open ? 'Gast' : `${user.name} (${user.roleName})`
   await renewLoginQr()
 }

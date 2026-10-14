@@ -1132,3 +1132,12 @@ a.status-tile:hover { border-color: var(--accent-line); }
 
 /* Editor wie Monitor: graue Trennlinie je Kachel (--line vom Layout) */
 .canvas-frame .etile::after { box-shadow: inset 0 0 0 1px var(--line, transparent); }
+
+/* QR-Fenster: nur noch der Code fürs Handy als Fernbedienung */
+.qr-grid.qr-single { grid-template-columns: minmax(0, 420px); justify-content: center; }
+
+/* Menü-Taste (☰) nur auf schmalen Bildschirmen – sonst ist die Seitenleiste ohnehin da */
+@media (min-width: 981px) {
+  .icon-btn.menu-btn { display: none; }
+}
+#qr-dialog { width: min(480px, calc(100vw - 32px)); }

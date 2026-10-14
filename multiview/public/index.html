@@ -413,20 +413,12 @@
   <!-- QR-Codes -->
   <dialog id="qr-dialog" class="dialog">
     <form method="dialog" class="dialog-head">
-      <h2>QR-Codes fürs Handy</h2>
+      <h2>QR-Code fürs Handy</h2>
       <button class="icon-btn" aria-label="Schließen" value="close">
         <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
       </button>
     </form>
-    <div class="qr-grid">
-      <figure class="qr-card">
-        <div class="qr-frame"><img id="qr-site" alt="QR-Code: Seite öffnen"></div>
-        <figcaption>
-          <b>Seite öffnen</b>
-          <span class="muted">Mit der Handy-Kamera scannen – öffnet den Multiview.</span>
-          <code id="qr-site-url"></code>
-        </figcaption>
-      </figure>
+    <div class="qr-grid qr-single">
       <figure class="qr-card accent">
         <div class="qr-frame"><img id="qr-login" alt="QR-Code: Handy anmelden"></div>
         <figcaption>
