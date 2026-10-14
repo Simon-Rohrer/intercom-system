@@ -20,7 +20,7 @@ const esc = (s) =>
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max)
 
 const CLIENT_ID = uid('c')
-const PAGES = ['uebersicht', 'eingaenge', 'layouts', 'einstellungen', 'zugang']
+const PAGES = ['uebersicht', 'multiviews', 'eingaenge', 'layouts', 'einstellungen', 'zugang']
 const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'zugang']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
 const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'raspberry', 'companion', 'bildschirme', 'geraete']
@@ -142,6 +142,9 @@ function onMessage(msg) {
     for (const el of canvas.querySelectorAll('.etile')) el.ppView?.updateStage?.(ppStage)
     // Timer-Auswahl der Bühnen-Kachel nachziehen, wenn ProPresenter andere Timer meldet
     if (timersChanged && inspector.querySelector('[data-st-timer]')) renderInspector()
+  } else if (msg.type === 'sessions_changed') {
+    // Gerät an- oder abgemeldet, Seite geöffnet oder geschlossen: Liste gleich nachziehen
+    if (page === 'einstellungen' && !$('#set-sessions').hidden) loadSessions()
   } else if (msg.type === 'templates_changed') {
     loadTemplates()
   } else if (msg.type === 'session_revoked') {
@@ -222,7 +225,9 @@ function toast(text) {
 // ---------------------------------------------------------------------------
 
 function showPage() {
-  const [requested, sub] = location.hash.replace(/^#\/?/, '').split('/')
+  let [requested, sub] = location.hash.replace(/^#\/?/, '').split('/')
+  // Layouts sind eine Unterseite der Multiviews (die alte Adresse #/layouts geht weiter)
+  if (requested === 'multiviews' && sub === 'layouts') requested = 'layouts'
   page = PAGES.includes(requested) && (isAdmin() || !ADMIN_PAGES.includes(requested)) ? requested : 'uebersicht'
   for (const p of PAGES) $(`#page-${p}`).hidden = p !== page
   const sectionsOf = { einstellungen: SETTINGS_SECTIONS, zugang: ZUGANG_SECTIONS }[page]
@@ -235,7 +240,8 @@ function showPage() {
       else a.removeAttribute('aria-current')
     })
   }
-  document.querySelectorAll('.site-nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === page))
+  const navPage = page === 'layouts' ? 'multiviews' : page
+  document.querySelectorAll('.site-nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === navPage))
   document.body.classList.remove('nav-open')
   if (page === 'eingaenge') autoScanDevices()
   if (page === 'einstellungen' && sub === 'geraete') loadSessions()
@@ -337,8 +343,8 @@ const previewScaler =
 
 function renderOutputs() {
   const grid = $('#output-cards')
-  // Vorschauen (iframes) nur laden, solange die Übersicht offen ist
-  if (page !== 'uebersicht') {
+  // Vorschauen (iframes) nur laden, solange die Seite Multiviews offen ist
+  if (page !== 'multiviews') {
     if (outputsKey) grid.replaceChildren()
     outputsKey = ''
     return
@@ -481,7 +487,7 @@ function renderScreens() {
   })
   body.innerHTML =
     rows.join('') ||
-    `<tr><td colspan="4" class="muted">Keine Anschlüsse gefunden. Sie erscheinen hier, wenn der Multiview-Server
+    `<tr><td colspan="4" class="muted">Keine Anschlüsse gefunden. Sie erscheinen hier, wenn JMS Control
       auf dem Linux-Rechner läuft, an dem die Monitore hängen.</td></tr>`
 }
 
@@ -2669,8 +2675,9 @@ function renderUserCard() {
 // --- Suche in der Seitenleiste (wie in den macOS-Systemeinstellungen) --------------
 
 const SEARCH_ENTRIES = [
-  { label: 'Übersicht', href: '#/', words: 'start multiviews status profil qr handy anmelden' },
-  { label: 'Layouts', href: '#/layouts', words: 'editor kacheln raster trennlinien vorlagen' },
+  { label: 'Übersicht', href: '#/', words: 'start status profil qr handy anmelden' },
+  { label: 'Multiviews', href: '#/multiviews', words: 'vorschau vollbild ausgabe monitor live' },
+  { label: 'Layouts', href: '#/multiviews/layouts', words: 'multiviews editor kacheln raster trennlinien vorlagen' },
   { label: 'Eingänge', href: '#/eingaenge', admin: true, words: 'kamera capture stream video quellen testbild' },
   { label: 'ATEM', href: '#/einstellungen/atem', admin: true, words: 'einstellungen tally mischer ip' },
   { label: 'ProPresenter', href: '#/einstellungen/propresenter', admin: true, words: 'einstellungen folien stage display beamer nachricht' },
@@ -2755,7 +2762,8 @@ document.addEventListener('keydown', (e) => {
 
 // Gefüllte Symbole im Stil der SF Symbols (weiß auf farbigem Squircle)
 const APP_TILES = [
-  { href: '#/layouts', label: 'Layouts', color: 'blue', icon: '<path fill-rule="evenodd" d="M5.5 3h13A3.5 3.5 0 0 1 22 6.5v11a3.5 3.5 0 0 1-3.5 3.5h-13A3.5 3.5 0 0 1 2 17.5v-11A3.5 3.5 0 0 1 5.5 3Zm-1.5 7v7.5c0 .8.7 1.5 1.5 1.5H9v-9H4Zm7 0v9h7.5c.8 0 1.5-.7 1.5-1.5V10h-9Z"/>' },
+  { href: '#/multiviews', label: 'Multiviews', color: 'indigo', icon: '<path fill-rule="evenodd" d="M5.5 3h13A3.5 3.5 0 0 1 22 6.5v11a3.5 3.5 0 0 1-3.5 3.5h-13A3.5 3.5 0 0 1 2 17.5v-11A3.5 3.5 0 0 1 5.5 3ZM4 6.5V11h7V5H5.5C4.7 5 4 5.7 4 6.5ZM13 5v6h7V6.5c0-.8-.7-1.5-1.5-1.5H13Zm7 8h-7v6h5.5c.8 0 1.5-.7 1.5-1.5V13Zm-9 6v-6H4v4.5c0 .8.7 1.5 1.5 1.5H11Z"/>' },
+  { href: '#/multiviews/layouts', label: 'Layouts', color: 'blue', icon: '<path fill-rule="evenodd" d="M5.5 3h13A3.5 3.5 0 0 1 22 6.5v11a3.5 3.5 0 0 1-3.5 3.5h-13A3.5 3.5 0 0 1 2 17.5v-11A3.5 3.5 0 0 1 5.5 3Zm-1.5 7v7.5c0 .8.7 1.5 1.5 1.5H9v-9H4Zm7 0v9h7.5c.8 0 1.5-.7 1.5-1.5V10h-9Z"/>' },
   { href: '#/eingaenge', label: 'Eingänge', color: 'green', admin: true, icon: '<rect x="1.5" y="5.5" width="14.5" height="13" rx="3.2"/><path d="M17.3 10.1 21 7.6c.6-.4 1.5 0 1.5.8v7.2c0 .8-.9 1.2-1.5.8l-3.7-2.5z"/>' },
   { href: '#/einstellungen', label: 'Einstellungen', color: 'gray', admin: true, icon: '<path fill-rule="evenodd" d="M19.60 12.00 L21.42 13.87 L20.87 15.67 L18.32 16.22 L17.37 17.37 L17.33 19.98 L15.67 20.87 L13.48 19.45 L12.00 19.60 L10.13 21.42 L8.33 20.87 L7.78 18.32 L6.63 17.37 L4.02 17.33 L3.13 15.67 L4.55 13.48 L4.40 12.00 L2.58 10.13 L3.13 8.33 L5.68 7.78 L6.63 6.63 L6.67 4.02 L8.33 3.13 L10.52 4.55 L12.00 4.40 L13.87 2.58 L15.67 3.13 L16.22 5.68 L17.37 6.63 L19.98 6.67 L20.87 8.33 L19.45 10.52Z M15.2 12 a3.2 3.2 0 1 0 -6.4 0 a3.2 3.2 0 1 0 6.4 0Z"/>' },
   { href: '#/zugang', label: 'Benutzer', color: 'orange', admin: true, icon: '<circle cx="9" cy="7.2" r="3.7"/><path d="M1.8 19.3c0-3.8 3.2-6.4 7.2-6.4s7.2 2.6 7.2 6.4c0 .7-.5 1.2-1.2 1.2H3c-.7 0-1.2-.5-1.2-1.2Z"/><circle cx="17.2" cy="8.3" r="2.9"/><path d="M17.6 12.9c2.7.2 4.6 2.1 4.6 4.9 0 .7-.5 1.2-1.2 1.2h-3.2c.2-.6.3-1.1.3-1.7 0-1.7-.7-3.2-1.8-4.4h1.3Z"/>' },
@@ -2778,8 +2786,8 @@ function renderProfileCard() {
   const outputs = myOutputs()
   const live = outputs.filter((o) => o.layoutId).length
   el.innerHTML = `<div class="glass profile-me">
-      ${user?.open ? avatarHtml({ name: 'M V' }, { cls: 'avatar xl' }) : `<button type="button" class="avatar-btn" data-avatar-pick title="Profilbild ändern" aria-label="Profilbild ändern">${avatarHtml(user, { cls: 'avatar xl' })}<span class="avatar-edit" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span></button>`}
-      <h2>${esc(user?.open ? 'Multiview' : user?.name)}</h2>
+      ${user?.open ? avatarHtml({ name: 'J C' }, { cls: 'avatar xl' }) : `<button type="button" class="avatar-btn" data-avatar-pick title="Profilbild ändern" aria-label="Profilbild ändern">${avatarHtml(user, { cls: 'avatar xl' })}<span class="avatar-edit" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span></button>`}
+      <h2>${esc(user?.open ? 'JMS Control' : user?.name)}</h2>
       <p>${esc(user?.open ? 'Zugang offen' : user?.roleName || '')}${isAdmin() && !user?.open && user?.roleName !== 'Admin' ? ' · Admin' : ''}</p>
       ${user?.open ? '' : `<div class="profile-actions">
         <button type="button" class="btn small" data-avatar-pick>${user?.avatar ? 'Bild ändern' : 'Profilbild hinzufügen'}</button>
@@ -2975,7 +2983,7 @@ function renderAccess() {
     </form>
     <p class="muted" style="font-size:12.5px;margin-top:10px">${
       source === 'kesher'
-        ? 'Der Multiview speichert die PIN nicht – er fragt bei jeder Admin-Anmeldung Kesher. Ändert sich die PIN in Kesher, gilt sie hier sofort mit. Ist Kesher nicht erreichbar, geht die Admin-Anmeldung so lange nicht.'
+        ? 'JMS Control speichert die PIN nicht – es fragt bei jeder Admin-Anmeldung Kesher. Ändert sich die PIN in Kesher, gilt sie hier sofort mit. Ist Kesher nicht erreichbar, geht die Admin-Anmeldung so lange nicht.'
         : 'Die PIN wird nur als Hash auf dem Server gespeichert.'
     }</p>
     <p class="form-error" id="pin-error"></p>`
@@ -3214,9 +3222,9 @@ $('#set-sessions').addEventListener('click', async (e) => {
     await fetch(`/api/access/sessions/${encodeURIComponent(end.dataset.endSession)}`, { method: 'DELETE' })
     loadSessions()
   }
-  if (e.target.closest('#sessions-refresh')) loadSessions()
 })
-// Online/offline ändert sich laufend – solange die Liste offen ist, alle 15 s neu laden
+// Neu kommt per sessions_changed. „Zuletzt aktiv“ und das Ende von „aktiv“ ohne offene Seite
+// meldet niemand – solange die Liste offen ist, darum zusätzlich alle 15 s neu laden
 setInterval(() => {
   if (document.visibilityState === 'visible' && !$('#set-sessions').hidden && page === 'einstellungen') loadSessions()
 }, 15_000)
@@ -3230,14 +3238,15 @@ async function loadSessions() {
   }
   try {
     const all = await fetch('/api/access/sessions').then((r) => r.json())
-    // Nur Geräte, die gerade online sind (eine Seite offen haben)
-    const list = all.filter((s) => s.live || s.self)
+    // Nur Geräte, die gerade online sind (Multiview oder Kesher offen, oder eben noch aktiv)
+    const list = all.filter((s) => s.online || s.self)
+    const where = (s) => [s.live && 'JMS Control', s.kesher && 'Intercom'].filter(Boolean).join(' + ')
     const when = (ms) => new Date(ms).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     box.innerHTML = `<div class="table-wrap"><table class="table">
       <thead><tr><th>Name</th><th>Rolle</th><th>IP-Adresse</th><th>Zuletzt aktiv</th><th></th></tr></thead>
       <tbody>${list
         .map(
-          (s) => `<tr><td class="session-who">${avatarHtml(s, { cls: 'avatar sm' })}<b>${esc(s.name)}</b>${s.self ? ' <span class="badge accent">dieses Gerät</span>' : ''}${s.live ? ' <span class="pill ok" style="height:22px">online</span>' : ''}</td>
+          (s) => `<tr><td class="session-who">${avatarHtml(s, { cls: 'avatar sm' })}<b>${esc(s.name)}</b>${s.self ? ' <span class="badge accent">dieses Gerät</span>' : ''}${s.online ? ` <span class="pill ok" style="height:22px">online</span>${where(s) ? ` <small class="muted">${where(s)}</small>` : ''}` : ''}</td>
             <td>${esc(s.roleName)}</td><td>${s.ip ? `<code class="ip">${esc(s.ip)}</code>` : '<span class="muted">–</span>'}</td><td class="muted">${esc(when(s.seen))}</td>
             <td style="text-align:right">${s.self ? '' : `<button class="btn small danger" data-end-session="${esc(s.id)}">Abmelden</button>`}</td></tr>`,
         )
@@ -3288,7 +3297,7 @@ function renderGateway() {
   if (card.contains(active) && active.tagName === 'INPUT' && active.type !== 'checkbox') return
   const info = gatewayInfo
   const head = `<div class="card-head gateway-head"><div><h2>Anmeldung für alle Dienste</h2>
-    <p class="muted">Intercom (Kesher), Dashboard, Companion, Portainer und Glances fragen dann zuerst nach Name und Rolle – einmal für alle, wie hier im Multiview. Geräte im WLAN brauchen dazu einmal am Tag den Code. Companion, Portainer und Glances sind nur für den Admin. Der Multiview selbst bleibt ohne Code erreichbar.</p></div>`
+    <p class="muted">Intercom (Kesher), Dashboard, Companion, Portainer und Glances fragen dann zuerst nach Name und Rolle – einmal für alle, wie hier in JMS Control. Geräte im WLAN brauchen dazu einmal am Tag den Code. Companion, Portainer und Glances sind nur für den Admin. JMS Control selbst bleibt ohne Code erreichbar.</p></div>`
   if (!info) {
     card.innerHTML = `${head}</div><p class="muted">Konnte die Einstellungen nicht laden.</p>`
     return
@@ -3331,7 +3340,7 @@ function renderGateway() {
     <form id="gateway-form" class="gateway-form" autocomplete="off">
       <label class="field"><span>Startseite nach dem Scannen</span>
         <input type="url" name="startUrl" value="${esc(info.startUrl)}" placeholder="${esc(publicOrigin(server))}">
-        <small class="muted">Am besten das Dashboard, z. B. https://192.168.0.21:3000. Leer = dieser Multiview.</small>
+        <small class="muted">Am besten das Dashboard, z. B. https://192.168.0.21:3000. Leer = JMS Control.</small>
       </label>
       <div class="field"><span>Feste Geräte ohne Code</span>
         <small class="muted">Stationen, Raspberry Pis, Kesher-App, Rechner im LAN: eine Adresse (192.168.0.50) oder ein Bereich (192.168.0.0/24). <b>Ohne Anmeldung</b>: kommen ohne Code und Anmeldung an Intercom und Dashboard (Stationen, Kiosk). <b>Nur ohne Code</b>: brauchen keinen Tagescode, melden sich aber mit Name und Rolle an (Arbeitsrechner). An die Admin-Dienste kommen alle nur mit Admin-Anmeldung. Der Server selbst ist immer frei.</small>

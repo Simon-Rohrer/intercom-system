@@ -1097,6 +1097,18 @@ function broadcast(msg) {
   for (const ws of wss.clients) if (ws.readyState === 1) ws.send(data)
 }
 
+let sessionsTimer = null
+/**
+ * Angemeldete Geräte haben sich geändert (Anmeldung, Seite auf/zu, Kesher verbunden): offene
+ * Einstellungen laden die Liste neu. Ohne Inhalt – die Liste selbst darf nur der Admin lesen.
+ */
+function sessionsChanged() {
+  sessionsTimer ??= setTimeout(() => {
+    sessionsTimer = null
+    broadcast({ type: 'sessions_changed' })
+  }, 300)
+}
+
 const churchTools = createChurchTools({
   dataDir: DATA_DIR,
   getConfig: () => config.churchtools,
@@ -1114,6 +1126,8 @@ const kesherChat = createKesherChat({
   getConfig: () => config.chat,
   onUpdate: broadcast,
   onFlash: broadcast,
+  // Wer in Kesher verbunden ist, zählt bei den angemeldeten Geräten als online (Handys im WLAN)
+  onPresence: sessionsChanged,
   log: console.log,
 })
 
@@ -1218,6 +1232,10 @@ wss.on('connection', (ws, req) => {
   if (!access.trusted(clientIp(req), req)) return ws.close(4401, 'Bitte anmelden')
   // Welche Anmeldung hier offen ist – so gilt eine Rolle als belegt, solange ihre Seite offen ist
   ws.sessionId = access.sessionIdOf(req)
+  if (ws.sessionId) {
+    sessionsChanged()
+    ws.on('close', sessionsChanged)
+  }
   send(ws, { type: 'config', config })
   send(ws, { type: 'atem', ...atemState })
   send(ws, { type: 'devices', devices: [...knownDevices] })
@@ -1300,6 +1318,7 @@ const access = createAccess({
   ipOf: (req) => (req?.socket ? clientIp(req).replace(/^::ffff:/, '') : ''),
   // Dasselbe Gerät per IPv4 (IP-Adresse) und IPv6 (.local-Namen) erkennen
   macOf: createNeighbors().macOf,
+  onChange: sessionsChanged,
   // Übernommene oder vom Admin beendete Anmeldung: die offenen Seiten dort abmelden
   onRevoke: (ids, reason) => {
     for (const ws of wss.clients) {
@@ -1578,9 +1597,39 @@ app.post('/api/access/pin', requireAdmin, async (req, res) => {
   }
 })
 
-app.get('/api/access/sessions', requireAdmin, (req, res) =>
-  res.json(access.sessions().map((s) => ({ ...s, roleName: roleName(s.roleId), self: s.id === req.user.sessionId, avatar: avatarUrl(s.name) }))),
-)
+/**
+ * Anmeldungen, deren Kesher-Seite gerade verbunden ist. Kesher meldet nur Rolle und Namen (ohne
+ * Leerzeichen), keine Adresse: Rollen gibt es nur einmal, der Admin wird am Namen erkannt.
+ * Hat eine Person die Rolle auf mehreren Geräten, zählt die zuletzt aktive Anmeldung.
+ */
+function sessionsInKesher(list) {
+  const key = (name) => String(name ?? '').replace(/\s+/g, '').toLowerCase()
+  const ids = new Set()
+  for (const p of kesherChat.presence()) {
+    const sameName = (s) => key(s.name) === key(p.username)
+    const match = list
+      .filter((s) => (s.admin ? sameName(s) : s.roleId === p.roleId))
+      .sort((a, b) => sameName(b) - sameName(a) || b.seen - a.seen)[0]
+    if (match) ids.add(match.id)
+  }
+  return ids
+}
+
+app.get('/api/access/sessions', requireAdmin, (req, res) => {
+  const list = access.sessions()
+  const inKesher = sessionsInKesher(list)
+  res.json(
+    list.map((s) => ({
+      ...s,
+      kesher: inKesher.has(s.id),
+      // online: Seite im Multiview oder Kesher offen, sonst eben noch an einem Dienst aktiv (Dashboard …)
+      online: s.live || inKesher.has(s.id) || Date.now() - s.seen < 2 * 60 * 1000,
+      roleName: roleName(s.roleId),
+      self: s.id === req.user.sessionId,
+      avatar: avatarUrl(s.name),
+    })),
+  )
+})
 
 app.delete('/api/access/sessions/:id', requireAdmin, (req, res) => {
   access.endSession(req.params.id)
@@ -1742,7 +1791,7 @@ app.get(['/vendor/jsQR.js', '/.jms-auth/vendor/jsQR.js'], (req, res) =>
 // Admin-Sitzung mit Ticket); die Multiview-Rechte der Rolle stehen hier in config.access.roles.
 const kesherRoles = createKesherRoles({
   getUrl: () => config.chat?.url,
-  getTicket: () => access.createTicket({ name: 'Multiview', roleId: ADMIN, admin: true }, 'kesher', AUTH_SECRET),
+  getTicket: () => access.createTicket({ name: 'JMS Control', roleId: ADMIN, admin: true }, 'kesher', AUTH_SECRET),
 })
 
 /** Kesher-Rollen gleich neu laden, damit Anmeldung und Rechte-Tabelle sie sofort kennen. */
@@ -1781,7 +1830,7 @@ app.put('/api/access/roles/:id', requireAdmin, async (req, res) => {
 app.delete('/api/access/roles/:id', requireAdmin, async (req, res) => {
   const id = req.params.id
   try {
-    if (id === config.chat?.roleId) throw Object.assign(new Error('Mit dieser Rolle zeigt der Multiview den Kesher-Chat – sie bleibt'), { status: 409 })
+    if (id === config.chat?.roleId) throw Object.assign(new Error('Mit dieser Rolle zeigt JMS Control den Kesher-Chat – sie bleibt'), { status: 409 })
     const holder = access.occupiedRoles()[id]
     if (holder) throw Object.assign(new Error(`„${holder}“ ist gerade mit dieser Rolle angemeldet – erst abmelden (Angemeldete Geräte)`), { status: 409 })
     await kesherRoles.remove(id)
@@ -2089,7 +2138,7 @@ app.all('/api/layout/:layout/tile/:tile/source/:source', requireTrusted, (req, r
 })
 
 server.listen(PORT, HOST, () => {
-  console.log('Multiview Builder läuft:')
+  console.log('JMS Control läuft:')
   console.log(`  Webseite: http://localhost:${PORT}/`)
   for (const a of lanAddresses()) console.log(`            http://${a}:${PORT}/`)
   console.log(`  Monitor:  http://localhost:${PORT}/output.html?id=1`)

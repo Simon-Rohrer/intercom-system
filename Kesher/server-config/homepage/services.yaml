@@ -1,5 +1,5 @@
 # Dashboard (Homepage) auf dem JMS-Server – zwei Seiten (Tabs, siehe settings.yaml):
-#   Start: die Dienste für alle (Intercom, Multiview, Fernbedienung …)
+#   Start: die Dienste für alle (Intercom, JMS Control, Fernbedienung …)
 #   Abmelden und Konto wechseln stehen oben in der Konto-Leiste (custom.js)
 #   Admin: Companion, Portainer und alles über den Server (Auslastung, Container)
 # Alle Dateien aus diesem Ordner nach /opt/homelab/config/homepage/ kopieren, Homepage
@@ -20,9 +20,9 @@
         href: https://192.168.0.21:8443/?login=raspberry
         description: Kesher – eine Raspberry-Station übernehmen und steuern
         icon: mdi-raspberry-pi
-    - Multiview einstellen:
+    - JMS Control:
         href: https://192.168.0.21:8090
-        description: Bildschirme, Layouts und Monitore
+        description: Die Zentrale – Multiviews, Layouts, Eingänge, Benutzer und Rechte
         icon: mdi-monitor-dashboard
         server: local-docker
         container: multiview
@@ -138,9 +138,9 @@
         server: local-docker
         container: kesher
         showStats: true
-    - Multiview:
+    - JMS Control:
         icon: mdi-monitor-dashboard
-        description: Multiview mit MediaMTX, zentrale Anmeldung
+        description: Zentrale mit Multiviews, MediaMTX und zentraler Anmeldung
         server: local-docker
         container: multiview
         showStats: true

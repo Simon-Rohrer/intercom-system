@@ -15,7 +15,7 @@ const REVOKED_RETRY_MS = 60 * 1000 // Rolle wurde übernommen: nicht sofort zur�
 // darum Rollen und Linien regelmäßig neu holen
 const BOOTSTRAP_REFRESH_MS = 30 * 1000
 
-function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
+function createKesherChat({ getConfig, onUpdate, onFlash, onPresence = () => {}, log = console.log }) {
   let ws = null
   let token = null
   let session = null // { url, username, roleId }
@@ -26,6 +26,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
   let error = ''
   let retryTimer = null
   let stopped = false
+  let presence = [] // wer gerade in Kesher verbunden ist: [{ roleId, username }]
 
   const settings = () => {
     const c = getConfig() || {}
@@ -56,6 +57,16 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
 
   function publish() {
     onUpdate(snapshot())
+  }
+
+  /** Kesher meldet bei jeder Änderung die ganze Liste der verbundenen Geräte. */
+  function setPresence(list) {
+    const next = list
+      .map((p) => ({ roleId: String(p?.roleId ?? ''), username: String(p?.username ?? '') }))
+      .sort((a, b) => a.roleId.localeCompare(b.roleId) || a.username.localeCompare(b.username))
+    if (JSON.stringify(next) === JSON.stringify(presence)) return
+    presence = next
+    onPresence()
   }
 
   /** Wer hört auf einer Party Line mit (Empfänger und Zwangs-Mithörer)? */
@@ -251,6 +262,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
       if (msg.type === 'chat') onChat(msg.data || {})
       else if (msg.type === 'chat_ack') onAck(msg.data)
       else if (msg.type === 'chat_history_cleared') clearHistory()
+      else if (msg.type === 'presence') setPresence(Array.isArray(msg.data) ? msg.data : [])
       else if (msg.type === 'session_revoked') {
         revoked = true
         token = null
@@ -271,6 +283,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
     socket.on('close', () => {
       if (ws !== socket) return
       ws = null
+      setPresence([]) // ohne Verbindung wissen wir nicht, wer da ist
       if (stopped) return
       setState('reconnecting', revoked ? 'Rolle wurde von einem anderen Gerät übernommen' : error || 'Verbindung getrennt')
       schedule(revoked ? REVOKED_RETRY_MS : RETRY_MS)
@@ -423,7 +436,10 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
       }).catch(() => {})
   }
 
-  return { start: connect, reconfigure, refresh, stop, snapshot, verifyAdminPin, sendText, activeRoleIds, releaseRole }
+  return {
+    start: connect, reconfigure, refresh, stop, snapshot, verifyAdminPin, sendText, activeRoleIds, releaseRole,
+    presence: () => presence,
+  }
 }
 
 module.exports = { createKesherChat }

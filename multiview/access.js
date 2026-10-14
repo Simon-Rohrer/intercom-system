@@ -178,6 +178,8 @@ function createAccess({
   ipOf = () => '',
   // MAC-Adresse zur Geräteadresse (oder null): erkennt ein Gerät auch unter seiner anderen Adresse
   macOf = () => null,
+  // Anmeldungen haben sich geändert (für die Liste beim Admin)
+  onChange = () => {},
 }) {
   const file = path.join(dataDir, 'access-secret.json')
   // { adminPin: { salt, hash } | { kesher: true }, sessions: { sha256(token): session },
@@ -209,6 +211,7 @@ function createAccess({
     const tmp = `${file}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(secret, null, 2), { mode: 0o600 })
     fs.renameSync(tmp, file)
+    onChange()
   }
 
   /** "Zuletzt gesehen" nicht bei jeder Anfrage auf die Platte schreiben. */

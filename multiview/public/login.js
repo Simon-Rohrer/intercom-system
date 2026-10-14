@@ -25,7 +25,7 @@ $('#qr-note').hidden = params.get('qr') !== 'abgelaufen'
 $('#revoked-note').hidden = !params.has('abgemeldet')
 if (gateway) {
   $('#brand-text').innerHTML = 'Technik<small>Anmeldung</small>'
-  $('#login-lead').textContent = 'Name eingeben und deine Rolle wählen – das gilt dann für alle Dienste (Intercom, Multiview, Dashboard).'
+  $('#login-lead').textContent = 'Name eingeben und deine Rolle wählen – das gilt dann für alle Dienste (Intercom, JMS Control, Dashboard).'
 }
 
 function remembered(key) {

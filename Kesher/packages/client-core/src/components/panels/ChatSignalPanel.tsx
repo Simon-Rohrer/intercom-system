@@ -368,16 +368,16 @@ export function ChatSignalPanel({
                     ) : entry.source === "multiview-alert" ? (
                       <span
                         className="chat-feed-source-icon chat-feed-alert-tag"
-                        title="Wichtige Meldung aus dem Multiview"
+                        title="Wichtige Meldung aus JMS Control"
                       >
                         Wichtig
                       </span>
                     ) : entry.source === "multiview" ? (
                       <span
                         className="chat-feed-source-icon"
-                        title="Über den Multiview gesendet"
+                        title="Über JMS Control gesendet"
                       >
-                        Multiview
+                        JMS Control
                       </span>
                     ) : null}
                     {scopeTag(entry)}

@@ -169,7 +169,7 @@ export function ChatDisplayView({
                   ) : entry.source === "multiview-alert" ? (
                     <span className="chat-display-target is-alert">Wichtig</span>
                   ) : entry.source === "multiview" ? (
-                    <span className="chat-display-target">Multiview</span>
+                    <span className="chat-display-target">JMS Control</span>
                   ) : null}
                   {needsAck ? (
                     <span className="chat-display-ack">Bestätigung erwartet</span>

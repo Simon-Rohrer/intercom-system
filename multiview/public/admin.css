@@ -1490,6 +1490,7 @@ input, select, textarea { background-color: var(--surface-2); }
 .app-icon.purple { background: linear-gradient(160deg, #c38bff, #8e44ec); }
 .app-icon.teal { background: linear-gradient(160deg, #6be0e8, #12a3b8); }
 .app-icon.pink { background: linear-gradient(160deg, #ff8fb1, #ff2d6f); }
+.app-icon.indigo { background: linear-gradient(160deg, #8e8cff, #5856d6); }
 .app-label { font-size: 13px; font-weight: 500; }
 @media (max-width: 760px) {
   .profile-hero { grid-template-columns: 1fr; }
@@ -1858,6 +1859,7 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 .app-icon.purple { background: linear-gradient(180deg, #c98bff 0%, #a35cf7 55%, #7d36e6 100%); --icon-shadow: rgba(125, 54, 230, 0.5); }
 .app-icon.teal { background: linear-gradient(180deg, #5fe3ef 0%, #22bfd3 55%, #0e97b0 100%); --icon-shadow: rgba(14, 151, 176, 0.5); }
 .app-icon.pink { background: linear-gradient(180deg, #ff86ac 0%, #ff4d82 55%, #e8285f 100%); --icon-shadow: rgba(232, 40, 95, 0.5); }
+.app-icon.indigo { background: linear-gradient(180deg, #9a98ff 0%, #6e6cf0 55%, #4a48c8 100%); --icon-shadow: rgba(74, 72, 200, 0.5); }
 .app-tile { gap: 10px; }
 .app-tile:hover .app-icon { transform: translateY(-2px) scale(1.03); }
 .app-icon { transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1); }
