@@ -80,6 +80,13 @@
       '<a href="/.jms-auth/login?wechseln=1&next=%2F">Konto wechseln</a>' +
       '<a href="/.jms-auth/logout" class="jms-logout">Abmelden</a>'
     bar.append(avatar, who, actions)
+    // Gestaltung direkt mitliefern – custom.css hält der Browser gern länger im Zwischenspeicher
+    if (!document.getElementById('jms-account-style')) {
+      const style = document.createElement('style')
+      style.id = 'jms-account-style'
+      style.textContent = '/* Konto-Leiste oben (custom.js): Profilbild, Name, Rolle, Konto wechseln, Abmelden */\n.jms-account {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n  margin: 16px 16px 0;\n  padding: 10px 12px 10px 10px;\n  border-radius: 20px;\n  background: var(--jms-glass);\n  border: 1px solid var(--jms-line);\n  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);\n  -webkit-backdrop-filter: blur(28px) saturate(160%);\n  backdrop-filter: blur(28px) saturate(160%);\n  color: #fff;\n}\n@media (min-width: 640px) { .jms-account { margin: 24px 36px 0; } }\n.jms-avatar {\n  width: 44px;\n  height: 44px;\n  flex: none;\n  border-radius: 50%;\n  display: grid;\n  place-items: center;\n  overflow: hidden;\n  font-weight: 700;\n  font-size: 16px;\n  background: linear-gradient(160deg, #8e9bff, #5856d6);\n  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);\n}\n.jms-avatar img { width: 100%; height: 100%; object-fit: cover; }\n.jms-who { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }\n.jms-who b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.jms-who small { font-size: 13px; color: rgba(235, 235, 245, 0.62); }\n.jms-account-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }\n.jms-account-actions a {\n  padding: 9px 14px;\n  border-radius: 12px;\n  background: rgba(255, 255, 255, 0.12);\n  color: #fff !important;\n  font-weight: 600;\n  font-size: 14px;\n  text-decoration: none;\n  white-space: nowrap;\n}\n.jms-account-actions a:hover { background: rgba(255, 255, 255, 0.2); }\n.jms-account-actions a.jms-logout { background: rgba(255, 69, 58, 0.22); color: #ff8a80 !important; }\n.jms-account-actions a.jms-logout:hover { background: rgba(255, 69, 58, 0.34); }\n@media (max-width: 520px) {\n  .jms-account { flex-wrap: wrap; }\n  .jms-account-actions { width: 100%; }\n  .jms-account-actions a { flex: 1; text-align: center; }\n}\n'
+      document.head.append(style)
+    }
     // Homepage zeichnet die Seite selbst – die Leiste über der Suche halten
     const placeBar = () => {
       const top = document.getElementById('information-widgets')
