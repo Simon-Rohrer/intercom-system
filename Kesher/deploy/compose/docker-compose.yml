@@ -20,6 +20,8 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       TELEGRAM_MODE: ${TELEGRAM_MODE:-polling}
+      # Zentrale Anmeldung (Multiview): gleicher Wert wie in multiview/.env
+      JMS_AUTH_SECRET: ${JMS_AUTH_SECRET:-}
     volumes:
       - intercom_data:/app/data
     healthcheck:

@@ -1,0 +1,52 @@
+# Dashboard (Homepage) auf dem JMS-Server: Links zu allen Diensten.
+# In /opt/homelab/config/homepage/services.yaml einfügen (vorhandene Einträge und
+# Widgets bleiben, diese Gruppen kommen dazu bzw. ersetzen gleichnamige).
+# Gilt nach der HTTPS-Umstellung (Kesher/server-config/Caddyfile.jms); die
+# zentrale Anmeldung fragt beim ersten Aufruf nach Code, Name und Rolle.
+# target: _self – auf dem Handy im selben Fenster weiter statt in neuen Tabs.
+
+- Technik:
+    - Intercom:
+        href: https://192.168.0.21:8443
+        description: Kesher – sprechen, hören, Chat
+        icon: mdi-headset
+        target: _self
+    - Multiview:
+        href: https://192.168.0.21:8090
+        description: Bildschirme, Layouts und Monitore
+        icon: mdi-monitor-dashboard
+        target: _self
+    - Fernbedienung:
+        href: https://192.168.0.21:8090/remote.html
+        description: ProPresenter, Bühnennachrichten und Stage Display, Chat
+        icon: mdi-remote
+        target: _self
+
+- Admin:
+    - Companion:
+        href: https://192.168.0.21:8000
+        description: Stream-Deck-Tasten (nur Admin)
+        icon: mdi-gesture-tap-button
+        target: _self
+    - Portainer:
+        href: https://192.168.0.21:9443
+        description: Container verwalten (nur Admin, eigenes Passwort)
+        icon: mdi-docker
+        target: _self
+    - Glances:
+        href: https://192.168.0.21:61208
+        description: Auslastung und Temperaturen (nur Admin)
+        icon: mdi-chart-line
+        target: _self
+
+- Konto:
+    - Abmelden:
+        href: https://192.168.0.21:3000/.jms-auth/logout
+        description: Auf allen Diensten abmelden
+        icon: mdi-logout
+        target: _self
+    - Konto wechseln:
+        href: https://192.168.0.21:3000/.jms-auth/login?wechseln=1
+        description: Andere Rolle oder als Admin anmelden
+        icon: mdi-account-switch
+        target: _self

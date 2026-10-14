@@ -68,6 +68,14 @@ import {
 import { withResolvedStreamDeckButtonLabel } from "./lib/streamDeckLabels";
 import { sortDirectUsersByRoleAndUsername } from "./lib/users";
 import { resolveAutoLoginConfiguration } from "./lib/autoLogin";
+import {
+  centralAdminLogin,
+  centralLoginAvailable,
+  centralLoginUrl,
+  centralLogout,
+  fetchCentralIdentity,
+  type CentralIdentity,
+} from "./lib/centralLogin";
 import { resolveLowPowerMode, resolveViewModeOverride } from "./lib/runtimeMode";
 import { resolveInputDeviceChannelCount } from "./lib/audioDeviceChannels";
 import type {
@@ -388,6 +396,24 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   const [streamDeckWebHidBusy, setStreamDeckWebHidBusy] = useState(false);
   const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
   const autoLoginInFlightRef = useRef(false);
+  // Central login of the JMS server (Multiview): checked once before any auto-login
+  const [centralIdentity, setCentralIdentity] = useState<CentralIdentity | null>(null);
+  const [centralChecked, setCentralChecked] = useState(() => !centralLoginAvailable());
+  const centralIdentityRef = useRef<CentralIdentity | null>(null);
+  const centralAdminTriedRef = useRef(false);
+  useEffect(() => {
+    if (centralChecked) return;
+    let cancelled = false;
+    void fetchCentralIdentity().then((identity) => {
+      if (cancelled) return;
+      centralIdentityRef.current = identity;
+      setCentralIdentity(identity);
+      setCentralChecked(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [centralChecked]);
   const sessionRecoveryInFlightRef = useRef(false);
   const sessionRecoveryRetryRef = useRef<number | null>(null);
   const isUserSettingsOpenRef = useRef(isUserSettingsOpen);
@@ -467,6 +493,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
     void (async () => {
       try {
+        // Signed out centrally (e.g. on another service): back to the central login page
+        if (centralIdentityRef.current && !(await fetchCentralIdentity())) {
+          window.location.assign(centralLoginUrl(window.location.pathname));
+          return;
+        }
         const latestPublicData = await getPublicBootstrap();
         setPublicData(latestPublicData);
         setPublicBootstrapError("");
@@ -474,6 +505,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         const autoLoginConfig = resolveAutoLoginConfiguration(
           window.location.search,
           latestPublicData.roles,
+          centralIdentityRef.current,
         );
         const useUsername =
           (autoLoginConfig.enabled && autoLoginConfig.username
@@ -1300,7 +1332,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       autoLoginAttempted ||
       autoLoginInFlightRef.current ||
       token ||
-      !publicData
+      !publicData ||
+      !centralChecked
     ) {
       return;
     }
@@ -1308,6 +1341,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     const autoLoginConfig = resolveAutoLoginConfiguration(
       window.location.search,
       publicData.roles,
+      centralIdentity,
     );
     if (!autoLoginConfig.enabled) {
       setAutoLoginAttempted(true);
@@ -1335,8 +1369,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           );
           if ("requiresTakeover" in res) {
             if (!autoLoginConfig.allowTakeover) {
+              // Central login: the normal login form shows who holds the role
               setOperatorLoginError(
-                "Auto-login failed: Role is already active.",
+                autoLoginConfig.central
+                  ? roleOccupiedMessage(res)
+                  : "Auto-login failed: Role is already active.",
               );
               return;
             }
@@ -1356,7 +1393,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       })();
     } else {
       setAutoLoginAttempted(true);
-      if (autoLoginConfig.requestedRole && !targetRoleId) {
+      // A centrally chosen role that Kesher no longer has: just the normal login form
+      if (autoLoginConfig.requestedRole && !targetRoleId && !autoLoginConfig.central) {
         setOperatorLoginError(
           `Auto-login failed: Role "${autoLoginConfig.requestedRole}" not found.`,
         );
@@ -1366,9 +1404,36 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     publicData,
     token,
     autoLoginAttempted,
+    centralChecked,
+    centralIdentity,
     settings.setUsername,
     settings.setRoleID,
   ]);
+
+  // ── Central admin: Kesher admin without the PIN (signed ticket) ──
+  useEffect(() => {
+    if (!centralChecked || token || !centralIdentity?.admin || centralAdminTriedRef.current) {
+      return;
+    }
+    centralAdminTriedRef.current = true;
+    void (async () => {
+      try {
+        const res = await centralAdminLogin();
+        setAuthMode("admin");
+        setAdminLoginError("");
+        setOperatorLoginError("");
+        setShowBirthdayGreeting(false);
+        setBirthdayGreetingUsername("");
+        sessionStorage.setItem(tokenStorageKey, res.token);
+        setToken(res.token);
+        setAdminOverrideActive(true);
+      } catch (error) {
+        setAdminLoginError(
+          error instanceof Error ? error.message : "Admin login failed.",
+        );
+      }
+    })();
+  }, [centralChecked, centralIdentity, token]);
 
 
   // ── Bootstrap on login ──
@@ -1796,6 +1861,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     sessionStorage.removeItem(tokenStorageKey);
     localStorage.removeItem(tokenStorageKey);
     localStorage.removeItem(sessionSettingsStorageKey);
+    // Signed in centrally: sign out on all services and open the central login page
+    if (centralIdentityRef.current) {
+      await centralLogout("/");
+      return;
+    }
     setAuthMode("operator");
     setAdminPinInput("");
     setAdminLoginError("");

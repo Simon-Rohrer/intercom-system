@@ -20,6 +20,7 @@ describe("resolveAutoLoginConfiguration", () => {
       requestedRole: "audio",
       allowTakeover: true,
       secondary: false,
+      central: false,
     });
   });
 
@@ -47,5 +48,45 @@ describe("resolveAutoLoginConfiguration", () => {
     );
     expect(config.roleId).toBe("");
     expect(config.requestedRole).toBe("missing");
+  });
+
+  it("logs in with the role from the server's central login", () => {
+    const config = resolveAutoLoginConfiguration("", roles, {
+      name: "Tim",
+      roleId: "audio",
+      admin: false,
+    });
+    expect(config).toEqual({
+      enabled: true,
+      username: "Tim",
+      roleId: "audio",
+      requestedRole: "audio",
+      allowTakeover: false,
+      secondary: false,
+      central: true,
+    });
+  });
+
+  it("prefers URL parameters (fixed devices, Multiview tile) over the central login", () => {
+    const config = resolveAutoLoginConfiguration(
+      "?autoLogin=1&username=FOH&roleId=stage-left",
+      roles,
+      { name: "Tim", roleId: "audio", admin: false },
+    );
+    expect(config.username).toBe("FOH");
+    expect(config.central).toBe(false);
+  });
+
+  it("ignores the central admin and unknown central roles", () => {
+    expect(
+      resolveAutoLoginConfiguration("", roles, { name: "Simon", roleId: "admin", admin: true }).enabled,
+    ).toBe(false);
+    const unknown = resolveAutoLoginConfiguration("", roles, {
+      name: "Tim",
+      roleId: "gibts-nicht",
+      admin: false,
+    });
+    expect(unknown.enabled).toBe(true);
+    expect(unknown.roleId).toBe("");
   });
 });

@@ -212,14 +212,25 @@ Ziel: Alle Weboberflächen unter `https://192.168.0.21:<gewohnter Port>`. Caddy 
 | Companion | `https://192.168.0.21:8000` | `127.0.0.1:8000` |
 | Dashboard | `https://192.168.0.21:3000` | `127.0.0.1:3000` |
 | Glances | `https://192.168.0.21:61208` | `127.0.0.1:61208` |
-| Portainer | `https://192.168.0.21:9443` | unverändert (eigenes HTTPS) |
+| Portainer | `https://192.168.0.21:9443` | `127.0.0.1:9443` (eigenes HTTPS, Caddy davor) |
 
 Die bisherigen Namens-Adressen (`kesher.jms.de`, `dashboard.jms.de`, `companion.jms.de`, … sowie `*.local`) bleiben erhalten; neu ist `multiview.jms.de` / `multiview.local`.
 
 Vorlage: `Kesher/server-config/Caddyfile.jms` (aufgebaut auf der aktiven Server-Konfiguration vom 12.10.2026, mit `caddy adapt --validate` auf dem Server geprüft). Umsetzung vor Ort, in dieser Reihenfolge (sonst ist ein Port doppelt belegt):
 
 1. Sicherung: `/etc/caddy/Caddyfile`, Compose-Dateien in `/opt/homelab/compose`, Companion-Konfiguration.
-2. Dienste auf `127.0.0.1` umstellen: Homepage-Compose `127.0.0.1:3000:3000`, Glances, Companion (Admin-Oberfläche nur lokal), Multiview (in `multiview/docker-compose.yml` die Zeile `HOST: "127.0.0.1"` einkommentieren, dann `docker compose up -d`).
+2. Dienste auf `127.0.0.1` umstellen: Homepage-Compose `127.0.0.1:3000:3000`, Portainer-Compose `127.0.0.1:9443:9443`, Glances, Companion (Admin-Oberfläche nur lokal), Multiview (in `multiview/docker-compose.yml` die Zeile `HOST: "127.0.0.1"` einkommentieren, dann `docker compose up -d`).
 3. `sudo cp Caddyfile.jms /etc/caddy/Caddyfile && sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy`
 4. Prüfen: jede Adresse per `https://` und die Weiterleitung von `http://`; Kiosk-Anzeige, Companion-Tasten (Generic HTTP auf `http://127.0.0.1:8090`), Kesher-Clients und Raspberry Pis.
-5. Links im Dashboard (Homepage `services.yaml`) und in Notion auf `https://` umstellen.
+5. Links im Dashboard und in Notion auf `https://` umstellen: Vorlage `Kesher/server-config/homepage-services.yaml` in `/opt/homelab/config/homepage/services.yaml` übernehmen.
+
+## Anmeldung für alle Dienste
+
+Wer über das WLAN (Handy, iPad, Laptop) auf Intercom, Dashboard oder die Technik-Dienste zugreift, meldet sich einmal zentral an: zuerst einmal am Tag mit dem **Tagescode** (QR-Code scannen oder 6 Ziffern eingeben), dann mit **Name und Rolle** (Admin mit PIN). Das gilt danach für alle Dienste: Kesher meldet sich direkt mit Name und Rolle an, der Admin landet ohne Kesher-PIN im Kesher-Admin. Companion, Portainer, Glances und DNS sind nur für den Admin (Portainer fragt zusätzlich sein eigenes Passwort). Der Multiview selbst braucht keinen Code – dort holt man ihn ab.
+
+- **Einschalten, Code, feste Geräte:** Multiview → *Benutzer & Rechte* → *Anmeldung für alle Dienste*. Voraussetzung: Admin-PIN ist eingerichtet. Nach dem Update ist die Anmeldung aus.
+- **Tagescode:** neu um Mitternacht (deutsche Zeit). Wer ihn eingegeben hat, bleibt bis zum nächsten Morgen 5 Uhr freigeschaltet. „Neuen Code erzeugen“ beendet alle Freischaltungen sofort. Nach 8 falschen Versuchen ist eine Adresse 15 Minuten gesperrt.
+- **Feste Geräte ohne Code:** Raspberry Pis, Kesher-Stationen, Kesher-Desktop-App und andere Geräte, die keinen Code eingeben können, **vor dem Einschalten** als Adresse oder Bereich eintragen (z. B. `192.168.0.50` oder `192.168.0.0/24`). Sie kommen ohne Code und Anmeldung an Intercom und Dashboard, an die Admin-Dienste nur mit Admin-Anmeldung. Der Server selbst (Kiosk, Companion, Multiview → Kesher) ist immer frei.
+- **Abmelden:** in Kesher über „Abmelden“, im Dashboard über *Konto → Abmelden*. Das meldet auf allen Diensten ab; die Freischaltung mit dem Code bleibt für den Tag.
+- **Technik:** Caddy fragt vor jeder Anfrage an einen Dienst den Multiview (`forward_auth` auf `/.jms-auth/check`, Baustein `jms_auth` in `Caddyfile.jms`), `/.jms-auth/*` geht auf jeder Adresse zum Multiview (Anmeldeseite). Jede Adresse (IP, `.local`, `.jms.de`) hat ihr eigenes Anmelde-Cookie. Kesher erkennt den Admin an einem signierten Ticket: In `Kesher/deploy/compose/.env` und `multiview/.env` muss derselbe Wert `JMS_AUTH_SECRET=` stehen, z. B. erzeugt mit `openssl rand -hex 32`. Ohne ihn meldet sich der Admin in Kesher weiter mit der Kesher-PIN an.
+- **Telegram:** im Modus `polling` (Standard) nicht betroffen.

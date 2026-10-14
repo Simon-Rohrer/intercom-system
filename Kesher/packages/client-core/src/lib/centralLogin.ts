@@ -1,0 +1,78 @@
+import { getGlobalApiBaseUrl } from "../api";
+import type { LoginSuccess } from "../types";
+
+/**
+ * Central login of the JMS server (served by the Multiview, routed by Caddy
+ * under /.jms-auth on every service address). Whoever is signed in there with
+ * name + role is signed in to Kesher with the same role; the admin is Kesher's
+ * admin. Only for the web UI served from the server itself – the desktop app
+ * talks to a configured server address and keeps its own login.
+ */
+export type CentralIdentity = {
+  name: string;
+  roleId: string;
+  admin: boolean;
+};
+
+const BASE = "/.jms-auth";
+
+export function centralLoginAvailable(): boolean {
+  return getGlobalApiBaseUrl() === "" && typeof window !== "undefined";
+}
+
+/** Who is signed in centrally – null without central login (or not signed in). */
+export async function fetchCentralIdentity(): Promise<CentralIdentity | null> {
+  if (!centralLoginAvailable()) return null;
+  try {
+    const res = await fetch(`${BASE}/api/me`, {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    if (!res.ok || !res.headers.get("content-type")?.includes("json")) {
+      return null;
+    }
+    const data = (await res.json()) as {
+      user?: { name?: string; roleId?: string; admin?: boolean; open?: boolean } | null;
+    };
+    const user = data?.user;
+    if (!user || user.open || !user.name || !user.roleId) return null;
+    return { name: user.name, roleId: user.roleId, admin: Boolean(user.admin) };
+  } catch {
+    return null;
+  }
+}
+
+/** Kesher admin session for the central admin (signed ticket, no PIN). */
+export async function centralAdminLogin(): Promise<LoginSuccess> {
+  const ticketRes = await fetch(`${BASE}/api/ticket?aud=kesher`, {
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  const ticketData = (await ticketRes.json().catch(() => ({}))) as {
+    ticket?: string;
+    error?: string;
+  };
+  if (!ticketRes.ok || !ticketData.ticket) {
+    throw new Error(ticketData.error || "Zentrale Admin-Anmeldung nicht möglich.");
+  }
+  const res = await fetch("/api/admin/login/central", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ticket: ticketData.ticket }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as LoginSuccess;
+}
+
+export function centralLoginUrl(next = "/"): string {
+  return `${BASE}/login?next=${encodeURIComponent(next)}`;
+}
+
+/** Signs out centrally (name + role on all services) and opens the login page. */
+export async function centralLogout(next = "/"): Promise<void> {
+  await fetch(`${BASE}/api/logout`, {
+    method: "POST",
+    credentials: "same-origin",
+  }).catch(() => undefined);
+  window.location.assign(centralLoginUrl(next));
+}

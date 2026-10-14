@@ -197,6 +197,9 @@ type Session struct {
 	// elsewhere (e.g. the Kesher tile in the Multiview of the logged-in user).
 	// It never occupies the role: normal logins and takeovers ignore it.
 	Secondary bool
+	// CentralAdmin is an admin session opened through the server's central
+	// login (signed ticket from the Multiview) instead of the admin PIN.
+	CentralAdmin bool
 }
 
 type StreamDeckActionType string

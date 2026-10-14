@@ -1315,7 +1315,7 @@ app.get('/api/output/:id/user', (req, res) => {
   res.json({ ok: true, user: who ? { name: who.name, roleId: who.roleId } : null })
 })
 
-app.get('/api/me', (req, res) => {
+app.get(['/api/me', '/.jms-auth/api/me'], (req, res) => {
   const user = access.userOf(req)
   const rights = roleRights(config, user)
   res.json({
@@ -1332,11 +1332,11 @@ app.get('/api/me', (req, res) => {
   })
 })
 
-app.get('/api/login/roles', (req, res) =>
+app.get(['/api/login/roles', '/.jms-auth/api/login/roles'], (req, res) =>
   res.json({ enabled: access.enabled(), roles: loginRoles(), occupied: access.occupiedRoles() }),
 )
 
-app.post('/api/login', async (req, res) => {
+app.post(['/api/login', '/.jms-auth/api/login'], async (req, res) => {
   try {
     await access.login(req.body || {}, req, res)
     res.json({ ok: true })
@@ -1345,7 +1345,7 @@ app.post('/api/login', async (req, res) => {
   }
 })
 
-app.post('/api/logout', (req, res) => {
+app.post(['/api/logout', '/.jms-auth/api/logout'], (req, res) => {
   access.logout(req, res)
   res.json({ ok: true })
 })
@@ -1443,6 +1443,140 @@ app.delete('/api/access/sessions/:id', requireAdmin, (req, res) => {
   access.endSession(req.params.id)
   res.json({ ok: true })
 })
+
+// ---------------------------------------------------------------------------
+// Zentrale Anmeldung für die anderen Dienste (Kesher, Dashboard, Companion …)
+// Caddy fragt vor jeder Anfrage an einen Dienst /.jms-auth/check (forward_auth) und leitet
+// /.jms-auth/* auf jeder Adresse hierher – so liegt die Anmeldeseite immer auf der Adresse des
+// Dienstes, und das Anmelde-Cookie gilt dort. Der Multiview selbst braucht keinen Tagescode
+// (dort holt man ihn ja ab).
+// ---------------------------------------------------------------------------
+
+// Gemeinsames Geheimnis mit Kesher für die Admin-Anmeldung dort (Tickets, siehe access.js)
+const AUTH_SECRET = process.env.JMS_AUTH_SECRET || ''
+
+/** Adresse des Geräts. Hinter Caddy steht sie in X-Forwarded-For – das gilt nur für Anfragen vom Server selbst. */
+function clientIp(req) {
+  const peer = req.socket.remoteAddress || ''
+  const forwarded = String(req.get('x-forwarded-for') || '').split(',')[0].trim()
+  return forwarded && /^(127\.|::1$|::ffff:127\.)/.test(peer) ? forwarded : peer
+}
+
+/** Nur Pfade auf derselben Adresse als Rücksprungziel, nie eine fremde Seite. */
+const safeNext = (value, fallback = '/') => {
+  const next = String(value || '')
+  return next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : fallback
+}
+
+const loginPath = (next) => `/.jms-auth/login?next=${encodeURIComponent(safeNext(next))}`
+
+function forbiddenPage(user, next) {
+  return `<!doctype html>
+<html lang="de" data-theme="system"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nur für den Admin</title>
+<script src="/.jms-auth/theme-boot.js"></script><link rel="stylesheet" href="/.jms-auth/admin.css"></head>
+<body><div class="auth-page"><div class="card auth-card">
+<div class="brand"><span class="brand-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="brand-text">Technik<small>Anmeldung</small></span></div>
+<div><h1>Nur für den Admin</h1>
+<p class="muted">Du bist als <b>${escapeHtml(user?.name)}</b> angemeldet. Dieser Bereich ist nur mit der Admin-Anmeldung erreichbar.</p></div>
+<a class="btn primary block" href="${escapeHtml(`${loginPath(next)}&wechseln=1`)}">Als Admin anmelden</a>
+<a class="btn block" href="/.jms-auth/logout">Abmelden</a>
+</div></div></body></html>`
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
+}
+
+// Caddy (forward_auth): 2xx = durchlassen, sonst wird diese Antwort an das Gerät weitergegeben
+app.get('/.jms-auth/check', (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  const service = String(req.query.service || '')
+  const { action, user } = access.check({ service, ip: clientIp(req) }, req)
+  if (action === 'allow') {
+    if (user && !user.open)
+      res.set({ 'X-Jms-User': encodeURIComponent(user.name), 'X-Jms-Role': user.roleId, 'X-Jms-Admin': user.admin ? '1' : '0' })
+    return res.status(204).end()
+  }
+  const next = safeNext(req.get('x-forwarded-uri'))
+  // Seitenaufruf im Browser: zur Anmeldeseite. Alles andere (API, WebSocket): 401 mit dem Weg dorthin
+  const wantsPage =
+    (req.get('x-forwarded-method') || 'GET') === 'GET' && /text\/html/.test(req.get('accept') || '') && !req.get('upgrade')
+  if (action === 'forbidden')
+    return wantsPage ? res.status(403).type('html').send(forbiddenPage(user, next)) : res.status(403).json({ ok: false, error: 'Nur für den Admin' })
+  if (wantsPage) return res.redirect(302, loginPath(next))
+  res.set('X-Jms-Login', loginPath(next)).status(401).json({ ok: false, error: 'Bitte anmelden', login: loginPath(next) })
+})
+
+app.get('/.jms-auth/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')))
+
+app.get('/.jms-auth/logout', (req, res) => {
+  access.logout(req, res)
+  res.redirect(302, loginPath(req.query.next))
+})
+
+// Tagescode: braucht dieses Gerät ihn noch?
+app.get('/.jms-auth/api/device', (req, res) => {
+  res.set('Cache-Control', 'no-store').json(access.deviceStatus(clientIp(req), req))
+})
+
+app.post('/.jms-auth/api/device', (req, res) => {
+  try {
+    if (access.deviceStatus(clientIp(req), req).required) access.redeemDayCode(req.body?.code, clientIp(req), req, res)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
+})
+
+// Der QR-Code öffnet diese Adresse: Code übernehmen, dann weiter zu Name und Rolle
+app.get('/.jms-auth/code', (req, res) => {
+  const next = safeNext(req.query.next)
+  try {
+    if (access.deviceStatus(clientIp(req), req).required) access.redeemDayCode(req.query.c, clientIp(req), req, res)
+    res.redirect(302, loginPath(next))
+  } catch (err) {
+    res.redirect(302, `${loginPath(next)}&code=${err.status === 429 ? 'gesperrt' : 'falsch'}`)
+  }
+})
+
+// Signiertes Ticket, mit dem sich Kesher den Nutzer selbst anmeldet (nur für den Admin nötig)
+app.get('/.jms-auth/api/ticket', requireUser, (req, res) => {
+  try {
+    if (req.user.open) return res.status(400).json({ ok: false, error: 'Anmeldung ist nicht eingeschaltet' })
+    res.set('Cache-Control', 'no-store').json({ ok: true, ticket: access.createTicket(req.user, String(req.query.aud || ''), AUTH_SECRET) })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
+})
+
+// Admin: Einstellungen, Tagescode und freigeschaltete Geräte
+function gatewayInfo() {
+  const code = access.dayCode()
+  return { ...access.gateway(), code: code.code, day: code.day, devicesToday: access.devicesToday(), secret: Boolean(AUTH_SECRET) }
+}
+
+app.get('/api/access/gateway', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json(gatewayInfo()))
+
+app.put('/api/access/gateway', requireAdmin, (req, res) => {
+  try {
+    const { enabled, exempt, startUrl } = req.body || {}
+    access.setGateway({ enabled, exempt, startUrl })
+    res.json({ ok: true, ...gatewayInfo() })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
+})
+
+app.post('/api/access/code/renew', requireAdmin, (req, res) => {
+  access.renewDayCode()
+  res.json({ ok: true, ...gatewayInfo() })
+})
+
+// Anmeldeseite und ihre Dateien auch unter /.jms-auth (auf der Adresse jedes Dienstes)
+app.use('/.jms-auth', require('./legacy').legacyMiddleware(path.join(__dirname, 'public')))
+app.use('/.jms-auth', express.static(path.join(__dirname, 'public')))
 
 /** Folie zum Wiedereinblenden: die laufende, sonst die vor dem Ausblenden gemerkte. */
 function restoreTarget() {

@@ -25,28 +25,28 @@ func NewSessionManager(ttl time.Duration) *SessionManager {
 }
 
 func (m *SessionManager) Create(user User) Session {
-	return m.create(user, false)
+	return m.create(Session{UserID: user.ID, Username: user.Username, RoleID: user.RoleID})
 }
 
 // CreateSecondary creates a session for an additional device of the role
 // (see Session.Secondary).
 func (m *SessionManager) CreateSecondary(user User) Session {
-	return m.create(user, true)
+	return m.create(Session{UserID: user.ID, Username: user.Username, RoleID: user.RoleID, Secondary: true})
 }
 
-func (m *SessionManager) create(user User, secondary bool) Session {
+// CreateCentralAdmin creates an admin session confirmed by the central login
+// (see Session.CentralAdmin).
+func (m *SessionManager) CreateCentralAdmin(user User) Session {
+	return m.create(Session{UserID: user.ID, Username: user.Username, RoleID: user.RoleID, CentralAdmin: true})
+}
+
+// create stores s under a new token with a fresh expiry.
+func (m *SessionManager) create(s Session) Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	token := uuid.NewString()
-	s := Session{
-		Token:     token,
-		UserID:    user.ID,
-		Username:  user.Username,
-		RoleID:    user.RoleID,
-		ExpiresAt: time.Now().Add(m.ttl),
-		Secondary: secondary,
-	}
-	m.sessions[token] = s
+	s.Token = uuid.NewString()
+	s.ExpiresAt = time.Now().Add(m.ttl)
+	m.sessions[s.Token] = s
 	return s
 }
 

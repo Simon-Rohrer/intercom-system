@@ -3867,6 +3867,7 @@ func NewServer(cfg Config) (*Server, error) {
 	mux.HandleFunc("/api/public-bootstrap", s.handlePublicBootstrap)
 	mux.HandleFunc("/api/login", s.handleLogin)
 	mux.HandleFunc("/api/admin/login", s.handleAdminLogin)
+	mux.HandleFunc("/api/admin/login/central", s.handleCentralAdminLogin)
 	mux.HandleFunc("/api/login/takeover", s.handleLoginTakeover)
 	mux.HandleFunc("/api/logout", s.withAuth(s.handleLogout))
 	mux.HandleFunc("/api/bootstrap", s.withAuth(s.handleBootstrap))
@@ -6033,7 +6034,11 @@ func (s *Server) handleAdminBroadcastGroupByID(w http.ResponseWriter, r *http.Re
 	}
 }
 
-func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request, _ Session) bool {
+func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request, session Session) bool {
+	// Opened through the central login (signed ticket) – no PIN header needed
+	if session.CentralAdmin {
+		return true
+	}
 	configuredPIN, err := s.store.GetAdminPIN(r.Context())
 	if err != nil || strings.TrimSpace(configuredPIN) == "" {
 		http.Error(w, "admin pin unavailable", http.StatusForbidden)

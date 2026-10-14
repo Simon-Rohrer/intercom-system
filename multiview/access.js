@@ -14,8 +14,15 @@ const path = require('path')
 const crypto = require('crypto')
 
 const COOKIE = 'mv_session'
+const DEVICE_COOKIE = 'jms_device'
 const SESSION_DAYS = 30
 const QR_TTL_MS = 10 * 60 * 1000
+// Tagescode: neu um Mitternacht (deutsche Zeit); wer ihn am Vortag eingegeben hat, bleibt bis
+// 5 Uhr freigeschaltet, damit niemand mitten in einer Veranstaltung rausfliegt
+const TIME_ZONE = 'Europe/Berlin'
+const GRACE_UNTIL_HOUR = 5
+const CODE_MAX_FAILS = 8
+const CODE_FAIL_WINDOW_MS = 15 * 60 * 1000
 // Eine Rolle gilt als belegt, solange eine Seite von ihr offen ist (WebSocket) oder sie so
 // kurz zuvor noch etwas abgefragt hat
 const ACTIVE_MS = 2 * 60 * 1000
@@ -62,19 +69,107 @@ function normalizeAccess(a) {
   return { roles }
 }
 
+// ---------------------------------------------------------------------------
+// Zentrale Anmeldung für alle Dienste (Kesher, Dashboard, Companion …) über Caddy
+// ---------------------------------------------------------------------------
+
+/**
+ * Was ein Dienst verlangt: 'user' = Name + Rolle, 'admin' = Admin mit PIN.
+ * Unbekannte Dienste brauchen sicherheitshalber den Admin.
+ */
+const SERVICE_LEVELS = {
+  kesher: 'user',
+  dashboard: 'user',
+  companion: 'admin',
+  portainer: 'admin',
+  glances: 'admin',
+  dns: 'admin',
+}
+
+/** Datum (JJJJ-MM-TT) und Stunde in deutscher Zeit. */
+function localTime(ts = Date.now()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23',
+    })
+      .formatToParts(new Date(ts))
+      .map((p) => [p.type, p.value]),
+  )
+  return { day: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) }
+}
+
+function previousDay(day) {
+  const d = new Date(`${day}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
+/** „192.168.0.50“, „192.168.0.0/24“ oder eine IPv6-Adresse; sonst null. */
+function parseNetwork(entry) {
+  const text = String(entry ?? '').trim()
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/(\d{1,2}))?$/.exec(text)
+  if (m) {
+    const octets = m.slice(1, 5).map(Number)
+    const bits = m[5] === undefined ? 32 : Number(m[5])
+    if (octets.some((o) => o > 255) || bits > 32) return null
+    return { text, v4: ipv4ToInt(octets), bits }
+  }
+  if (/^[0-9a-f:]+$/i.test(text) && text.includes(':')) return { text, v6: text.toLowerCase() }
+  return null
+}
+
+function ipv4ToInt(octets) {
+  return ((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]) >>> 0
+}
+
+/** Gehört die Adresse zu einem der Netze? (IPv4 auch in der Schreibweise ::ffff:1.2.3.4) */
+function ipInNetworks(ip, networks) {
+  const addr = String(ip ?? '').replace(/^::ffff:/i, '')
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(addr)
+  return networks.some((n) => {
+    if (n.v6) return !v4 && addr.toLowerCase() === n.v6
+    if (!v4) return false
+    const mask = n.bits === 0 ? 0 : (0xffffffff << (32 - n.bits)) >>> 0
+    return ((ipv4ToInt(v4.slice(1, 5).map(Number)) & mask) >>> 0) === ((n.v4 & mask) >>> 0)
+  })
+}
+
+const isLoopback = (ip) => /^(127\.|::1$|::ffff:127\.)/.test(String(ip ?? ''))
+
+function normalizeGateway(g) {
+  const exempt = (Array.isArray(g?.exempt) ? g.exempt : [])
+    .map((e) => ({ network: String(e?.network ?? e ?? '').trim(), label: String(e?.label ?? '').trim().slice(0, 60) }))
+    .filter((e) => parseNetwork(e.network))
+  const startUrl = String(g?.startUrl ?? '').trim()
+  return {
+    enabled: Boolean(g?.enabled),
+    exempt,
+    startUrl: /^https?:\/\/[^\s"'<>]+$/i.test(startUrl) ? startUrl.replace(/\/+$/, '') : '',
+  }
+}
+
 function createAccess({ dataDir, log = console.log, verifyKesherPin = async () => false, isLive = () => false, onRevoke = () => {} }) {
   const file = path.join(dataDir, 'access-secret.json')
-  // { adminPin: { salt, hash } | { kesher: true }, sessions: { sha256(token): session } }
+  // { adminPin: { salt, hash } | { kesher: true }, sessions: { sha256(token): session },
+  //   gateway: { enabled, exempt, startUrl }, dayCode: { day, code, gen, prevGen },
+  //   devices: { sha256(token): { gen, created, ip } } }
   let secret = read()
   const qrTokens = new Map() // sha256(token) -> { session, expires }
+  const codeFails = new Map() // IP -> { count, since }
   let writeTimer = null
 
   function read() {
     try {
       const s = JSON.parse(fs.readFileSync(file, 'utf8'))
-      return { adminPin: s.adminPin ?? null, sessions: s.sessions ?? {} }
+      return {
+        adminPin: s.adminPin ?? null,
+        sessions: s.sessions ?? {},
+        gateway: normalizeGateway(s.gateway),
+        dayCode: s.dayCode ?? null,
+        devices: s.devices ?? {},
+      }
     } catch {
-      return { adminPin: null, sessions: {} }
+      return { adminPin: null, sessions: {}, gateway: normalizeGateway(null), dayCode: null, devices: {} }
     }
   }
 
@@ -230,6 +325,8 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
     if (off) {
       secret.adminPin = null
       secret.sessions = {}
+      // Ohne Admin-PIN gibt es keine Rollen-Anmeldung – also auch keine für die anderen Dienste
+      secret.gateway.enabled = false
       log('Zugang: Anmeldung ausgeschaltet – Zugang ist offen')
     } else if (source === 'kesher') {
       if (!(await verifyKesherPin(value))) throw Object.assign(new Error('Das ist nicht die Admin-PIN von Kesher'), { status: 403 })
@@ -276,7 +373,157 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
     endSessions(Object.values(secret.sessions).filter((s) => s.id === id), 'vom Admin abgemeldet')
   }
 
-  return { enabled, pinSource, userOf, sessionIdOf, occupiedRoles, login, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession, flush: write }
+  // --- Zentrale Anmeldung für alle Dienste: Einstellungen ---------------------
+
+  /** Eingeschaltet zählt nur mit Admin-PIN – ohne sie gibt es keine Rollen-Anmeldung. */
+  const gatewayActive = () => enabled() && secret.gateway.enabled
+
+  function gateway() {
+    return { ...secret.gateway, active: gatewayActive() }
+  }
+
+  function setGateway(next) {
+    // Nur mitgeschickte Werte ändern
+    const given = Object.fromEntries(Object.entries(next ?? {}).filter(([, v]) => v !== undefined))
+    const normalized = normalizeGateway({ ...secret.gateway, ...given })
+    if (normalized.enabled && !enabled())
+      throw Object.assign(new Error('Erst die Admin-PIN einrichten – ohne sie gibt es keine Anmeldung'), { status: 400 })
+    const invalid = (Array.isArray(next?.exempt) ? next.exempt : []).filter((e) => !parseNetwork(e?.network ?? e))
+    if (invalid.length)
+      throw Object.assign(new Error(`Keine gültige Adresse: ${invalid.map((e) => e?.network ?? e).join(', ')}`), { status: 400 })
+    if (normalized.enabled !== secret.gateway.enabled)
+      log(`Zugang: Anmeldung für alle Dienste ${normalized.enabled ? 'eingeschaltet' : 'ausgeschaltet'}`)
+    secret.gateway = normalized
+    write()
+    return gateway()
+  }
+
+  // --- Tagescode -------------------------------------------------------------
+
+  const newCode = () => String(crypto.randomInt(0, 1_000_000)).padStart(6, '0')
+
+  /** Der Code von heute; um Mitternacht entsteht beim ersten Abruf ein neuer. */
+  function dayCode(now = Date.now()) {
+    const { day } = localTime(now)
+    const current = secret.dayCode
+    if (current?.day !== day) {
+      // Der Code von gestern gilt für schon freigeschaltete Geräte noch bis zum Morgen
+      const prevGen = current?.day === previousDay(day) ? current.gen : null
+      secret.dayCode = { day, code: newCode(), gen: crypto.randomBytes(6).toString('hex'), prevGen }
+      pruneDevices()
+      write()
+    }
+    return secret.dayCode
+  }
+
+  /** Neuer Code sofort (z. B. wenn er in falsche Hände geraten ist): alle Freischaltungen enden. */
+  function renewDayCode() {
+    const { day } = localTime()
+    secret.dayCode = { day, code: newCode(), gen: crypto.randomBytes(6).toString('hex'), prevGen: null }
+    pruneDevices()
+    write()
+    log('Zugang: neuer Tagescode erzeugt – alle Geräte müssen ihn neu eingeben')
+    return secret.dayCode
+  }
+
+  function genValid(gen, now = Date.now()) {
+    const code = dayCode(now)
+    if (gen === code.gen) return true
+    return Boolean(code.prevGen) && gen === code.prevGen && localTime(now).hour < GRACE_UNTIL_HOUR
+  }
+
+  function pruneDevices() {
+    const keep = new Set([secret.dayCode?.gen, secret.dayCode?.prevGen].filter(Boolean))
+    for (const [key, d] of Object.entries(secret.devices)) if (!keep.has(d.gen)) delete secret.devices[key]
+  }
+
+  /** Ist dieses Gerät heute schon mit dem Code freigeschaltet? */
+  function deviceApproved(req) {
+    const token = parseCookies(req.headers.cookie)[DEVICE_COOKIE]
+    const device = token && secret.devices[sha256(token)]
+    return Boolean(device) && genValid(device.gen)
+  }
+
+  function devicesToday() {
+    return Object.values(secret.devices).filter((d) => genValid(d.gen)).length
+  }
+
+  /**
+   * Code prüfen und das Gerät freischalten. Nach zu vielen Fehlversuchen von einer Adresse
+   * ist eine Viertelstunde Pause – sechs Ziffern ließen sich sonst durchprobieren.
+   */
+  function redeemDayCode(code, ip, req, res) {
+    const now = Date.now()
+    const fails = codeFails.get(ip)
+    if (fails && now - fails.since > CODE_FAIL_WINDOW_MS) codeFails.delete(ip)
+    if ((codeFails.get(ip)?.count ?? 0) >= CODE_MAX_FAILS)
+      throw Object.assign(new Error('Zu viele falsche Versuche – bitte in 15 Minuten noch einmal'), { status: 429 })
+    const current = dayCode(now)
+    const given = String(code ?? '').replace(/\D/g, '')
+    const ok = given.length === 6 && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(current.code))
+    if (!ok) {
+      const entry = codeFails.get(ip) ?? { count: 0, since: now }
+      entry.count++
+      codeFails.set(ip, entry)
+      throw Object.assign(new Error('Der Code stimmt nicht – es gilt immer nur der Code von heute'), { status: 403 })
+    }
+    codeFails.delete(ip)
+    const token = randomToken()
+    secret.devices[sha256(token)] = { gen: current.gen, created: now, ip: String(ip ?? '') }
+    write()
+    // Bis zum übernächsten Morgen reicht – danach braucht es ohnehin den neuen Code
+    const secure = req.secure || req.get('x-forwarded-proto') === 'https' ? '; Secure' : ''
+    res.append('Set-Cookie', `${DEVICE_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${2 * 86400}${secure}`)
+    log(`Zugang: Gerät ${ip} mit dem Tagescode freigeschaltet`)
+  }
+
+  // --- Prüfung für Caddy (forward_auth) ---------------------------------------
+
+  /**
+   * Darf diese Anfrage an den Dienst durch?
+   * allow: ja (user = wer, falls angemeldet). code: erst den Tagescode eingeben.
+   * login: erst Name + Rolle. forbidden: angemeldet, aber nicht Admin.
+   */
+  /** Feste Geräte aus der Liste (und der Server selbst) brauchen keinen Tagescode. */
+  const exemptIp = (ip) => isLoopback(ip) || ipInNetworks(ip, secret.gateway.exempt.map((e) => parseNetwork(e.network)))
+
+  /** Muss dieses Gerät den Tagescode eingeben, und hat es das schon? */
+  function deviceStatus(ip, req) {
+    const required = gatewayActive() && !exemptIp(ip)
+    return { required, approved: !required || deviceApproved(req) }
+  }
+
+  function check({ service, ip }, req) {
+    if (!gatewayActive()) return { action: 'allow', user: null }
+    const level = SERVICE_LEVELS[service] ?? 'admin'
+    const exempt = exemptIp(ip)
+    const user = userOf(req)
+    // Feste Geräte (Stationen, Raspberry Pis, Desktop-App) können keinen Code eingeben
+    if (exempt && level === 'user') return { action: 'allow', user }
+    if (!exempt && !deviceApproved(req)) return { action: 'code', user }
+    if (!user) return { action: 'login', user: null }
+    if (level === 'admin' && !user.admin) return { action: 'forbidden', user }
+    return { action: 'allow', user }
+  }
+
+  /**
+   * Kurzes, signiertes Ticket für einen anderen Dienst auf dem Server (Kesher), der den Nutzer
+   * selbst anmelden soll. Kesher prüft es mit demselben Geheimnis (JMS_AUTH_SECRET).
+   */
+  function createTicket(user, audience, key) {
+    if (!key) throw Object.assign(new Error('JMS_AUTH_SECRET ist nicht eingerichtet'), { status: 503 })
+    const payload = Buffer.from(
+      JSON.stringify({ name: user.name, roleId: user.roleId, admin: Boolean(user.admin), aud: audience, exp: Date.now() + 60_000 }),
+    ).toString('base64url')
+    const signature = crypto.createHmac('sha256', key).update(payload).digest('base64url')
+    return `${payload}.${signature}`
+  }
+
+  return {
+    enabled, pinSource, userOf, sessionIdOf, occupiedRoles, login, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession,
+    gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, check, createTicket,
+    flush: write,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -383,6 +630,10 @@ function applyRestrictedChanges(current, submitted, user) {
 
 module.exports = {
   createAccess,
+  parseNetwork,
+  ipInNetworks,
+  localTime,
+  SERVICE_LEVELS,
   normalizeAccess,
   roleRights,
   allowedOutputs,

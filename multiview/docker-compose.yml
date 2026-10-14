@@ -16,6 +16,8 @@ services:
       # HOST: "127.0.0.1"
       # Kesher läuft auf demselben Server (nur auf 127.0.0.1 erreichbar)
       KESHER_URL: "http://127.0.0.1:8080"
+      # Zentrale Anmeldung: gemeinsames Geheimnis mit Kesher (aus .env, gleicher Wert wie dort)
+      JMS_AUTH_SECRET: ${JMS_AUTH_SECRET:-}
     volumes:
       - multiview-data:/data
     logging:

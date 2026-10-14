@@ -1,4 +1,6 @@
 // Anmeldung: Name + Kesher-Rolle (ohne Passwort), Admin mit PIN.
+// Unter /.jms-auth/ ist das die zentrale Anmeldung für die anderen Dienste (Kesher, Dashboard …):
+// Dort kommt – wenn eingeschaltet – vorher einmal am Tag der Tagescode (QR-Code oder 6 Ziffern).
 import { applyPrefs, currentPrefs } from './theme.js'
 
 applyPrefs(currentPrefs())
@@ -7,13 +9,22 @@ const $ = (sel) => document.querySelector(sel)
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
+// Auf der Adresse eines anderen Dienstes liegen Seite und Schnittstelle unter /.jms-auth
+const gateway = location.pathname.startsWith('/.jms-auth/')
+const api = (p) => (gateway ? `/.jms-auth${p}` : p)
+
 const params = new URLSearchParams(location.search)
 const isPhone = matchMedia('(max-width: 700px)').matches
 // Nur eigene Seiten als Ziel, nie eine fremde Adresse
 const nextParam = params.get('next') || ''
-const next = nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : isPhone ? '/remote.html' : '/'
+const fallback = gateway ? '/' : isPhone ? '/remote.html' : '/'
+const next = nextParam.startsWith('/') && !nextParam.startsWith('//') && !nextParam.startsWith('/\\') ? nextParam : fallback
 $('#qr-note').hidden = params.get('qr') !== 'abgelaufen'
 $('#revoked-note').hidden = !params.has('abgemeldet')
+if (gateway) {
+  $('#brand-text').innerHTML = 'Technik<small>Anmeldung</small>'
+  $('#login-lead').textContent = 'Name eingeben und deine Rolle wählen – das gilt dann für alle Dienste (Intercom, Multiview, Dashboard).'
+}
 
 function remembered(key) {
   try {
@@ -31,23 +42,88 @@ function remember(key, value) {
   }
 }
 
+const getJson = (path) =>
+  fetch(api(path), { cache: 'no-store', credentials: 'same-origin' })
+    .then((r) => r.json())
+    .catch(() => null)
+
+const postJson = async (path, body) => {
+  const res = await fetch(api(path), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(body),
+  }).catch(() => null)
+  return { res, data: (await res?.json().catch(() => ({}))) ?? {} }
+}
+
 main()
 
 async function main() {
-  const { enabled, roles, occupied = {} } = await fetch('/api/login/roles', { cache: 'no-store' })
-    .then((r) => r.json())
-    .catch(() => ({ enabled: true, roles: [] }))
+  if (gateway) {
+    const device = await getJson('/api/device')
+    if (device?.required && !device.approved) return showCodeStep()
+  }
+  showLoginStep()
+}
+
+// --- Schritt 1: Tagescode ----------------------------------------------------
+
+function showCodeStep() {
+  $('#login-step').hidden = true
+  $('#code-form').hidden = false
+  const reason = params.get('code')
+  if (reason) {
+    $('#code-note').textContent =
+      reason === 'gesperrt'
+        ? 'Zu viele falsche Versuche – bitte in 15 Minuten noch einmal.'
+        : 'Der QR-Code ist nicht mehr gültig. Es gilt immer nur der Code von heute – lass dir den aktuellen zeigen.'
+    $('#code-note').hidden = false
+  }
+  const input = $('#day-code')
+  input.focus()
+  // Nur Ziffern; mit der sechsten geht es von selbst weiter
+  input.addEventListener('input', () => {
+    input.value = input.value.replace(/\D/g, '').slice(0, 6)
+    $('#code-error').textContent = ''
+    if (input.value.length === 6) submitCode()
+  })
+  $('#code-form').addEventListener('submit', (e) => {
+    e.preventDefault()
+    submitCode()
+  })
+  async function submitCode() {
+    if (input.value.length !== 6) {
+      $('#code-error').textContent = 'Der Code hat 6 Ziffern.'
+      return
+    }
+    const { res, data } = await postJson('/api/device', { code: input.value })
+    if (!res?.ok || !data.ok) {
+      $('#code-error').textContent = data.error || 'Server nicht erreichbar'
+      input.select()
+      return
+    }
+    $('#code-note').hidden = true
+    showLoginStep()
+  }
+}
+
+// --- Schritt 2: Name und Rolle -----------------------------------------------
+
+async function showLoginStep() {
+  $('#code-form').hidden = true
+  const { enabled, roles = [], occupied = {} } = (await getJson('/api/login/roles')) ?? { enabled: true, roles: [] }
   if (!enabled) return location.replace(next) // Zugang offen: keine Anmeldung nötig
 
-  // Schon angemeldet (z. B. über „Konto wechseln“): zeigen, als wer – neue Anmeldung ersetzt sie
-  const me = await fetch('/api/me', { cache: 'no-store' })
-    .then((r) => r.json())
-    .catch(() => null)
+  // Schon angemeldet: auf einem anderen Dienst direkt weiter, sonst zeigen, als wer
+  const me = await getJson('/api/me')
   if (me?.user && !me.user.open) {
+    if (gateway && !params.has('wechseln')) return location.replace(next)
     $('#current-text').textContent = `Angemeldet als ${me.user.name} (${me.user.roleName}). Hier wechselst du zu einem anderen Konto oder einer anderen Rolle.`
     $('#current-back').href = next
     $('#current-note').hidden = false
   }
+  $('#login-step').hidden = false
 
   const lastRole = remembered('role')
   $('#role').innerHTML = [
@@ -82,12 +158,7 @@ async function main() {
     const body = { name: $('#name').value.trim(), roleId: $('#role').value, pin: $('#pin').value, takeover }
     $('#error').textContent = ''
     $('#takeover').hidden = true
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }).catch(() => null)
-    const data = await res?.json().catch(() => ({}))
+    const { res, data } = await postJson('/api/login', body)
     if (res?.status === 409 && data?.holder) {
       // Rolle schon angemeldet: wie bei Kesher übernehmen lassen
       const role = $('#role').selectedOptions[0]?.textContent.replace(/ – angemeldet:.*$/, '')

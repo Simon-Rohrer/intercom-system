@@ -1,4 +1,5 @@
 import type { Role } from "../types";
+import type { CentralIdentity } from "./centralLogin";
 
 export type AutoLoginConfiguration = {
   enabled: boolean;
@@ -8,15 +9,34 @@ export type AutoLoginConfiguration = {
   allowTakeover: boolean;
   /** Additional device that does not occupy the role (e.g. the Multiview tile). */
   secondary: boolean;
+  /** Name and role come from the server's central login. */
+  central: boolean;
 };
 
+/**
+ * Auto-login from the URL (fixed devices, the Multiview tile) or – without
+ * URL parameters – from the central login. A role taken centrally is never
+ * taken over automatically: another device may hold it in Kesher.
+ */
 export function resolveAutoLoginConfiguration(
   search: string,
   roles: Role[],
+  central: CentralIdentity | null = null,
 ): AutoLoginConfiguration {
   const params = new URLSearchParams(search);
   const enabled =
     params.get("autoLogin") === "1" || params.get("autoLogin") === "true";
+  if (!enabled && central && !central.admin) {
+    return {
+      enabled: true,
+      username: central.name.trim(),
+      roleId: roles.find((role) => role.id === central.roleId)?.id || "",
+      requestedRole: central.roleId,
+      allowTakeover: false,
+      secondary: false,
+      central: true,
+    };
+  }
   const username = (params.get("username") || "").trim();
   const requestedRoleId = (params.get("roleId") || "").trim();
   const requestedRoleName = (params.get("roleName") || "").trim();
@@ -45,5 +65,6 @@ export function resolveAutoLoginConfiguration(
     requestedRole: requestedRoleId || requestedRoleName,
     allowTakeover,
     secondary,
+    central: false,
   };
 }

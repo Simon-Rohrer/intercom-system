@@ -928,7 +928,17 @@ a.status-tile:hover { border-color: var(--accent-line); }
 .auth-page { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
 .auth-card { width: min(420px, 100%); padding: 30px 28px; display: flex; flex-direction: column; gap: 18px; }
 .auth-card .brand { padding: 0 0 4px; }
-.auth-card form { display: flex; flex-direction: column; gap: 14px; }
+.auth-card form, .auth-step { display: flex; flex-direction: column; gap: 14px; }
+.auth-step { gap: 18px; }
+/* Tagescode: große Ziffern, gut zu treffen auf dem Handy */
+.code-input {
+  height: 56px;
+  font-size: 28px !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.4em;
+  text-align: center;
+  padding-left: 0.4em;
+}
 .auth-card .btn.primary { height: 42px; font-size: 14.5px; }
 .form-error { color: var(--red); font-size: 13.5px; min-height: 1em; }
 .form-error:empty { display: none; }
@@ -1037,3 +1047,27 @@ a.status-tile:hover { border-color: var(--accent-line); }
 .chip.level-view::before { content: "👁"; font-size: 12px; }
 .chip.level-edit { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-text); }
 .chip.level-edit::before { content: "✎"; font-weight: 800; }
+
+/* Anmeldung für alle Dienste: Tagescode und feste Geräte (Benutzer & Rechte) */
+.day-code { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; margin-bottom: 20px; }
+.day-code-info { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.day-code-info .muted { max-width: 46ch; }
+.day-code-digits {
+  font: 600 40px/1.1 ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+.gateway-form { display: flex; flex-direction: column; gap: 16px; }
+.gateway-form small { font-size: 12.5px; font-weight: 400; }
+.exempt-list { display: flex; flex-direction: column; gap: 8px; }
+.exempt-list:empty { display: none; }
+.exempt-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto; gap: 8px; align-items: center; }
+@media (max-width: 700px) {
+  .gateway-head { flex-direction: column; }
+  .day-code { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .day-code-info { align-items: center; }
+  .exempt-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .exempt-row [name="label"] { grid-column: 1; grid-row: 2; }
+  .exempt-row .icon-btn { grid-row: 1 / span 2; grid-column: 2; }
+}

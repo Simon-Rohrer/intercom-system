@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f6f7f9">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <title>Anmelden – Multiview</title>
+  <title>Anmelden – Technik</title>
   <script src="theme-boot.js"></script>
   <link rel="stylesheet" href="admin.css">
 </head>
@@ -15,35 +15,53 @@
     <div class="card auth-card">
       <div class="brand">
         <span class="brand-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-        <span class="brand-text">Multiview<small>Technik</small></span>
+        <span class="brand-text" id="brand-text">Multiview<small>Technik</small></span>
       </div>
-      <div>
-        <h1>Anmelden</h1>
-        <p class="muted">Wie bei Kesher: Name eingeben und deine Rolle wählen.</p>
-      </div>
-      <div class="notice" id="current-note" hidden>
-        <span id="current-text"></span>
-        <a class="btn small" id="current-back" href="/">Zurück</a>
-      </div>
-      <div class="notice warn" id="revoked-note" hidden>Du wurdest abgemeldet – deine Rolle wurde auf einem anderen Gerät angemeldet oder vom Admin beendet.</div>
-      <div class="notice warn" id="qr-note" hidden>Der QR-Code ist abgelaufen oder wurde schon benutzt. Melde dich hier an oder lass dir einen neuen Code zeigen.</div>
-      <form id="login-form" autocomplete="on">
-        <label class="field"><span>Name</span>
-          <input type="text" name="name" id="name" autocomplete="name" required placeholder="z. B. Tim">
-        </label>
-        <label class="field"><span>Rolle</span>
-          <select name="roleId" id="role" required></select>
-        </label>
-        <label class="field" id="pin-field" hidden><span>Admin-PIN</span>
-          <input type="password" name="pin" id="pin" inputmode="numeric" autocomplete="current-password">
-        </label>
-        <button class="btn primary block" type="submit">Anmelden</button>
-        <p class="form-error" id="error"></p>
-        <div class="notice warn" id="takeover" hidden>
-          <span id="takeover-text"></span>
-          <button class="btn small" type="button" id="takeover-btn">Übernehmen</button>
+
+      <!-- Schritt 1 (nur für die anderen Dienste, nicht für den Multiview): Tagescode -->
+      <form id="code-form" class="auth-step" autocomplete="off" hidden>
+        <div>
+          <h1>Gerät freischalten</h1>
+          <p class="muted">Einmal am Tag: Scanne den QR-Code mit der Kamera oder gib den 6-stelligen Code ein. Beides zeigt der Admin im Multiview unter <b>Benutzer &amp; Rechte</b>.</p>
         </div>
+        <div class="notice warn" id="code-note" hidden></div>
+        <label class="field"><span>Code von heute</span>
+          <input type="text" id="day-code" class="code-input" inputmode="numeric" autocomplete="one-time-code" pattern="\d{6}" maxlength="6" required placeholder="000000" aria-describedby="code-error">
+        </label>
+        <button class="btn primary block" type="submit">Weiter</button>
+        <p class="form-error" id="code-error" role="alert"></p>
       </form>
+
+      <!-- Schritt 2: Name und Rolle -->
+      <div id="login-step" class="auth-step" hidden>
+        <div>
+          <h1>Anmelden</h1>
+          <p class="muted" id="login-lead">Wie bei Kesher: Name eingeben und deine Rolle wählen.</p>
+        </div>
+        <div class="notice" id="current-note" hidden>
+          <span id="current-text"></span>
+          <a class="btn small" id="current-back" href="/">Zurück</a>
+        </div>
+        <div class="notice warn" id="revoked-note" hidden>Du wurdest abgemeldet – deine Rolle wurde auf einem anderen Gerät angemeldet oder vom Admin beendet.</div>
+        <div class="notice warn" id="qr-note" hidden>Der QR-Code ist abgelaufen oder wurde schon benutzt. Melde dich hier an oder lass dir einen neuen Code zeigen.</div>
+        <form id="login-form" autocomplete="on">
+          <label class="field"><span>Name</span>
+            <input type="text" name="name" id="name" autocomplete="name" required placeholder="z. B. Tim">
+          </label>
+          <label class="field"><span>Rolle</span>
+            <select name="roleId" id="role" required></select>
+          </label>
+          <label class="field" id="pin-field" hidden><span>Admin-PIN</span>
+            <input type="password" name="pin" id="pin" inputmode="numeric" autocomplete="current-password">
+          </label>
+          <button class="btn primary block" type="submit">Anmelden</button>
+          <p class="form-error" id="error" role="alert"></p>
+          <div class="notice warn" id="takeover" hidden>
+            <span id="takeover-text"></span>
+            <button class="btn small" type="button" id="takeover-btn">Übernehmen</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
   <script type="module" src="login.js"></script>

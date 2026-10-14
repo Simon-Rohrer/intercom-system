@@ -42,6 +42,9 @@ type Config struct {
 	TelegramWebhookSecret       string
 	TelegramMode                string // "polling" (default) or "webhook"
 	CompanionSharedSecret       string
+	// JMSAuthSecret verifies tickets from the server's central login (the
+	// Multiview), so its admin is also admin here without the PIN.
+	JMSAuthSecret               string
 	CompanionAllowedUsernames   []string
 	CompanionImageEffectMapFile string
 	CompanionDynamicPaging      bool
@@ -80,6 +83,7 @@ type fileConfig struct {
 	TelegramWebhookSecret              string   `yaml:"telegram_webhook_secret"`
 	TelegramMode                       string   `yaml:"telegram_mode"`
 	CompanionSharedSecret              string   `yaml:"companion_shared_secret"`
+	JMSAuthSecret                      string   `yaml:"jms_auth_secret"`
 	CompanionAllowedUsernames          []string `yaml:"companion_allowed_usernames"`
 	CompanionImageEffectMapFile        string   `yaml:"companion_image_effect_map_file"`
 	CompanionDynamicPaging             *bool    `yaml:"companion_dynamic_paging"`
@@ -265,6 +269,9 @@ func loadConfigFromFile(path string) (Config, error) {
 	if fileCfg.CompanionSharedSecret != "" {
 		cfg.CompanionSharedSecret = fileCfg.CompanionSharedSecret
 	}
+	if fileCfg.JMSAuthSecret != "" {
+		cfg.JMSAuthSecret = fileCfg.JMSAuthSecret
+	}
 	if len(fileCfg.CompanionAllowedUsernames) > 0 {
 		cfg.CompanionAllowedUsernames = append([]string{}, splitCSV(strings.Join(fileCfg.CompanionAllowedUsernames, ","))...)
 	}
@@ -333,6 +340,7 @@ func loadConfigFromEnv() Config {
 		TelegramWebhookSecret:     getEnv("TELEGRAM_WEBHOOK_SECRET", ""),
 		TelegramMode:              getEnv("TELEGRAM_MODE", "polling"),
 		CompanionSharedSecret:     getEnv("COMPANION_SHARED_SECRET", ""),
+		JMSAuthSecret:             getEnv("JMS_AUTH_SECRET", ""),
 		CompanionAllowedUsernames: splitCSV(getEnv("COMPANION_ALLOWED_USERNAMES", "")),
 		CompanionImageEffectMapFile: getEnv(
 			"COMPANION_IMAGE_EFFECT_MAP_FILE",

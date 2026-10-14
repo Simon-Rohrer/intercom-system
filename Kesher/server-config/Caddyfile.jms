@@ -4,6 +4,7 @@
 #   - jede Weboberfläche zusätzlich als https://192.168.0.21:<gewohnter Port>
 #   - http://192.168.0.21:<port> wird auf demselben Port auf https umgeleitet
 #   - Multiview auch als multiview.jms.de / multiview.local
+#   - zentrale Anmeldung vor allen Diensten außer dem Multiview (Baustein jms_auth)
 # Die Dienste lauschen danach nur noch auf 127.0.0.1 (Caddy nur auf der LAN-Adresse),
 # darum passen beide auf denselben Port. Auf dem Server selbst (Kiosk, Companion)
 # bleiben sie über http://127.0.0.1:<port> erreichbar.
@@ -50,11 +51,37 @@
 			tls
 		}
 	}
+	servers 192.168.0.21:9443 {
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+	}
 }
 
 (lan_port) {
 	bind 192.168.0.21
 	tls internal
+}
+
+# Zentrale Anmeldung (im Multiview, siehe BETRIEB.md „Anmeldung für alle Dienste“):
+# /.jms-auth/* geht auf jeder Adresse zum Multiview (Anmeldeseite, Tagescode),
+# alles andere erst, wenn der Multiview die Anfrage durchlässt. Der Name hinter
+# „import jms_auth“ bestimmt, wer darf: kesher und dashboard mit Name + Rolle,
+# companion, portainer, glances und dns nur der Admin. Solange die Anmeldung im
+# Multiview ausgeschaltet ist, lässt die Prüfung alles durch.
+(jms_auth) {
+	@jms_gated not path /.jms-auth/*
+	forward_auth @jms_gated 127.0.0.1:8090 {
+		uri /.jms-auth/check?service={args.0}
+		# Die Prüfung selbst ist eine normale Anfrage – auch wenn das Gerät gerade
+		# einen WebSocket öffnet (sonst nimmt der Multiview sie als eigenen WebSocket an)
+		header_up -Connection
+		header_up -Upgrade
+	}
+	handle /.jms-auth/* {
+		reverse_proxy 127.0.0.1:8090
+	}
 }
 
 # ---------------------------------------------------------------------------
@@ -64,6 +91,7 @@
 # Kesher (Container auf 127.0.0.1:8080)
 https://192.168.0.21:8443 {
 	import lan_port
+	import jms_auth kesher
 	reverse_proxy 127.0.0.1:8080
 }
 
@@ -76,22 +104,34 @@ https://192.168.0.21:8090 {
 # Bitfocus Companion – vorher die Admin-Oberfläche auf 127.0.0.1:8000 umstellen
 https://192.168.0.21:8000 {
 	import lan_port
+	import jms_auth companion
 	reverse_proxy 127.0.0.1:8000
 }
 
 # Dashboard (Homepage) – Compose-Port vorher auf "127.0.0.1:3000:3000"
 https://192.168.0.21:3000 {
 	import lan_port
+	import jms_auth dashboard
 	reverse_proxy 127.0.0.1:3000
 }
 
 # Glances – vorher nur auf 127.0.0.1 lauschen lassen
 https://192.168.0.21:61208 {
 	import lan_port
+	import jms_auth glances
 	reverse_proxy 127.0.0.1:61208
 }
 
-# Portainer bleibt unter https://192.168.0.21:9443 (eigenes HTTPS).
+# Portainer – Compose-Port vorher auf "127.0.0.1:9443:9443" (Portainer hat eigenes HTTPS)
+https://192.168.0.21:9443 {
+	import lan_port
+	import jms_auth portainer
+	reverse_proxy https://127.0.0.1:9443 {
+		transport http {
+			tls_insecure_skip_verify
+		}
+	}
+}
 
 # ---------------------------------------------------------------------------
 # Namens-Adressen (bisher schon vorhanden, Ziele jetzt über 127.0.0.1)
@@ -99,6 +139,7 @@ https://192.168.0.21:61208 {
 
 https://intercom.jms.de, https://kesher.jms.de, https://intercom.local, https://kesher.local {
 	tls internal
+	import jms_auth kesher
 	reverse_proxy 127.0.0.1:8080
 }
 
@@ -109,22 +150,26 @@ https://multiview.jms.de, https://multiview.local {
 
 https://dashboard.jms.de, https://dashboard.local {
 	tls internal
+	import jms_auth dashboard
 	reverse_proxy 127.0.0.1:3000
 }
 
 https://companion.jms.de, https://companion.local {
 	tls internal
+	import jms_auth companion
 	reverse_proxy 127.0.0.1:8000
 }
 
 https://glances.jms.de, https://glances.local {
 	tls internal
+	import jms_auth glances
 	reverse_proxy 127.0.0.1:61208
 }
 
 https://portainer.jms.de, https://portainer.local {
 	tls internal
-	reverse_proxy https://192.168.0.21:9443 {
+	import jms_auth portainer
+	reverse_proxy https://127.0.0.1:9443 {
 		transport http {
 			tls_insecure_skip_verify
 		}
@@ -133,6 +178,7 @@ https://portainer.jms.de, https://portainer.local {
 
 https://dns.jms.de, https://dns.local {
 	tls internal
+	import jms_auth dns
 	reverse_proxy 127.0.0.1:8083
 }
 
@@ -144,5 +190,6 @@ http://setup.local {
 # Aus der früheren Installation (Heimnetz-Adresse), unverändert übernommen
 https://192.168.178.185 {
 	tls internal
+	import jms_auth kesher
 	reverse_proxy 127.0.0.1:8080
 }

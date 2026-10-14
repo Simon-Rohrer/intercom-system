@@ -222,7 +222,10 @@ function showPage() {
   document.querySelectorAll('.site-nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === page))
   document.body.classList.remove('nav-open')
   if (page === 'eingaenge') autoScanDevices()
-  if (page === 'zugang') loadSessions()
+  if (page === 'zugang') {
+    loadSessions()
+    loadGateway()
+  }
   renderAll()
   window.scrollTo(0, 0)
 }
@@ -2647,6 +2650,152 @@ async function loadSessions() {
     box.innerHTML = '<p class="muted">Konnte die Liste nicht laden.</p>'
   }
 }
+
+// --- Anmeldung für alle Dienste: Tagescode und feste Geräte -------------------
+
+let gatewayInfo = null
+const removeIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>'
+
+async function loadGateway() {
+  if (!isAdmin() || page !== 'zugang') return
+  try {
+    const res = await fetch('/api/access/gateway', { cache: 'no-store' })
+    gatewayInfo = res.ok ? await res.json() : null
+  } catch {
+    gatewayInfo = null
+  }
+  renderGateway()
+}
+// Der Code wechselt um Mitternacht, die Zahl der Geräte laufend
+setInterval(() => document.visibilityState === 'visible' && loadGateway(), 60_000)
+
+/** Adresse im QR-Code: öffnet die Startseite (Dashboard) und übernimmt dabei den Code. */
+const gatewayCodeUrl = (info) => `${info.startUrl || publicOrigin(server)}/.jms-auth/code?c=${info.code}`
+
+function exemptRow(entry = { network: '', label: '' }) {
+  return `<div class="exempt-row">
+    <input type="text" name="network" value="${esc(entry.network)}" placeholder="192.168.0.50" aria-label="Adresse oder Bereich" inputmode="decimal">
+    <input type="text" name="label" value="${esc(entry.label)}" placeholder="z. B. Station Licht" aria-label="Bezeichnung">
+    <button class="icon-btn" type="button" data-exempt-remove aria-label="Entfernen" title="Entfernen">${removeIcon}</button>
+  </div>`
+}
+
+function renderGateway() {
+  const card = $('#access-gateway-card')
+  if (!isAdmin() || page !== 'zugang') return
+  // Nicht neu aufbauen, während jemand tippt
+  const active = document.activeElement
+  if (card.contains(active) && active.tagName === 'INPUT' && active.type !== 'checkbox') return
+  const info = gatewayInfo
+  const head = `<div class="card-head gateway-head"><div><h2>Anmeldung für alle Dienste</h2>
+    <p class="muted">Intercom (Kesher), Dashboard, Companion, Portainer und Glances fragen dann zuerst nach Name und Rolle – einmal für alle, wie hier im Multiview. Geräte im WLAN brauchen dazu einmal am Tag den Code. Companion, Portainer und Glances sind nur für den Admin. Der Multiview selbst bleibt ohne Code erreichbar.</p></div>`
+  if (!info) {
+    card.innerHTML = `${head}</div><p class="muted">Konnte die Einstellungen nicht laden.</p>`
+    return
+  }
+  const pinReady = me.access?.enabled
+  const digits = `${info.code.slice(0, 3)} ${info.code.slice(3)}`
+  const exempt = info.exempt.length ? info.exempt : []
+  card.innerHTML = `${head}
+      <label class="switch"><input type="checkbox" id="gateway-enabled" ${info.enabled ? 'checked' : ''} ${pinReady ? '' : 'disabled'}><span class="switch-track"></span><span>${info.enabled ? 'Eingeschaltet' : 'Ausgeschaltet'}</span></label>
+    </div>
+    ${pinReady ? '' : '<div class="notice warn">Erst oben die Admin-PIN einrichten – ohne sie gibt es keine Anmeldung.</div>'}
+    ${info.secret ? '' : '<div class="notice warn">Auf dem Server fehlt <code>JMS_AUTH_SECRET</code>. Bis es eingerichtet ist, meldet sich der Admin in Kesher weiter mit der Kesher-PIN an.</div>'}
+    <div class="day-code">
+      <figure class="qr-card accent">
+        <div class="qr-frame"><img src="${esc(qrUrl(gatewayCodeUrl(info)))}" alt="QR-Code mit dem Code von heute"></div>
+        <figcaption><b>QR-Code von heute</b><span class="muted">Mit der Handy-Kamera scannen</span></figcaption>
+      </figure>
+      <div class="day-code-info">
+        <span class="field"><span>Code für Laptops</span></span>
+        <output class="day-code-digits" aria-label="Code von heute: ${esc(info.code.split('').join(' '))}">${esc(digits)}</output>
+        <p class="muted">Neu um Mitternacht. Wer ihn heute eingegeben hat, bleibt bis morgen 5 Uhr freigeschaltet.
+          <b>${info.devicesToday}</b> ${info.devicesToday === 1 ? 'Gerät ist' : 'Geräte sind'} gerade freigeschaltet.</p>
+        <button class="btn small" type="button" id="gateway-renew">Neuen Code erzeugen</button>
+      </div>
+    </div>
+    <form id="gateway-form" class="gateway-form" autocomplete="off">
+      <label class="field"><span>Startseite nach dem Scannen</span>
+        <input type="url" name="startUrl" value="${esc(info.startUrl)}" placeholder="${esc(publicOrigin(server))}">
+        <small class="muted">Am besten das Dashboard, z. B. https://192.168.0.21:3000. Leer = dieser Multiview.</small>
+      </label>
+      <div class="field"><span>Feste Geräte ohne Code</span>
+        <small class="muted">Stationen, Raspberry Pis, Kesher-App, Rechner im LAN: eine Adresse (192.168.0.50) oder ein Bereich (192.168.0.0/24). Sie kommen ohne Code und Anmeldung an Intercom und Dashboard, an die Admin-Dienste nur mit Admin-Anmeldung. Der Server selbst ist immer frei.</small>
+        <div class="exempt-list" id="exempt-list">${exempt.map(exemptRow).join('')}</div>
+        <div><button class="btn small" type="button" id="exempt-add">Gerät hinzufügen</button></div>
+      </div>
+      <div class="btn-row"><button class="btn primary" type="submit">Speichern</button></div>
+      <p class="form-error" id="gateway-error" role="alert"></p>
+    </form>`
+}
+
+async function saveGateway(changes) {
+  const res = await fetch('/api/access/gateway', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes),
+  }).catch(() => null)
+  const data = (await res?.json().catch(() => null)) ?? {}
+  if (!res?.ok || !data.ok) throw new Error(data.error || 'Server nicht erreichbar')
+  gatewayInfo = data
+  return data
+}
+
+$('#access-gateway-card').addEventListener('change', async (e) => {
+  if (e.target.id !== 'gateway-enabled') return
+  const on = e.target.checked
+  if (
+    on &&
+    !confirm(
+      'Anmeldung für alle Dienste einschalten?\n\nDanach brauchen alle Geräte, die nicht unter „Feste Geräte ohne Code“ stehen, den Tagescode – auch Raspberry Pis, Stationen und die Kesher-App. Diese vorher eintragen.',
+    )
+  ) {
+    e.target.checked = false
+    return
+  }
+  try {
+    await saveGateway({ enabled: on })
+    toast(on ? 'Anmeldung für alle Dienste ist eingeschaltet' : 'Anmeldung für alle Dienste ist ausgeschaltet')
+  } catch (err) {
+    e.target.checked = !on
+    toast(err.message)
+  }
+  renderGateway()
+})
+
+$('#access-gateway-card').addEventListener('click', async (e) => {
+  if (e.target.closest('#exempt-add')) {
+    $('#exempt-list').insertAdjacentHTML('beforeend', exemptRow())
+    $('#exempt-list .exempt-row:last-child input').focus()
+    return
+  }
+  const remove = e.target.closest('[data-exempt-remove]')
+  if (remove) return remove.closest('.exempt-row').remove()
+  if (e.target.closest('#gateway-renew')) {
+    if (!confirm('Neuen Code erzeugen? Alle Geräte, die heute schon freigeschaltet sind, müssen den neuen Code eingeben.')) return
+    const res = await fetch('/api/access/code/renew', { method: 'POST' }).catch(() => null)
+    if (res?.ok) gatewayInfo = await res.json()
+    renderGateway()
+    toast(res?.ok ? 'Neuer Code erzeugt' : 'Server nicht erreichbar')
+  }
+})
+
+$('#access-gateway-card').addEventListener('submit', async (e) => {
+  if (e.target.id !== 'gateway-form') return
+  e.preventDefault()
+  const form = e.target
+  const exempt = [...form.querySelectorAll('.exempt-row')]
+    .map((row) => ({ network: row.querySelector('[name="network"]').value.trim(), label: row.querySelector('[name="label"]').value.trim() }))
+    .filter((entry) => entry.network)
+  try {
+    await saveGateway({ exempt, startUrl: form.startUrl.value.trim() })
+    document.activeElement?.blur()
+    renderGateway()
+    toast('Gespeichert')
+  } catch (err) {
+    $('#gateway-error').textContent = err.message
+  }
+})
 
 // --- Darstellung, QR-Codes, Menü ---------------------------------------------
 
