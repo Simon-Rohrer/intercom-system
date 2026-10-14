@@ -2756,6 +2756,11 @@ function renderGateway() {
               .map(([v, l]) => `<option value="${v}" ${(config?.dayQr?.corner || 'br') === v ? 'selected' : ''}>${l}</option>`)
               .join('')}
           </select>
+          <select data-dayqr="size" aria-label="Größe" ${config?.dayQr?.show === false ? 'disabled' : ''}>
+            ${[['s', 'klein'], ['m', 'mittel'], ['l', 'groß']]
+              .map(([v, l]) => `<option value="${v}" ${(config?.dayQr?.size || 'm') === v ? 'selected' : ''}>${l}</option>`)
+              .join('')}
+          </select>
           <small class="muted">Immer der aktuelle Code – nur auf den Monitoren am Server und festen Geräten, nie in der Vorschau.</small>
         </div>
       </div>
@@ -2813,7 +2818,7 @@ $('#access-gateway-card').addEventListener('change', async (e) => {
 $('#access-gateway-card').addEventListener('change', (e) => {
   const key = e.target.dataset.dayqr
   if (!key) return
-  config.dayQr = { show: true, corner: 'br', ...config.dayQr, [key]: key === 'show' ? e.target.checked : e.target.value }
+  config.dayQr = { show: true, corner: 'br', size: 'm', ...config.dayQr, [key]: key === 'show' ? e.target.checked : e.target.value }
   changed(0)
   renderGateway()
 })

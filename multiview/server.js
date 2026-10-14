@@ -111,11 +111,12 @@ function normalizeConfig(c) {
   }
 }
 
-/** Tages-QR-Code klein auf den Monitoren: an/aus und Ecke (tl, tr, bl, br). */
+/** Tages-QR-Code auf den Monitoren: an/aus, Ecke (tl, tr, bl, br) und Größe (s, m, l). */
 function normalizeDayQr(d) {
   return {
     show: d?.show !== false,
     corner: ['tl', 'tr', 'bl', 'br'].includes(d?.corner) ? d.corner : 'br',
+    size: ['s', 'm', 'l'].includes(d?.size) ? d.size : 'm',
   }
 }
 
@@ -1579,7 +1580,7 @@ app.get('/api/display/day-code', (req, res) => {
   if (device.required && !device.approved && !access.userOf(req)?.admin)
     return res.status(403).json({ show: false, error: 'Nur für feste Geräte' })
   const code = access.dayCode()
-  res.json({ show: true, code: code.code, day: code.day, startUrl: gateway.startUrl, corner: config.dayQr.corner })
+  res.json({ show: true, code: code.code, day: code.day, startUrl: gateway.startUrl, corner: config.dayQr.corner, size: config.dayQr.size })
 })
 
 app.get('/api/access/gateway', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json(gatewayInfo()))

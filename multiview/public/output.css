@@ -246,3 +246,9 @@ body {
 .day-qr[data-corner="bl"] { left: 14px; bottom: 14px; }
 .day-qr[data-corner="tr"] { right: 14px; top: 14px; }
 .day-qr[data-corner="tl"] { left: 14px; top: 14px; }
+
+/* Größe des Tages-QR-Codes (Editor: klein / mittel / groß) */
+.day-qr[data-size="s"] { width: clamp(70px, 8vh, 120px); padding: 4px 4px 2px; border-radius: 8px; }
+.day-qr[data-size="s"] figcaption { font-size: clamp(9px, 1.2vh, 15px); }
+.day-qr[data-size="l"] { width: clamp(170px, 22vh, 320px); padding: 9px 9px 5px; border-radius: 14px; }
+.day-qr[data-size="l"] figcaption { font-size: clamp(16px, 2.8vh, 32px); }

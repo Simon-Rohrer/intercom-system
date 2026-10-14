@@ -570,8 +570,9 @@ async function refreshDayQr() {
     return
   }
   const target = `${data.startUrl || lanOrigin()}/.jms-auth/code?c=${data.code}`
-  const key = JSON.stringify([target, data.corner])
+  const key = JSON.stringify([target, data.corner, data.size])
   dayQr.dataset.corner = data.corner || 'br'
+  dayQr.dataset.size = data.size || 'm'
   dayQr.hidden = false
   if (key === dayQrKey) return
   dayQrKey = key
