@@ -76,22 +76,34 @@ if [[ ! -s "${PASSWORD_FILE}" ]]; then
 fi
 
 echo "==> Google Drive verbinden"
-if RCLONE_CONFIG="${RCLONE_CONF}" rclone listremotes 2>/dev/null | grep -qx "${REMOTE}:"; then
+export RCLONE_CONFIG="${RCLONE_CONF}"
+# Verbunden heißt: Drive antwortet. Nur angelegt, aber ohne Anmeldung, zählt nicht.
+if rclone lsd "${REMOTE}:" >/dev/null 2>&1; then
   echo "   schon verbunden"
 else
+  if ! rclone listremotes 2>/dev/null | grep -qx "${REMOTE}:"; then
+    # drive.file: Der Server sieht nur die Dateien, die er selbst hochgeladen hat.
+    # use_trash=false: Gelöschtes belegt keinen Speicher im Papierkorb.
+    rclone config create "${REMOTE}" drive scope=drive.file use_trash=false --non-interactive >/dev/null
+  fi
+  chmod 0600 "${RCLONE_CONF}"
   cat <<EOF
 
-   Gleich erscheint ein Befehl "rclone authorize ...". Diesen auf dem Mac im
-   Terminal ausführen (vorher einmalig: brew install rclone), im Browser mit
-   dem Google-Konto für die Technik anmelden und den Zugriff erlauben.
-   Den Code, den der Mac danach ausgibt, hier bei "config_token>" einfügen.
+   Jetzt bei Google anmelden:
+   1. Die Frage "Use auto config?" mit n beantworten (Server ohne Browser).
+   2. Den Befehl "rclone authorize ..." auf dem Mac im Terminal ausführen
+      (vorher einmalig: brew install rclone), im Browser mit dem Google-Konto
+      für die Technik anmelden und den Zugriff erlauben.
+   3. Den Text, den der Mac danach zwischen den Pfeilen ausgibt, hier bei
+      "config_token>" einfügen.
 
 EOF
-  # drive.file: Der Server sieht nur die Dateien, die er selbst hochgeladen hat.
-  # use_trash=false: Gelöschtes belegt keinen Speicher im Papierkorb.
-  RCLONE_CONFIG="${RCLONE_CONF}" rclone config create "${REMOTE}" drive \
-    scope=drive.file use_trash=false config_is_local=false
-  chmod 0600 "${RCLONE_CONF}"
+  rclone config reconnect "${REMOTE}:"
+  if ! rclone lsd "${REMOTE}:" >/dev/null 2>&1; then
+    echo "Google Drive antwortet nicht – Anmeldung fehlgeschlagen. Skript einfach noch einmal starten." >&2
+    exit 1
+  fi
+  echo "   verbunden"
 fi
 
 echo "==> Backup-Repository in Google Drive"
