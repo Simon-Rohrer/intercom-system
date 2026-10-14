@@ -1211,6 +1211,8 @@ function templatesChanged() {
 }
 
 wss.on('connection', (ws, req) => {
+  // Ohne Anmeldung nur feste Geräte und der Server selbst (Kiosk) – alle anderen zur Anmeldeseite
+  if (!access.trusted(clientIp(req), req)) return ws.close(4401, 'Bitte anmelden')
   // Welche Anmeldung hier offen ist – so gilt eine Rolle als belegt, solange ihre Seite offen ist
   ws.sessionId = access.sessionIdOf(req)
   send(ws, { type: 'config', config })
@@ -1249,7 +1251,7 @@ app.use(express.json({ limit: '5mb' }))
 app.use(require('./legacy').legacyMiddleware(path.join(__dirname, 'public')))
 app.use(express.static(path.join(__dirname, 'public')))
 
-app.get('/api/config', (req, res) => res.json(config))
+app.get('/api/config', requireTrusted, (req, res) => res.json(config))
 
 // ---------------------------------------------------------------------------
 // Benutzer und Rechte (access.js): Anmeldung mit Name + Kesher-Rolle, Admin mit PIN
@@ -1264,6 +1266,8 @@ const access = createAccess({
   kesherActiveRoles: () => kesherChat.activeRoleIds(),
   releaseKesherRole: (roleId, name) => kesherChat.releaseRole(roleId, name),
   isLive: (id) => [...wss.clients].some((ws) => ws.readyState === 1 && ws.sessionId === id),
+  // Geräteadresse für die Liste der Anmeldungen (clientIp ist weiter unten definiert, wird erst bei Anfragen aufgerufen)
+  ipOf: (req) => (req?.socket ? clientIp(req).replace(/^::ffff:/, '') : ''),
   // Übernommene oder vom Admin beendete Anmeldung: die offenen Seiten dort abmelden
   onRevoke: (ids, reason) => {
     for (const ws of wss.clients) {
@@ -1279,6 +1283,12 @@ function requireUser(req, res, next) {
   const user = access.userOf(req)
   if (!user) return res.status(401).json({ ok: false, error: 'Bitte anmelden', login: true })
   req.user = user
+  next()
+}
+
+/** Schnittstellen des Multiview selbst: angemeldet, feste Geräte oder der Server selbst (Companion, Kiosk). */
+function requireTrusted(req, res, next) {
+  if (!access.trusted(clientIp(req), req)) return res.status(401).json({ ok: false, error: 'Bitte anmelden', login: true })
   next()
 }
 
@@ -1310,13 +1320,33 @@ function readProfiles() {
 
 const profileKey = (user) => `${user.roleId}:${String(user.name).trim().toLowerCase()}`
 
+// ---------------------------------------------------------------------------
+// Profilbilder: pro Person (Name, unabhängig von der Rolle), als kleines JPEG in data/avatars.
+// Der Browser verkleinert vorher auf 256×256, hier kommt nur das fertige Bild an.
+// ---------------------------------------------------------------------------
+const AVATAR_DIR = path.join(DATA_DIR, 'avatars')
+const avatarId = (name) =>
+  require('crypto').createHash('sha1').update(String(name || '').trim().toLowerCase()).digest('hex').slice(0, 20)
+const avatarFile = (id) => path.join(AVATAR_DIR, `${id}.jpg`)
+
+/** Adresse des Profilbilds einer Person (mit Version gegen den Browser-Cache) oder null. */
+function avatarUrl(name) {
+  if (!String(name || '').trim()) return null
+  const id = avatarId(name)
+  try {
+    return `/api/avatar/${id}?v=${Math.round(fs.statSync(avatarFile(id)).mtimeMs)}`
+  } catch {
+    return null
+  }
+}
+
 /**
  * Wer ist gerade für diesen Multiview angemeldet? Für Monitore ohne eigene Anmeldung (Kiosk am
  * HDMI-Ausgang): Kesher-Kacheln mit „angemeldeter Nutzer“ melden sich dann als diese Person an.
  * Aktive Anmeldungen (ohne Admin) mit Rechten auf den Multiview; bei mehreren die Rolle mit den
  * wenigsten Multiviews (Licht 1 vor einer Rolle, die alles darf), sonst die zuletzt aktive.
  */
-app.get('/api/output/:id/user', (req, res) => {
+app.get('/api/output/:id/user', requireTrusted, (req, res) => {
   const output = findByRef(config.outputs, req.params.id)
   if (!output) return res.status(404).json({ ok: false, user: null })
   const active = access
@@ -1334,7 +1364,7 @@ app.get(['/api/me', '/.jms-auth/api/me'], (req, res) => {
   const rights = roleRights(config, user)
   res.json({
     access: { enabled: access.enabled(), pinSource: access.pinSource() },
-    user: user && { name: user.name, roleId: user.roleId, roleName: roleName(user.roleId), admin: user.admin, open: user.open },
+    user: user && { name: user.name, roleId: user.roleId, roleName: roleName(user.roleId), admin: user.admin, open: user.open, avatar: user.open ? null : avatarUrl(user.name) },
     rights: rights && {
       admin: rights.admin,
       editLayouts: rights.admin || rights.editLayouts,
@@ -1364,20 +1394,71 @@ app.post(['/api/logout', '/.jms-auth/api/logout'], (req, res) => {
   res.json({ ok: true })
 })
 
-// Darstellung (Hell/Dunkel, Akzentfarbe) pro Nutzer – damit Handy und Rechner gleich aussehen
+// Darstellung (Hell/Dunkel, Hintergrund) pro Nutzer – damit Handy und Rechner gleich aussehen
 app.put('/api/me/prefs', requireUser, (req, res) => {
   if (req.user.open) return res.json({ ok: true })
-  const { theme, accent } = req.body || {}
+  const { theme, wallpaper } = req.body || {}
   const profiles = readProfiles()
   profiles[profileKey(req.user)] = {
     theme: ['light', 'dark', 'system'].includes(theme) ? theme : 'system',
-    accent: /^#[0-9a-f]{6}$/i.test(accent) ? accent : null,
+    wallpaper: /^[a-z0-9-]{1,40}$/.test(wallpaper) ? wallpaper : null,
   }
   fs.writeFileSync(PROFILES_FILE, JSON.stringify(profiles, null, 2))
   res.json({ ok: true })
 })
 
 // Multiview am Handy umschalten (Fernbedienung) – nur eigene Multiviews und sichtbare Layouts
+app.post('/api/me/avatar', requireUser, (req, res) => {
+  if (req.user.open) return res.status(400).json({ ok: false, error: 'Profilbilder gibt es nur mit Anmeldung' })
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.image || ''))
+  if (!m) return res.status(400).json({ ok: false, error: 'Bitte ein Bild wählen' })
+  const data = Buffer.from(m[1], 'base64')
+  if (data.length > 400 * 1024 || data[0] !== 0xff || data[1] !== 0xd8)
+    return res.status(400).json({ ok: false, error: 'Das Bild ist zu groß oder kein JPEG' })
+  fs.mkdirSync(AVATAR_DIR, { recursive: true })
+  fs.writeFileSync(avatarFile(avatarId(req.user.name)), data)
+  res.json({ ok: true, avatar: avatarUrl(req.user.name) })
+})
+
+app.delete('/api/me/avatar', requireUser, (req, res) => {
+  fs.rmSync(avatarFile(avatarId(req.user.name)), { force: true })
+  res.json({ ok: true, avatar: null })
+})
+
+// Stamm-Zertifikat von Caddys lokaler Zertifizierungsstelle (HTTPS auf 192.168.0.21:<port>).
+// iPhone/iPad brauchen es als vertrautes Profil – sonst lädt die Seite nach der Warnung zwar,
+// aber die Live-Verbindung (WebSocket) wird abgelehnt und es steht „Server nicht erreichbar“.
+// Öffentlich, es ist nur das Zertifikat (kein Schlüssel); Caddy gibt es über seine Admin-API auf dem Server heraus.
+app.get(['/zertifikat', '/.jms-auth/zertifikat'], async (req, res) => {
+  try {
+    const ca = await fetch('http://127.0.0.1:2019/pki/ca/local', { signal: AbortSignal.timeout(3000) }).then((r) => r.json())
+    if (!String(ca.root_certificate || '').includes('BEGIN CERTIFICATE')) throw new Error('kein Zertifikat')
+    res
+      .set('Content-Disposition', 'attachment; filename="JMS-Technik.crt"')
+      .type('application/x-x509-ca-cert')
+      .send(Buffer.from(ca.root_certificate))
+  } catch {
+    res.status(503).type('text/plain').send('Zertifikat gerade nicht verfügbar (Caddy-Admin-API nicht erreichbar).')
+  }
+})
+
+// Hintergrundbilder für Editor, Handy und Anmeldung. Sie liegen im Datenordner (data/wallpapers)
+// und nicht im Git-Repo, weil das öffentlich ist und die Bilder fremde Lizenzen haben.
+const WALLPAPER_DIR = path.join(DATA_DIR, 'wallpapers')
+app.get(['/api/wallpaper/:file', '/.jms-auth/api/wallpaper/:file'], (req, res) => {
+  if (!/^[a-z0-9-]{1,40}\.jpg$/.test(req.params.file)) return res.status(404).end()
+  const file = path.join(WALLPAPER_DIR, req.params.file)
+  if (!fs.existsSync(file)) return res.status(404).end()
+  res.set('Cache-Control', 'public, max-age=604800').type('image/jpeg').sendFile(file)
+})
+
+app.get(['/api/avatar/:id', '/.jms-auth/api/avatar/:id'], requireTrusted, (req, res) => {
+  if (!/^[0-9a-f]{20}$/.test(req.params.id)) return res.status(404).end()
+  const file = avatarFile(req.params.id)
+  if (!fs.existsSync(file)) return res.status(404).end()
+  res.set('Cache-Control', 'public, max-age=31536000, immutable').type('image/jpeg').sendFile(file)
+})
+
 app.post('/api/me/output/:output/layout', requireUser, (req, res) => {
   const output = config.outputs.find((o) => o.id === req.params.output)
   if (!output || !allowedOutputs(config, req.user).has(output.id))
@@ -1417,14 +1498,27 @@ app.post('/api/chat/send', requireUser, async (req, res) => {
 })
 
 // QR-Code-Anmeldung fürs Handy: Einmal-Link, 10 Minuten gültig
-app.post('/api/me/qr', requireUser, (req, res) => res.json({ ok: true, ...access.createQrToken(req.user) }))
+app.post(['/api/me/qr', '/.jms-auth/api/me/qr'], requireUser, (req, res) => res.json({ ok: true, ...access.createQrToken(req.user) }))
 
 app.get('/q/:token', (req, res) => {
   const ok = access.redeemQrToken(req.params.token, req, res)
+  // Der Code kommt von einem angemeldeten Gerät – das Handy gleich für heute freischalten,
+  // damit es auch Intercom und Dashboard ohne Tagescode öffnen kann
+  if (ok && access.deviceStatus(clientIp(req), req).required) access.approveDevice(clientIp(req), req, res)
   res.redirect(ok ? '/remote.html' : '/login.html?qr=abgelaufen')
 })
 
-app.get('/api/qr.svg', async (req, res) => {
+// Derselbe Anmelde-QR auf der Adresse eines anderen Dienstes (z. B. Dashboard-Startseite):
+// Das Handy wird angemeldet und – weil der Code von einem angemeldeten Gerät kommt – auch gleich
+// für heute freigeschaltet (kein Tagescode nötig). Danach zurück zur Startseite dieses Dienstes.
+app.get('/.jms-auth/q/:token', (req, res) => {
+  const ok = access.redeemQrToken(req.params.token, req, res)
+  if (!ok) return res.redirect(302, `${loginPath('/')}&qr=abgelaufen`)
+  if (access.deviceStatus(clientIp(req), req).required) access.approveDevice(clientIp(req), req, res)
+  res.redirect(302, '/')
+})
+
+app.get(['/api/qr.svg', '/.jms-auth/api/qr.svg'], async (req, res) => {
   const data = String(req.query.data ?? '')
   if (!data || data.length > 600) return res.status(400).send('data fehlt oder ist zu lang')
   try {
@@ -1450,7 +1544,7 @@ app.post('/api/access/pin', requireAdmin, async (req, res) => {
 })
 
 app.get('/api/access/sessions', requireAdmin, (req, res) =>
-  res.json(access.sessions().map((s) => ({ ...s, roleName: roleName(s.roleId), self: s.id === req.user.sessionId }))),
+  res.json(access.sessions().map((s) => ({ ...s, roleName: roleName(s.roleId), self: s.id === req.user.sessionId, avatar: avatarUrl(s.name) }))),
 )
 
 app.delete('/api/access/sessions/:id', requireAdmin, (req, res) => {
@@ -1472,7 +1566,7 @@ const AUTH_SECRET = process.env.JMS_AUTH_SECRET || ''
 /** Adresse des Geräts. Hinter Caddy steht sie in X-Forwarded-For – das gilt nur für Anfragen vom Server selbst. */
 function clientIp(req) {
   const peer = req.socket.remoteAddress || ''
-  const forwarded = String(req.get('x-forwarded-for') || '').split(',')[0].trim()
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()
   return forwarded && /^(127\.|::1$|::ffff:127\.)/.test(peer) ? forwarded : peer
 }
 
@@ -1680,7 +1774,7 @@ function restoreTarget() {
 
 // ProPresenter steuern – NUR diese Befehle (Weiter, Zurück, Ausblenden, Einblenden, Folie wählen).
 // Alles andere der Schnittstelle bleibt gesperrt.
-app.post('/api/propresenter/control', async (req, res) => {
+app.post('/api/propresenter/control', requireTrusted, async (req, res) => {
   const base = ppBase()
   if (!base) return res.status(503).json({ ok: false, error: 'ProPresenter nicht eingerichtet' })
   const { action, presentation, index } = req.body || {}
@@ -1726,7 +1820,7 @@ async function handleStageMessage(req, res, text) {
     res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
   }
 }
-app.all('/api/propresenter/stage-message/clear', (req, res) => handleStageMessage(req, res, ''))
+app.all('/api/propresenter/stage-message/clear', requireTrusted, (req, res) => handleStageMessage(req, res, ''))
 
 /**
  * Wichtigen Hinweis in den Kesher-Chat schreiben (rot markiert) – als die Rolle des Nutzers,
@@ -1765,7 +1859,7 @@ app.post('/api/propresenter/announce', requireUser, async (req, res) => {
   )
   res.json({ ok: true, request: publicRequests().find((r) => r.id === request.id), notified })
 })
-app.all('/api/propresenter/stage-message', (req, res) => {
+app.all('/api/propresenter/stage-message', requireTrusted, (req, res) => {
   const text = req.body?.text ?? req.query.text
   // Ohne Text nichts tun (ein versehentlich geöffneter Link soll die Nachricht nicht löschen)
   if (text == null) return res.status(400).json({ ok: false, error: 'text fehlt, z. B. ?text=Noch%205%20Minuten' })
@@ -1773,7 +1867,7 @@ app.all('/api/propresenter/stage-message', (req, res) => {
 })
 
 // Folienbilder von ProPresenter weiterreichen (Browser brauchen so nur diesen Server)
-app.get('/api/propresenter/thumb/:uuid/:index', async (req, res) => {
+app.get('/api/propresenter/thumb/:uuid/:index', requireTrusted, async (req, res) => {
   const base = ppBase()
   if (!base) return res.status(503).end()
   const quality = Math.min(Math.max(Number(req.query.q) || 960, 100), 1920)
@@ -1795,11 +1889,11 @@ app.get('/api/propresenter/thumb/:uuid/:index', async (req, res) => {
 })
 
 // Zustand der Kesher-Chat-Verbindung (zur Fehlersuche)
-app.get('/api/chat', (req, res) => res.json(kesherChat.snapshot()))
+app.get('/api/chat', requireTrusted, (req, res) => res.json(kesherChat.snapshot()))
 
 // ChurchTools: Verbindung mit dem Server-Konto (Token oder Benutzername/Passwort).
 // Das Passwort wird nur zum Holen des Login-Tokens benutzt und nicht gespeichert.
-app.get('/api/churchtools', (req, res) => res.json(churchTools.snapshot()))
+app.get('/api/churchtools', requireTrusted, (req, res) => res.json(churchTools.snapshot()))
 app.post('/api/churchtools/connect', requireAdmin, async (req, res) => {
   try {
     const { url, token, username, password } = req.body || {}
@@ -1818,7 +1912,7 @@ app.post('/api/churchtools/refresh', requireAdmin, async (req, res) => {
 })
 
 // WebRTC-Anmeldung (WHEP) an MediaMTX weiterreichen, damit Browser nur diesen Port brauchen
-app.post('/whep/:path', express.text({ type: () => true, limit: '1mb' }), async (req, res) => {
+app.post('/whep/:path', requireTrusted, express.text({ type: () => true, limit: '1mb' }), async (req, res) => {
   if (!mediamtx.proc) return res.status(503).send('MediaMTX läuft nicht')
   try {
     const upstream = await fetch(
@@ -1889,7 +1983,7 @@ app.delete('/api/templates/:id', requireUser, (req, res) => {
   res.json({ ok: true })
 })
 
-app.get('/api/state', (req, res) => {
+app.get('/api/state', requireTrusted, (req, res) => {
   res.json({
     atem: atemState,
     propresenter: ppState,
@@ -1913,7 +2007,7 @@ app.get('/api/state', (req, res) => {
 
 // Companion-freundliche Endpunkte (GET oder POST, z. B. über das "Generic HTTP"-Modul)
 
-app.all('/api/output/:output/layout/:layout', (req, res) => {
+app.all('/api/output/:output/layout/:layout', requireTrusted, (req, res) => {
   const output = findByRef(config.outputs, req.params.output)
   const layout = findByRef(config.layouts, req.params.layout)
   if (!output) return res.status(404).json({ ok: false, error: 'Ausgang nicht gefunden' })
@@ -1923,7 +2017,7 @@ app.all('/api/output/:output/layout/:layout', (req, res) => {
   res.json({ ok: true, output: output.name, layout: layout.name })
 })
 
-app.all('/api/output/:output/:dir(next|prev)', (req, res) => {
+app.all('/api/output/:output/:dir(next|prev)', requireTrusted, (req, res) => {
   const output = findByRef(config.outputs, req.params.output)
   if (!output) return res.status(404).json({ ok: false, error: 'Ausgang nicht gefunden' })
   if (!config.layouts.length) return res.status(404).json({ ok: false, error: 'Keine Layouts vorhanden' })
@@ -1936,7 +2030,7 @@ app.all('/api/output/:output/:dir(next|prev)', (req, res) => {
 })
 
 // Bildschirm am Server auf einen Multiview schalten ("aus" = schwarz)
-app.all('/api/screen/:screen/output/:output', (req, res) => {
+app.all('/api/screen/:screen/output/:output', requireTrusted, (req, res) => {
   const screen = findByRef(screenList(), req.params.screen)
   if (!screen) return res.status(404).json({ ok: false, error: 'Bildschirm nicht gefunden' })
   const off = ['aus', 'off', '0'].includes(req.params.output.toLowerCase())
@@ -1947,7 +2041,7 @@ app.all('/api/screen/:screen/output/:output', (req, res) => {
   res.json({ ok: true, screen: screen.name, output: output?.name ?? null })
 })
 
-app.all('/api/layout/:layout/tile/:tile/source/:source', (req, res) => {
+app.all('/api/layout/:layout/tile/:tile/source/:source', requireTrusted, (req, res) => {
   const layout = findByRef(config.layouts, req.params.layout)
   const tile = layout && findByRef(layout.tiles, req.params.tile)
   const source = findByRef(config.sources, req.params.source)

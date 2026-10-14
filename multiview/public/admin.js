@@ -1,4 +1,4 @@
-import { connect, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
+import { connect, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
 import { createAgendaView } from './agenda.js'
@@ -7,6 +7,7 @@ import {
 } from './propresenter.js'
 import { createStageView, stageOptions, fmtTimer } from './stage.js'
 import { adoptServerPrefs, appearanceHtml, bindAppearance, currentPrefs, nextTheme, setPrefs, themeIcon, THEMES, onPrefsChange } from './theme.js'
+import { avatarHtml, pickAvatar, removeAvatar } from './avatar.js'
 import { roleRights, visibleOutputs, visibleLayouts, canEditLayout, canEditOutput, claimLayouts, publicOrigin, chatFor, chatRoleFor } from './rights.js'
 import {
   attachDevice, attachNetworkStream, makeVideo, makeTestPattern, mediaKey,
@@ -22,7 +23,7 @@ const CLIENT_ID = uid('c')
 const PAGES = ['uebersicht', 'eingaenge', 'layouts', 'einstellungen', 'zugang']
 const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'zugang']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
-const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'companion']
+const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'companion', 'bildschirme']
 const SOURCE_TYPES = {
   device: 'Capture-Gerät',
   stream: 'Netzwerk-Stream',
@@ -429,7 +430,7 @@ $('#output-add').addEventListener('click', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Übersicht: Bildschirme am Server (welcher Multiview auf welchem Anschluss)
+// Einstellungen: Bildschirme am Server (welcher Multiview auf welchem Anschluss)
 // ---------------------------------------------------------------------------
 
 /** "HDMI-A-1" → "HDMI 1", "DP-2" → "DisplayPort 2" */
@@ -2388,7 +2389,8 @@ function renderUserCard() {
         <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></a>`
     return
   }
-  card.innerHTML = `<div class="avatar">${esc(initials(user?.name))}</div>
+  renderProfileCard()
+  card.innerHTML = `<button type="button" class="avatar-btn" id="avatar-pick" title="Profilbild ändern" aria-label="Profilbild ändern">${avatarHtml(user)}</button>
     <div class="user-meta"><b>${esc(user?.name)}</b><span>${esc(user?.roleName || '')}</span></div>
     <div class="user-actions">
       <a class="icon-btn" href="/login.html?wechseln=1&next=${encodeURIComponent(location.pathname + location.hash)}" title="Konto oder Rolle wechseln" aria-label="Konto wechseln">
@@ -2399,6 +2401,97 @@ function renderUserCard() {
   // Angemeldet mit einer Rolle: direkt zum Admin wechseln können
   $('#admin-login-btn').hidden = !me?.access?.enabled || isAdmin()
 }
+
+// --- Profil (Übersicht): großes Profilbild, Name, Rolle und App-Kacheln ------------
+
+const APP_TILES = [
+  { href: '#/layouts', label: 'Layouts', color: 'blue', icon: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 10h18M10 10v10"/>' },
+  { href: '#/eingaenge', label: 'Eingänge', color: 'green', admin: true, icon: '<rect x="2.5" y="6" width="13" height="12" rx="2.5"/><path d="M15.5 10.5 21 7.5v9l-5.5-3"/>' },
+  { href: '#/einstellungen', label: 'Einstellungen', color: 'gray', admin: true, icon: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/>' },
+  { href: '#/zugang', label: 'Benutzer', color: 'orange', admin: true, icon: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16.5 14.2a5 5 0 0 1 5 5.3"/>' },
+  { href: '/remote.html', label: 'Handy', color: 'purple', icon: '<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18.5h2"/>' },
+  { open: 'qr-dialog', label: 'QR-Codes', color: 'teal', icon: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/>' },
+  { open: 'appearance-dialog', label: 'Darstellung', color: 'pink', icon: '<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.8 1.7-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z"/>' },
+]
+
+function renderProfileCard() {
+  const el = $('#profile-card')
+  if (!el) return
+  const tiles = APP_TILES.filter((t) => !t.admin || isAdmin())
+    .map((t) => {
+      const inner = `<span class="app-icon ${t.color}"><svg viewBox="0 0 24 24" aria-hidden="true">${t.icon}</svg></span><span class="app-label">${t.label}</span>`
+      return t.open
+        ? `<button type="button" class="app-tile" data-open="${t.open}">${inner}</button>`
+        : `<a class="app-tile" href="${t.href}">${inner}</a>`
+    })
+    .join('')
+  const outputs = myOutputs()
+  const live = outputs.filter((o) => o.layoutId).length
+  el.innerHTML = `<div class="glass profile-me">
+      ${user?.open ? avatarHtml({ name: 'M V' }, { cls: 'avatar xl' }) : `<button type="button" class="avatar-btn" data-avatar-pick title="Profilbild ändern" aria-label="Profilbild ändern">${avatarHtml(user, { cls: 'avatar xl' })}<span class="avatar-edit" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span></button>`}
+      <h2>${esc(user?.open ? 'Multiview' : user?.name)}</h2>
+      <p>${esc(user?.open ? 'Zugang offen' : user?.roleName || '')}${isAdmin() && !user?.open && user?.roleName !== 'Admin' ? ' · Admin' : ''}</p>
+      ${user?.open ? '' : `<div class="profile-actions">
+        <button type="button" class="btn small" data-avatar-pick>${user?.avatar ? 'Bild ändern' : 'Profilbild hinzufügen'}</button>
+        ${user?.avatar ? '<button type="button" class="btn small link" data-avatar-remove>Entfernen</button>' : ''}
+      </div>`}
+      <p class="profile-stat"><b>${outputs.length}</b> Multiview${outputs.length === 1 ? '' : 's'} · <b>${live}</b> mit Layout</p>
+    </div>
+    <div class="glass app-grid">${tiles}</div>`
+  if (!user?.open) {
+    el.append(loginQrCard)
+    if (!loginQrCard.dataset.started) renewHeroQr()
+  }
+  el.classList.toggle('with-qr', !user?.open)
+}
+
+// Anmelde-QR auf der Übersicht: Handy-Kamera drauf → das Handy ist als dieselbe Person/Rolle
+// angemeldet (und für heute freigeschaltet). Ein Code gilt einmal und 10 Minuten – darum
+// erneuert er sich alle 2 Minuten von selbst, damit immer ein gültiger auf dem Bildschirm steht.
+const loginQrCard = document.createElement('div')
+loginQrCard.className = 'glass qr-hero'
+loginQrCard.innerHTML = `<img alt="QR-Code zum Anmelden am Handy" width="168" height="168">
+  <div class="qr-hero-text">
+    <h3>Handy anmelden</h3>
+    <p class="muted">Mit der Handy-Kamera scannen – das Handy ist dann gleich angemeldet.</p>
+    <button type="button" class="btn small">Neuer Code</button>
+  </div>`
+let heroQrTimer = null
+async function renewHeroQr() {
+  loginQrCard.dataset.started = '1'
+  clearTimeout(heroQrTimer)
+  const img = loginQrCard.querySelector('img')
+  try {
+    if (document.visibilityState !== 'hidden') {
+      const res = await fetch('/api/me/qr', { method: 'POST' })
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.error)
+      img.src = qrUrl(`${publicOrigin(server)}/q/${data.token}`)
+      img.style.opacity = ''
+    }
+  } catch {
+    img.style.opacity = '0.25'
+  }
+  heroQrTimer = setTimeout(renewHeroQr, 2 * 60 * 1000)
+}
+loginQrCard.querySelector('button').addEventListener('click', renewHeroQr)
+document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && loginQrCard.dataset.started && renewHeroQr())
+
+async function changeAvatar(remove) {
+  try {
+    const avatar = remove ? await removeAvatar() : await pickAvatar()
+    if (avatar === undefined) return
+    user = { ...user, avatar }
+    renderUserCard()
+  } catch (err) {
+    alert(err.message)
+  }
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#avatar-pick, [data-avatar-pick]')) changeAvatar(false)
+  else if (e.target.closest('[data-avatar-remove]')) changeAvatar(true)
+})
 
 $('#user-card').addEventListener('click', async (e) => {
   if (!e.target.closest('#logout-btn')) return
@@ -2780,14 +2873,14 @@ async function loadSessions() {
     const list = await fetch('/api/access/sessions').then((r) => r.json())
     const when = (ms) => new Date(ms).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     box.innerHTML = `<div class="table-wrap"><table class="table">
-      <thead><tr><th>Name</th><th>Rolle</th><th>Zuletzt aktiv</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Rolle</th><th>IP-Adresse</th><th>Zuletzt aktiv</th><th></th></tr></thead>
       <tbody>${list
         .map(
-          (s) => `<tr><td><b>${esc(s.name)}</b>${s.self ? ' <span class="badge accent">dieses Gerät</span>' : ''}${s.live ? ' <span class="pill ok" style="height:22px">online</span>' : ''}</td>
-            <td>${esc(s.roleName)}</td><td class="muted">${esc(when(s.seen))}</td>
+          (s) => `<tr><td class="session-who">${avatarHtml(s, { cls: 'avatar sm' })}<b>${esc(s.name)}</b>${s.self ? ' <span class="badge accent">dieses Gerät</span>' : ''}${s.live ? ' <span class="pill ok" style="height:22px">online</span>' : ''}</td>
+            <td>${esc(s.roleName)}</td><td>${s.ip ? `<code class="ip">${esc(s.ip)}</code>` : '<span class="muted">–</span>'}</td><td class="muted">${esc(when(s.seen))}</td>
             <td style="text-align:right">${s.self ? '' : `<button class="btn small danger" data-end-session="${esc(s.id)}">Abmelden</button>`}</td></tr>`,
         )
-        .join('') || '<tr><td colspan="4" class="muted">Niemand angemeldet.</td></tr>'}</tbody></table></div>`
+        .join('') || '<tr><td colspan="5" class="muted">Niemand angemeldet.</td></tr>'}</tbody></table></div>`
   } catch {
     box.innerHTML = '<p class="muted">Konnte die Liste nicht laden.</p>'
   }
@@ -3039,6 +3132,7 @@ $('#qr-dialog').addEventListener('close', () => clearInterval(qrTimer))
 async function start() {
   me = await loadMe()
   user = me.user
+  if (me.access?.enabled) watchLogin(loginKey(user))
   connect(onMessage, (online) => {
     if (!online) setSaveState('error', 'Server nicht erreichbar')
     else if (!saveTimer) setSaveState('')

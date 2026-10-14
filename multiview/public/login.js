@@ -2,6 +2,8 @@
 // Unter /.jms-auth/ ist das die zentrale Anmeldung für die anderen Dienste (Kesher, Dashboard …):
 // Dort kommt – wenn eingeschaltet – vorher einmal am Tag der Tagescode (QR-Code oder 6 Ziffern).
 import { applyPrefs, currentPrefs } from './theme.js'
+import { avatarHtml } from './avatar.js'
+import { watchLogin, loginKey } from './common.js'
 
 applyPrefs(currentPrefs())
 
@@ -234,6 +236,9 @@ async function showLoginStep() {
     $('#current-text').textContent = `Angemeldet als ${me.user.name} (${me.user.roleName}). Hier wechselst du zu einem anderen Konto oder einer anderen Rolle.`
     $('#current-back').href = next
     $('#current-note').hidden = false
+  } else if (!params.has('wechseln')) {
+    // In einem anderen Tab oder Dienst angemeldet: von selbst weiter
+    watchLogin('', { url: api('/api/me'), onChange: (m) => m.user && !m.user.open && location.replace(next) })
   }
   $('#login-step').hidden = false
 
@@ -249,6 +254,10 @@ async function showLoginStep() {
   ].join('')
   if (!roles.length) $('#error').textContent = 'Kesher ist gerade nicht erreichbar – nur die Admin-Anmeldung geht.'
   $('#name').value = remembered('name')
+  // Großer Avatar über dem Formular, wächst beim Tippen des Namens mit
+  const showAvatar = () => ($('#auth-avatar').innerHTML = avatarHtml({ name: $('#name').value.trim() || '?' }))
+  $('#name').addEventListener('input', showAvatar)
+  showAvatar()
 
   function syncPin() {
     const admin = $('#role').value === 'admin'

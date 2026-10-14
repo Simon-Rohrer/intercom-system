@@ -50,6 +50,8 @@ type channelAudioFeedRouting struct {
 type mediaSnapshotClient struct {
 	userID      string
 	roleID      string
+	secondary   bool
+	connectedAt time.Time
 	listenRooms map[string]struct{}
 	talkRooms   map[string]struct{}
 }
@@ -743,10 +745,22 @@ func (m *MediaManager) recomputeSourceRoutingWithSnapshotLocked(sourceToken stri
 	directTargetUserID := m.directActive[sourceToken]
 	var directTargetPeerToken string
 	if directTargetUserID != "" {
+		// Hat die Person mehrere Geräte, geht das Direktgespräch an das echte Gerät
+		// (nicht an eine Multiview-Kachel als Zweitgerät), sonst an das neueste –
+		// vorher entschied die zufällige Reihenfolge der Map.
+		var best mediaSnapshotClient
+		found := false
 		for _, p := range m.peers {
-			if p.userID == directTargetUserID {
+			if p.userID != directTargetUserID {
+				continue
+			}
+			info := snapshot.clients[p.token]
+			better := !found ||
+				(best.secondary && !info.secondary) ||
+				(best.secondary == info.secondary && info.connectedAt.After(best.connectedAt))
+			if better {
+				best, found = info, true
 				directTargetPeerToken = p.token
-				break
 			}
 		}
 	}
@@ -812,6 +826,8 @@ func (m *MediaManager) buildHubSnapshotLocked() mediaHubSnapshot {
 		snapshot.clients[token] = mediaSnapshotClient{
 			userID:      c.user.ID,
 			roleID:      c.session.RoleID,
+			secondary:   c.session.Secondary,
+			connectedAt: c.connectedAt,
 			listenRooms: cloneRoomSet(c.listenRooms),
 			talkRooms:   cloneRoomSet(c.talkRooms),
 		}

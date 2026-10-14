@@ -1291,3 +1291,314 @@ h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
 .day-code-info { align-items: center; }
 .day-code-info .muted { max-width: 40ch; }
 .day-qr-monitor { justify-content: center; }
+
+/* ==================================================================
+   iCloud-Stil: blaues Wellen-Wallpaper, Karten aus mattem Glas mit großem
+   Radius, Profilkarte mit großem Bild und bunte App-Kacheln.
+   --bg bleibt eine deckende Farbe für Stellen, die nicht durchscheinen dürfen.
+   ================================================================== */
+:root {
+  --bg: #e8f0fd;
+  --surface: rgba(255, 255, 255, 0.62);
+  --surface-2: rgba(255, 255, 255, 0.7);
+  --surface-3: rgba(255, 255, 255, 0.85);
+  --line: rgba(20, 40, 90, 0.1);
+  --line-strong: rgba(20, 40, 90, 0.18);
+  --sidebar-bg: rgba(255, 255, 255, 0.5);
+  --nav-active: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.7);
+  --dialog-bg: rgba(246, 249, 255, 0.92);
+  --wallpaper:
+    radial-gradient(120% 80% at 85% 10%, rgba(120, 175, 255, 0.55), transparent 60%),
+    radial-gradient(90% 70% at 10% 95%, rgba(150, 120, 255, 0.28), transparent 60%),
+    radial-gradient(140% 60% at 50% 55%, rgba(90, 160, 255, 0.35), transparent 70%),
+    linear-gradient(160deg, #eaf2ff 0%, #cfe0ff 45%, #e6ecff 100%);
+  --radius: 22px;
+}
+:root[data-theme="dark"] {
+  --bg: #0a1d57;
+  --surface: rgba(18, 36, 98, 0.5);
+  --surface-2: rgba(255, 255, 255, 0.08);
+  --surface-3: rgba(255, 255, 255, 0.14);
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --sidebar-bg: rgba(8, 22, 70, 0.45);
+  --nav-active: rgba(255, 255, 255, 0.12);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --dialog-bg: rgba(14, 30, 86, 0.88);
+  --wallpaper:
+    radial-gradient(110% 70% at 80% 0%, rgba(46, 122, 255, 0.75), transparent 60%),
+    radial-gradient(80% 60% at 0% 100%, rgba(30, 80, 220, 0.6), transparent 65%),
+    radial-gradient(160% 55% at 40% 60%, rgba(22, 92, 230, 0.45), transparent 70%),
+    linear-gradient(165deg, #07174d 0%, #0d2f8f 48%, #071338 100%);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --bg: #0a1d57;
+    --surface: rgba(18, 36, 98, 0.5);
+    --surface-2: rgba(255, 255, 255, 0.08);
+    --surface-3: rgba(255, 255, 255, 0.14);
+    --line: rgba(255, 255, 255, 0.09);
+    --line-strong: rgba(255, 255, 255, 0.16);
+    --sidebar-bg: rgba(8, 22, 70, 0.45);
+    --nav-active: rgba(255, 255, 255, 0.12);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --dialog-bg: rgba(14, 30, 86, 0.88);
+    --wallpaper:
+      radial-gradient(110% 70% at 80% 0%, rgba(46, 122, 255, 0.75), transparent 60%),
+      radial-gradient(80% 60% at 0% 100%, rgba(30, 80, 220, 0.6), transparent 65%),
+      radial-gradient(160% 55% at 40% 60%, rgba(22, 92, 230, 0.45), transparent 70%),
+      linear-gradient(165deg, #07174d 0%, #0d2f8f 48%, #071338 100%);
+  }
+}
+
+
+/* Glasflächen */
+.card, .status-tile, .glass, .sidebar, .list-panel {
+  background: var(--surface);
+  border: 1px solid var(--glass-border);
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  backdrop-filter: blur(30px) saturate(160%);
+}
+.card { border-radius: var(--radius); }
+.status-tile { border-radius: 18px; }
+.sidebar { background: var(--sidebar-bg); border-width: 0 1px 0 0; }
+.topbar {
+  background: transparent;
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+.dialog {
+  background: var(--dialog-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  -webkit-backdrop-filter: blur(40px) saturate(170%);
+  backdrop-filter: blur(40px) saturate(170%);
+}
+.dialog::backdrop { background: rgba(4, 12, 40, 0.45); backdrop-filter: blur(6px); }
+input, select, textarea { background-color: var(--surface-2); }
+/* Sticky-Leisten mit deckendem Verlauf: halbtransparent, damit das Wallpaper durchscheint */
+.page-head.sticky, .inspector-head { background: transparent; }
+
+/* Avatare: Bild oder Initialen auf Farbverlauf */
+.avatar { color: #fff; overflow: hidden; width: var(--av-size, 34px); height: var(--av-size, 34px); }
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar.sm { --av-size: 28px; font-size: 11px; }
+.avatar.xl { --av-size: 104px; font-size: 38px; font-weight: 600; box-shadow: 0 8px 28px rgba(0, 20, 80, 0.3); }
+.avatar-btn {
+  position: relative;
+  border: 0;
+  padding: 0;
+  background: none;
+  border-radius: 50%;
+  cursor: pointer;
+  flex: none;
+  font: inherit;
+}
+.avatar-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.avatar-edit {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #fff;
+  border: 3px solid var(--bg);
+}
+.avatar-edit svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+.session-who { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* Übersicht: Profilkarte + App-Kacheln (wie iCloud) */
+.profile-hero { display: grid; grid-template-columns: minmax(240px, 300px) 1fr; gap: 20px; margin-bottom: 20px; }
+.profile-hero:empty { display: none; }
+.glass { border-radius: var(--radius); }
+.profile-me {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 26px 20px 22px;
+  gap: 4px;
+}
+.profile-me h2 { margin: 12px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.profile-me > p { margin: 0; color: var(--muted); font-size: 14px; }
+.profile-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; justify-content: center; }
+.profile-me .profile-stat { margin-top: 14px; font-size: 13px; }
+.profile-stat b { color: var(--text); }
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, 94px);
+  justify-content: center;
+  align-content: center;
+  gap: 18px 10px;
+  padding: 24px;
+}
+.app-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-decoration: none;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 16px;
+  transition: transform 0.15s ease;
+}
+.app-tile:hover { transform: translateY(-2px); }
+.app-tile:active { transform: scale(0.96); }
+.app-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(0, 20, 80, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.app-icon svg { width: 30px; height: 30px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.app-icon.blue { background: linear-gradient(160deg, #5ac8fa, #007aff); }
+.app-icon.green { background: linear-gradient(160deg, #6ee08a, #28b04a); }
+.app-icon.gray { background: linear-gradient(160deg, #a5a5ad, #6c6c74); }
+.app-icon.orange { background: linear-gradient(160deg, #ffb340, #ff7a00); }
+.app-icon.purple { background: linear-gradient(160deg, #c38bff, #8e44ec); }
+.app-icon.teal { background: linear-gradient(160deg, #6be0e8, #12a3b8); }
+.app-icon.pink { background: linear-gradient(160deg, #ff8fb1, #ff2d6f); }
+.app-label { font-size: 13px; font-weight: 500; }
+@media (max-width: 760px) {
+  .profile-hero { grid-template-columns: 1fr; }
+  .app-grid { grid-template-columns: repeat(4, 1fr); padding: 18px 12px; gap: 14px 4px; }
+  .app-icon { width: 54px; height: 54px; border-radius: 14px; }
+}
+
+/* Anmeldung im iCloud-Stil: Glaskarte mittig auf dem Wallpaper */
+.auth-page { padding: 32px 16px; }
+.auth-card {
+  width: min(440px, 100%);
+  padding: 36px 32px 30px;
+  border-radius: 28px;
+  box-shadow: 0 30px 80px rgba(0, 20, 80, 0.28);
+}
+.auth-card .brand { justify-content: center; padding-bottom: 6px; }
+.auth-card .brand-logo { transform: scale(1.25); }
+.auth-card h1 { text-align: center; font-size: 28px; margin: 0; }
+.auth-card .auth-step > div:first-child > .muted { text-align: center; }
+.auth-card input, .auth-card select { height: 46px; border-radius: 12px; font-size: 16px; }
+.auth-card .btn.primary { height: 48px; border-radius: 14px; font-size: 16px; font-weight: 600; }
+.auth-card .scan-btn { height: 46px; border-radius: 14px; }
+.auth-avatar { display: flex; justify-content: center; margin: -4px 0 2px; }
+.auth-avatar .avatar { --av-size: 76px; font-size: 28px; font-weight: 600; box-shadow: 0 8px 24px rgba(0, 20, 80, 0.3); }
+.auth-foot { text-align: center; font-size: 12.5px; color: var(--muted); margin: 0; }
+.subnav { background: transparent; -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+.profile-actions .btn.link { background: none; border-color: transparent; box-shadow: none; }
+
+/* ==================================================================
+   Hintergrundbilder: als feste Ebene hinter der Seite. background-attachment: fixed
+   funktioniert auf iPhone/iPad nicht – dort würde das Bild über die ganze Seitenlänge gezogen.
+   ================================================================== */
+body { background: var(--bg); }
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--wallpaper);
+  background-size: cover;
+  background-position: center;
+  pointer-events: none;
+}
+.rm-body { background: var(--bg); }
+
+/* Auswahl im Dialog „Darstellung“ */
+.wallpapers {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 10px;
+  margin-top: 16px;
+}
+.wp-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.wp-thumb {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  border-radius: 12px;
+  background-size: cover;
+  background-position: center;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.wp-thumb i {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+}
+.wp-choice:hover .wp-thumb { transform: translateY(-1px); }
+.wp-choice.active .wp-thumb { box-shadow: 0 0 0 3px var(--accent), inset 0 0 0 1px var(--line-strong); }
+.wp-choice:focus-visible { outline: none; }
+.wp-choice:focus-visible .wp-thumb { box-shadow: 0 0 0 3px var(--accent); }
+.wp-name { font-size: 12.5px; font-weight: 500; text-align: center; }
+.wp-choice.active .wp-name { font-weight: 700; }
+@media (max-width: 480px) {
+  .wallpapers { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+/* Text direkt auf hellen Stellen eines Bildes lesbar halten */
+:root[data-theme="dark"] .page-head :is(h1, .lead),
+:root[data-theme="dark"] .section-head :is(h2, h3, .muted) { text-shadow: 0 1px 14px rgba(0, 0, 0, 0.55); }
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .page-head :is(h1, .lead),
+  :root[data-theme="system"] .section-head :is(h2, h3, .muted) { text-shadow: 0 1px 14px rgba(0, 0, 0, 0.55); }
+}
+
+/* Übersicht: Anmelde-QR neben Profil und App-Kacheln */
+.profile-hero.with-qr { grid-template-columns: minmax(240px, 300px) 1fr minmax(210px, 250px); }
+.qr-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 20px 18px;
+}
+.qr-hero img { width: 168px; height: 168px; border-radius: 16px; background: #fff; padding: 8px; transition: opacity 0.2s; }
+.qr-hero h3 { margin: 8px 0 0; font-size: 17px; font-weight: 700; }
+.qr-hero p { margin: 0; font-size: 13px; line-height: 1.4; }
+.qr-hero .btn { margin-top: 10px; }
+.qr-hero-text { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+@media (max-width: 1180px) {
+  .profile-hero.with-qr { grid-template-columns: minmax(240px, 300px) 1fr; }
+  .profile-hero.with-qr .qr-hero { grid-column: 1 / -1; flex-direction: row; text-align: left; gap: 18px; }
+  .profile-hero.with-qr .qr-hero img { width: 132px; height: 132px; flex: none; }
+  .profile-hero.with-qr .qr-hero-text { align-items: flex-start; }
+}
+@media (max-width: 760px) {
+  .profile-hero.with-qr { grid-template-columns: 1fr; }
+}
+
+/* Seitenleiste ausblenden (Knopf links in der Kopfleiste, nur auf großen Bildschirmen) */
+.sidebar-btn { display: none; }
+@media (min-width: 981px) {
+  .icon-btn.sidebar-btn { display: inline-grid; }
+  body.sidebar-collapsed .sidebar { display: none; }
+  body.sidebar-collapsed .sidebar-btn { color: var(--accent-text); }
+}

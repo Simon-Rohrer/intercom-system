@@ -174,6 +174,7 @@ function createAccess({
   onRevoke = () => {},
   kesherActiveRoles = async () => [],
   releaseKesherRole = async () => {},
+  ipOf = () => '',
 }) {
   const file = path.join(dataDir, 'access-secret.json')
   // { adminPin: { salt, hash } | { kesher: true }, sessions: { sha256(token): session },
@@ -228,7 +229,7 @@ function createAccess({
   }
 
   /** group: Anmeldungen derselben Person (Rechner + per QR-Code angemeldetes Handy). */
-  function newSession({ name, roleId, admin, group }) {
+  function newSession({ name, roleId, admin, group }, ip = '') {
     prune()
     const token = randomToken()
     const id = crypto.randomBytes(6).toString('hex')
@@ -240,6 +241,7 @@ function createAccess({
       admin: Boolean(admin),
       created: Date.now(),
       seen: Date.now(),
+      ip: ip || undefined,
     }
     write()
     return token
@@ -256,6 +258,12 @@ function createAccess({
     if (!token) return null
     const s = secret.sessions[sha256(token)]
     if (!s) return null
+    // Adresse des Geräts merken (für „Angemeldet“ beim Admin) – ändert sich z. B. beim WLAN-Wechsel
+    const ip = ipOf(req)
+    if (ip && s.ip !== ip) {
+      s.ip = ip
+      writeSoon()
+    }
     if (Date.now() - (s.seen ?? 0) > 60_000) {
       s.seen = Date.now()
       writeSoon()
@@ -360,7 +368,7 @@ function createAccess({
       endSessions(holders, active.length ? `übernommen von ${cleanName}` : 'abgelaufen')
       if (active.length) log(`Zugang: ${cleanName} übernimmt die Rolle ${roleId} von ${active.map((s) => s.name).join(', ')}`)
     }
-    const token = newSession({ name: cleanName, roleId, admin })
+    const token = newSession({ name: cleanName, roleId, admin }, ipOf(req))
     res.setHeader('Set-Cookie', cookieFor(token, req))
     log(`Zugang: ${cleanName} angemeldet als ${admin ? 'Admin' : roleId}`)
   }
@@ -416,7 +424,7 @@ function createAccess({
     qrTokens.delete(key)
     if (!entry || entry.expires < Date.now()) return false
     if (!enabled()) return true // offen: keine Anmeldung nötig
-    const session = newSession(entry.user)
+    const session = newSession(entry.user, ipOf(req))
     res.setHeader('Set-Cookie', cookieFor(session, req))
     log(`Zugang: ${entry.user.name} per QR-Code am Handy angemeldet`)
     return true
@@ -424,7 +432,7 @@ function createAccess({
 
   function sessions() {
     return Object.values(secret.sessions)
-      .map(({ id, name, roleId, admin, created, seen }) => ({ id, name, roleId, admin, created, seen, live: isLive(id) }))
+      .map(({ id, name, roleId, admin, created, seen, ip }) => ({ id, name, roleId, admin, created, seen, ip: ip || null, live: isLive(id) }))
       .sort((a, b) => b.seen - a.seen)
   }
 
@@ -527,13 +535,18 @@ function createAccess({
       throw Object.assign(new Error('Der Code stimmt nicht – es gilt immer nur der Code von heute'), { status: 403 })
     }
     codeFails.delete(ip)
+    approveDevice(ip, req, res)
+    log(`Zugang: Gerät ${ip} mit dem Tagescode freigeschaltet`)
+  }
+
+  /** Gerät für heute freischalten (Tagescode eingegeben oder Anmelde-QR eines angemeldeten Nutzers gescannt). */
+  function approveDevice(ip, req, res) {
     const token = randomToken()
-    secret.devices[sha256(token)] = { gen: current.gen, created: now, ip: String(ip ?? '') }
+    secret.devices[sha256(token)] = { gen: dayCode(Date.now()).gen, created: Date.now(), ip: String(ip ?? '') }
     write()
     // Bis zum übernächsten Morgen reicht – danach braucht es ohnehin den neuen Code
     const secure = req.secure || req.get('x-forwarded-proto') === 'https' ? '; Secure' : ''
     res.append('Set-Cookie', `${DEVICE_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${2 * 86400}${secure}`)
-    log(`Zugang: Gerät ${ip} mit dem Tagescode freigeschaltet`)
   }
 
   // --- Prüfung für Caddy (forward_auth) ---------------------------------------
@@ -550,6 +563,15 @@ function createAccess({
   function deviceStatus(ip, req) {
     const required = gatewayActive() && !exemptIp(ip)
     return { required, approved: !required || deviceApproved(req) }
+  }
+
+  /**
+   * Darf diese Anfrage an die Schnittstellen des Multiview selbst (Zustand, Chat, Companion-Befehle,
+   * ProPresenter)? Angemeldete Nutzer, feste Geräte und der Server selbst (Kiosk, Companion).
+   * Ohne eingeschaltete Anmeldung jeder.
+   */
+  function trusted(ip, req) {
+    return Boolean(userOf(req)) || exemptIp(ip)
   }
 
   function check({ service, ip }, req) {
@@ -580,7 +602,7 @@ function createAccess({
 
   return {
     enabled, pinSource, userOf, sessionIdOf, occupiedRoles, occupiedForLogin, login, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession,
-    gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, check, createTicket,
+    gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, approveDevice, check, trusted, createTicket,
     flush: write,
   }
 }

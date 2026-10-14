@@ -142,6 +142,26 @@ test('der Server selbst ist auch über seine LAN-Adresse frei', async (t) => {
   assert.equal(access.check({ service: 'kesher', ip: '192.168.0.22' }, fakeReq()).action, 'code')
 })
 
+test('Schnittstellen des Multiview: nur angemeldet, feste Geräte oder der Server selbst', async () => {
+  const { access } = await setup()
+  access.setGateway({ enabled: true, exempt: [{ network: '192.168.0.0/28', label: 'Stationen' }] })
+  assert.equal(access.trusted('192.168.0.99', fakeReq()), false)
+  assert.equal(access.trusted('192.168.0.5', fakeReq()), true)
+  assert.equal(access.trusted('127.0.0.1', fakeReq()), true)
+  // Tagescode allein reicht nicht, erst mit Name und Rolle
+  const res = fakeRes()
+  access.redeemDayCode(access.dayCode().code, '192.168.0.99', fakeReq(), res)
+  assert.equal(access.trusted('192.168.0.99', fakeReq({ jms_device: res.cookies.jms_device })), false)
+  const session = await loginAs(access, 'Simon', 'cam1')
+  assert.equal(access.trusted('192.168.0.99', fakeReq({ mv_session: session })), true)
+})
+
+test('ohne eingeschaltete Anmeldung sind die Schnittstellen offen', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
+  const access = createAccess({ dataDir: dir, log: () => {} })
+  assert.equal(access.trusted('192.168.0.99', fakeReq()), true)
+})
+
 test('ohne Admin-PIN lässt sich die Anmeldung für alle Dienste nicht einschalten', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
   const access = createAccess({ dataDir: dir, log: () => {} })

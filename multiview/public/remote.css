@@ -541,3 +541,41 @@ body.booting .rm-main { opacity: 0; }
 .rm-viewonly { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); color: var(--muted); font-size: 13.5px; }
 .rm-viewonly .icon { width: 18px; height: 18px; flex: none; }
 .rm-card.folded .rm-viewonly { display: none; }
+
+/* ---- iCloud-Stil: Wallpaper aus admin.css, Karten und Leisten aus mattem Glas ---- */
+/* Hintergrund kommt aus admin.css (body::before) */
+.rm-head { background: transparent; }
+.rm-avatar {
+  border: 0;
+  padding: 0;
+  overflow: hidden;
+  width: 44px;
+  height: 44px;
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(0, 20, 80, 0.3), 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+.rm-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rm-avatar:active { transform: scale(0.94); }
+.rm-icon { background: var(--surface); box-shadow: inset 0 0 0 1px var(--glass-border); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+.rm-card {
+  border-radius: 24px;
+  box-shadow: inset 0 0 0 1px var(--glass-border), 0 10px 30px rgba(0, 20, 80, 0.12);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+}
+.rm-tabs {
+  left: 12px;
+  right: 12px;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  height: 64px;
+  padding: 6px 10px;
+  border-radius: 24px;
+  background: var(--dialog-bg);
+  box-shadow: inset 0 0 0 1px var(--glass-border), 0 12px 30px rgba(0, 20, 80, 0.3);
+  -webkit-backdrop-filter: blur(30px) saturate(170%);
+  backdrop-filter: blur(30px) saturate(170%);
+}
+.rm-tabs button { border-radius: 18px; }
+.rm-main { padding-bottom: calc(var(--tabs-h) + 40px); }
+.rm-title { font-size: 32px; }
+.rm-tabs { max-width: 616px; margin: 0 auto; }

@@ -887,6 +887,9 @@ export function useIntercomSession({
   const incomingAttentionTimeoutRef = useRef<number | null>(null);
   const roomSwitchTimerRef = useRef<number | null>(null);
   const pendingRoomMatrixEchoKeyRef = useRef<string | null>(null);
+  // Zuletzt gesendete Kanalauswahl: bis der Server sie bestätigt (höchstens 2 s), darf eine
+  // ältere Presence-Meldung sie nicht zurücksetzen – sonst springt ein Kanalwechsel zurück.
+  const pendingRoomMatrixRef = useRef<{ key: string; until: number } | null>(null);
   const voiceModeRef = useRef<"always_on" | "ptt">(
     resolveVoiceModeForClient(initialVoiceMode),
   );
@@ -2025,6 +2028,7 @@ export function useIntercomSession({
     if (suppressNextDebounced) {
       pendingRoomMatrixEchoKeyRef.current = syncKey;
     }
+    pendingRoomMatrixRef.current = { key: syncKey, until: Date.now() + 2000 };
     ws.send(
       JSON.stringify({
         type: "set_room_matrix",
@@ -2167,16 +2171,7 @@ export function useIntercomSession({
   // ── Voice mode actions ──
   function setAlwaysOn(enabled: boolean) {
     restoreAlwaysOnAfterDirectPttRef.current = false;
-    if (forcePttOnMobile) {
-      if (voiceModeRef.current !== "ptt") {
-        setVoiceMode("ptt");
-        voiceModeRef.current = "ptt";
-      }
-      setPttPressed(false);
-      setPttPressedChannelId(null);
-      sendVoiceState("always_off");
-      return;
-    }
+    // Handys starten im PTT-Modus (resolveVoiceModeForClient), dürfen Always on aber selbst einschalten.
     if (enabled && enableDirectPpt) {
       if (voiceModeRef.current !== "ptt") {
         setVoiceMode("ptt");
@@ -2216,12 +2211,14 @@ export function useIntercomSession({
   // ── PTT actions ──
   function startPtt() {
     if (!hasLocalTransmitTrack()) return;
+    pttPressedRef.current = true; // sofort, nicht erst nach dem Rendern (Presence-Abgleich)
     setPttPressed(true);
     clearNativePttStopTimer();
     sendVoiceState("ptt_start");
     nativeAudio?.setPtt(true);
   }
   function stopPtt() {
+    pttPressedRef.current = false;
     setPttPressed(false);
     sendVoiceState("ptt_stop");
     scheduleNativePttStop();
@@ -3420,25 +3417,36 @@ export function useIntercomSession({
       }
       pendingInitialRoomRestoreRef.current = false;
     }
-    setListenRoomIds((prev) =>
-      sameStringArray(prev, selfPresence.listenRooms)
-        ? prev
-        : selfPresence.listenRooms,
-    );
-    setTalkRoomIds((prev) =>
-      sameStringArray(prev, selfPresence.talkRooms)
-        ? prev
-        : selfPresence.talkRooms,
-    );
-    const nextVoiceMode =
-      resolveVoiceModeForClient(
-        selfPresence.voiceMode === "always_on" ? "always_on" : "ptt",
+    // Noch nicht bestätigte eigene Kanalauswahl nicht mit einer älteren Meldung überschreiben
+    const pendingMatrix = pendingRoomMatrixRef.current;
+    const serverMatrixKey = roomMatrixSyncKey(selfPresence.listenRooms, selfPresence.talkRooms);
+    const matrixPending =
+      !!pendingMatrix && pendingMatrix.key !== serverMatrixKey && Date.now() < pendingMatrix.until;
+    if (!matrixPending) {
+      pendingRoomMatrixRef.current = null;
+      setListenRoomIds((prev) =>
+        sameStringArray(prev, selfPresence.listenRooms)
+          ? prev
+          : selfPresence.listenRooms,
       );
+      setTalkRoomIds((prev) =>
+        sameStringArray(prev, selfPresence.talkRooms)
+          ? prev
+          : selfPresence.talkRooms,
+      );
+    }
+    const nextVoiceMode =
+      selfPresence.voiceMode === "always_on" ? "always_on" : "ptt";
     if (nextVoiceMode !== voiceModeRef.current) {
       setVoiceMode(nextVoiceMode);
       voiceModeRef.current = nextVoiceMode;
     }
-    if (nextVoiceMode !== "always_on" && !selfPresence.micEnabled) {
+    // Gerade gedrückte Sprechtaste nicht durch eine ältere Meldung (Mikro noch aus) lösen
+    const holdingLocally =
+      pttPressedRef.current ||
+      !!directPttPressedUserIdRef.current ||
+      !!broadcastPttPressedRef.current;
+    if (nextVoiceMode !== "always_on" && !selfPresence.micEnabled && !holdingLocally) {
       setPttPressed(false);
       setdirectPttPressedUserId(null);
       setBroadcastPttPressed(null);

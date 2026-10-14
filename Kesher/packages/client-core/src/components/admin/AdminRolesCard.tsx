@@ -14,6 +14,17 @@ type AdminRolesCardProps = {
 
 type RoleEditorMode = "create" | "edit" | "duplicate";
 
+/**
+ * Address of the Multiview's "Benutzer & Rechte" page, where roles are managed centrally.
+ * Kesher runs on :8443 (or under a kesher. or intercom. name), the Multiview on :8090 (multiview. name).
+ */
+export function multiviewRolesUrl(loc: Pick<Location, "protocol" | "hostname"> = window.location): string {
+  const host = loc.hostname;
+  const named = /^(kesher|intercom)\./i.test(host);
+  const target = named ? host.replace(/^(kesher|intercom)\./i, "multiview.") : `${host}:8090`;
+  return `${loc.protocol}//${target}/#/zugang`;
+}
+
 type RoleEditorState = {
   mode: RoleEditorMode;
   sourceRoleId?: string;
@@ -231,16 +242,29 @@ export function AdminRolesCard({
               )}
             </div>
             {central ? (
-              <p className="admin-block-subtitle">
-                Rollen werden im Multiview unter „Benutzer &amp; Rechte“
-                angelegt, umbenannt und gelöscht. Hier stellst du nur ihre
-                Standardwerte in Kesher ein.
-              </p>
+              <div className="admin-central-roles" role="note">
+                <div>
+                  <strong>Zentrale Rollenverwaltung im Multiview</strong>
+                  <p>
+                    Rollen werden im Multiview unter „Benutzer &amp; Rechte“
+                    angelegt, umbenannt und gelöscht – für alle Dienste. Hier
+                    stellst du nur ihre Standardwerte in Kesher ein.
+                  </p>
+                </div>
+                <a
+                  className="button primary admin-central-roles-link"
+                  href={multiviewRolesUrl()}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Zur Rollenverwaltung
+                </a>
+              </div>
             ) : null}
             {adminError && !roleEditor ? (
               <p className="admin-error">{adminError}</p>
             ) : null}
-            <ul className="admin-list">
+            <ul className={central ? "admin-list admin-roles-central" : "admin-list"}>
               {appData.roles.map((role) => (
                 <li key={role.id} className="admin-role-list-item">
                   <span>
@@ -267,8 +291,9 @@ export function AdminRolesCard({
                       type="button"
                       disabled={adminBusy}
                       onClick={() => openEditRole(role)}
+                      title={central ? "Standardwerte in Kesher (Kanal, Sprechmodus, Ansicht)" : undefined}
                     >
-                      Bearbeiten
+                      {central ? "Standardwerte" : "Bearbeiten"}
                     </button>
                     {central ? null : (
                       <button

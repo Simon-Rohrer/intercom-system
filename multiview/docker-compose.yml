@@ -11,9 +11,9 @@ services:
     network_mode: host
     environment:
       PORT: "8090"
-      # Erst zusammen mit Caddyfile.jms einschalten (sonst ist der Editor im Netz weg):
-      # nur lokal lauschen, von außen über Caddy als https://<server-ip>:8090
-      # HOST: "127.0.0.1"
+      # Nur lokal lauschen, von außen über Caddy als https://<server-ip>:8090
+      # (Caddyfile.jms, auf dem JMS-Server seit 14.10.2026). Ohne Caddy davor auskommentieren.
+      HOST: "127.0.0.1"
       # Kesher läuft auf demselben Server (nur auf 127.0.0.1 erreichbar)
       KESHER_URL: "http://127.0.0.1:8080"
       # Zentrale Anmeldung: gemeinsames Geheimnis mit Kesher (aus .env, gleicher Wert wie dort)

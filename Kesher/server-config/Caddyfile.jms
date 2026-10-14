@@ -26,36 +26,48 @@
 			http_redirect
 			tls
 		}
+		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
+		protocols h1 h2
 	}
 	servers 192.168.0.21:8090 {
 		listener_wrappers {
 			http_redirect
 			tls
 		}
+		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
+		protocols h1 h2
 	}
 	servers 192.168.0.21:8000 {
 		listener_wrappers {
 			http_redirect
 			tls
 		}
+		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
+		protocols h1 h2
 	}
 	servers 192.168.0.21:3000 {
 		listener_wrappers {
 			http_redirect
 			tls
 		}
+		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
+		protocols h1 h2
 	}
 	servers 192.168.0.21:61208 {
 		listener_wrappers {
 			http_redirect
 			tls
 		}
+		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
+		protocols h1 h2
 	}
 	servers 192.168.0.21:9443 {
 		listener_wrappers {
 			http_redirect
 			tls
 		}
+		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
+		protocols h1 h2
 	}
 }
 
