@@ -10,6 +10,7 @@
 // die Konfiguration ist für die Monitor-Seiten ohne Anmeldung lesbar.
 
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
 
@@ -135,6 +136,17 @@ function ipInNetworks(ip, networks) {
 }
 
 const isLoopback = (ip) => /^(127\.|::1$|::ffff:127\.)/.test(String(ip ?? ''))
+
+/**
+ * Eine eigene Adresse des Servers? Der Multiview läuft mit network_mode host, sieht also alle
+ * Netzwerkkarten. Was der Server selbst über Caddy anfragt (Companion → https://192.168.0.21:8443),
+ * kommt mit seiner LAN-Adresse an, nicht als Loopback.
+ */
+function isOwnAddress(ip) {
+  const addr = String(ip ?? '').replace(/^::ffff:/i, '').replace(/%.*$/, '').toLowerCase()
+  if (!addr) return false
+  return Object.values(os.networkInterfaces()).some((list) => (list ?? []).some((i) => i.address.toLowerCase() === addr))
+}
 
 function normalizeGateway(g) {
   const exempt = (Array.isArray(g?.exempt) ? g.exempt : [])
@@ -485,7 +497,7 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
    * login: erst Name + Rolle. forbidden: angemeldet, aber nicht Admin.
    */
   /** Feste Geräte aus der Liste (und der Server selbst) brauchen keinen Tagescode. */
-  const exemptIp = (ip) => isLoopback(ip) || ipInNetworks(ip, secret.gateway.exempt.map((e) => parseNetwork(e.network)))
+  const exemptIp = (ip) => isLoopback(ip) || isOwnAddress(ip) || ipInNetworks(ip, secret.gateway.exempt.map((e) => parseNetwork(e.network)))
 
   /** Muss dieses Gerät den Tagescode eingeben, und hat es das schon? */
   function deviceStatus(ip, req) {

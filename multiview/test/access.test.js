@@ -121,6 +121,27 @@ test('feste Geräte brauchen keinen Code, für Admin-Dienste aber die Anmeldung'
   assert.throws(() => access.setGateway({ exempt: [{ network: 'quatsch' }] }), /Keine gültige Adresse/)
 })
 
+test('der Server selbst ist auch über seine LAN-Adresse frei', async (t) => {
+  t.mock.method(os, 'networkInterfaces', () => ({
+    lo: [{ address: '127.0.0.1', family: 'IPv4', internal: true }],
+    eno1: [
+      { address: '192.168.0.21', family: 'IPv4', internal: false },
+      { address: 'fe80::1', family: 'IPv6', internal: false },
+    ],
+  }))
+  const { access } = await setup()
+  // Leere Ausnahmeliste: nur der Server selbst kommt ohne Code durch
+  access.setGateway({ enabled: true, exempt: [] })
+  assert.equal(access.check({ service: 'kesher', ip: '192.168.0.21' }, fakeReq()).action, 'allow')
+  assert.equal(access.check({ service: 'kesher', ip: '::ffff:192.168.0.21' }, fakeReq()).action, 'allow')
+  assert.equal(access.check({ service: 'kesher', ip: 'fe80::1%eno1' }, fakeReq()).action, 'allow')
+  assert.equal(access.deviceStatus('192.168.0.21', fakeReq()).required, false)
+  // Admin-Dienste brauchen trotzdem die Admin-Anmeldung
+  assert.equal(access.check({ service: 'portainer', ip: '192.168.0.21' }, fakeReq()).action, 'login')
+  // Andere Geräte im selben Netz weiter mit Code
+  assert.equal(access.check({ service: 'kesher', ip: '192.168.0.22' }, fakeReq()).action, 'code')
+})
+
 test('ohne Admin-PIN lässt sich die Anmeldung für alle Dienste nicht einschalten', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
   const access = createAccess({ dataDir: dir, log: () => {} })
