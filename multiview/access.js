@@ -516,7 +516,8 @@ function createAccess({
     const device = token && secret.devices[sha256(token)]
     if (device && genValid(device.gen)) return true
     const mac = macOf(ip)
-    return Boolean(mac) && Object.values(secret.devices).some((d) => d.mac === mac && genValid(d.gen))
+    // Ältere Freischaltungen ohne gespeicherte MAC: über ihre Adresse nachschlagen
+    return Boolean(mac) && Object.values(secret.devices).some((d) => genValid(d.gen) && (d.mac || macOf(d.ip)) === mac)
   }
 
   function devicesToday() {

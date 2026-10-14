@@ -311,6 +311,15 @@ test('Tagescode einmal eingegeben gilt auch unter dem anderen Namen (gleiche MAC
   assert.equal(access.check({ service: 'kesher', ip: 'fe80::127' }, fakeReq()).action, 'login')
   // ein anderes Gerät nicht
   assert.equal(access.check({ service: 'kesher', ip: '192.168.0.200' }, fakeReq()).action, 'code')
+  // Freischaltung ohne gespeicherte MAC (vor dem Update): über ihre Adresse nachgeschlagen
+  macs['192.168.0.128'] = 'dd:dd:dd:dd:dd:04'
+  macs['fe80::128'] = 'dd:dd:dd:dd:dd:04'
+  const file = path.join(dir, 'access-secret.json')
+  const stored = JSON.parse(fs.readFileSync(file, 'utf8'))
+  stored.devices.x = { gen: stored.dayCode.gen, created: Date.now(), ip: '192.168.0.128' }
+  fs.writeFileSync(file, JSON.stringify(stored))
+  const reloaded = createAccess({ dataDir: dir, log: () => {}, macOf: (ip) => macs[ip] ?? null })
+  assert.equal(reloaded.deviceStatus('fe80::128', fakeReq()).approved, true)
   // Neuer Code beendet auch diese Freischaltung
   access.renewDayCode()
   assert.equal(access.check({ service: 'kesher', ip: 'fe80::127' }, fakeReq()).action, 'code')
