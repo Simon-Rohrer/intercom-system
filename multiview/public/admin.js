@@ -313,6 +313,12 @@ function layoutOptions(selected) {
   ].join('')
 }
 
+const scalePreview = (el) => el.style.setProperty('--preview-scale', String(el.clientWidth / 1920))
+const previewScaler =
+  typeof ResizeObserver === 'function'
+    ? new ResizeObserver((entries) => entries.forEach((entry) => scalePreview(entry.target)))
+    : { observe: (el) => requestAnimationFrame(() => scalePreview(el)) }
+
 function renderOutputs() {
   const grid = $('#output-cards')
   // Vorschauen (iframes) nur laden, solange die Übersicht offen ist
@@ -353,6 +359,8 @@ function renderOutputs() {
         : `<div class="empty-state">Für deine Rolle ist noch kein Multiview freigegeben. Der Admin legt das unter <b>Benutzer &amp; Rechte</b> fest.</div>`)
   }
   // Felder aktualisieren, ohne die Vorschauen neu zu laden
+  // Vorschau in Monitorgröße rendern und verkleinern (sonst wirkt alles zu groß)
+  for (const preview of grid.querySelectorAll('.output-preview')) previewScaler.observe(preview)
   for (const card of grid.querySelectorAll('.output-card')) {
     const output = config.outputs.find((o) => o.id === card.dataset.id)
     const name = card.querySelector('[data-o="name"]')
@@ -993,6 +1001,17 @@ livePreviewToggle.addEventListener('change', () => {
 // ---------------------------------------------------------------------------
 
 const canvas = $('#canvas')
+// Die Arbeitsfläche ist intern so groß wie ein Monitor (1920×1080) und wird verkleinert –
+// so sehen Schriften, Abstände und Rahmen genau so aus wie später auf dem Monitor.
+const CANVAS_WIDTH = 1920
+const canvasFrame = document.getElementById('canvas-frame')
+function scaleCanvas() {
+  const scale = canvasFrame.clientWidth / CANVAS_WIDTH
+  if (scale > 0) canvasFrame.style.setProperty('--canvas-scale', String(scale))
+}
+if (typeof ResizeObserver === 'function') new ResizeObserver(scaleCanvas).observe(canvasFrame)
+else window.addEventListener('resize', scaleCanvas)
+
 
 function renderCanvas() {
   const layout = currentLayout()
@@ -1004,8 +1023,12 @@ function renderCanvas() {
     canvas.innerHTML = '<div class="canvas-empty">Lege links ein Layout an.</div>'
     return
   }
+  scaleCanvas()
   canvas.style.setProperty('--cols', layout.cols)
   canvas.style.setProperty('--rows', layout.rows)
+  // Wie auf dem Monitor: Abstand und Hintergrund des Layouts
+  canvas.style.setProperty('--gap', `${Number(layout.gap ?? 4) || 0}px`)
+  canvas.style.setProperty('--bg', layout.background || '#000')
   canvas.style.backgroundColor = layout.background || '#000'
   const readonly = !canEditLayout(config, user, layout)
   canvas.classList.toggle('readonly', readonly)

@@ -1071,3 +1071,59 @@ a.status-tile:hover { border-color: var(--accent-line); }
   .exempt-row [name="label"] { grid-column: 1; grid-row: 2; }
   .exempt-row .icon-btn { grid-row: 1 / span 2; grid-column: 2; }
 }
+
+/* ---- Layout-Editor 1:1 wie auf dem Monitor ----------------------------------------
+   Die Arbeitsfläche ist intern 1920×1080 groß und wird per transform verkleinert. Inhalte
+   (Video, Chat, ProPresenter, Pegel …) rechnen so mit derselben Größe wie auf dem Monitor.
+   Bedien-Elemente des Editors (Rahmen, Anfasser, Namen) werden mit 1/Skalierung wieder
+   auf normale Bildschirmgröße gebracht. */
+.canvas-frame {
+  --canvas-scale: 0.4;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow), 0 0 0 1px var(--line);
+  background: #000;
+}
+.canvas-frame > .canvas {
+  --u: calc(1px / var(--canvas-scale)); /* ein Bildschirm-Pixel auf der verkleinerten Fläche */
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1920px;
+  height: 1080px;
+  aspect-ratio: auto;
+  transform: scale(var(--canvas-scale));
+  transform-origin: 0 0;
+  border-radius: 0;
+  box-shadow: none;
+  background-color: var(--bg, #000);
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.07) var(--u), transparent var(--u)),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.07) var(--u), transparent var(--u));
+}
+/* Kachelrand = Abstand des Layouts, wie auf dem Monitor */
+.canvas-frame .etile { border: calc(var(--gap, 4px) / 2) solid var(--bg, #000); }
+.canvas-frame .etile::after { border-width: calc(3 * var(--u)); }
+.canvas-frame .etile.selected { outline-width: calc(3 * var(--u)); outline-offset: calc(-3 * var(--u)); }
+.canvas-frame .etile .handle { width: calc(16 * var(--u)); height: calc(16 * var(--u)); }
+.canvas-frame .etile-body { padding: calc(4 * var(--u)); }
+.canvas-frame .etile-title { font-size: calc(13 * var(--u)); }
+.canvas-frame .etile.live .etile-title { padding: 0 calc(6 * var(--u)); border-radius: calc(3 * var(--u)); }
+.canvas-frame .etile-sub { font-size: calc(11 * var(--u)); }
+.canvas-frame .etile-media .placeholder { font-size: calc(11 * var(--u)); }
+.canvas-frame .ghost { border-width: calc(2 * var(--u)); }
+.canvas-frame .canvas-empty { font-size: calc(15 * var(--u)); }
+
+/* Übersicht: Vorschau in Monitorgröße (1920×1080) rendern und auf die Karte verkleinern */
+.output-preview { overflow: hidden; }
+.output-preview iframe {
+  width: 1920px;
+  height: 1080px;
+  transform: scale(var(--preview-scale, 0.25));
+  transform-origin: 0 0;
+}
+/* Grundschrift wie auf dem Monitor (output.css), damit Kacheln mit em-Größen gleich groß sind */
+.canvas-frame > .canvas { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 16px; line-height: normal; }
