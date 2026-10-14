@@ -10,6 +10,7 @@ const { WebSocketServer } = require('ws')
 const { Atem } = require('atem-connection')
 const { createKesherChat } = require('./kesher-chat')
 const { createKesherRoles } = require('./kesher-roles')
+const { createNeighbors } = require('./neighbors')
 const { createChurchTools } = require('./churchtools')
 const QRCode = require('qrcode')
 const {
@@ -1268,6 +1269,8 @@ const access = createAccess({
   isLive: (id) => [...wss.clients].some((ws) => ws.readyState === 1 && ws.sessionId === id),
   // Geräteadresse für die Liste der Anmeldungen (clientIp ist weiter unten definiert, wird erst bei Anfragen aufgerufen)
   ipOf: (req) => (req?.socket ? clientIp(req).replace(/^::ffff:/, '') : ''),
+  // Dasselbe Gerät per IPv4 (IP-Adresse) und IPv6 (.local-Namen) erkennen
+  macOf: createNeighbors().macOf,
   // Übernommene oder vom Admin beendete Anmeldung: die offenen Seiten dort abmelden
   onRevoke: (ids, reason) => {
     for (const ws of wss.clients) {
