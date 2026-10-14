@@ -4,12 +4,41 @@ export function uid(prefix = '') {
   return prefix + Math.random().toString(36).slice(2, 9)
 }
 
+/**
+ * Hinweis, wenn die Live-Verbindung über HTTPS nie zustande kommt: iPhone/iPad (Safari) lassen
+ * WebSockets zu einem nicht vertrauten Zertifikat nicht zu, auch wenn die Seite nach der Warnung lädt.
+ */
+function showCertHint() {
+  if (document.getElementById('cert-hint')) return
+  const el = document.createElement('div')
+  el.id = 'cert-hint'
+  el.setAttribute('role', 'alert')
+  el.style.cssText =
+    'position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:9999;max-width:520px;margin:0 auto;' +
+    'padding:14px 16px;border-radius:16px;background:rgba(30,30,32,.94);color:#fff;font:14px/1.45 -apple-system,system-ui,sans-serif;' +
+    'box-shadow:0 12px 30px rgba(0,0,0,.4)'
+  el.innerHTML =
+    '<b>Keine Live-Verbindung zum Server.</b><br>Auf iPhone/iPad einmal das Zertifikat installieren: ' +
+    '<a href="/zertifikat" style="color:#64d2ff;font-weight:600">Zertifikat laden</a> → Einstellungen → „Profil geladen“ installieren → ' +
+    'Allgemein → Info → Zertifikatsvertrauenseinstellungen → „JMS/Caddy“ einschalten. Danach Seite neu laden.' +
+    ' <button type="button" style="margin-left:6px;background:none;border:0;color:#aaa;font:inherit;text-decoration:underline">Ausblenden</button>'
+  el.querySelector('button').onclick = () => el.remove()
+  document.body.appendChild(el)
+}
+
 /** WebSocket mit automatischem Neuverbinden. */
 export function connect(onMessage, onStatus) {
   let ws
+  let everOpen = false
+  let failures = 0
   const open = () => {
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`)
-    ws.onopen = () => onStatus?.(true)
+    ws.onopen = () => {
+      everOpen = true
+      failures = 0
+      document.getElementById('cert-hint')?.remove()
+      onStatus?.(true)
+    }
     ws.onmessage = (e) => {
       try {
         onMessage(JSON.parse(e.data))
@@ -22,6 +51,7 @@ export function connect(onMessage, onStatus) {
       // Ohne Anmeldung lässt der Server nur feste Geräte zu: zur Anmeldeseite statt endlos neu zu verbinden
       if (e.code === 4401)
         return location.replace(`/login.html?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`)
+      if (!everOpen && location.protocol === 'https:' && ++failures === 3) showCertHint()
       setTimeout(open, 1500)
     }
   }

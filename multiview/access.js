@@ -148,7 +148,7 @@ function normalizeGateway(g) {
   }
 }
 
-function createAccess({ dataDir, log = console.log, verifyKesherPin = async () => false, isLive = () => false, onRevoke = () => {} }) {
+function createAccess({ dataDir, log = console.log, verifyKesherPin = async () => false, isLive = () => false, onRevoke = () => {}, ipOf = () => '' }) {
   const file = path.join(dataDir, 'access-secret.json')
   // { adminPin: { salt, hash } | { kesher: true }, sessions: { sha256(token): session },
   //   gateway: { enabled, exempt, startUrl }, dayCode: { day, code, gen, prevGen },
@@ -202,7 +202,7 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
   }
 
   /** group: Anmeldungen derselben Person (Rechner + per QR-Code angemeldetes Handy). */
-  function newSession({ name, roleId, admin, group }) {
+  function newSession({ name, roleId, admin, group }, ip = '') {
     prune()
     const token = randomToken()
     const id = crypto.randomBytes(6).toString('hex')
@@ -214,6 +214,7 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
       admin: Boolean(admin),
       created: Date.now(),
       seen: Date.now(),
+      ip: ip || undefined,
     }
     write()
     return token
@@ -230,6 +231,12 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
     if (!token) return null
     const s = secret.sessions[sha256(token)]
     if (!s) return null
+    // Adresse des Geräts merken (für „Angemeldet“ beim Admin) – ändert sich z. B. beim WLAN-Wechsel
+    const ip = ipOf(req)
+    if (ip && s.ip !== ip) {
+      s.ip = ip
+      writeSoon()
+    }
     if (Date.now() - (s.seen ?? 0) > 60_000) {
       s.seen = Date.now()
       writeSoon()
@@ -301,7 +308,7 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
       endSessions(holders, active.length ? `übernommen von ${cleanName}` : 'abgelaufen')
       if (active.length) log(`Zugang: ${cleanName} übernimmt die Rolle ${roleId} von ${active.map((s) => s.name).join(', ')}`)
     }
-    const token = newSession({ name: cleanName, roleId, admin })
+    const token = newSession({ name: cleanName, roleId, admin }, ipOf(req))
     res.setHeader('Set-Cookie', cookieFor(token, req))
     log(`Zugang: ${cleanName} angemeldet als ${admin ? 'Admin' : roleId}`)
   }
@@ -357,7 +364,7 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
     qrTokens.delete(key)
     if (!entry || entry.expires < Date.now()) return false
     if (!enabled()) return true // offen: keine Anmeldung nötig
-    const session = newSession(entry.user)
+    const session = newSession(entry.user, ipOf(req))
     res.setHeader('Set-Cookie', cookieFor(session, req))
     log(`Zugang: ${entry.user.name} per QR-Code am Handy angemeldet`)
     return true
@@ -365,7 +372,7 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
 
   function sessions() {
     return Object.values(secret.sessions)
-      .map(({ id, name, roleId, admin, created, seen }) => ({ id, name, roleId, admin, created, seen, live: isLive(id) }))
+      .map(({ id, name, roleId, admin, created, seen, ip }) => ({ id, name, roleId, admin, created, seen, ip: ip || null, live: isLive(id) }))
       .sort((a, b) => b.seen - a.seen)
   }
 

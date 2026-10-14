@@ -2836,14 +2836,14 @@ async function loadSessions() {
     const list = await fetch('/api/access/sessions').then((r) => r.json())
     const when = (ms) => new Date(ms).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     box.innerHTML = `<div class="table-wrap"><table class="table">
-      <thead><tr><th>Name</th><th>Rolle</th><th>Zuletzt aktiv</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Rolle</th><th>IP-Adresse</th><th>Zuletzt aktiv</th><th></th></tr></thead>
       <tbody>${list
         .map(
           (s) => `<tr><td class="session-who">${avatarHtml(s, { cls: 'avatar sm' })}<b>${esc(s.name)}</b>${s.self ? ' <span class="badge accent">dieses Gerät</span>' : ''}${s.live ? ' <span class="pill ok" style="height:22px">online</span>' : ''}</td>
-            <td>${esc(s.roleName)}</td><td class="muted">${esc(when(s.seen))}</td>
+            <td>${esc(s.roleName)}</td><td>${s.ip ? `<code class="ip">${esc(s.ip)}</code>` : '<span class="muted">–</span>'}</td><td class="muted">${esc(when(s.seen))}</td>
             <td style="text-align:right">${s.self ? '' : `<button class="btn small danger" data-end-session="${esc(s.id)}">Abmelden</button>`}</td></tr>`,
         )
-        .join('') || '<tr><td colspan="4" class="muted">Niemand angemeldet.</td></tr>'}</tbody></table></div>`
+        .join('') || '<tr><td colspan="5" class="muted">Niemand angemeldet.</td></tr>'}</tbody></table></div>`
   } catch {
     box.innerHTML = '<p class="muted">Konnte die Liste nicht laden.</p>'
   }

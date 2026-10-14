@@ -1263,6 +1263,8 @@ const access = createAccess({
   // Admin-PIN wie im Kesher-Admin: Kesher prüft sie
   verifyKesherPin: (pin) => kesherChat.verifyAdminPin(pin),
   isLive: (id) => [...wss.clients].some((ws) => ws.readyState === 1 && ws.sessionId === id),
+  // Geräteadresse für die Liste der Anmeldungen (clientIp ist weiter unten definiert, wird erst bei Anfragen aufgerufen)
+  ipOf: (req) => (req?.socket ? clientIp(req).replace(/^::ffff:/, '') : ''),
   // Übernommene oder vom Admin beendete Anmeldung: die offenen Seiten dort abmelden
   onRevoke: (ids, reason) => {
     for (const ws of wss.clients) {
@@ -1418,6 +1420,23 @@ app.post('/api/me/avatar', requireUser, (req, res) => {
 app.delete('/api/me/avatar', requireUser, (req, res) => {
   fs.rmSync(avatarFile(avatarId(req.user.name)), { force: true })
   res.json({ ok: true, avatar: null })
+})
+
+// Stamm-Zertifikat von Caddys lokaler Zertifizierungsstelle (HTTPS auf 192.168.0.21:<port>).
+// iPhone/iPad brauchen es als vertrautes Profil – sonst lädt die Seite nach der Warnung zwar,
+// aber die Live-Verbindung (WebSocket) wird abgelehnt und es steht „Server nicht erreichbar“.
+// Öffentlich, es ist nur das Zertifikat (kein Schlüssel); Caddy gibt es über seine Admin-API auf dem Server heraus.
+app.get(['/zertifikat', '/.jms-auth/zertifikat'], async (req, res) => {
+  try {
+    const ca = await fetch('http://127.0.0.1:2019/pki/ca/local', { signal: AbortSignal.timeout(3000) }).then((r) => r.json())
+    if (!String(ca.root_certificate || '').includes('BEGIN CERTIFICATE')) throw new Error('kein Zertifikat')
+    res
+      .set('Content-Disposition', 'attachment; filename="JMS-Technik.crt"')
+      .type('application/x-x509-ca-cert')
+      .send(Buffer.from(ca.root_certificate))
+  } catch {
+    res.status(503).type('text/plain').send('Zertifikat gerade nicht verfügbar (Caddy-Admin-API nicht erreichbar).')
+  }
 })
 
 // Hintergrundbilder für Editor, Handy und Anmeldung. Sie liegen im Datenordner (data/wallpapers)

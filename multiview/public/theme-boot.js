@@ -4,6 +4,8 @@
 // Farbe für die Glasflächen mit, damit Karten und Knöpfe zum Bild passen.
 ;(function () {
   var WALLPAPERS = [
+    // Der erste ist der Standard
+    { id: 'graphit', name: 'Graphit', file: 'graphit', accent: '#8e8e93', glass: 'rgba(36, 36, 38, 0.55)', side: 'rgba(12, 12, 13, 0.55)', dialog: 'rgba(34, 34, 36, 0.92)', bg: '#0a0a0b' },
     // file: null = der blaue Verlauf aus admin.css (ohne Bild)
     { id: 'blau', name: 'Blau', file: null, accent: '#007aff', glass: 'rgba(18, 36, 98, 0.5)', side: 'rgba(8, 22, 70, 0.45)', dialog: 'rgba(14, 30, 86, 0.88)', bg: '#0a1d57' },
     { id: 'ozean', name: 'Ozean', file: 'ozean', accent: '#3478f6', glass: 'rgba(16, 26, 92, 0.48)', side: 'rgba(8, 14, 60, 0.45)', dialog: 'rgba(14, 22, 78, 0.88)', bg: '#0b1050' },
@@ -12,7 +14,6 @@
     { id: 'kupfer', name: 'Kupfer', file: 'kupfer', accent: '#f57c1f', glass: 'rgba(36, 24, 16, 0.55)', side: 'rgba(14, 10, 8, 0.55)', dialog: 'rgba(32, 22, 16, 0.92)', bg: '#0c0806' },
     { id: 'salbei', name: 'Salbei', file: 'salbei', accent: '#7fa688', glass: 'rgba(30, 38, 32, 0.55)', side: 'rgba(10, 14, 11, 0.55)', dialog: 'rgba(28, 34, 30, 0.92)', bg: '#0b0e0c' },
     { id: 'tanne', name: 'Tanne', file: 'tanne', accent: '#4f9d77', glass: 'rgba(22, 32, 28, 0.55)', side: 'rgba(6, 10, 8, 0.55)', dialog: 'rgba(22, 30, 26, 0.92)', bg: '#050806' },
-    { id: 'graphit', name: 'Graphit', file: 'graphit', accent: '#8e8e93', glass: 'rgba(36, 36, 38, 0.55)', side: 'rgba(12, 12, 13, 0.55)', dialog: 'rgba(34, 34, 36, 0.92)', bg: '#0a0a0b' },
   ]
   // Unter /.jms-auth/ (Anmeldung auf der Adresse eines anderen Dienstes) liegen auch die Bilder dort
   var base = location.pathname.indexOf('/.jms-auth/') === 0 ? '/.jms-auth' : ''
@@ -56,7 +57,7 @@
   try {
     var root = document.documentElement
     var theme = JSON.parse(localStorage.getItem('mv.theme') || '"system"')
-    var wallpaper = JSON.parse(localStorage.getItem('mv.wallpaper') || '"blau"')
+    var wallpaper = JSON.parse(localStorage.getItem('mv.wallpaper') || '"graphit"')
     root.dataset.theme = theme === 'light' || theme === 'dark' ? theme : 'system'
     var dark = theme === 'dark' || (theme !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)
     applyWallpaper(wallpaper, dark)
