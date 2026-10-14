@@ -1160,7 +1160,7 @@ func (h *Hub) sendToLatestUserSession(userID string, msg WSOutbound) {
 		if c.user.ID != userID {
 			continue
 		}
-		if selected == nil || c.connectedAt.After(selected.connectedAt) {
+		if preferredClient(c, selected) {
 			selected = c
 		}
 	}
@@ -1360,10 +1360,49 @@ func (h *Hub) SubscribePresence() (chan []PresenceState, func()) {
 	}
 	return ch, unsubscribe
 }
-func (h *Hub) broadcastPresence() {
-	h.mu.RLock()
-	var list []PresenceState
+// preferredClient reports whether candidate should represent a user instead of
+// current: real devices win over secondary ones (e.g. the Multiview tile), then
+// the most recent connection.
+func preferredClient(candidate, current *client) bool {
+	if current == nil {
+		return true
+	}
+	if candidate.session.Secondary != current.session.Secondary {
+		return !candidate.session.Secondary
+	}
+	return candidate.connectedAt.After(current.connectedAt)
+}
+
+// presenceListLocked builds the presence list with one entry per user. A person
+// can be connected several times (phone, a reconnect after sleep, Multiview tiles
+// as secondary devices); listing every connection showed them repeatedly under
+// "Direkt". Worse, clients find their own entry by user ID: with several entries
+// a phone often picked a Multiview tile's state and reverted its own channel
+// selection and PTT. The entry is the state of the preferred connection only
+// (real device before secondary, then the newest) – no mixing between devices.
+// Caller must hold h.mu (read lock is enough).
+func (h *Hub) presenceListLocked() []PresenceState {
+	// Rollen mit einem echten Gerät: dort zählen Zweitgeräte (Multiview-Kacheln) nicht mit,
+	// auch wenn sie unter einem anderen Namen angemeldet sind.
+	rolesWithDevice := make(map[string]struct{})
 	for _, c := range h.clients {
+		if !c.session.Secondary {
+			rolesWithDevice[c.session.RoleID] = struct{}{}
+		}
+	}
+	main := make(map[string]*client, len(h.clients))
+	for _, c := range h.clients {
+		if c.session.Secondary {
+			if _, ok := rolesWithDevice[c.session.RoleID]; ok {
+				continue
+			}
+		}
+		if preferredClient(c, main[c.user.ID]) {
+			main[c.user.ID] = c
+		}
+	}
+	list := make([]PresenceState, 0, len(main))
+	for _, c := range main {
 		list = append(list, PresenceState{
 			UserID:          c.user.ID,
 			Username:        c.user.Username,
@@ -1382,6 +1421,12 @@ func (h *Hub) broadcastPresence() {
 		}
 		return list[i].UserID < list[j].UserID
 	})
+	return list
+}
+
+func (h *Hub) broadcastPresence() {
+	h.mu.RLock()
+	list := h.presenceListLocked()
 	snapshotHash := hashPresenceSnapshot(list)
 	h.presenceSnapshotMu.Lock()
 	if h.hasLastPresenceHash && h.lastPresenceHash == snapshotHash {
@@ -1414,26 +1459,7 @@ func (h *Hub) broadcastPresence() {
 // This ensures new clients are immediately visible to all other connected clients.
 func (h *Hub) broadcastPresenceForced() {
 	h.mu.RLock()
-	var list []PresenceState
-	for _, c := range h.clients {
-		list = append(list, PresenceState{
-			UserID:          c.user.ID,
-			Username:        c.user.Username,
-			RoleID:          c.user.RoleID,
-			ListenRooms:     roomSetToSortedSlice(c.listenRooms),
-			TalkRooms:       roomSetToSortedSlice(c.talkRooms),
-			VoiceMode:       c.voiceMode,
-			MicEnabled:      c.micEnabled,
-			BroadcastActive: len(c.broadcastGroups) > 0,
-			AudioState:      cloneAudioStatePtr(c.audioState),
-		})
-	}
-	sort.Slice(list, func(i, j int) bool {
-		if list[i].Username != list[j].Username {
-			return list[i].Username < list[j].Username
-		}
-		return list[i].UserID < list[j].UserID
-	})
+	list := h.presenceListLocked()
 	// Update hash for next deduplication
 	snapshotHash := hashPresenceSnapshot(list)
 	h.presenceSnapshotMu.Lock()
@@ -1466,26 +1492,7 @@ func (h *Hub) SendPresenceSnapshot(token string) {
 		h.mu.RUnlock()
 		return
 	}
-	var list []PresenceState
-	for _, c := range h.clients {
-		list = append(list, PresenceState{
-			UserID:          c.user.ID,
-			Username:        c.user.Username,
-			RoleID:          c.user.RoleID,
-			ListenRooms:     roomSetToSortedSlice(c.listenRooms),
-			TalkRooms:       roomSetToSortedSlice(c.talkRooms),
-			VoiceMode:       c.voiceMode,
-			MicEnabled:      c.micEnabled,
-			BroadcastActive: len(c.broadcastGroups) > 0,
-			AudioState:      cloneAudioStatePtr(c.audioState),
-		})
-	}
-	sort.Slice(list, func(i, j int) bool {
-		if list[i].Username != list[j].Username {
-			return list[i].Username < list[j].Username
-		}
-		return list[i].UserID < list[j].UserID
-	})
+	list := h.presenceListLocked()
 	msg := WSOutbound{Type: "presence", Data: list}
 	h.enqueueOutbound(targetClient, msg)
 	h.mu.RUnlock()
