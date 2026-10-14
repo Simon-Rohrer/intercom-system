@@ -1149,3 +1149,86 @@ a.status-tile:hover { border-color: var(--accent-line); }
   .icon-btn.menu-btn { display: none; }
 }
 #qr-dialog { width: min(480px, calc(100vw - 32px)); }
+
+/* ==================================================================
+   Stil wie die Apple-TV-App (macOS): dunkelgrauer Inhalt, etwas hellere
+   Seitenleiste, Icons in Akzentfarbe, Auswahl als dezente graue Pille,
+   Karten als Flächen ohne Rahmen. Die Monitore (output.css) bleiben schwarz.
+   ================================================================== */
+:root {
+  --bg: #ffffff;
+  --surface: #f5f5f7;
+  --surface-2: #ebebf0;
+  --surface-3: #dedee3;
+  --line: rgba(0, 0, 0, 0.08);
+  --line-strong: rgba(0, 0, 0, 0.14);
+  --sidebar-bg: #efeff1;
+  --nav-active: rgba(0, 0, 0, 0.08);
+  --shadow: none;
+}
+:root[data-theme="dark"] {
+  --bg: #1e1e1e;
+  --surface: #2c2c2e;
+  --surface-2: #3a3a3c;
+  --surface-3: #48484a;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.15);
+  --sidebar-bg: #2a2a2a;
+  --nav-active: rgba(255, 255, 255, 0.1);
+  --shadow: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --bg: #1e1e1e;
+    --surface: #2c2c2e;
+    --surface-2: #3a3a3c;
+    --surface-3: #48484a;
+    --line: rgba(255, 255, 255, 0.08);
+    --line-strong: rgba(255, 255, 255, 0.15);
+    --sidebar-bg: #2a2a2a;
+    --nav-active: rgba(255, 255, 255, 0.1);
+    --shadow: none;
+  }
+}
+
+/* Seitenleiste */
+.sidebar {
+  background: var(--sidebar-bg);
+  border-right: 0;
+  padding: 22px 16px;
+}
+.site-nav { gap: 4px; }
+.site-nav a, .nav-btn {
+  height: 42px;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 15.5px;
+  font-weight: 500;
+  gap: 13px;
+}
+.site-nav a .icon, .nav-btn .icon { color: var(--accent); width: 22px; height: 22px; }
+.site-nav a:hover, .nav-btn:hover { background: var(--nav-active); }
+.site-nav a.active { background: var(--nav-active); color: var(--text); font-weight: 600; }
+.site-nav a.active .icon { color: var(--accent); }
+.user-card { border: 0; background: transparent; padding: 8px 6px; }
+
+/* Kopfleiste ohne Linie */
+.topbar {
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+}
+
+/* Überschriften groß und fett wie bei Apple */
+h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+.card h2, .card-head h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.015em; }
+
+/* Karten als ruhige Flächen */
+.card {
+  border: 0;
+  box-shadow: none;
+  border-radius: 16px;
+  background: var(--surface);
+}
+.btn { border-radius: 10px; }
+.btn.ghost, .btn.link { color: var(--accent-text); }
+.status-tile { border: 0; box-shadow: none; border-radius: 14px; background: var(--surface); }
