@@ -1,0 +1,32 @@
+title: Server Dashboard
+description: Lokale Übersicht für Serverdienste
+theme: dark
+color: slate
+headerStyle: boxed
+statusStyle: dot
+useEqualHeights: true
+# Auf dem Handy im selben Fenster weiter statt in neuen Tabs
+target: _self
+# Zwei Seiten oben zum Umschalten: "tab" ordnet jede Gruppe aus services.yaml einer Seite zu.
+# Die Admin-Seite blendet custom.js für alle aus, die nicht als Admin angemeldet sind.
+layout:
+  Dienste:
+    tab: Start
+    style: row
+    columns: 4
+  Konto:
+    tab: Start
+    style: row
+    columns: 2
+  Verwaltung:
+    tab: Admin
+    style: row
+    columns: 5
+  Server:
+    tab: Admin
+    style: row
+    columns: 4
+  Container:
+    tab: Admin
+    style: row
+    columns: 4

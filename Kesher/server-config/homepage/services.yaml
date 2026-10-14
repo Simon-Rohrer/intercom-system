@@ -1,0 +1,173 @@
+# Dashboard (Homepage) auf dem JMS-Server – zwei Seiten (Tabs, siehe settings.yaml):
+#   Start: die Dienste für alle (Intercom, Multiview, Fernbedienung …) und das Konto
+#   Admin: Companion, Portainer und alles über den Server (Auslastung, Container)
+# Alle Dateien aus diesem Ordner nach /opt/homelab/config/homepage/ kopieren, Homepage
+# lädt sie ohne Neustart. Links gehen auf die IP-Adressen (die Namen kennt der DNS im
+# LAN nicht, siehe BETRIEB.md), die zentrale Anmeldung fragt beim ersten Aufruf nach
+# Code, Name und Rolle. Die Status-Punkte kommen über den Docker-Proxy (docker.yaml).
+
+# ----------------------------------------------------------------------------- Start
+
+- Dienste:
+    - Intercom:
+        href: https://192.168.0.21:8443
+        description: Kesher – sprechen, hören, Chat
+        icon: mdi-headset
+        server: local-docker
+        container: kesher
+    - Multiview:
+        href: https://192.168.0.21:8090
+        description: Bildschirme, Layouts und Monitore
+        icon: mdi-monitor-dashboard
+        server: local-docker
+        container: multiview
+    - Fernbedienung:
+        href: https://192.168.0.21:8090/remote.html
+        description: ProPresenter, Bühnennachrichten und Stage Display, Chat
+        icon: mdi-remote
+    - Prediger:
+        href: https://192.168.0.21:8090/prediger.html
+        description: Folien, Notizen und Zeit für die Bühne
+        icon: mdi-account-voice
+
+- Konto:
+    - Abmelden:
+        href: https://192.168.0.21:3000/.jms-auth/logout
+        description: Auf allen Diensten abmelden
+        icon: mdi-logout
+    - Konto wechseln:
+        href: https://192.168.0.21:3000/.jms-auth/login?wechseln=1
+        description: Andere Rolle oder als Admin anmelden
+        icon: mdi-account-switch
+
+# ----------------------------------------------------------------------------- Admin
+
+- Verwaltung:
+    - Companion:
+        href: https://192.168.0.21:8000
+        description: Stream-Deck-Tasten und Automationen
+        icon: mdi-gesture-tap-button
+    - Portainer:
+        href: https://192.168.0.21:9443
+        description: Container verwalten (eigenes Passwort)
+        icon: mdi-docker
+        server: local-docker
+        container: portainer
+    - Glances:
+        href: https://192.168.0.21:61208
+        description: Auslastung, Prozesse und Temperaturen im Detail
+        icon: mdi-chart-line
+        server: local-docker
+        container: glances
+    - Lokaler DNS:
+        href: https://dns.local
+        description: AdGuard Home – lokale Namen (nur im LAN-Kabelnetz)
+        icon: mdi-dns
+        server: local-docker
+        container: adguardhome
+    - Router:
+        href: http://192.168.0.250
+        description: Speedport, WLAN „JMS Interkom“ (Gerätepasswort nötig)
+        icon: mdi-router-wireless
+
+- Server:
+    - Prozessor:
+        icon: mdi-cpu-64-bit
+        widget:
+          type: glances
+          url: http://glances:61208
+          version: 4
+          metric: cpu
+          refreshInterval: 5000
+    - Arbeitsspeicher:
+        icon: mdi-memory
+        widget:
+          type: glances
+          url: http://glances:61208
+          version: 4
+          metric: memory
+          refreshInterval: 5000
+    - Temperatur:
+        icon: mdi-thermometer
+        widget:
+          type: glances
+          url: http://glances:61208
+          version: 4
+          metric: sensor:Package id 0
+          refreshInterval: 5000
+    - Systemlaufwerk:
+        icon: mdi-harddisk
+        widget:
+          type: glances
+          url: http://glances:61208
+          version: 4
+          metric: fs:/rootfs
+          refreshInterval: 10000
+    - Laufwerk lesen/schreiben:
+        icon: mdi-swap-vertical
+        widget:
+          type: glances
+          url: http://glances:61208
+          version: 4
+          metric: disk:sda
+          refreshInterval: 5000
+    - Prozesse:
+        icon: mdi-format-list-bulleted
+        widget:
+          type: glances
+          url: http://glances:61208
+          version: 4
+          metric: process
+          refreshInterval: 5000
+    - Container-Auslastung:
+        icon: mdi-docker
+        widget:
+          type: glances
+          url: http://glances:61208
+          version: 4
+          metric: containers
+          refreshInterval: 5000
+
+- Container:
+    - Kesher:
+        icon: mdi-headset
+        description: Intercom-Server
+        server: local-docker
+        container: kesher
+        showStats: true
+    - Multiview:
+        icon: mdi-monitor-dashboard
+        description: Multiview mit MediaMTX, zentrale Anmeldung
+        server: local-docker
+        container: multiview
+        showStats: true
+    - Homepage:
+        icon: mdi-view-dashboard
+        description: Dieses Dashboard
+        server: local-docker
+        container: homepage
+    - Glances:
+        icon: mdi-chart-line
+        description: Messwerte für den Server-Bereich
+        server: local-docker
+        container: glances
+    - Portainer:
+        icon: mdi-docker
+        description: Container-Verwaltung
+        server: local-docker
+        container: portainer
+    - AdGuard Home:
+        icon: mdi-dns
+        description: Lokaler DNS
+        server: local-docker
+        container: adguardhome
+    - Docker-Proxy:
+        icon: mdi-lan-connect
+        description: Nur-Lese-Zugang für Dashboard und Glances
+        server: local-docker
+        container: homelab-dockerproxy
+    - Tailscale (Lasse):
+        icon: mdi-vpn
+        description: Fernzugang
+        server: local-docker
+        container: tailscale-lasse
