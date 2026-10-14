@@ -1450,8 +1450,11 @@ app.get(['/zertifikat', '/.jms-auth/zertifikat'], async (req, res) => {
 const WALLPAPER_DIR = path.join(DATA_DIR, 'wallpapers')
 app.get(['/api/wallpaper/:file', '/.jms-auth/api/wallpaper/:file'], (req, res) => {
   if (!/^[a-z0-9-]{1,40}\.jpg$/.test(req.params.file)) return res.status(404).end()
-  const file = path.join(WALLPAPER_DIR, req.params.file)
-  if (!fs.existsSync(file)) return res.status(404).end()
+  // Erst der Datenordner (Fotos mit fremder Lizenz), dann die selbst erzeugten aus dem Repo (wallpapers/)
+  const file = [path.join(WALLPAPER_DIR, req.params.file), path.join(__dirname, 'wallpapers', req.params.file)].find((f) =>
+    fs.existsSync(f),
+  )
+  if (!file) return res.status(404).end()
   res.set('Cache-Control', 'public, max-age=604800').type('image/jpeg').sendFile(file)
 })
 

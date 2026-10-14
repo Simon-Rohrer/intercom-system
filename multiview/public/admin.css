@@ -1606,3 +1606,119 @@ body::before {
   body.sidebar-collapsed .icon-btn.sidebar-expand { display: inline-grid; }
   body.sidebar-collapsed .sidebar { display: none; }
 }
+
+/* ==================================================================
+   macOS (Liquid Glass): schwebende Seitenleiste, Glas mit Lichtkante oben,
+   Knöpfe als Pillen, glänzende App-Icons, große fette Überschriften.
+   Nur der Editor/Handy/Anmeldung – die Monitore (output.css) bleiben schwarz.
+   ================================================================== */
+:root {
+  --lg-rim: rgba(255, 255, 255, 0.55);
+  --lg-rim-soft: rgba(255, 255, 255, 0.25);
+  --lg-shadow: 0 12px 40px rgba(20, 30, 60, 0.12), 0 2px 8px rgba(20, 30, 60, 0.06);
+}
+:root[data-theme="dark"] {
+  --lg-rim: rgba(255, 255, 255, 0.16);
+  --lg-rim-soft: rgba(255, 255, 255, 0.07);
+  --lg-shadow: 0 16px 48px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --lg-rim: rgba(255, 255, 255, 0.16);
+    --lg-rim-soft: rgba(255, 255, 255, 0.07);
+    --lg-shadow: 0 16px 48px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.2);
+  }
+}
+
+body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Helvetica Neue", sans-serif; }
+h1, .profile-me h2, .card h2, .card-head h2 { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif; }
+h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.025em; }
+
+/* Glasflächen: Lichtkante oben (Spiegelung), weicher Schatten, großer Radius */
+.card, .status-tile, .glass, .list-panel, .rm-card {
+  box-shadow: inset 0 1px 0 var(--lg-rim), inset 0 0 0 1px var(--lg-rim-soft), var(--lg-shadow);
+  border-color: transparent;
+}
+.card, .glass { border-radius: 26px; }
+.status-tile { border-radius: 20px; }
+
+/* Seitenleiste als schwebendes Glas-Panel wie im Finder */
+@media (min-width: 981px) {
+  .sidebar {
+    position: sticky;
+    top: 10px;
+    height: calc(100vh - 20px);
+    margin: 10px 0 10px 10px;
+    border-radius: 24px;
+    border: 0;
+    box-shadow: inset 0 1px 0 var(--lg-rim), inset 0 0 0 1px var(--lg-rim-soft), var(--lg-shadow);
+  }
+}
+.site-nav a, .nav-btn { border-radius: 12px; }
+.site-nav a.active {
+  background: var(--nav-active);
+  box-shadow: inset 0 1px 0 var(--lg-rim-soft);
+}
+
+/* Knöpfe als Pillen; normale Knöpfe aus Glas */
+.btn, .btn.small { border-radius: 999px; }
+.btn:not(.primary):not(.ghost):not(.link):not(.danger) {
+  background: color-mix(in srgb, var(--surface-3) 70%, transparent);
+  border-color: transparent;
+  box-shadow: inset 0 1px 0 var(--lg-rim-soft), 0 1px 2px rgba(0, 0, 0, 0.08);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
+.btn.primary { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent); border-color: transparent; }
+.btn.danger { border-radius: 999px; }
+.icon-btn { border-radius: 999px; }
+
+/* Eingabefelder wie in macOS: runder, ohne harte Kante */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea {
+  border-radius: 12px;
+}
+
+/* Reiter (Einstellungen, Benutzer) als Glas-Segment */
+.subnav { padding: 8px 0 14px; }
+.subnav a {
+  border-radius: 999px;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--surface-3) 60%, transparent);
+  box-shadow: inset 0 1px 0 var(--lg-rim-soft);
+}
+.subnav a.active {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.segmented { border-radius: 999px; }
+.segmented button { border-radius: 999px; }
+
+/* App-Icons mit Glanz wie die macOS-Icons */
+.app-icon { position: relative; border-radius: 22%; overflow: hidden; }
+.app-icon::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.08) 45%, rgba(255, 255, 255, 0) 60%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+}
+.app-icon svg { position: relative; z-index: 1; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18)); }
+
+/* Dialoge wie macOS-Sheets */
+.dialog { border-radius: 28px; box-shadow: inset 0 1px 0 var(--lg-rim), 0 30px 80px rgba(0, 0, 0, 0.35); border: 0; }
+
+/* Tabellen in Karten: abgesetzt wie macOS-Listen */
+.table-wrap { border-radius: 16px; }
+
+/* Handy: Kopf-Knöpfe und Leiste als Glas-Pillen */
+.rm-tabs { box-shadow: inset 0 1px 0 var(--lg-rim), inset 0 0 0 1px var(--lg-rim-soft), 0 12px 30px rgba(0, 0, 0, 0.25); }
+.rm-icon { box-shadow: inset 0 1px 0 var(--lg-rim), inset 0 0 0 1px var(--lg-rim-soft); }
+
+/* Hintergrund-Auswahl: mehr Bilder – fünf pro Reihe */
+.wallpapers { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+#appearance-dialog { width: min(620px, calc(100vw - 32px)); }
+@media (max-width: 560px) { .wallpapers { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

@@ -1,0 +1,22 @@
+[
+ {"name":"graphit-hell","style":"fins","bg":["#f4f4f6","#e6e6ea"],"colors":["#c9c9ce","#f7f7f9"],"shadow":"rgba(0,0,0,0.18)","rim":"rgba(255,255,255,0.95)","sheen":"rgba(255,255,255,0.5)","seed":3,"count":12},
+ {"name":"kupfer-hell","style":"fins","bg":["#f6f0e8","#ece3d8"],"colors":["#e0d6ca","#f3933f"],"shadow":"rgba(90,50,10,0.22)","rim":"rgba(255,255,255,0.85)","sheen":"rgba(255,255,255,0.35)","seed":3,"count":12},
+ {"name":"ozean-hell","style":"flow","bg":["#eef3ff","#dce6ff"],"colors":["#8fb0ff","#b9a8ff","#7fc8ff","#a9c2ff"],"shadow":"rgba(30,60,160,0.18)","rim":"rgba(255,255,255,0.85)","alpha":0.8,"seed":21},
+ {"name":"indigo-hell","style":"flow","bg":["#f1f0ff","#e2e0fb"],"colors":["#a7a4ff","#c8c4ff","#8f8bff","#d9d6ff"],"shadow":"rgba(50,40,150,0.18)","rim":"rgba(255,255,255,0.85)","alpha":0.75,"seed":31,"waves":2},
+ {"name":"abendrot-hell","style":"orb","bg":["#fbf0f4","#efe6fb"],"colors":["#ff8fab","#b58cff","#ffd0b5","#d9c9ff"],"shadow":"rgba(120,60,120,0.18)","rim":"rgba(255,255,255,0.85)","alpha":0.7,"seed":5},
+ {"name":"salbei-hell","style":"veils","bg":["#f1f4f1","#e3e9e3"],"colors":["#a9bfa9","#cbd9cb","#8fa98f"],"shadow":"rgba(40,60,40,0.18)","rim":"rgba(255,255,255,0.85)","alpha":0.55,"seed":9,"count":3},
+ {"name":"tanne-hell","style":"veils","bg":["#eef3f0","#dde8e2"],"colors":["#8fbca5","#c2dccf","#6fa58b"],"shadow":"rgba(30,70,50,0.2)","rim":"rgba(255,255,255,0.85)","alpha":0.55,"seed":7,"count":3},
+
+ {"name":"lagune","style":"fins","bg":["#03090b","#061316"],"colors":["#0d2a30","#2fd3d9"],"dark":true,"seed":13,"count":12,"sheen":"rgba(180,255,255,0.18)"},
+ {"name":"lagune-hell","style":"fins","bg":["#edf8f8","#dff1f2"],"colors":["#bfe3e5","#2fc3cb"],"shadow":"rgba(10,80,90,0.2)","rim":"rgba(255,255,255,0.9)","sheen":"rgba(255,255,255,0.4)","seed":13,"count":12},
+ {"name":"rose","style":"veils","bg":["#0a0507","#160a10"],"colors":["#c46a8a","#7a3552","#e39ab3"],"glow":[0.75,0.25,"#5a2238",0.45],"seed":17,"count":4,"alpha":0.42},
+ {"name":"rose-hell","style":"veils","bg":["#fbf2f5","#f3e3ea"],"colors":["#efa3bd","#f7cad8","#e083a3"],"shadow":"rgba(140,50,80,0.18)","rim":"rgba(255,255,255,0.9)","alpha":0.5,"seed":17,"count":4},
+ {"name":"aurora","style":"flow","bg":["#020a0c","#051418"],"colors":["#19c39a","#3d6bff","#8a3dff","#0f8f7a"],"seed":23,"waves":3},
+ {"name":"aurora-hell","style":"flow","bg":["#eefaf6","#e3eefb"],"colors":["#86e3c8","#9fb6ff","#c6a6ff","#a8eedb"],"shadow":"rgba(20,90,80,0.16)","rim":"rgba(255,255,255,0.88)","alpha":0.8,"seed":23,"waves":3},
+ {"name":"sonne","style":"orb","bg":["#1a0c02","#2a1404"],"colors":["#ffb21f","#c4470d","#ffe08a","#5a2405"],"seed":29},
+ {"name":"sonne-hell","style":"orb","bg":["#fff7e8","#fdecd2"],"colors":["#ffc14d","#ff8a3d","#fff0b8","#ffd9a8"],"shadow":"rgba(150,80,10,0.18)","rim":"rgba(255,255,255,0.9)","alpha":0.7,"seed":29},
+ {"name":"lavendel","style":"fins","bg":["#07040c","#0e0818"],"colors":["#241638","#b48cff"],"dark":true,"seed":37,"count":12,"sheen":"rgba(230,210,255,0.2)"},
+ {"name":"lavendel-hell","style":"fins","bg":["#f6f2fd","#ebe4f8"],"colors":["#dccff3","#a57cf2"],"shadow":"rgba(70,40,130,0.2)","rim":"rgba(255,255,255,0.9)","sheen":"rgba(255,255,255,0.4)","seed":37,"count":12},
+ {"name":"mitternacht","style":"veils","bg":["#02040a","#060b18"],"colors":["#3a5a9a","#1b2b55","#7f9bd6"],"glow":[0.7,0.15,"#1a2c5c",0.5],"seed":41,"count":4,"alpha":0.45},
+ {"name":"mitternacht-hell","style":"veils","bg":["#f0f3fa","#e1e7f4"],"colors":["#a5b8e3","#cad6f0","#8099d6"],"shadow":"rgba(30,50,110,0.18)","rim":"rgba(255,255,255,0.9)","alpha":0.5,"seed":41,"count":4}
+]
