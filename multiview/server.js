@@ -1307,6 +1307,26 @@ function readProfiles() {
 
 const profileKey = (user) => `${user.roleId}:${String(user.name).trim().toLowerCase()}`
 
+// ---------------------------------------------------------------------------
+// Profilbilder: pro Person (Name, unabhängig von der Rolle), als kleines JPEG in data/avatars.
+// Der Browser verkleinert vorher auf 256×256, hier kommt nur das fertige Bild an.
+// ---------------------------------------------------------------------------
+const AVATAR_DIR = path.join(DATA_DIR, 'avatars')
+const avatarId = (name) =>
+  require('crypto').createHash('sha1').update(String(name || '').trim().toLowerCase()).digest('hex').slice(0, 20)
+const avatarFile = (id) => path.join(AVATAR_DIR, `${id}.jpg`)
+
+/** Adresse des Profilbilds einer Person (mit Version gegen den Browser-Cache) oder null. */
+function avatarUrl(name) {
+  if (!String(name || '').trim()) return null
+  const id = avatarId(name)
+  try {
+    return `/api/avatar/${id}?v=${Math.round(fs.statSync(avatarFile(id)).mtimeMs)}`
+  } catch {
+    return null
+  }
+}
+
 /**
  * Wer ist gerade für diesen Multiview angemeldet? Für Monitore ohne eigene Anmeldung (Kiosk am
  * HDMI-Ausgang): Kesher-Kacheln mit „angemeldeter Nutzer“ melden sich dann als diese Person an.
@@ -1331,7 +1351,7 @@ app.get(['/api/me', '/.jms-auth/api/me'], (req, res) => {
   const rights = roleRights(config, user)
   res.json({
     access: { enabled: access.enabled(), pinSource: access.pinSource() },
-    user: user && { name: user.name, roleId: user.roleId, roleName: roleName(user.roleId), admin: user.admin, open: user.open },
+    user: user && { name: user.name, roleId: user.roleId, roleName: roleName(user.roleId), admin: user.admin, open: user.open, avatar: user.open ? null : avatarUrl(user.name) },
     rights: rights && {
       admin: rights.admin,
       editLayouts: rights.admin || rights.editLayouts,
@@ -1375,6 +1395,30 @@ app.put('/api/me/prefs', requireUser, (req, res) => {
 })
 
 // Multiview am Handy umschalten (Fernbedienung) – nur eigene Multiviews und sichtbare Layouts
+app.post('/api/me/avatar', requireUser, (req, res) => {
+  if (req.user.open) return res.status(400).json({ ok: false, error: 'Profilbilder gibt es nur mit Anmeldung' })
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.image || ''))
+  if (!m) return res.status(400).json({ ok: false, error: 'Bitte ein Bild wählen' })
+  const data = Buffer.from(m[1], 'base64')
+  if (data.length > 400 * 1024 || data[0] !== 0xff || data[1] !== 0xd8)
+    return res.status(400).json({ ok: false, error: 'Das Bild ist zu groß oder kein JPEG' })
+  fs.mkdirSync(AVATAR_DIR, { recursive: true })
+  fs.writeFileSync(avatarFile(avatarId(req.user.name)), data)
+  res.json({ ok: true, avatar: avatarUrl(req.user.name) })
+})
+
+app.delete('/api/me/avatar', requireUser, (req, res) => {
+  fs.rmSync(avatarFile(avatarId(req.user.name)), { force: true })
+  res.json({ ok: true, avatar: null })
+})
+
+app.get('/api/avatar/:id', (req, res) => {
+  if (!/^[0-9a-f]{20}$/.test(req.params.id)) return res.status(404).end()
+  const file = avatarFile(req.params.id)
+  if (!fs.existsSync(file)) return res.status(404).end()
+  res.set('Cache-Control', 'public, max-age=31536000, immutable').type('image/jpeg').sendFile(file)
+})
+
 app.post('/api/me/output/:output/layout', requireUser, (req, res) => {
   const output = config.outputs.find((o) => o.id === req.params.output)
   if (!output || !allowedOutputs(config, req.user).has(output.id))
@@ -1447,7 +1491,7 @@ app.post('/api/access/pin', requireAdmin, async (req, res) => {
 })
 
 app.get('/api/access/sessions', requireAdmin, (req, res) =>
-  res.json(access.sessions().map((s) => ({ ...s, roleName: roleName(s.roleId), self: s.id === req.user.sessionId }))),
+  res.json(access.sessions().map((s) => ({ ...s, roleName: roleName(s.roleId), self: s.id === req.user.sessionId, avatar: avatarUrl(s.name) }))),
 )
 
 app.delete('/api/access/sessions/:id', requireAdmin, (req, res) => {

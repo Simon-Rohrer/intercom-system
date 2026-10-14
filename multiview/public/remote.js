@@ -8,6 +8,7 @@ import { connect } from './common.js'
 import { adoptServerPrefs, applyPrefs, currentPrefs, nextTheme, setPrefs, themeIcon } from './theme.js'
 import { visibleOutputs, visibleLayouts, canEditOutput, chatFor } from './rights.js'
 import { createComposer } from './chat-compose.js'
+import { fillAvatar, pickAvatar } from './avatar.js'
 
 const $ = (sel) => document.querySelector(sel)
 const $$ = (sel) => [...document.querySelectorAll(sel)]
@@ -57,7 +58,7 @@ async function start() {
   if (!user.open) adoptServerPrefs(me.prefs)
   else applyPrefs(currentPrefs())
 
-  $('#avatar').textContent = user.open ? 'MV' : initials(user.name)
+  fillAvatar($('#avatar'), user.open ? null : user, user.open ? 'MV' : initials(user.name))
   $('#user-name').textContent = user.open ? 'Fernbedienung' : user.name
   $('#user-role').textContent = user.open ? 'Zugang offen' : user.roleName
   $('#logout-btn').hidden = user.open
@@ -109,6 +110,19 @@ $('#logout-btn').addEventListener('click', async () => {
 function renderTheme() {
   $('#theme-btn').innerHTML = themeIcon(currentPrefs().theme)
 }
+// Tippen aufs eigene Bild: neues Profilbild aus Fotos oder Kamera
+$('#avatar').addEventListener('click', async () => {
+  if (user.open) return
+  try {
+    const avatar = await pickAvatar()
+    if (avatar === undefined) return
+    user = { ...user, avatar }
+    fillAvatar($('#avatar'), user, initials(user.name))
+  } catch (err) {
+    alert(err.message)
+  }
+})
+
 $('#theme-btn').addEventListener('click', async () => {
   await setPrefs({ theme: nextTheme() }, { server: !user.open })
   renderTheme()

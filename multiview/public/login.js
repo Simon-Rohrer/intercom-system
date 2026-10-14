@@ -2,6 +2,7 @@
 // Unter /.jms-auth/ ist das die zentrale Anmeldung für die anderen Dienste (Kesher, Dashboard …):
 // Dort kommt – wenn eingeschaltet – vorher einmal am Tag der Tagescode (QR-Code oder 6 Ziffern).
 import { applyPrefs, currentPrefs } from './theme.js'
+import { avatarHtml } from './avatar.js'
 
 applyPrefs(currentPrefs())
 
@@ -249,6 +250,10 @@ async function showLoginStep() {
   ].join('')
   if (!roles.length) $('#error').textContent = 'Kesher ist gerade nicht erreichbar – nur die Admin-Anmeldung geht.'
   $('#name').value = remembered('name')
+  // Großer Avatar über dem Formular, wächst beim Tippen des Namens mit
+  const showAvatar = () => ($('#auth-avatar').innerHTML = avatarHtml({ name: $('#name').value.trim() || '?' }))
+  $('#name').addEventListener('input', showAvatar)
+  showAvatar()
 
   function syncPin() {
     const admin = $('#role').value === 'admin'
