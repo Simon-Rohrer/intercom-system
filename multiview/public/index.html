@@ -73,7 +73,7 @@
             <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>
           </button>
           <button type="button" class="icon-btn" id="theme-btn" aria-label="Hell / Dunkel" title="Hell / Dunkel / System"></button>
-          <button type="button" class="icon-btn" data-open="appearance-dialog" aria-label="Darstellung" title="Darstellung und Akzentfarbe">
+          <button type="button" class="icon-btn" data-open="appearance-dialog" aria-label="Darstellung" title="Darstellung und Hintergrund">
             <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.8 1.7-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="7.2" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/></svg>
           </button>
         </div>
@@ -98,20 +98,6 @@
 
           <div id="output-cards" class="output-grid"></div>
 
-          <div data-admin>
-            <div class="section-head">
-              <div>
-                <h2>Bildschirme am Server</h2>
-                <p class="muted">Die Monitore, die direkt am Server hängen. Pro Anschluss wählst du, welcher Multiview dort läuft – die Umschaltung ist sofort live.</p>
-              </div>
-            </div>
-            <div class="table-wrap">
-              <table class="table">
-                <thead><tr><th>Anschluss</th><th>Name</th><th>Multiview</th><th>Monitor</th></tr></thead>
-                <tbody id="screen-rows"></tbody>
-              </table>
-            </div>
-          </div>
         </section>
 
         <!-- Eingänge -->
@@ -242,7 +228,7 @@
           <div class="page-head">
             <div>
               <h1>Einstellungen</h1>
-              <p class="lead">Verbindungen zu ATEM, ProPresenter, Kesher und ChurchTools – und die Steuerung über Companion.</p>
+              <p class="lead">Verbindungen zu ATEM, ProPresenter, Kesher und ChurchTools, die Steuerung über Companion und die Bildschirme am Server.</p>
             </div>
           </div>
 
@@ -252,9 +238,24 @@
             <a href="#/einstellungen/kesher" data-section-link="kesher"><span class="status-dot"></span>Kesher-Chat</a>
             <a href="#/einstellungen/churchtools" data-section-link="churchtools"><span class="status-dot"></span>ChurchTools</a>
             <a href="#/einstellungen/companion" data-section-link="companion">Companion</a>
+            <a href="#/einstellungen/bildschirme" data-section-link="bildschirme">Bildschirme am Server</a>
           </nav>
 
           <div class="settings-stack">
+            <div class="card" id="set-screens" data-section="bildschirme">
+              <div class="card-head">
+                <div>
+                  <h2>Bildschirme am Server</h2>
+                  <p class="muted">Die Monitore, die direkt am Server hängen. Pro Anschluss wählst du, welcher Multiview dort läuft – die Umschaltung ist sofort live.</p>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead><tr><th>Anschluss</th><th>Name</th><th>Multiview</th><th>Monitor</th></tr></thead>
+                  <tbody id="screen-rows"></tbody>
+                </table>
+              </div>
+            </div>
             <div class="card" id="set-atem" data-section="atem">
               <div class="card-head">
                 <div>

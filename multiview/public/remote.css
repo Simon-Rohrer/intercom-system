@@ -543,7 +543,7 @@ body.booting .rm-main { opacity: 0; }
 .rm-card.folded .rm-viewonly { display: none; }
 
 /* ---- iCloud-Stil: Wallpaper aus admin.css, Karten und Leisten aus mattem Glas ---- */
-.rm-body { background: var(--bg); background-image: var(--wallpaper); background-attachment: fixed; }
+/* Hintergrund kommt aus admin.css (body::before) */
 .rm-head { background: transparent; }
 .rm-avatar {
   border: 0;

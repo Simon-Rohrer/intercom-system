@@ -1352,7 +1352,6 @@ h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
   }
 }
 
-body { background: var(--bg) var(--wallpaper) fixed; background-image: var(--wallpaper); background-attachment: fixed; }
 
 /* Glasflächen */
 .card, .status-tile, .glass, .sidebar, .list-panel {
@@ -1499,3 +1498,74 @@ input, select, textarea { background-color: var(--surface-2); }
 .auth-foot { text-align: center; font-size: 12.5px; color: var(--muted); margin: 0; }
 .subnav { background: transparent; -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
 .profile-actions .btn.link { background: none; border-color: transparent; box-shadow: none; }
+
+/* ==================================================================
+   Hintergrundbilder: als feste Ebene hinter der Seite. background-attachment: fixed
+   funktioniert auf iPhone/iPad nicht – dort würde das Bild über die ganze Seitenlänge gezogen.
+   ================================================================== */
+body { background: var(--bg); }
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--wallpaper);
+  background-size: cover;
+  background-position: center;
+  pointer-events: none;
+}
+.rm-body { background: var(--bg); }
+
+/* Auswahl im Dialog „Darstellung“ */
+.wallpapers {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 10px;
+  margin-top: 16px;
+}
+.wp-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.wp-thumb {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  border-radius: 12px;
+  background-size: cover;
+  background-position: center;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.wp-thumb i {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+}
+.wp-choice:hover .wp-thumb { transform: translateY(-1px); }
+.wp-choice.active .wp-thumb { box-shadow: 0 0 0 3px var(--accent), inset 0 0 0 1px var(--line-strong); }
+.wp-choice:focus-visible { outline: none; }
+.wp-choice:focus-visible .wp-thumb { box-shadow: 0 0 0 3px var(--accent); }
+.wp-name { font-size: 12.5px; font-weight: 500; text-align: center; }
+.wp-choice.active .wp-name { font-weight: 700; }
+@media (max-width: 480px) {
+  .wallpapers { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+/* Text direkt auf hellen Stellen eines Bildes lesbar halten */
+:root[data-theme="dark"] .page-head :is(h1, .lead),
+:root[data-theme="dark"] .section-head :is(h2, h3, .muted) { text-shadow: 0 1px 14px rgba(0, 0, 0, 0.55); }
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .page-head :is(h1, .lead),
+  :root[data-theme="system"] .section-head :is(h2, h3, .muted) { text-shadow: 0 1px 14px rgba(0, 0, 0, 0.55); }
+}

@@ -1,35 +1,17 @@
-// Darstellung: Hell, Dunkel oder wie das System – plus Akzentfarbe. Gemeinsam für Editor,
+// Darstellung: Hell, Dunkel oder wie das System – plus Hintergrundbild. Gemeinsam für Editor,
 // Anmeldung und Handy-Seite. Gespeichert im Browser und (angemeldet) pro Nutzer auf dem Server,
-// damit Handy und Rechner gleich aussehen.
+// damit Handy und Rechner gleich aussehen. Jeder Hintergrund bringt seine Akzentfarbe mit
+// (Liste in theme-boot.js, das schon vor dem ersten Zeichnen läuft).
 
-export const ACCENTS = [
-  // Systemfarben von Apple
-  { name: 'Blau', value: '#007aff' },
-  { name: 'Indigo', value: '#5856d6' },
-  { name: 'Violett', value: '#af52de' },
-  { name: 'Pink', value: '#ff2d55' },
-  { name: 'Rot', value: '#ff3b30' },
-  { name: 'Orange', value: '#ff9500' },
-  { name: 'Bernstein', value: '#c27c0e' },
-  { name: 'Grün', value: '#34c759' },
-  { name: 'Türkis', value: '#30b0c7' },
-  { name: 'Graphit', value: '#8e8e93' },
-]
+export const WALLPAPERS = window.MV_WALLPAPERS || [{ id: 'blau', name: 'Blau', file: null, accent: '#007aff' }]
+const DEFAULT_WALLPAPER = WALLPAPERS[0].id
+const validWallpaper = (id) => (WALLPAPERS.some((w) => w.id === id) ? id : DEFAULT_WALLPAPER)
 
 export const THEMES = [
   { value: 'light', name: 'Hell' },
   { value: 'dark', name: 'Dunkel' },
   { value: 'system', name: 'System' },
 ]
-
-const DEFAULT_ACCENT = ACCENTS[0].value
-
-// Frühere Akzentfarben (vor dem Apple-Stil) auf die neuen abbilden – gespeicherte Wahl bleibt erhalten
-const OLD_ACCENTS = {
-  '#2563eb': '#007aff', '#4f46e5': '#5856d6', '#7c3aed': '#af52de', '#db2777': '#ff2d55', '#dc2626': '#ff3b30',
-  '#ea580c': '#ff9500', '#b45309': '#c27c0e', '#16a34a': '#34c759', '#0d9488': '#30b0c7', '#475569': '#8e8e93',
-}
-const modernAccent = (value) => (value && OLD_ACCENTS[String(value).toLowerCase()]) || value
 
 function read(key, fallback) {
   try {
@@ -52,7 +34,7 @@ export function currentPrefs() {
   const theme = read('theme', 'system')
   return {
     theme: THEMES.some((t) => t.value === theme) ? theme : 'system',
-    accent: modernAccent(read('accent', null)) || DEFAULT_ACCENT,
+    wallpaper: validWallpaper(read('wallpaper', DEFAULT_WALLPAPER)),
   }
 }
 
@@ -62,12 +44,13 @@ export function effectiveTheme(theme = currentPrefs().theme) {
   return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-export function applyPrefs({ theme, accent }) {
+export function applyPrefs({ theme, wallpaper }) {
   const root = document.documentElement
   root.dataset.theme = THEMES.some((t) => t.value === theme) ? theme : 'system'
-  root.style.setProperty('--accent', modernAccent(accent) || DEFAULT_ACCENT)
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', effectiveTheme(theme) === 'dark' ? '#000000' : '#f5f5f7')
-  for (const fn of listeners) fn({ theme, accent })
+  const dark = effectiveTheme(theme) === 'dark'
+  const wp = window.MV_applyWallpaper?.(validWallpaper(wallpaper), dark)
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? wp?.bg || '#0a1d57' : '#eaf2ff')
+  for (const fn of listeners) fn({ theme, wallpaper })
 }
 
 const listeners = new Set()
@@ -79,7 +62,7 @@ export function onPrefsChange(fn) {
 export async function setPrefs(partial, { server = true } = {}) {
   const next = { ...currentPrefs(), ...partial }
   write('theme', next.theme)
-  write('accent', next.accent)
+  write('wallpaper', next.wallpaper)
   applyPrefs(next)
   if (!server) return
   try {
@@ -97,7 +80,7 @@ export async function setPrefs(partial, { server = true } = {}) {
 export function adoptServerPrefs(prefs) {
   if (!prefs) return applyPrefs(currentPrefs())
   write('theme', prefs.theme || 'system')
-  if (prefs.accent) write('accent', prefs.accent)
+  if (prefs.wallpaper) write('wallpaper', validWallpaper(prefs.wallpaper))
   applyPrefs(currentPrefs())
 }
 
@@ -109,18 +92,26 @@ export function nextTheme(theme = currentPrefs().theme) {
 
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyPrefs(currentPrefs()))
 
-/** Auswahl Hell/Dunkel/System und Akzentfarben als HTML (für Dialoge). */
+/** Vorschau eines Hintergrunds (kleines Bild bzw. der blaue Verlauf). */
+export function wallpaperThumb(wp) {
+  return wp.file ? `url('${window.MV_wallpaperBase || ''}/api/wallpaper/${wp.file}-s.jpg')` : 'linear-gradient(165deg, #07174d, #0d2f8f 50%, #2e7aff)'
+}
+
+/** Auswahl Hell/Dunkel/System und Hintergründe als HTML (für Dialoge). */
 export function appearanceHtml() {
-  const { theme, accent } = currentPrefs()
+  const { theme, wallpaper } = currentPrefs()
   return `
     <div class="segmented" role="radiogroup" aria-label="Darstellung">
       ${THEMES.map(
         (t) => `<button type="button" role="radio" data-theme-choice="${t.value}" aria-checked="${t.value === theme}" class="${t.value === theme ? 'active' : ''}">${themeIcon(t.value)}<span>${t.name}</span></button>`,
       ).join('')}
     </div>
-    <div class="swatches" role="radiogroup" aria-label="Akzentfarbe">
-      ${ACCENTS.map(
-        (a) => `<button type="button" role="radio" class="swatch${a.value === accent ? ' active' : ''}" data-accent="${a.value}" aria-checked="${a.value === accent}" title="${a.name}" style="--swatch:${a.value}"><span class="sr-only">${a.name}</span></button>`,
+    <div class="wallpapers" role="radiogroup" aria-label="Hintergrund">
+      ${WALLPAPERS.map(
+        (w) => `<button type="button" role="radio" class="wp-choice${w.id === wallpaper ? ' active' : ''}" data-wp-choice="${w.id}" aria-checked="${w.id === wallpaper}">
+          <span class="wp-thumb" style="background-image:${wallpaperThumb(w)}"><i style="background:${w.accent}"></i></span>
+          <span class="wp-name">${w.name}</span>
+        </button>`,
       ).join('')}
     </div>`
 }
@@ -129,9 +120,9 @@ export function appearanceHtml() {
 export function bindAppearance(container, rerender) {
   container.addEventListener('click', (e) => {
     const t = e.target.closest('[data-theme-choice]')
-    const a = e.target.closest('[data-accent]')
+    const w = e.target.closest("[data-wp-choice]")
     if (t) setPrefs({ theme: t.dataset.themeChoice })
-    else if (a) setPrefs({ accent: a.dataset.accent })
+    else if (w) setPrefs({ wallpaper: w.dataset.wpChoice })
     else return
     rerender?.()
   })

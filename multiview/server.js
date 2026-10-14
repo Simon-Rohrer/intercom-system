@@ -1389,14 +1389,14 @@ app.post(['/api/logout', '/.jms-auth/api/logout'], (req, res) => {
   res.json({ ok: true })
 })
 
-// Darstellung (Hell/Dunkel, Akzentfarbe) pro Nutzer – damit Handy und Rechner gleich aussehen
+// Darstellung (Hell/Dunkel, Hintergrund) pro Nutzer – damit Handy und Rechner gleich aussehen
 app.put('/api/me/prefs', requireUser, (req, res) => {
   if (req.user.open) return res.json({ ok: true })
-  const { theme, accent } = req.body || {}
+  const { theme, wallpaper } = req.body || {}
   const profiles = readProfiles()
   profiles[profileKey(req.user)] = {
     theme: ['light', 'dark', 'system'].includes(theme) ? theme : 'system',
-    accent: /^#[0-9a-f]{6}$/i.test(accent) ? accent : null,
+    wallpaper: /^[a-z0-9-]{1,40}$/.test(wallpaper) ? wallpaper : null,
   }
   fs.writeFileSync(PROFILES_FILE, JSON.stringify(profiles, null, 2))
   res.json({ ok: true })
@@ -1420,7 +1420,17 @@ app.delete('/api/me/avatar', requireUser, (req, res) => {
   res.json({ ok: true, avatar: null })
 })
 
-app.get('/api/avatar/:id', (req, res) => {
+// Hintergrundbilder für Editor, Handy und Anmeldung. Sie liegen im Datenordner (data/wallpapers)
+// und nicht im Git-Repo, weil das öffentlich ist und die Bilder fremde Lizenzen haben.
+const WALLPAPER_DIR = path.join(DATA_DIR, 'wallpapers')
+app.get(['/api/wallpaper/:file', '/.jms-auth/api/wallpaper/:file'], (req, res) => {
+  if (!/^[a-z0-9-]{1,40}\.jpg$/.test(req.params.file)) return res.status(404).end()
+  const file = path.join(WALLPAPER_DIR, req.params.file)
+  if (!fs.existsSync(file)) return res.status(404).end()
+  res.set('Cache-Control', 'public, max-age=604800').type('image/jpeg').sendFile(file)
+})
+
+app.get('/api/avatar/:id', requireTrusted, (req, res) => {
   if (!/^[0-9a-f]{20}$/.test(req.params.id)) return res.status(404).end()
   const file = avatarFile(req.params.id)
   if (!fs.existsSync(file)) return res.status(404).end()

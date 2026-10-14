@@ -23,7 +23,7 @@ const CLIENT_ID = uid('c')
 const PAGES = ['uebersicht', 'eingaenge', 'layouts', 'einstellungen', 'zugang']
 const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'zugang']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
-const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'companion']
+const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'companion', 'bildschirme']
 const SOURCE_TYPES = {
   device: 'Capture-Gerät',
   stream: 'Netzwerk-Stream',
@@ -430,7 +430,7 @@ $('#output-add').addEventListener('click', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Übersicht: Bildschirme am Server (welcher Multiview auf welchem Anschluss)
+// Einstellungen: Bildschirme am Server (welcher Multiview auf welchem Anschluss)
 // ---------------------------------------------------------------------------
 
 /** "HDMI-A-1" → "HDMI 1", "DP-2" → "DisplayPort 2" */
