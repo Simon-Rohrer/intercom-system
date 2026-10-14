@@ -147,9 +147,11 @@ done
 start_services
 
 STEP="Kesher-Quellstand"
-{ git -C "${INTERCOM_DIR}" branch --show-current; git -C "${INTERCOM_DIR}" rev-parse HEAD; } \
-  >"${STAGE}/kesher-version.txt"
-git -C "${INTERCOM_DIR}" diff >"${STAGE}/kesher-lokale-aenderungen.patch"
+# Das Repo gehört master, die Sicherung läuft als root: ohne diese Ausnahme verweigert
+# Git die Arbeit („dubious ownership“)
+repo_git() { git -c safe.directory="${INTERCOM_DIR}" -C "${INTERCOM_DIR}" "$@"; }
+{ repo_git branch --show-current; repo_git rev-parse HEAD; } >"${STAGE}/kesher-version.txt"
+repo_git diff >"${STAGE}/kesher-lokale-aenderungen.patch"
 
 mapfile -t system_paths < <(existing "${SYSTEM_PATHS[@]}")
 
