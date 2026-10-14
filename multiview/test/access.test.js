@@ -349,3 +349,54 @@ test('Tagescode einmal eingegeben gilt auch unter dem anderen Namen (gleiche MAC
   access.renewDayCode()
   assert.equal(access.check({ service: 'kesher', ip: 'fe80::127' }, fakeReq()).action, 'code')
 })
+
+test('Anmeldung gilt auf dem ganzen Gerät, auch unter den .local-Namen', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
+  const macs = { '192.168.0.127': 'cc:cc:cc:cc:cc:03', 'fe80::127': 'cc:cc:cc:cc:cc:03', '192.168.0.200': 'ee:ee:ee:ee:ee:05' }
+  const access = createAccess({ dataDir: dir, log: () => {}, macOf: (ip) => macs[ip] ?? null, ipOf: (req) => req.ip })
+  await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
+  const at = (ip, cookies = {}) => ({ ...fakeReq(cookies), ip })
+
+  // Anmelden über https://192.168.0.21:8443 (IPv4) …
+  const res = fakeRes()
+  await access.login({ name: 'Simon', roleId: 'lighting' }, at('192.168.0.127'), res)
+  const ipCookie = { mv_session: res.cookies.mv_session }
+  // … gilt auch über intercom.local (IPv6, ohne Cookie)
+  assert.equal(access.userOf(at('fe80::127'))?.name, 'Simon')
+  assert.ok(access.sessionIdOf(at('fe80::127')))
+  // ein anderes Gerät nicht
+  assert.equal(access.userOf(at('192.168.0.200')), null)
+
+  // Wechsel unter multiview.local: ersetzt die Anmeldung überall auf dem Gerät
+  const res2 = fakeRes()
+  await access.login({ name: 'Simon', roleId: 'video' }, at('fe80::127'), res2)
+  assert.equal(access.userOf(at('192.168.0.127', ipCookie))?.roleId, 'video')
+  assert.deepEqual(access.occupiedRoles(), { video: 'Simon' })
+
+  // Abmelden unter intercom.local meldet auch unter der IP ab
+  access.logout(at('fe80::127', { mv_session: res2.cookies.mv_session }), fakeRes())
+  assert.equal(access.userOf(at('192.168.0.127', ipCookie)), null)
+  assert.equal(access.userOf(at('fe80::127')), null)
+})
+
+test('feste Stationen ohne Anmeldung teilen keine Anmeldung über die MAC-Adresse', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
+  const macs = { '192.168.0.67': 'aa:aa:aa:aa:aa:01', 'fe80::67': 'aa:aa:aa:aa:aa:01' }
+  const access = createAccess({ dataDir: dir, log: () => {}, macOf: (ip) => macs[ip] ?? null, ipOf: (req) => req.ip })
+  await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
+  access.setGateway({ enabled: true, exempt: [{ network: '192.168.0.67', label: 'Station' }] })
+  const res = fakeRes()
+  await access.login({ name: 'Tim', roleId: 'video' }, { ...fakeReq(), ip: '192.168.0.67' }, res)
+  // ohne Cookie (anderes Fenster, anderer Name): nicht angemeldet
+  assert.equal(access.userOf({ ...fakeReq(), ip: 'fe80::67' }), null)
+  assert.equal(access.userOf({ ...fakeReq({ mv_session: res.cookies.mv_session }), ip: '192.168.0.67' })?.name, 'Tim')
+})
+
+test('Rolle belegt: die bisherige Anmeldung des Browsers bleibt bestehen', async () => {
+  const { access } = await setup()
+  const tim = await loginAs(access, 'Tim', 'video')
+  const anna = await loginAs(access, 'Anna', 'lighting')
+  await assert.rejects(access.login({ name: 'Anna', roleId: 'video' }, fakeReq({ mv_session: anna }), fakeRes()), /schon angemeldet/)
+  assert.equal(access.userOf(fakeReq({ mv_session: anna }))?.roleId, 'lighting')
+  assert.ok(tim)
+})

@@ -245,9 +245,42 @@ function createAccess({
       created: Date.now(),
       seen: Date.now(),
       ip: ip || undefined,
+      mac: deviceMac(ip) || undefined,
     }
     write()
     return token
+  }
+
+  /**
+   * Die Anmeldung gilt für das ganze Gerät, nicht nur für eine Adresse: Das Cookie schickt der
+   * Browser nur an den Namen, unter dem es gesetzt wurde. Über die IP teilen sich alle Dienste
+   * eins (Cookies kennen keine Ports), intercom.local und multiview.local aber nicht. Darum
+   * erkennt der Server das Gerät zusätzlich an seiner MAC-Adresse (IPv4 und IPv6 gleich).
+   * Nicht bei festen Stationen ohne Anmeldung – dort laufen oft mehrere Fenster nebeneinander.
+   */
+  function deviceMac(ip) {
+    if (!ip || openIp(ip)) return null
+    return macOf(ip)
+  }
+
+  /** Sitzungen dieses Geräts (an der MAC-Adresse), neueste zuerst. */
+  function deviceSessions(req) {
+    const mac = deviceMac(ipOf(req))
+    if (!mac) return []
+    return Object.values(secret.sessions)
+      .filter((s) => s.mac === mac)
+      .sort((a, b) => b.created - a.created)
+  }
+
+  /** Sitzung zum Cookie, sonst die neueste Anmeldung dieses Geräts unter einer anderen Adresse. */
+  function lookupSession(req) {
+    const token = parseCookies(req.headers.cookie)[COOKIE]
+    return (token && secret.sessions[sha256(token)]) || deviceSessions(req)[0] || null
+  }
+
+  function deleteSessions(list) {
+    const ids = new Set(list.map((s) => s.id))
+    for (const [key, s] of Object.entries(secret.sessions)) if (ids.has(s.id)) delete secret.sessions[key]
   }
 
   function cookieFor(token, req) {
@@ -257,9 +290,7 @@ function createAccess({
 
   /** Sitzung zur Anfrage (oder null). */
   function sessionOf(req) {
-    const token = parseCookies(req.headers.cookie)[COOKIE]
-    if (!token) return null
-    const s = secret.sessions[sha256(token)]
+    const s = lookupSession(req)
     if (!s) return null
     // Adresse des Geräts merken (für „Angemeldet“ beim Admin) – ändert sich z. B. beim WLAN-Wechsel
     const ip = ipOf(req)
@@ -286,8 +317,7 @@ function createAccess({
 
   /** Sitzungs-ID zur Anfrage (für die WebSocket-Verbindungen), ohne "zuletzt gesehen" zu ändern. */
   function sessionIdOf(req) {
-    const token = parseCookies(req.headers.cookie)[COOKIE]
-    return (token && secret.sessions[sha256(token)]?.id) || null
+    return lookupSession(req)?.id || null
   }
 
   const isActive = (s) => isLive(s.id) || Date.now() - (s.seen ?? 0) < ACTIVE_MS
@@ -341,12 +371,15 @@ function createAccess({
       if (!pinChecked && !(await checkPin(pin))) throw Object.assign(new Error('PIN falsch'), { status: 403 })
     } else if (!roleId) throw Object.assign(new Error('Bitte eine Rolle wählen'), { status: 400 })
 
-    // Eine Rolle nur einmal: wie bei Kesher ablehnen oder (auf Wunsch) übernehmen
+    // Eine Rolle nur einmal: wie bei Kesher ablehnen oder (auf Wunsch) übernehmen.
+    // Die bisherige Anmeldung dieses Browsers und dieses Geräts (unter anderen Adressen) zählt
+    // nicht – sie wird durch die neue ersetzt, damit überall dieselbe gilt.
     const own = parseCookies(req.headers.cookie)[COOKIE]
-    const ownRole = own ? secret.sessions[sha256(own)]?.roleId : null
-    if (own) delete secret.sessions[sha256(own)] // eigene alte Anmeldung in diesem Browser
+    const ownSession = own ? secret.sessions[sha256(own)] : null
+    const mine = [...new Set([ownSession, ...deviceSessions(req)].filter(Boolean))]
+    const ownRole = (ownSession ?? mine[0])?.roleId ?? null
     if (!admin) {
-      const holders = holdersOf(roleId)
+      const holders = holdersOf(roleId).filter((s) => !mine.includes(s))
       const active = holders.filter(isActive)
       if (active.length && !takeover) {
         const who = active.sort((a, b) => b.seen - a.seen)[0]
@@ -371,14 +404,17 @@ function createAccess({
       endSessions(holders, active.length ? `übernommen von ${cleanName}` : 'abgelaufen')
       if (active.length) log(`Zugang: ${cleanName} übernimmt die Rolle ${roleId} von ${active.map((s) => s.name).join(', ')}`)
     }
+    deleteSessions(mine)
     const token = newSession({ name: cleanName, roleId, admin }, ipOf(req))
     res.setHeader('Set-Cookie', cookieFor(token, req))
     log(`Zugang: ${cleanName} angemeldet als ${admin ? 'Admin' : roleId}`)
   }
 
+  /** Abmelden – auf diesem Gerät unter allen Adressen (wie über die IP, wo alle Dienste ein Cookie teilen). */
   function logout(req, res) {
     const token = parseCookies(req.headers.cookie)[COOKIE]
     if (token) delete secret.sessions[sha256(token)]
+    deleteSessions(deviceSessions(req))
     write()
     res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`)
   }
