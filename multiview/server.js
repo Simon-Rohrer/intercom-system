@@ -1495,14 +1495,27 @@ app.post('/api/chat/send', requireUser, async (req, res) => {
 })
 
 // QR-Code-Anmeldung fürs Handy: Einmal-Link, 10 Minuten gültig
-app.post('/api/me/qr', requireUser, (req, res) => res.json({ ok: true, ...access.createQrToken(req.user) }))
+app.post(['/api/me/qr', '/.jms-auth/api/me/qr'], requireUser, (req, res) => res.json({ ok: true, ...access.createQrToken(req.user) }))
 
 app.get('/q/:token', (req, res) => {
   const ok = access.redeemQrToken(req.params.token, req, res)
+  // Der Code kommt von einem angemeldeten Gerät – das Handy gleich für heute freischalten,
+  // damit es auch Intercom und Dashboard ohne Tagescode öffnen kann
+  if (ok && access.deviceStatus(clientIp(req), req).required) access.approveDevice(clientIp(req), req, res)
   res.redirect(ok ? '/remote.html' : '/login.html?qr=abgelaufen')
 })
 
-app.get('/api/qr.svg', async (req, res) => {
+// Derselbe Anmelde-QR auf der Adresse eines anderen Dienstes (z. B. Dashboard-Startseite):
+// Das Handy wird angemeldet und – weil der Code von einem angemeldeten Gerät kommt – auch gleich
+// für heute freigeschaltet (kein Tagescode nötig). Danach zurück zur Startseite dieses Dienstes.
+app.get('/.jms-auth/q/:token', (req, res) => {
+  const ok = access.redeemQrToken(req.params.token, req, res)
+  if (!ok) return res.redirect(302, `${loginPath('/')}&qr=abgelaufen`)
+  if (access.deviceStatus(clientIp(req), req).required) access.approveDevice(clientIp(req), req, res)
+  res.redirect(302, '/')
+})
+
+app.get(['/api/qr.svg', '/.jms-auth/api/qr.svg'], async (req, res) => {
   const data = String(req.query.data ?? '')
   if (!data || data.length > 600) return res.status(400).send('data fehlt oder ist zu lang')
   try {

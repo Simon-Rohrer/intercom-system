@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AdminRolesCard } from "./AdminRolesCard";
+import { AdminRolesCard, multiviewRolesUrl } from "./AdminRolesCard";
 import type { Bootstrap } from "../../types";
 import { createRole, duplicateRole, updateRole } from "../../api";
 
@@ -221,7 +221,23 @@ describe("AdminRolesCard", () => {
       screen.queryByRole("button", { name: "Löschen" }),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Bearbeiten" }));
+    expect(
+      screen.getByRole("link", { name: "Zur Rollenverwaltung" }),
+    ).toHaveAttribute("href", expect.stringContaining("/#/zugang"));
+
+    await user.click(screen.getByRole("button", { name: "Standardwerte" }));
     expect(screen.getByLabelText("Role name")).toHaveAttribute("readonly");
+  });
+
+  it("points to the Multiview on the matching address", () => {
+    expect(multiviewRolesUrl({ protocol: "https:", hostname: "192.168.0.21" })).toBe(
+      "https://192.168.0.21:8090/#/zugang",
+    );
+    expect(multiviewRolesUrl({ protocol: "https:", hostname: "kesher.jms.de" })).toBe(
+      "https://multiview.jms.de/#/zugang",
+    );
+    expect(multiviewRolesUrl({ protocol: "https:", hostname: "intercom.local" })).toBe(
+      "https://multiview.local/#/zugang",
+    );
   });
 });

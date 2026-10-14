@@ -26,6 +26,34 @@ function showCertHint() {
   document.body.appendChild(el)
 }
 
+/** Kennung der Anmeldung aus /api/me – '' ohne Anmeldung. */
+export const loginKey = (user) => (user && !user.open ? `${user.name}|${user.roleId}|${Boolean(user.admin)}` : '')
+
+/**
+ * An- und Abmeldung gelten für alle Dienste (dasselbe Cookie auf allen Ports). Meldet man sich
+ * in Kesher, im Dashboard oder in einem anderen Tab an oder ab, merkt diese Seite das beim
+ * Zurückwechseln (und alle 15 s) und lädt neu – ohne dass man selbst neu laden muss.
+ */
+export function watchLogin(currentKey, { onChange = () => location.reload(), url = '/api/me' } = {}) {
+  let busy = false
+  const check = async () => {
+    if (busy || document.visibilityState === 'hidden') return
+    busy = true
+    try {
+      const me = await fetch(url, { cache: 'no-store', credentials: 'same-origin' }).then((r) => r.json())
+      if (me?.access?.enabled && loginKey(me.user) !== currentKey) onChange(me)
+    } catch {
+      // Server gerade nicht erreichbar – beim nächsten Mal
+    } finally {
+      busy = false
+    }
+  }
+  document.addEventListener('visibilitychange', check)
+  window.addEventListener('focus', check)
+  window.addEventListener('pageshow', (e) => e.persisted && check())
+  setInterval(check, 15000)
+}
+
 /** WebSocket mit automatischem Neuverbinden. */
 export function connect(onMessage, onStatus) {
   let ws

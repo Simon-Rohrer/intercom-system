@@ -1569,3 +1569,36 @@ body::before {
   :root[data-theme="system"] .page-head :is(h1, .lead),
   :root[data-theme="system"] .section-head :is(h2, h3, .muted) { text-shadow: 0 1px 14px rgba(0, 0, 0, 0.55); }
 }
+
+/* Übersicht: Anmelde-QR neben Profil und App-Kacheln */
+.profile-hero.with-qr { grid-template-columns: minmax(240px, 300px) 1fr minmax(210px, 250px); }
+.qr-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 20px 18px;
+}
+.qr-hero img { width: 168px; height: 168px; border-radius: 16px; background: #fff; padding: 8px; transition: opacity 0.2s; }
+.qr-hero h3 { margin: 8px 0 0; font-size: 17px; font-weight: 700; }
+.qr-hero p { margin: 0; font-size: 13px; line-height: 1.4; }
+.qr-hero .btn { margin-top: 10px; }
+.qr-hero-text { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+@media (max-width: 1180px) {
+  .profile-hero.with-qr { grid-template-columns: minmax(240px, 300px) 1fr; }
+  .profile-hero.with-qr .qr-hero { grid-column: 1 / -1; flex-direction: row; text-align: left; gap: 18px; }
+  .profile-hero.with-qr .qr-hero img { width: 132px; height: 132px; flex: none; }
+  .profile-hero.with-qr .qr-hero-text { align-items: flex-start; }
+}
+@media (max-width: 760px) {
+  .profile-hero.with-qr { grid-template-columns: 1fr; }
+}
+
+/* Seitenleiste ausblenden (Knopf links in der Kopfleiste, nur auf großen Bildschirmen) */
+.sidebar-btn { display: none; }
+@media (min-width: 981px) {
+  .icon-btn.sidebar-btn { display: inline-grid; }
+  body.sidebar-collapsed .sidebar { display: none; }
+  body.sidebar-collapsed .sidebar-btn { color: var(--accent-text); }
+}

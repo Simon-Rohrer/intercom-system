@@ -16,7 +16,8 @@
     { id: 'tanne', name: 'Tanne', file: 'tanne', accent: '#4f9d77', glass: 'rgba(22, 32, 28, 0.55)', side: 'rgba(6, 10, 8, 0.55)', dialog: 'rgba(22, 30, 26, 0.92)', bg: '#050806' },
   ]
   // Unter /.jms-auth/ (Anmeldung auf der Adresse eines anderen Dienstes) liegen auch die Bilder dort
-  var base = location.pathname.indexOf('/.jms-auth/') === 0 ? '/.jms-auth' : ''
+  // Andere Dienste (z. B. das Dashboard) laden diese Datei über /.jms-auth und setzen MV_WALLPAPER_BASE vorher
+  var base = window.MV_WALLPAPER_BASE || (location.pathname.indexOf('/.jms-auth/') === 0 ? '/.jms-auth' : '')
 
   function find(id) {
     for (var i = 0; i < WALLPAPERS.length; i++) if (WALLPAPERS[i].id === id) return WALLPAPERS[i]

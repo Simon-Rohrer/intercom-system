@@ -3,6 +3,7 @@
 // Dort kommt – wenn eingeschaltet – vorher einmal am Tag der Tagescode (QR-Code oder 6 Ziffern).
 import { applyPrefs, currentPrefs } from './theme.js'
 import { avatarHtml } from './avatar.js'
+import { watchLogin, loginKey } from './common.js'
 
 applyPrefs(currentPrefs())
 
@@ -235,6 +236,9 @@ async function showLoginStep() {
     $('#current-text').textContent = `Angemeldet als ${me.user.name} (${me.user.roleName}). Hier wechselst du zu einem anderen Konto oder einer anderen Rolle.`
     $('#current-back').href = next
     $('#current-note').hidden = false
+  } else if (!params.has('wechseln')) {
+    // In einem anderen Tab oder Dienst angemeldet: von selbst weiter
+    watchLogin('', { url: api('/api/me'), onChange: (m) => m.user && !m.user.open && location.replace(next) })
   }
   $('#login-step').hidden = false
 

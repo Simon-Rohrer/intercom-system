@@ -475,13 +475,18 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
       throw Object.assign(new Error('Der Code stimmt nicht – es gilt immer nur der Code von heute'), { status: 403 })
     }
     codeFails.delete(ip)
+    approveDevice(ip, req, res)
+    log(`Zugang: Gerät ${ip} mit dem Tagescode freigeschaltet`)
+  }
+
+  /** Gerät für heute freischalten (Tagescode eingegeben oder Anmelde-QR eines angemeldeten Nutzers gescannt). */
+  function approveDevice(ip, req, res) {
     const token = randomToken()
-    secret.devices[sha256(token)] = { gen: current.gen, created: now, ip: String(ip ?? '') }
+    secret.devices[sha256(token)] = { gen: dayCode(Date.now()).gen, created: Date.now(), ip: String(ip ?? '') }
     write()
     // Bis zum übernächsten Morgen reicht – danach braucht es ohnehin den neuen Code
     const secure = req.secure || req.get('x-forwarded-proto') === 'https' ? '; Secure' : ''
     res.append('Set-Cookie', `${DEVICE_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${2 * 86400}${secure}`)
-    log(`Zugang: Gerät ${ip} mit dem Tagescode freigeschaltet`)
   }
 
   // --- Prüfung für Caddy (forward_auth) ---------------------------------------
@@ -537,7 +542,7 @@ function createAccess({ dataDir, log = console.log, verifyKesherPin = async () =
 
   return {
     enabled, pinSource, userOf, sessionIdOf, occupiedRoles, login, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession,
-    gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, check, trusted, createTicket,
+    gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, approveDevice, check, trusted, createTicket,
     flush: write,
   }
 }

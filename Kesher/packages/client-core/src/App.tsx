@@ -414,6 +414,52 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       cancelled = true;
     };
   }, [centralChecked]);
+  // Signed in or out on another service (Multiview, dashboard, another tab): the
+  // central cookie is shared by all services, so reload as soon as this tab is
+  // visible again (and every 15 s) instead of waiting for a manual reload.
+  useEffect(() => {
+    if (!centralChecked || !centralLoginAvailable()) return;
+    const keyOf = (identity: CentralIdentity | null) =>
+      identity ? `${identity.name}|${identity.roleId}|${identity.admin}` : "";
+    let busy = false;
+    const check = async () => {
+      if (busy || document.visibilityState === "hidden") return;
+      busy = true;
+      try {
+        // Only act on a real answer – a network hiccup must not look like a logout
+        const res = await fetch("/.jms-auth/api/me", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        if (!res.ok || !res.headers.get("content-type")?.includes("json")) return;
+        const data = (await res.json()) as {
+          access?: { enabled?: boolean };
+          user?: { name?: string; roleId?: string; admin?: boolean; open?: boolean } | null;
+        };
+        if (!data?.access?.enabled) return;
+        const user = data.user;
+        const identity =
+          user && !user.open && user.name && user.roleId
+            ? { name: user.name, roleId: user.roleId, admin: Boolean(user.admin) }
+            : null;
+        if (keyOf(identity) !== keyOf(centralIdentityRef.current)) {
+          window.location.reload();
+        }
+      } catch {
+        // server briefly unreachable – try again later
+      } finally {
+        busy = false;
+      }
+    };
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    const timer = window.setInterval(check, 15000);
+    return () => {
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+      window.clearInterval(timer);
+    };
+  }, [centralChecked]);
   const sessionRecoveryInFlightRef = useRef(false);
   const sessionRecoveryRetryRef = useRef<number | null>(null);
   const isUserSettingsOpenRef = useRef(isUserSettingsOpen);

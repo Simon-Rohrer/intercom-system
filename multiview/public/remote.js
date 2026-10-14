@@ -4,7 +4,7 @@
 //   Bühne:       Bühnennachricht (Stage Display) in ProPresenter senden/löschen
 //   Beamer:      Meldung für die Gemeinde in ProPresenter vorbereiten – anzeigen tut sie der Bediener
 //   Monitore:    (nur Admin) welcher Multiview auf welchem Monitor am Server läuft
-import { connect } from './common.js'
+import { connect, watchLogin, loginKey } from './common.js'
 import { adoptServerPrefs, applyPrefs, currentPrefs, nextTheme, setPrefs, themeIcon } from './theme.js'
 import { visibleOutputs, visibleLayouts, canEditOutput, chatFor } from './rights.js'
 import { createComposer } from './chat-compose.js'
@@ -55,6 +55,7 @@ async function start() {
     .catch(() => null)
   if (me?.access?.enabled && !me.user) return location.replace('/login.html?next=/remote.html')
   user = me?.user ?? { admin: true, open: true, name: '', roleId: 'admin' }
+  if (me?.access?.enabled) watchLogin(loginKey(user))
   if (!user.open) adoptServerPrefs(me.prefs)
   else applyPrefs(currentPrefs())
 

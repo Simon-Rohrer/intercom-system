@@ -1,3 +1,98 @@
 :root {
   --accent-color: 148 163 184;
 }
+
+/* ==== JMS-Design (wie Multiview): Hintergrundbild, Glas-Karten, Apple-Schrift ==== */
+:root {
+  --jms-wallpaper: url("/.jms-auth/api/wallpaper/graphit.jpg");
+  --jms-glass: rgba(36, 36, 38, 0.55);
+  --jms-glass-hover: rgba(255, 255, 255, 0.12);
+  --jms-line: rgba(255, 255, 255, 0.09);
+  --jms-accent: #8e8e93;
+}
+html, body, #__next, #page_wrapper, #inner_wrapper {
+  background: transparent !important;
+}
+html { background-color: #0a0a0b !important; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Helvetica Neue", sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: #0a0a0b;
+  background-image: var(--jms-wallpaper);
+  background-size: cover;
+  background-position: center;
+  pointer-events: none;
+}
+/* Kopf mit Suche */
+#widgets-wrap { padding: 0 !important; }
+#widgets-wrap, #information-widgets { border: 0 !important; }
+#information-widgets { background: transparent !important; }
+.information-widget-search input {
+  height: 44px !important;
+  border-radius: 14px !important;
+  border: 1px solid var(--jms-line) !important;
+  background: var(--jms-glass) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  font-size: 15px !important;
+}
+/* Umschalter Start / Admin als Glas-Pille */
+#myTab {
+  background: var(--jms-glass) !important;
+  border: 1px solid var(--jms-line);
+  border-radius: 16px !important;
+  padding: 2px;
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+}
+#myTab button { border-radius: 13px !important; font-weight: 600; font-size: 15px; }
+#myTab button[aria-selected="true"] { background: rgba(255, 255, 255, 0.16) !important; color: #fff !important; }
+/* Gruppen-Überschriften groß und fett wie bei Apple */
+.service-group-name {
+  font-size: 1.45rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em;
+  color: #fff !important;
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.55);
+}
+/* Karten aus mattem Glas */
+.service-card {
+  background: var(--jms-glass) !important;
+  border: 1px solid var(--jms-line);
+  border-radius: 20px !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  backdrop-filter: blur(28px) saturate(160%);
+  padding: 10px 6px !important;
+  transition: transform 0.15s ease, background 0.15s ease !important;
+}
+.service-card:hover { background: var(--jms-glass-hover) !important; transform: translateY(-2px); }
+.service-card:active { transform: scale(0.98); }
+.service-icon {
+  width: 52px !important;
+  height: 52px;
+  margin: 0 6px 0 4px;
+  border-radius: 14px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--jms-accent) 85%, #fff), color-mix(in srgb, var(--jms-accent) 80%, #000));
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  align-self: center;
+}
+.service-icon > div { --color-logo-start: 255 255 255 !important; --color-logo-stop: 255 255 255 !important; width: 28px !important; height: 28px !important; }
+.service-name { font-weight: 650 !important; font-size: 16px !important; color: #fff !important; }
+.service-description { color: rgba(235, 235, 245, 0.62) !important; font-size: 13px !important; }
+#footer, #version { opacity: 0.6; }
+
+/* Bunte App-Icons wie bei iCloud (Farbe nach Position in der Gruppe) */
+.services-list > li:nth-child(7n + 1) .service-icon { background: linear-gradient(160deg, #5ac8fa, #007aff); }
+.services-list > li:nth-child(7n + 2) .service-icon { background: linear-gradient(160deg, #6ee08a, #28b04a); }
+.services-list > li:nth-child(7n + 3) .service-icon { background: linear-gradient(160deg, #c38bff, #8e44ec); }
+.services-list > li:nth-child(7n + 4) .service-icon { background: linear-gradient(160deg, #ffb340, #ff7a00); }
+.services-list > li:nth-child(7n + 5) .service-icon { background: linear-gradient(160deg, #6be0e8, #12a3b8); }
+.services-list > li:nth-child(7n + 6) .service-icon { background: linear-gradient(160deg, #ff8fb1, #ff2d6f); }
+.services-list > li:nth-child(7n + 7) .service-icon { background: linear-gradient(160deg, #a5a5ad, #6c6c74); }

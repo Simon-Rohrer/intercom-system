@@ -1,4 +1,4 @@
-import { connect, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
+import { connect, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
 import { createAgendaView } from './agenda.js'
@@ -2438,7 +2438,44 @@ function renderProfileCard() {
       <p class="profile-stat"><b>${outputs.length}</b> Multiview${outputs.length === 1 ? '' : 's'} · <b>${live}</b> mit Layout</p>
     </div>
     <div class="glass app-grid">${tiles}</div>`
+  if (!user?.open) {
+    el.append(loginQrCard)
+    if (!loginQrCard.dataset.started) renewHeroQr()
+  }
+  el.classList.toggle('with-qr', !user?.open)
 }
+
+// Anmelde-QR auf der Übersicht: Handy-Kamera drauf → das Handy ist als dieselbe Person/Rolle
+// angemeldet (und für heute freigeschaltet). Ein Code gilt einmal und 10 Minuten – darum
+// erneuert er sich alle 2 Minuten von selbst, damit immer ein gültiger auf dem Bildschirm steht.
+const loginQrCard = document.createElement('div')
+loginQrCard.className = 'glass qr-hero'
+loginQrCard.innerHTML = `<img alt="QR-Code zum Anmelden am Handy" width="168" height="168">
+  <div class="qr-hero-text">
+    <h3>Handy anmelden</h3>
+    <p class="muted">Mit der Handy-Kamera scannen – das Handy ist dann gleich angemeldet.</p>
+    <button type="button" class="btn small">Neuer Code</button>
+  </div>`
+let heroQrTimer = null
+async function renewHeroQr() {
+  loginQrCard.dataset.started = '1'
+  clearTimeout(heroQrTimer)
+  const img = loginQrCard.querySelector('img')
+  try {
+    if (document.visibilityState !== 'hidden') {
+      const res = await fetch('/api/me/qr', { method: 'POST' })
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.error)
+      img.src = qrUrl(`${publicOrigin(server)}/q/${data.token}`)
+      img.style.opacity = ''
+    }
+  } catch {
+    img.style.opacity = '0.25'
+  }
+  heroQrTimer = setTimeout(renewHeroQr, 2 * 60 * 1000)
+}
+loginQrCard.querySelector('button').addEventListener('click', renewHeroQr)
+document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && loginQrCard.dataset.started && renewHeroQr())
 
 async function changeAvatar(remove) {
   try {
@@ -3095,6 +3132,7 @@ $('#qr-dialog').addEventListener('close', () => clearInterval(qrTimer))
 async function start() {
   me = await loadMe()
   user = me.user
+  if (me.access?.enabled) watchLogin(loginKey(user))
   connect(onMessage, (online) => {
     if (!online) setSaveState('error', 'Server nicht erreichbar')
     else if (!saveTimer) setSaveState('')
