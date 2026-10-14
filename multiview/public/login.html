@@ -22,13 +22,25 @@
       <form id="code-form" class="auth-step" autocomplete="off" hidden>
         <div>
           <h1>Gerät freischalten</h1>
-          <p class="muted">Einmal am Tag: Scanne den QR-Code mit der Kamera oder gib den 6-stelligen Code ein. Beides zeigt der Admin im Multiview unter <b>Benutzer &amp; Rechte</b>.</p>
+          <p class="muted">Einmal am Tag: Scanne den QR-Code mit der Kamera oder gib den 6-stelligen Code ein. Beides steht klein auf den Monitoren und beim Admin im Multiview unter <b>Benutzer &amp; Rechte</b>.</p>
         </div>
         <div class="notice warn" id="code-note" hidden></div>
         <label class="field"><span>Code von heute</span>
           <input type="text" id="day-code" class="code-input" inputmode="numeric" autocomplete="one-time-code" pattern="\d{6}" maxlength="6" required placeholder="000000" aria-describedby="code-error">
         </label>
         <button class="btn primary block" type="submit">Weiter</button>
+        <button class="btn block scan-btn" type="button" id="scan-start">
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>
+          Mit der Kamera scannen
+        </button>
+        <div class="scan-view" id="scan-view" hidden>
+          <div class="scan-cam">
+            <video id="scan-video" playsinline muted></video>
+            <span class="scan-frame" aria-hidden="true"></span>
+          </div>
+          <p class="muted" id="scan-hint">QR-Code von heute ins Bild halten – z. B. den kleinen auf dem Monitor.</p>
+          <button class="btn small" type="button" id="scan-stop">Abbrechen</button>
+        </div>
         <p class="form-error" id="code-error" role="alert"></p>
       </form>
 

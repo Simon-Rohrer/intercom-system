@@ -1251,3 +1251,34 @@ h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
 @media (max-width: 980px) {
   .side-stack { position: static; max-height: none; overflow: visible; }
 }
+
+/* Tages-QR-Code auf den Monitoren (Schalter in „Anmeldung für alle Dienste“) */
+.day-qr-monitor { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 14px; }
+.day-qr-monitor select { width: auto; }
+.day-qr-monitor small { flex-basis: 100%; }
+
+/* Anmeldung: Tagescode mit der Kamera scannen */
+.scan-btn { margin-top: 8px; gap: 8px; }
+.scan-view { position: relative; display: grid; gap: 10px; justify-items: center; margin-top: 10px; }
+.scan-view[hidden] { display: none; }
+.scan-view video { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 16px; background: #000; }
+.scan-frame {
+  position: absolute;
+  top: 12%;
+  left: 12%;
+  width: 76%;
+  aspect-ratio: 1;
+  border: 3px solid rgba(255, 255, 255, 0.85);
+  border-radius: 18px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+.scan-view p { margin: 0; text-align: center; font-size: 13.5px; }
+.scan-cam { position: relative; width: 100%; }
+
+/* Tagescode: Code unter dem QR-Code statt daneben */
+.day-code { grid-template-columns: minmax(0, 420px); justify-items: center; text-align: center; }
+.day-code .qr-card { width: 100%; max-width: 320px; }
+.day-code-info { align-items: center; }
+.day-code-info .muted { max-width: 40ch; }
+.day-qr-monitor { justify-content: center; }

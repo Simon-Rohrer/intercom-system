@@ -2749,6 +2749,15 @@ function renderGateway() {
         <p class="muted">Neu um Mitternacht. Wer ihn heute eingegeben hat, bleibt bis morgen 5 Uhr freigeschaltet.
           <b>${info.devicesToday}</b> ${info.devicesToday === 1 ? 'Gerät ist' : 'Geräte sind'} gerade freigeschaltet.</p>
         <button class="btn small" type="button" id="gateway-renew">Neuen Code erzeugen</button>
+        <div class="day-qr-monitor">
+          <label class="check"><input type="checkbox" data-dayqr="show" ${config?.dayQr?.show !== false ? 'checked' : ''}> Klein auf den Monitoren zeigen</label>
+          <select data-dayqr="corner" aria-label="Ecke" ${config?.dayQr?.show === false ? 'disabled' : ''}>
+            ${[['br', 'unten rechts'], ['bl', 'unten links'], ['tr', 'oben rechts'], ['tl', 'oben links']]
+              .map(([v, l]) => `<option value="${v}" ${(config?.dayQr?.corner || 'br') === v ? 'selected' : ''}>${l}</option>`)
+              .join('')}
+          </select>
+          <small class="muted">Immer der aktuelle Code – nur auf den Monitoren am Server und festen Geräten, nie in der Vorschau.</small>
+        </div>
       </div>
     </div>
     <form id="gateway-form" class="gateway-form" autocomplete="off">
@@ -2797,6 +2806,15 @@ $('#access-gateway-card').addEventListener('change', async (e) => {
     e.target.checked = !on
     toast(err.message)
   }
+  renderGateway()
+})
+
+// Tages-QR-Code auf den Monitoren: normale Einstellung (config.dayQr)
+$('#access-gateway-card').addEventListener('change', (e) => {
+  const key = e.target.dataset.dayqr
+  if (!key) return
+  config.dayQr = { show: true, corner: 'br', ...config.dayQr, [key]: key === 'show' ? e.target.checked : e.target.value }
+  changed(0)
   renderGateway()
 })
 

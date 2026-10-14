@@ -221,3 +221,28 @@ body {
   border: var(--frame-bw, 0px) solid var(--tile-bc, transparent);
   pointer-events: none;
 }
+
+/* Tages-QR-Code der Anmeldung: klein in einer Ecke, über allem, ohne den Inhalt zu verdecken */
+.day-qr {
+  position: fixed;
+  z-index: 60;
+  margin: 0;
+  width: clamp(64px, 7.5vh, 110px);
+  padding: 4px 4px 2px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #000;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0.9;
+}
+.day-qr[hidden] { display: none; }
+.day-qr img { display: block; width: 100%; aspect-ratio: 1; }
+.day-qr figcaption {
+  font: 600 clamp(9px, 1.1vh, 14px)/1.25 ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 0.04em;
+}
+.day-qr[data-corner="br"] { right: 10px; bottom: 10px; }
+.day-qr[data-corner="bl"] { left: 10px; bottom: 10px; }
+.day-qr[data-corner="tr"] { right: 10px; top: 10px; }
+.day-qr[data-corner="tl"] { left: 10px; top: 10px; }

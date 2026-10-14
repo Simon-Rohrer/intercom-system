@@ -107,6 +107,15 @@ function normalizeConfig(c) {
     chat: normalizeChat(c?.chat),
     churchtools: normalizeChurchTools(c?.churchtools),
     access: normalizeAccess(c?.access),
+    dayQr: normalizeDayQr(c?.dayQr),
+  }
+}
+
+/** Tages-QR-Code klein auf den Monitoren: an/aus und Ecke (tl, tr, bl, br). */
+function normalizeDayQr(d) {
+  return {
+    show: d?.show !== false,
+    corner: ['tl', 'tr', 'bl', 'br'].includes(d?.corner) ? d.corner : 'br',
   }
 }
 
@@ -1557,6 +1566,22 @@ function gatewayInfo() {
   return { ...access.gateway(), code: code.code, day: code.day, devicesToday: access.devicesToday(), secret: Boolean(AUTH_SECRET) }
 }
 
+/**
+ * Tagescode für die Monitore (klein in einer Ecke). Nur für Geräte, die den Code ohnehin nicht
+ * brauchen – den Server selbst (Kiosk), feste Geräte ohne Code, schon freigeschaltete Geräte
+ * oder den Admin. Sonst könnte jedes Handy im WLAN den Code einfach hier abholen.
+ */
+app.get('/api/display/day-code', (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  const gateway = access.gateway()
+  if (!gateway.active || !config.dayQr?.show) return res.json({ show: false })
+  const device = access.deviceStatus(clientIp(req), req)
+  if (device.required && !device.approved && !access.userOf(req)?.admin)
+    return res.status(403).json({ show: false, error: 'Nur für feste Geräte' })
+  const code = access.dayCode()
+  res.json({ show: true, code: code.code, day: code.day, startUrl: gateway.startUrl, corner: config.dayQr.corner })
+})
+
 app.get('/api/access/gateway', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json(gatewayInfo()))
 
 app.put('/api/access/gateway', requireAdmin, (req, res) => {
@@ -1573,6 +1598,11 @@ app.post('/api/access/code/renew', requireAdmin, (req, res) => {
   access.renewDayCode()
   res.json({ ok: true, ...gatewayInfo() })
 })
+
+// QR-Leser für das Scannen des Tagescodes auf der Anmeldeseite (iPhone-Safari hat keinen eingebauten)
+app.get(['/vendor/jsQR.js', '/.jms-auth/vendor/jsQR.js'], (req, res) =>
+  res.set('Cache-Control', 'public, max-age=86400').sendFile(require.resolve('jsqr/dist/jsQR.js')),
+)
 
 // Anmeldeseite und ihre Dateien auch unter /.jms-auth (auf der Adresse jedes Dienstes)
 app.use('/.jms-auth', require('./legacy').legacyMiddleware(path.join(__dirname, 'public')))

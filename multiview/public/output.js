@@ -64,6 +64,7 @@ const frames = new Map() // Kesher-Intercom: tile.id → { wrap, url }
 const ws = connect(
   (msg) => {
     if (msg.type === 'config') {
+      setTimeout(refreshDayQr, 300) // Schalter oder Ecke für den Tages-QR-Code geändert
       config = msg.config
       render()
     } else if (msg.type === 'atem') {
@@ -75,6 +76,7 @@ const ws = connect(
       // Nach einem Update/Neustart des Servers neu laden (Kiosk hat keine Tastatur)
       if (msg.bootId && bootId && msg.bootId !== bootId) location.reload()
       bootId = msg.bootId
+      if (Array.isArray(msg.addresses)) serverAddresses = msg.addresses
     } else if (msg.type === 'chat') {
       chat = msg
       for (const view of chatViews) view.update(chatFor(chat, view.roleId()))
@@ -535,3 +537,46 @@ async function keepAwake() {
 document.addEventListener('visibilitychange', keepAwake)
 document.addEventListener('pointerdown', keepAwake, { once: true })
 keepAwake()
+
+
+// ---------------------------------------------------------------------------
+// Tages-QR-Code der Anmeldung klein in einer Ecke – immer der aktuelle (nicht in Vorschauen)
+// ---------------------------------------------------------------------------
+
+let serverAddresses = []
+let dayQrKey = ''
+const dayQr = document.createElement('figure')
+dayQr.className = 'day-qr'
+dayQr.hidden = true
+dayQr.innerHTML = '<img alt="QR-Code von heute"><figcaption></figcaption>'
+document.body.append(dayQr)
+
+/** Adresse, unter der Handys diesen Server erreichen (wie publicOrigin im Editor). */
+function lanOrigin() {
+  const loopback = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(location.hostname)
+  const address = serverAddresses.find((a) => /^192\.168\./.test(a)) || serverAddresses.find((a) => /^\d+\.\d+\.\d+\.\d+$/.test(a) && !/^(172\.|10\.8\.|100\.)/.test(a))
+  if (!loopback || !address) return location.origin
+  return `${location.protocol}//${address}${location.port ? `:${location.port}` : ''}`
+}
+
+async function refreshDayQr() {
+  if (embedded) return
+  const data = await fetch('/api/display/day-code', { cache: 'no-store' })
+    .then((r) => r.json())
+    .catch(() => null)
+  if (!data?.show) {
+    dayQr.hidden = true
+    dayQrKey = ''
+    return
+  }
+  const target = `${data.startUrl || lanOrigin()}/.jms-auth/code?c=${data.code}`
+  const key = JSON.stringify([target, data.corner])
+  dayQr.dataset.corner = data.corner || 'br'
+  dayQr.hidden = false
+  if (key === dayQrKey) return
+  dayQrKey = key
+  dayQr.querySelector('img').src = `/api/qr.svg?data=${encodeURIComponent(target)}`
+  dayQr.querySelector('figcaption').textContent = `${data.code.slice(0, 3)} ${data.code.slice(3)}`
+}
+setInterval(refreshDayQr, 30_000)
+setTimeout(refreshDayQr, 1500)

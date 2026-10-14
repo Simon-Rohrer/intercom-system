@@ -104,8 +104,120 @@ function showCodeStep() {
       return
     }
     $('#code-note').hidden = true
+    stopScan()
     showLoginStep()
   }
+  setupScanner((code) => {
+    input.value = code
+    submitCode()
+  })
+}
+
+// --- QR-Code mit der Handy-Kamera scannen ------------------------------------------
+// Erkennt den QR-Code von heute (…/.jms-auth/code?c=123456) oder 6 Ziffern. Nutzt den eingebauten
+// BarcodeDetector (Android/Chrome), sonst jsQR (iPhone). Die Kamera geht nur über https.
+
+let scanStream = null
+let scanTimer = null
+
+function stopScan() {
+  clearTimeout(scanTimer)
+  scanStream?.getTracks().forEach((t) => t.stop())
+  scanStream = null
+  const view = $('#scan-view')
+  if (view) view.hidden = true
+  const start = $('#scan-start')
+  if (start) start.hidden = false
+}
+
+function codeFromText(text) {
+  const value = String(text || '')
+  try {
+    const c = new URL(value, location.href).searchParams.get('c')
+    if (/^\d{6}$/.test(c || '')) return c
+  } catch {
+    // kein Link
+  }
+  const m = /(?:^|\D)(\d{6})(?:\D|$)/.exec(value)
+  return m ? m[1] : null
+}
+
+function loadJsQr() {
+  if (window.jsQR) return Promise.resolve(window.jsQR)
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = 'vendor/jsQR.js'
+    script.onload = () => resolve(window.jsQR)
+    script.onerror = reject
+    document.head.append(script)
+  })
+}
+
+function setupScanner(onCode) {
+  const start = $('#scan-start')
+  if (!start) return
+  const supported = Boolean(navigator.mediaDevices?.getUserMedia) && window.isSecureContext
+  if (!supported) {
+    // z. B. http-Adresse: Kamera im Browser nicht erlaubt – die Kamera-App des Handys geht trotzdem
+    start.hidden = true
+    return
+  }
+  $('#scan-stop').addEventListener('click', stopScan)
+  start.addEventListener('click', async () => {
+    const hint = $('#scan-hint')
+    $('#code-error').textContent = ''
+    try {
+      scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+    } catch {
+      $('#code-error').textContent = 'Kamera nicht erlaubt – bitte den Zugriff erlauben oder den Code eintippen.'
+      return
+    }
+    const video = $('#scan-video')
+    video.srcObject = scanStream
+    await video.play().catch(() => {})
+    start.hidden = true
+    $('#scan-view').hidden = false
+
+    let detect
+    if ('BarcodeDetector' in window) {
+      const detector = new window.BarcodeDetector({ formats: ['qr_code'] })
+      detect = async () => (await detector.detect(video))[0]?.rawValue
+    } else {
+      const jsQR = await loadJsQr().catch(() => null)
+      if (!jsQR) {
+        hint.textContent = 'Scannen geht hier nicht – bitte den Code eintippen.'
+        return
+      }
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
+      detect = async () => {
+        const w = video.videoWidth
+        const h = video.videoHeight
+        if (!w || !h) return null
+        const scale = Math.min(1, 640 / Math.max(w, h))
+        canvas.width = Math.round(w * scale)
+        canvas.height = Math.round(h * scale)
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        return jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' })?.data
+      }
+    }
+    const tick = async () => {
+      if (!scanStream) return
+      const text = await detect().catch(() => null)
+      const code = text && codeFromText(text)
+      if (code) {
+        navigator.vibrate?.(30)
+        hint.textContent = `Code ${code.slice(0, 3)} ${code.slice(3)} erkannt …`
+        stopScan()
+        onCode(code)
+        return
+      }
+      if (text) hint.textContent = 'Das ist nicht der QR-Code von heute.'
+      scanTimer = setTimeout(tick, 250)
+    }
+    tick()
+  })
 }
 
 // --- Schritt 2: Name und Rolle -----------------------------------------------
