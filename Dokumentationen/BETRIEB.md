@@ -66,7 +66,7 @@ docker compose -f deploy/compose/docker-compose.yml down
 
 ## Daten sichern
 
-Der JMS-Server sichert sich jede Nacht um 3:30 Uhr verschlüsselt in Google Drive (restic über rclone, Ordner `JMS-Backup`). Kesher und Companion sind dabei ca. 1 Minute aus. Hochgeladen werden nur Änderungen; es bleiben 7 tägliche und 4 wöchentliche Sicherungen, sonntags wird ein Teil der Daten zurückgelesen und geprüft. Schlägt eine Sicherung fehl, kommt eine Telegram-Nachricht (wenn in `/etc/jms-backup/cloud.env` eingetragen). Eine verpasste Sicherung (Server war um 3:30 aus) wird bewusst nicht beim Einschalten nachgeholt.
+Der JMS-Server sichert sich jede Nacht um 3:30 Uhr (deutsche Zeit) verschlüsselt in Google Drive (restic über rclone, Ordner `JMS-Backup`). Kesher und Companion sind dabei ca. 1 Minute aus. Hochgeladen werden nur Änderungen; es bleiben 7 tägliche und 4 wöchentliche Sicherungen, sonntags wird ein Teil der Daten zurückgelesen und geprüft. Schlägt eine Sicherung fehl, kommt eine Telegram-Nachricht (wenn in `/etc/jms-backup/cloud.env` eingetragen). Eine verpasste Sicherung (Server war um 3:30 aus) wird bewusst nicht beim Einschalten nachgeholt.
 
 Gesichert werden alle Docker-Volumes (u. a. Kesher-Datenbank, Multiview-Einstellungen, Portainer), Companion, Caddy, Netzwerk, WireGuard, Kiosk, systemd-Dienste, `/opt/homelab` und der Quellstand `~/intercom-system` mit lokalen Änderungen.
 

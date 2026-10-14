@@ -115,9 +115,13 @@ if restic cat config >/dev/null 2>&1; then
   echo "   vorhanden"
 else
   restic init
+  # Das Passwort zeigen, sobald es wirklich gebraucht wird – auch wenn es aus einem
+  # früheren, abgebrochenen Lauf stammt
+  NEW_PASSWORD="true"
 fi
 
-systemctl enable --now jms-backup-cloud.timer
+systemctl enable jms-backup-cloud.timer
+systemctl restart jms-backup-cloud.timer
 echo
 echo "==> Eingerichtet. Nächste Sicherung:"
 systemctl list-timers jms-backup-cloud.timer --no-pager | sed -n 2p
