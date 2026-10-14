@@ -152,7 +152,8 @@ function isOwnAddress(ip) {
 
 function normalizeGateway(g) {
   const exempt = (Array.isArray(g?.exempt) ? g.exempt : [])
-    .map((e) => ({ network: String(e?.network ?? e ?? '').trim(), label: String(e?.label ?? '').trim().slice(0, 60) }))
+    // login: nur ohne Tagescode, Name und Rolle braucht es trotzdem (Arbeitsrechner statt Station)
+    .map((e) => ({ network: String(e?.network ?? e ?? '').trim(), label: String(e?.label ?? '').trim().slice(0, 60), login: Boolean(e?.login) }))
     .filter((e) => parseNetwork(e.network))
   const startUrl = String(g?.startUrl ?? '').trim()
   return {
@@ -178,7 +179,7 @@ function createAccess({
 }) {
   const file = path.join(dataDir, 'access-secret.json')
   // { adminPin: { salt, hash } | { kesher: true }, sessions: { sha256(token): session },
-  //   gateway: { enabled, exempt, startUrl }, dayCode: { day, code, gen, prevGen },
+  //   gateway: { enabled, exempt: [{ network, label, login }], startUrl }, dayCode: { day, code, gen, prevGen },
   //   devices: { sha256(token): { gen, created, ip } } }
   let secret = read()
   const qrTokens = new Map() // sha256(token) -> { session, expires }
@@ -556,8 +557,11 @@ function createAccess({
    * allow: ja (user = wer, falls angemeldet). code: erst den Tagescode eingeben.
    * login: erst Name + Rolle. forbidden: angemeldet, aber nicht Admin.
    */
+  const exemptNetworks = (filter = () => true) => secret.gateway.exempt.filter(filter).map((e) => parseNetwork(e.network))
   /** Feste Geräte aus der Liste (und der Server selbst) brauchen keinen Tagescode. */
-  const exemptIp = (ip) => isLoopback(ip) || isOwnAddress(ip) || ipInNetworks(ip, secret.gateway.exempt.map((e) => parseNetwork(e.network)))
+  const exemptIp = (ip) => isLoopback(ip) || isOwnAddress(ip) || ipInNetworks(ip, exemptNetworks())
+  /** … und die ohne „Anmeldung nötig“ (Stationen, Kiosk) auch keine Anmeldung bei Intercom und Dashboard. */
+  const openIp = (ip) => isLoopback(ip) || isOwnAddress(ip) || ipInNetworks(ip, exemptNetworks((e) => !e.login))
 
   /** Muss dieses Gerät den Tagescode eingeben, und hat es das schon? */
   function deviceStatus(ip, req) {
@@ -567,11 +571,11 @@ function createAccess({
 
   /**
    * Darf diese Anfrage an die Schnittstellen des Multiview selbst (Zustand, Chat, Companion-Befehle,
-   * ProPresenter)? Angemeldete Nutzer, feste Geräte und der Server selbst (Kiosk, Companion).
+   * ProPresenter)? Angemeldete Nutzer, feste Geräte ohne Anmeldung und der Server selbst (Kiosk, Companion).
    * Ohne eingeschaltete Anmeldung jeder.
    */
   function trusted(ip, req) {
-    return Boolean(userOf(req)) || exemptIp(ip)
+    return Boolean(userOf(req)) || openIp(ip)
   }
 
   function check({ service, ip }, req) {
@@ -580,7 +584,7 @@ function createAccess({
     const exempt = exemptIp(ip)
     const user = userOf(req)
     // Feste Geräte (Stationen, Raspberry Pis, Desktop-App) können keinen Code eingeben
-    if (exempt && level === 'user') return { action: 'allow', user }
+    if (openIp(ip) && level === 'user') return { action: 'allow', user }
     if (!exempt && !deviceApproved(req)) return { action: 'code', user }
     if (!user) return { action: 'login', user: null }
     if (level === 'admin' && !user.admin) return { action: 'forbidden', user }

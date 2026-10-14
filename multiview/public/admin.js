@@ -2918,10 +2918,14 @@ setInterval(() => document.visibilityState === 'visible' && loadGateway(), 60_00
 /** Adresse im QR-Code: öffnet die Startseite (Dashboard) und übernimmt dabei den Code. */
 const gatewayCodeUrl = (info) => `${info.startUrl || publicOrigin(server)}/.jms-auth/code?c=${info.code}`
 
-function exemptRow(entry = { network: '', label: '' }) {
+function exemptRow(entry = { network: '', label: '', login: false }) {
   return `<div class="exempt-row">
     <input type="text" name="network" value="${esc(entry.network)}" placeholder="192.168.0.50" aria-label="Adresse oder Bereich" inputmode="decimal">
     <input type="text" name="label" value="${esc(entry.label)}" placeholder="z. B. Station Licht" aria-label="Bezeichnung">
+    <select name="login" aria-label="Anmeldung">
+      <option value="" ${entry.login ? '' : 'selected'}>Ohne Anmeldung</option>
+      <option value="1" ${entry.login ? 'selected' : ''}>Nur ohne Code</option>
+    </select>
     <button class="icon-btn" type="button" data-exempt-remove aria-label="Entfernen" title="Entfernen">${removeIcon}</button>
   </div>`
 }
@@ -2980,7 +2984,7 @@ function renderGateway() {
         <small class="muted">Am besten das Dashboard, z. B. https://192.168.0.21:3000. Leer = dieser Multiview.</small>
       </label>
       <div class="field"><span>Feste Geräte ohne Code</span>
-        <small class="muted">Stationen, Raspberry Pis, Kesher-App, Rechner im LAN: eine Adresse (192.168.0.50) oder ein Bereich (192.168.0.0/24). Sie kommen ohne Code und Anmeldung an Intercom und Dashboard, an die Admin-Dienste nur mit Admin-Anmeldung. Der Server selbst ist immer frei.</small>
+        <small class="muted">Stationen, Raspberry Pis, Kesher-App, Rechner im LAN: eine Adresse (192.168.0.50) oder ein Bereich (192.168.0.0/24). <b>Ohne Anmeldung</b>: kommen ohne Code und Anmeldung an Intercom und Dashboard (Stationen, Kiosk). <b>Nur ohne Code</b>: brauchen keinen Tagescode, melden sich aber mit Name und Rolle an (Arbeitsrechner). An die Admin-Dienste kommen alle nur mit Admin-Anmeldung. Der Server selbst ist immer frei.</small>
         <div class="exempt-list" id="exempt-list">${exempt.map(exemptRow).join('')}</div>
         <div><button class="btn small" type="button" id="exempt-add">Gerät hinzufügen</button></div>
       </div>
@@ -3054,7 +3058,11 @@ $('#access-gateway-card').addEventListener('submit', async (e) => {
   e.preventDefault()
   const form = e.target
   const exempt = [...form.querySelectorAll('.exempt-row')]
-    .map((row) => ({ network: row.querySelector('[name="network"]').value.trim(), label: row.querySelector('[name="label"]').value.trim() }))
+    .map((row) => ({
+      network: row.querySelector('[name="network"]').value.trim(),
+      label: row.querySelector('[name="label"]').value.trim(),
+      login: row.querySelector('[name="login"]').value === '1',
+    }))
     .filter((entry) => entry.network)
   try {
     await saveGateway({ exempt, startUrl: form.startUrl.value.trim() })

@@ -121,6 +121,31 @@ test('feste Geräte brauchen keinen Code, für Admin-Dienste aber die Anmeldung'
   assert.throws(() => access.setGateway({ exempt: [{ network: 'quatsch' }] }), /Keine gültige Adresse/)
 })
 
+test('feste Geräte „nur ohne Code“ brauchen trotzdem Name und Rolle', async () => {
+  const { access } = await setup()
+  access.setGateway({
+    enabled: true,
+    exempt: [
+      { network: '192.168.0.161', label: 'Raspberry' },
+      { network: '192.168.0.101', label: 'Mac Pro7', login: true },
+    ],
+  })
+  assert.deepEqual(access.gateway().exempt.map((e) => e.login), [false, true])
+  // Station: weiter ohne alles
+  assert.equal(access.check({ service: 'dashboard', ip: '192.168.0.161' }, fakeReq()).action, 'allow')
+  assert.equal(access.trusted('192.168.0.161', fakeReq()), true)
+  // Arbeitsrechner: kein Code, aber die Anmeldung
+  assert.equal(access.deviceStatus('192.168.0.101', fakeReq()).required, false)
+  assert.equal(access.check({ service: 'dashboard', ip: '192.168.0.101' }, fakeReq()).action, 'login')
+  assert.equal(access.check({ service: 'kesher', ip: '192.168.0.101' }, fakeReq()).action, 'login')
+  assert.equal(access.trusted('192.168.0.101', fakeReq()), false)
+  const session = await loginAs(access, 'Simon', 'video')
+  const check = access.check({ service: 'kesher', ip: '192.168.0.101' }, fakeReq({ mv_session: session }))
+  assert.equal(check.action, 'allow')
+  assert.equal(check.user.name, 'Simon')
+  assert.equal(access.check({ service: 'companion', ip: '192.168.0.101' }, fakeReq({ mv_session: session })).action, 'forbidden')
+})
+
 test('der Server selbst ist auch über seine LAN-Adresse frei', async (t) => {
   t.mock.method(os, 'networkInterfaces', () => ({
     lo: [{ address: '127.0.0.1', family: 'IPv4', internal: true }],
