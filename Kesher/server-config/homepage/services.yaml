@@ -1,5 +1,6 @@
 # Dashboard (Homepage) auf dem JMS-Server – zwei Seiten (Tabs, siehe settings.yaml):
-#   Start: die Dienste für alle (Intercom, Multiview, Fernbedienung …) und das Konto
+#   Start: die Dienste für alle (Intercom, Multiview, Fernbedienung …)
+#   Abmelden und Konto wechseln stehen oben in der Konto-Leiste (custom.js)
 #   Admin: Companion, Portainer und alles über den Server (Auslastung, Container)
 # Alle Dateien aus diesem Ordner nach /opt/homelab/config/homepage/ kopieren, Homepage
 # lädt sie ohne Neustart. Links gehen auf die IP-Adressen (die Namen kennt der DNS im
@@ -29,16 +30,6 @@
         href: https://192.168.0.21:8090/prediger.html
         description: Folien, Notizen und Zeit für die Bühne
         icon: mdi-account-voice
-
-- Konto:
-    - Abmelden:
-        href: https://192.168.0.21:3000/.jms-auth/logout
-        description: Auf allen Diensten abmelden
-        icon: mdi-logout
-    - Konto wechseln:
-        href: https://192.168.0.21:3000/.jms-auth/login?wechseln=1
-        description: Andere Rolle oder als Admin anmelden
-        icon: mdi-account-switch
 
 # ----------------------------------------------------------------------------- Admin
 

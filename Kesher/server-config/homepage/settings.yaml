@@ -14,10 +14,6 @@ layout:
     tab: Start
     style: row
     columns: 4
-  Konto:
-    tab: Start
-    style: row
-    columns: 2
   Verwaltung:
     tab: Admin
     style: row

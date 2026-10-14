@@ -1449,7 +1449,7 @@ app.get(['/api/wallpaper/:file', '/.jms-auth/api/wallpaper/:file'], (req, res) =
   res.set('Cache-Control', 'public, max-age=604800').type('image/jpeg').sendFile(file)
 })
 
-app.get('/api/avatar/:id', requireTrusted, (req, res) => {
+app.get(['/api/avatar/:id', '/.jms-auth/api/avatar/:id'], requireTrusted, (req, res) => {
   if (!/^[0-9a-f]{20}$/.test(req.params.id)) return res.status(404).end()
   const file = avatarFile(req.params.id)
   if (!fs.existsSync(file)) return res.status(404).end()

@@ -51,6 +51,44 @@
     root.setProperty('--jms-accent', wp.accent)
   } catch {}
 
+  // Konto-Leiste ganz oben: wer angemeldet ist, Konto wechseln, Abmelden
+  if (me && me.user && !me.user.open) {
+    const u = me.user
+    const bar = document.createElement('div')
+    bar.className = 'jms-account'
+    const initials = String(u.name || '?').trim().split(/\s+/).slice(0, 2).map((w) => (w[0] || '').toUpperCase()).join('') || '?'
+    const avatar = document.createElement('span')
+    avatar.className = 'jms-avatar'
+    if (u.avatar) {
+      const img = document.createElement('img')
+      img.src = '/.jms-auth' + u.avatar
+      img.alt = ''
+      avatar.append(img)
+    } else {
+      avatar.textContent = initials
+    }
+    const who = document.createElement('span')
+    who.className = 'jms-who'
+    const name = document.createElement('b')
+    name.textContent = u.name
+    const role = document.createElement('small')
+    role.textContent = u.roleName || u.roleId
+    who.append(name, role)
+    const actions = document.createElement('span')
+    actions.className = 'jms-account-actions'
+    actions.innerHTML =
+      '<a href="/.jms-auth/login?wechseln=1&next=%2F">Konto wechseln</a>' +
+      '<a href="/.jms-auth/logout" class="jms-logout">Abmelden</a>'
+    bar.append(avatar, who, actions)
+    // Homepage zeichnet die Seite selbst – die Leiste über der Suche halten
+    const placeBar = () => {
+      const top = document.getElementById('information-widgets')
+      if (top && bar.nextElementSibling !== top) top.before(bar)
+    }
+    new MutationObserver(placeBar).observe(document.body, { childList: true, subtree: true })
+    placeBar()
+  }
+
   // An- oder abgemeldet in einem anderen Dienst/Tab (gemeinsames Cookie): beim Zurückwechseln
   // und alle 15 s prüfen und dann neu laden – ohne dass man selbst neu laden muss
   if (!me || !me.access || !me.access.enabled) return
