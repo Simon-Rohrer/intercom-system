@@ -16,16 +16,24 @@
         icon: mdi-headset
         server: local-docker
         container: kesher
-    - Multiview:
+    - Multiview einstellen:
         href: https://192.168.0.21:8090
         description: Bildschirme, Layouts und Monitore
         icon: mdi-monitor-dashboard
         server: local-docker
         container: multiview
-    - Fernbedienung:
-        href: https://192.168.0.21:8090/remote.html
-        description: ProPresenter, Bühnennachrichten und Stage Display, Chat
-        icon: mdi-remote
+    - Intercom-Chat:
+        href: https://192.168.0.21:8090/remote.html?tab=chat
+        description: Chat mit den anderen Rollen lesen und schreiben
+        icon: mdi-chat-processing
+    - Nachricht auf Bühne:
+        href: https://192.168.0.21:8090/remote.html?tab=beamer
+        description: Text an ProPresenter – der Bediener zeigt ihn auf dem Beamer
+        icon: mdi-projector-screen
+    - Nachricht auf Stage Display:
+        href: https://192.168.0.21:8090/remote.html?tab=stage
+        description: Kurze Nachricht für die Bühne (Stage Display)
+        icon: mdi-message-text
     - Prediger:
         href: https://192.168.0.21:8090/prediger.html
         description: Folien, Notizen und Zeit für die Bühne

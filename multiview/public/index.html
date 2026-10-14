@@ -247,9 +247,20 @@
             <a href="#/einstellungen/churchtools" data-section-link="churchtools"><span class="status-dot"></span>ChurchTools</a>
             <a href="#/einstellungen/companion" data-section-link="companion">Companion</a>
             <a href="#/einstellungen/bildschirme" data-section-link="bildschirme">Bildschirme am Server</a>
+            <a href="#/einstellungen/geraete" data-section-link="geraete" data-admin>Angemeldete Geräte</a>
           </nav>
 
           <div class="settings-stack">
+            <div class="card" id="set-sessions" data-section="geraete">
+              <div class="card-head">
+                <div>
+                  <h2>Angemeldete Geräte</h2>
+                  <p class="muted">Rechner und Handys, die gerade online sind (eine Seite offen haben). „Abmelden“ beendet die Sitzung auf dem Gerät.</p>
+                </div>
+                <button class="btn small" id="sessions-refresh" type="button">Aktualisieren</button>
+              </div>
+              <div id="access-sessions"></div>
+            </div>
             <div class="card" id="set-screens" data-section="bildschirme">
               <div class="card-head">
                 <div>
@@ -405,16 +416,6 @@
                 <button class="btn primary small" type="button" id="role-new">+ Neue Rolle</button>
               </div>
               <div id="access-roles"></div>
-            </div>
-            <div class="card">
-              <div class="card-head">
-                <div>
-                  <h2>Angemeldete Geräte</h2>
-                  <p class="muted">Rechner und Handys, die gerade angemeldet sind. „Abmelden“ beendet die Sitzung auf dem Gerät.</p>
-                </div>
-                <button class="btn small" id="sessions-refresh" type="button">Aktualisieren</button>
-              </div>
-              <div id="access-sessions"></div>
             </div>
           </div>
         </section>

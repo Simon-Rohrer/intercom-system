@@ -23,7 +23,7 @@ const CLIENT_ID = uid('c')
 const PAGES = ['uebersicht', 'eingaenge', 'layouts', 'einstellungen', 'zugang']
 const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'zugang']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
-const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'companion', 'bildschirme']
+const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'companion', 'bildschirme', 'geraete']
 const SOURCE_TYPES = {
   device: 'Capture-Gerät',
   stream: 'Netzwerk-Stream',
@@ -234,10 +234,8 @@ function showPage() {
   document.querySelectorAll('.site-nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === page))
   document.body.classList.remove('nav-open')
   if (page === 'eingaenge') autoScanDevices()
-  if (page === 'zugang') {
-    loadSessions()
-    loadGateway()
-  }
+  if (page === 'einstellungen' && sub === 'geraete') loadSessions()
+  if (page === 'zugang') loadGateway()
   renderAll()
   window.scrollTo(0, 0)
 }
@@ -2854,6 +2852,10 @@ $('#page-zugang').addEventListener('click', async (e) => {
     if (!res.ok || !data.ok) return ($('#pin-error').textContent = data.error || `Fehler (HTTP ${res.status})`)
     location.reload()
   }
+})
+
+// Einstellungen > Angemeldete Geräte
+$('#set-sessions').addEventListener('click', async (e) => {
   const end = e.target.closest('[data-end-session]')
   if (end) {
     await fetch(`/api/access/sessions/${encodeURIComponent(end.dataset.endSession)}`, { method: 'DELETE' })
@@ -2861,6 +2863,10 @@ $('#page-zugang').addEventListener('click', async (e) => {
   }
   if (e.target.closest('#sessions-refresh')) loadSessions()
 })
+// Online/offline ändert sich laufend – solange die Liste offen ist, alle 15 s neu laden
+setInterval(() => {
+  if (document.visibilityState === 'visible' && !$('#set-sessions').hidden && page === 'einstellungen') loadSessions()
+}, 15_000)
 
 async function loadSessions() {
   if (!isAdmin()) return
@@ -2870,7 +2876,9 @@ async function loadSessions() {
     return
   }
   try {
-    const list = await fetch('/api/access/sessions').then((r) => r.json())
+    const all = await fetch('/api/access/sessions').then((r) => r.json())
+    // Nur Geräte, die gerade online sind (eine Seite offen haben)
+    const list = all.filter((s) => s.live || s.self)
     const when = (ms) => new Date(ms).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     box.innerHTML = `<div class="table-wrap"><table class="table">
       <thead><tr><th>Name</th><th>Rolle</th><th>IP-Adresse</th><th>Zuletzt aktiv</th><th></th></tr></thead>
@@ -2880,7 +2888,7 @@ async function loadSessions() {
             <td>${esc(s.roleName)}</td><td>${s.ip ? `<code class="ip">${esc(s.ip)}</code>` : '<span class="muted">–</span>'}</td><td class="muted">${esc(when(s.seen))}</td>
             <td style="text-align:right">${s.self ? '' : `<button class="btn small danger" data-end-session="${esc(s.id)}">Abmelden</button>`}</td></tr>`,
         )
-        .join('') || '<tr><td colspan="5" class="muted">Niemand angemeldet.</td></tr>'}</tbody></table></div>`
+        .join('') || '<tr><td colspan="5" class="muted">Gerade ist kein Gerät online.</td></tr>'}</tbody></table></div>`
   } catch {
     box.innerHTML = '<p class="muted">Konnte die Liste nicht laden.</p>'
   }

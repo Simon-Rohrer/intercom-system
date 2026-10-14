@@ -13,7 +13,7 @@ layout:
   Dienste:
     tab: Start
     style: row
-    columns: 4
+    columns: 3
   Verwaltung:
     tab: Admin
     style: row

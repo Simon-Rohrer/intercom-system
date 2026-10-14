@@ -26,7 +26,9 @@ let chat = { state: 'connecting', messages: [] }
 let composer = null
 let online = true
 const previews = new Set(readJson(sessionStorage, 'mv.remote.previews', []))
-let tab = readJson(localStorage, 'mv.remote.tab', 'outputs')
+// ?tab=chat|stage|beamer|outputs öffnet direkt diesen Bereich (Links vom Dashboard)
+const TAB_PARAM = new URLSearchParams(location.search).get('tab')
+let tab = TAB_PARAM || readJson(localStorage, 'mv.remote.tab', 'outputs')
 let lastSeenChat = readJson(localStorage, 'mv.remote.chatSeen', 0) // Zeitstempel der neuesten gelesenen Nachricht
 
 function readJson(store, key, fallback) {
@@ -53,7 +55,8 @@ async function start() {
   const me = await fetch('/api/me', { cache: 'no-store' })
     .then((r) => r.json())
     .catch(() => null)
-  if (me?.access?.enabled && !me.user) return location.replace('/login.html?next=/remote.html')
+  if (me?.access?.enabled && !me.user)
+    return location.replace(`/login.html?next=${encodeURIComponent('/remote.html' + location.search)}`)
   user = me?.user ?? { admin: true, open: true, name: '', roleId: 'admin' }
   if (me?.access?.enabled) watchLogin(loginKey(user))
   if (!user.open) adoptServerPrefs(me.prefs)
