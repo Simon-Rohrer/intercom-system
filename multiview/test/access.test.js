@@ -310,3 +310,42 @@ test('ist Kesher nicht erreichbar, geht die Anmeldung trotzdem', async () => {
   assert.ok(await loginAs(access, 'Tim', 'ton'))
   assert.deepEqual(await access.occupiedForLogin(fakeReq()), { ton: 'Tim' })
 })
+
+test('festes Gerät auch per IPv6 (.local-Namen) frei – erkannt an der MAC-Adresse', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
+  const macs = { '192.168.0.67': 'aa:aa:aa:aa:aa:01', 'fe80::1:2:3:4': 'aa:aa:aa:aa:aa:01', 'fe80::9': 'bb:bb:bb:bb:bb:02' }
+  const access = createAccess({ dataDir: dir, log: () => {}, macOf: (ip) => macs[ip] ?? null })
+  await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
+  access.setGateway({ enabled: true, exempt: [{ network: '192.168.0.67', label: 'Mac Regie' }] })
+  assert.equal(access.check({ service: 'kesher', ip: '192.168.0.67' }, fakeReq()).action, 'allow')
+  assert.equal(access.check({ service: 'kesher', ip: 'fe80::1:2:3:4' }, fakeReq()).action, 'allow')
+  // anderes Gerät per IPv6: weiter mit Code
+  assert.equal(access.check({ service: 'kesher', ip: 'fe80::9' }, fakeReq()).action, 'code')
+})
+
+test('Tagescode einmal eingegeben gilt auch unter dem anderen Namen (gleiche MAC-Adresse)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
+  const macs = { '192.168.0.127': 'cc:cc:cc:cc:cc:03', 'fe80::127': 'cc:cc:cc:cc:cc:03' }
+  const access = createAccess({ dataDir: dir, log: () => {}, macOf: (ip) => macs[ip] ?? null })
+  await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
+  access.setGateway({ enabled: true, exempt: [] })
+  // Code über https://192.168.0.21:8443 eingegeben – das Cookie gilt nur dort
+  access.redeemDayCode(access.dayCode().code, '192.168.0.127', fakeReq(), fakeRes())
+  // intercom.local: kein Cookie, per IPv6 – trotzdem freigeschaltet
+  assert.deepEqual(access.deviceStatus('fe80::127', fakeReq()), { required: true, approved: true })
+  assert.equal(access.check({ service: 'kesher', ip: 'fe80::127' }, fakeReq()).action, 'login')
+  // ein anderes Gerät nicht
+  assert.equal(access.check({ service: 'kesher', ip: '192.168.0.200' }, fakeReq()).action, 'code')
+  // Freischaltung ohne gespeicherte MAC (vor dem Update): über ihre Adresse nachgeschlagen
+  macs['192.168.0.128'] = 'dd:dd:dd:dd:dd:04'
+  macs['fe80::128'] = 'dd:dd:dd:dd:dd:04'
+  const file = path.join(dir, 'access-secret.json')
+  const stored = JSON.parse(fs.readFileSync(file, 'utf8'))
+  stored.devices.x = { gen: stored.dayCode.gen, created: Date.now(), ip: '192.168.0.128' }
+  fs.writeFileSync(file, JSON.stringify(stored))
+  const reloaded = createAccess({ dataDir: dir, log: () => {}, macOf: (ip) => macs[ip] ?? null })
+  assert.equal(reloaded.deviceStatus('fe80::128', fakeReq()).approved, true)
+  // Neuer Code beendet auch diese Freischaltung
+  access.renewDayCode()
+  assert.equal(access.check({ service: 'kesher', ip: 'fe80::127' }, fakeReq()).action, 'code')
+})

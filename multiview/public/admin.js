@@ -2403,16 +2403,101 @@ function renderUserCard() {
   $('#admin-login-btn').hidden = !me?.access?.enabled || isAdmin()
 }
 
+// --- Suche in der Seitenleiste (wie in den macOS-Systemeinstellungen) --------------
+
+const SEARCH_ENTRIES = [
+  { label: 'Übersicht', href: '#/', words: 'start multiviews status profil qr handy anmelden' },
+  { label: 'Layouts', href: '#/layouts', words: 'editor kacheln raster trennlinien vorlagen' },
+  { label: 'Eingänge', href: '#/eingaenge', admin: true, words: 'kamera capture stream video quellen testbild' },
+  { label: 'ATEM', href: '#/einstellungen/atem', admin: true, words: 'einstellungen tally mischer ip' },
+  { label: 'ProPresenter', href: '#/einstellungen/propresenter', admin: true, words: 'einstellungen folien stage display beamer nachricht' },
+  { label: 'Kesher-Chat', href: '#/einstellungen/kesher', admin: true, words: 'einstellungen intercom chat rolle' },
+  { label: 'ChurchTools', href: '#/einstellungen/churchtools', admin: true, words: 'einstellungen ablauf agenda gottesdienst' },
+  { label: 'Companion', href: '#/einstellungen/companion', admin: true, words: 'einstellungen stream deck tasten' },
+  { label: 'Bildschirme am Server', href: '#/einstellungen/bildschirme', admin: true, words: 'einstellungen hdmi monitor anschluss' },
+  { label: 'Angemeldete Geräte', href: '#/einstellungen/geraete', admin: true, words: 'einstellungen online ip sitzung abmelden' },
+  { label: 'Rollen', href: '#/zugang/rollen', admin: true, words: 'benutzer rechte sehen bearbeiten licht ton' },
+  { label: 'Anmeldung & Admin-PIN', href: '#/zugang/anmeldung', admin: true, words: 'benutzer pin passwort admin' },
+  { label: 'Anmeldung für alle Dienste', href: '#/zugang/dienste', admin: true, words: 'benutzer tagescode qr feste geräte gateway' },
+  { label: 'Darstellung', open: 'appearance-dialog', words: 'hintergrund hell dunkel farbe wallpaper theme' },
+  { label: 'QR-Codes fürs Handy', open: 'qr-dialog', words: 'handy anmelden scannen' },
+]
+
+const searchInput = $('#side-search')
+const searchResults = $('#side-search-results')
+let searchHits = []
+let searchIndex = 0
+
+function renderSearch() {
+  const q = searchInput.value.trim().toLowerCase()
+  searchHits = q
+    ? SEARCH_ENTRIES.filter((e) => (!e.admin || isAdmin()) && `${e.label} ${e.words}`.toLowerCase().includes(q))
+        // Treffer im Namen zuerst, dann in den Stichworten
+        .sort((a, b) => Number(!a.label.toLowerCase().includes(q)) - Number(!b.label.toLowerCase().includes(q)))
+        .slice(0, 8)
+    : []
+  searchIndex = 0
+  searchResults.hidden = !q
+  searchResults.innerHTML = searchHits.length
+    ? searchHits
+        .map((e, i) => `<button type="button" role="option" data-hit="${i}" class="${i === searchIndex ? 'active' : ''}">${esc(e.label)}</button>`)
+        .join('')
+    : '<p class="muted">Nichts gefunden</p>'
+}
+
+function openHit(hit) {
+  if (!hit) return
+  searchInput.value = ''
+  searchResults.hidden = true
+  searchInput.blur()
+  if (hit.open) document.querySelector(`[data-open="${hit.open}"]`)?.click()
+  else location.hash = hit.href
+}
+
+searchInput.addEventListener('input', renderSearch)
+searchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault()
+    if (!searchHits.length) return
+    searchIndex = (searchIndex + (e.key === 'ArrowDown' ? 1 : -1) + searchHits.length) % searchHits.length
+    searchResults.querySelectorAll('[data-hit]').forEach((b) => b.classList.toggle('active', Number(b.dataset.hit) === searchIndex))
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    openHit(searchHits[searchIndex])
+  } else if (e.key === 'Escape') {
+    searchInput.value = ''
+    renderSearch()
+    searchInput.blur()
+  }
+})
+searchResults.addEventListener('mousedown', (e) => {
+  const b = e.target.closest('[data-hit]')
+  if (b) {
+    e.preventDefault()
+    openHit(searchHits[Number(b.dataset.hit)])
+  }
+})
+searchInput.addEventListener('blur', () => setTimeout(() => (searchResults.hidden = true), 120))
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault()
+    document.body.classList.remove('sidebar-collapsed')
+    searchInput.focus()
+    searchInput.select()
+  }
+})
+
 // --- Profil (Übersicht): großes Profilbild, Name, Rolle und App-Kacheln ------------
 
+// Gefüllte Symbole im Stil der SF Symbols (weiß auf farbigem Squircle)
 const APP_TILES = [
-  { href: '#/layouts', label: 'Layouts', color: 'blue', icon: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 10h18M10 10v10"/>' },
-  { href: '#/eingaenge', label: 'Eingänge', color: 'green', admin: true, icon: '<rect x="2.5" y="6" width="13" height="12" rx="2.5"/><path d="M15.5 10.5 21 7.5v9l-5.5-3"/>' },
-  { href: '#/einstellungen', label: 'Einstellungen', color: 'gray', admin: true, icon: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/>' },
-  { href: '#/zugang', label: 'Benutzer', color: 'orange', admin: true, icon: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16.5 14.2a5 5 0 0 1 5 5.3"/>' },
-  { href: '/remote.html', label: 'Handy', color: 'purple', icon: '<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18.5h2"/>' },
-  { open: 'qr-dialog', label: 'QR-Codes', color: 'teal', icon: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/>' },
-  { open: 'appearance-dialog', label: 'Darstellung', color: 'pink', icon: '<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.8 1.7-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z"/>' },
+  { href: '#/layouts', label: 'Layouts', color: 'blue', icon: '<path fill-rule="evenodd" d="M5.5 3h13A3.5 3.5 0 0 1 22 6.5v11a3.5 3.5 0 0 1-3.5 3.5h-13A3.5 3.5 0 0 1 2 17.5v-11A3.5 3.5 0 0 1 5.5 3Zm-1.5 7v7.5c0 .8.7 1.5 1.5 1.5H9v-9H4Zm7 0v9h7.5c.8 0 1.5-.7 1.5-1.5V10h-9Z"/>' },
+  { href: '#/eingaenge', label: 'Eingänge', color: 'green', admin: true, icon: '<rect x="1.5" y="5.5" width="14.5" height="13" rx="3.2"/><path d="M17.3 10.1 21 7.6c.6-.4 1.5 0 1.5.8v7.2c0 .8-.9 1.2-1.5.8l-3.7-2.5z"/>' },
+  { href: '#/einstellungen', label: 'Einstellungen', color: 'gray', admin: true, icon: '<path fill-rule="evenodd" d="M19.60 12.00 L21.42 13.87 L20.87 15.67 L18.32 16.22 L17.37 17.37 L17.33 19.98 L15.67 20.87 L13.48 19.45 L12.00 19.60 L10.13 21.42 L8.33 20.87 L7.78 18.32 L6.63 17.37 L4.02 17.33 L3.13 15.67 L4.55 13.48 L4.40 12.00 L2.58 10.13 L3.13 8.33 L5.68 7.78 L6.63 6.63 L6.67 4.02 L8.33 3.13 L10.52 4.55 L12.00 4.40 L13.87 2.58 L15.67 3.13 L16.22 5.68 L17.37 6.63 L19.98 6.67 L20.87 8.33 L19.45 10.52Z M15.2 12 a3.2 3.2 0 1 0 -6.4 0 a3.2 3.2 0 1 0 6.4 0Z"/>' },
+  { href: '#/zugang', label: 'Benutzer', color: 'orange', admin: true, icon: '<circle cx="9" cy="7.2" r="3.7"/><path d="M1.8 19.3c0-3.8 3.2-6.4 7.2-6.4s7.2 2.6 7.2 6.4c0 .7-.5 1.2-1.2 1.2H3c-.7 0-1.2-.5-1.2-1.2Z"/><circle cx="17.2" cy="8.3" r="2.9"/><path d="M17.6 12.9c2.7.2 4.6 2.1 4.6 4.9 0 .7-.5 1.2-1.2 1.2h-3.2c.2-.6.3-1.1.3-1.7 0-1.7-.7-3.2-1.8-4.4h1.3Z"/>' },
+  { href: '/remote.html', label: 'Handy', color: 'purple', icon: '<path fill-rule="evenodd" d="M8.2 1.5h7.6A3.2 3.2 0 0 1 19 4.7v14.6a3.2 3.2 0 0 1-3.2 3.2H8.2A3.2 3.2 0 0 1 5 19.3V4.7a3.2 3.2 0 0 1 3.2-3.2Zm1.6 17.6a.8.8 0 0 0 0 1.6h4.4a.8.8 0 0 0 0-1.6H9.8Z"/>' },
+  { open: 'qr-dialog', label: 'QR-Codes', color: 'teal', icon: '<path fill-rule="evenodd" d="M4 2.5h5A1.5 1.5 0 0 1 10.5 4v5A1.5 1.5 0 0 1 9 10.5H4A1.5 1.5 0 0 1 2.5 9V4A1.5 1.5 0 0 1 4 2.5Zm1.5 3v2h2v-2h-2ZM15 2.5h5A1.5 1.5 0 0 1 21.5 4v5a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 13.5 9V4A1.5 1.5 0 0 1 15 2.5Zm1.5 3v2h2v-2h-2ZM4 13.5h5a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 9 21.5H4A1.5 1.5 0 0 1 2.5 20v-5A1.5 1.5 0 0 1 4 13.5Zm1.5 3v2h2v-2h-2Z"/><rect x="13.5" y="13.5" width="3.4" height="3.4" rx=".8"/><rect x="18.1" y="18.1" width="3.4" height="3.4" rx=".8"/><rect x="18.1" y="13.5" width="3.4" height="3.4" rx=".8"/><rect x="13.5" y="18.1" width="3.4" height="3.4" rx=".8"/>' },
+  { open: 'appearance-dialog', label: 'Darstellung', color: 'pink', icon: '<path fill-rule="evenodd" d="M12 2C6.5 2 2 6.2 2 11.5S6.3 21.5 11.3 21.5c1.5 0 2.4-1 2.4-2.2 0-.6-.2-1.1-.6-1.5-.3-.4-.5-.8-.5-1.3 0-1.2 1-2.1 2.2-2.1h2.4c3 0 4.8-2 4.8-4.6C22 5.6 17.5 2 12 2Zm-5.4 9.8a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Zm3.5-4.3a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Zm4.8.3a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Z"/>' },
 ]
 
 function renderProfileCard() {

@@ -1,0 +1,169 @@
+<!doctype html><meta charset="utf-8"><body style="margin:0;background:#000">
+<canvas id="c" width="2400" height="1500" style="width:100%"></canvas>
+<script>
+// Kleiner Zufallsgenerator mit Startwert, damit jedes Bild reproduzierbar ist
+function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296) }
+const W = 2400, H = 1500
+const hex = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255] }
+const mix = (a, b, t) => { const A = hex(a), B = hex(b); return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',')})` }
+const rgba = (h, a) => `rgba(${hex(h).join(',')},${a})`
+
+function background(ctx, cfg) {
+  const g = ctx.createLinearGradient(0, 0, W * 0.3, H)
+  g.addColorStop(0, cfg.bg[0]); g.addColorStop(1, cfg.bg[1] || cfg.bg[0])
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+  if (cfg.glow) {
+    const r = ctx.createRadialGradient(W * cfg.glow[0], H * cfg.glow[1], 0, W * cfg.glow[0], H * cfg.glow[1], W * 0.7)
+    r.addColorStop(0, rgba(cfg.glow[2], cfg.glow[3] ?? 0.5)); r.addColorStop(1, rgba(cfg.glow[2], 0))
+    ctx.fillStyle = r; ctx.fillRect(0, 0, W, H)
+  }
+}
+
+// Lamellen wie „Kupfer“/„Graphit“: hintereinander gestaffelte, gebogene Schalen mit Lichtkante
+function fins(ctx, cfg, rand) {
+  const n = cfg.count || 11
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1)
+    const cx = W * (-0.05 + t * 1.05), top = H * (0.62 - Math.sin(t * Math.PI) * 0.38 + (cfg.tilt || 0) * t)
+    const w = W * (cfg.width || 0.17), depth = H * 0.95
+    const col = mix(cfg.colors[0], cfg.colors[1], t)
+    const light = mix(cfg.colors[0], cfg.colors[1], Math.min(1, t + 0.25))
+    const sway = (cfg.sway || 0.35) * W
+    ctx.save()
+    ctx.shadowColor = cfg.shadow || 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 70; ctx.shadowOffsetX = -30
+    ctx.beginPath()
+    ctx.moveTo(cx - w * 0.55, top + H * 0.08)
+    ctx.bezierCurveTo(cx - w * 0.5, top - H * 0.05, cx + w * 0.35, top - H * 0.06, cx + w * 0.5, top + H * 0.04)
+    ctx.bezierCurveTo(cx + w * 0.2, top + depth * 0.35, cx + sway * 0.4, top + depth * 0.7, cx + sway * 0.3, H * 1.1)
+    ctx.lineTo(cx - w * 0.2 + sway * 0.1, H * 1.1)
+    ctx.bezierCurveTo(cx - w * 0.3, top + depth * 0.6, cx - w * 0.75, top + depth * 0.25, cx - w * 0.55, top + H * 0.08)
+    const g = ctx.createLinearGradient(cx - w, top, cx + w, top + depth)
+    g.addColorStop(0, light); g.addColorStop(0.45, col); g.addColorStop(1, mix(cfg.colors[0], '#000000', cfg.dark ? 0.75 : 0.35))
+    ctx.fillStyle = g; ctx.fill()
+    ctx.restore()
+    // Glanz auf der linken Seite der Schale (Plastizität)
+    ctx.save()
+    ctx.clip(new Path2D())
+    ctx.restore()
+    ctx.save()
+    ctx.beginPath()
+    ctx.moveTo(cx - w * 0.55, top + H * 0.08)
+    ctx.bezierCurveTo(cx - w * 0.5, top - H * 0.05, cx + w * 0.35, top - H * 0.06, cx + w * 0.5, top + H * 0.04)
+    ctx.bezierCurveTo(cx + w * 0.2, top + depth * 0.35, cx + sway * 0.4, top + depth * 0.7, cx + sway * 0.3, H * 1.1)
+    ctx.lineTo(cx - w * 0.2 + sway * 0.1, H * 1.1)
+    ctx.bezierCurveTo(cx - w * 0.3, top + depth * 0.6, cx - w * 0.75, top + depth * 0.25, cx - w * 0.55, top + H * 0.08)
+    ctx.clip()
+    const sh = ctx.createRadialGradient(cx - w * 0.15, top + H * 0.12, 0, cx - w * 0.15, top + H * 0.12, w * 1.1)
+    sh.addColorStop(0, cfg.sheen || 'rgba(255,255,255,0.22)'); sh.addColorStop(1, 'rgba(255,255,255,0)')
+    ctx.fillStyle = sh; ctx.fillRect(0, 0, W, H)
+    ctx.restore()
+    // Lichtkante oben
+    ctx.save()
+    ctx.beginPath()
+    ctx.moveTo(cx - w * 0.55, top + H * 0.08)
+    ctx.bezierCurveTo(cx - w * 0.5, top - H * 0.05, cx + w * 0.35, top - H * 0.06, cx + w * 0.5, top + H * 0.04)
+    ctx.bezierCurveTo(cx + w * 0.2, top + depth * 0.35, cx + sway * 0.4, top + depth * 0.7, cx + sway * 0.3, H * 1.1)
+    ctx.strokeStyle = cfg.rim || 'rgba(255,255,255,0.35)'; ctx.lineWidth = 7; ctx.filter = 'blur(2px)'; ctx.stroke()
+    ctx.restore()
+  }
+}
+
+// Große, sich überlappende Schleier wie „Tanne“/„Salbei“
+function veils(ctx, cfg, rand) {
+  const n = cfg.count || 4
+  for (let i = 0; i < n; i++) {
+    const t = i / Math.max(1, n - 1)
+    const x0 = W * (0.25 + rand() * 0.5), y0 = H * (rand() * 0.3)
+    ctx.save()
+    ctx.beginPath()
+    ctx.moveTo(x0, -50)
+    ctx.bezierCurveTo(x0 + W * (0.1 - rand() * 0.2), H * 0.3, x0 - W * (0.25 + rand() * 0.2), H * 0.45, x0 - W * 0.1, H * 0.62)
+    ctx.bezierCurveTo(x0 + W * 0.05, H * 0.85, x0 + W * 0.35, H * 0.75, W + 100, H * (0.55 + rand() * 0.4))
+    ctx.lineTo(W + 100, -50)
+    ctx.closePath()
+    const g = ctx.createLinearGradient(x0 - W * 0.3, 0, W, H)
+    g.addColorStop(0, rgba(cfg.colors[i % cfg.colors.length], cfg.alpha ?? 0.45))
+    g.addColorStop(1, rgba(cfg.colors[(i + 1) % cfg.colors.length], (cfg.alpha ?? 0.45) * 0.4))
+    ctx.shadowColor = cfg.shadow || 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 90
+    ctx.fillStyle = g; ctx.fill()
+    ctx.shadowBlur = 0
+    ctx.strokeStyle = cfg.rim || 'rgba(255,255,255,0.18)'; ctx.lineWidth = 3; ctx.stroke()
+    ctx.restore()
+  }
+  // Wellen unten
+  for (let k = 0; k < 2; k++) {
+    ctx.save()
+    ctx.beginPath()
+    const y = H * (0.86 + k * 0.04)
+    ctx.moveTo(W * (0.1 + k * 0.2), H + 20)
+    ctx.bezierCurveTo(W * (0.3 + k * 0.1), y - H * 0.12, W * 0.65, y - H * 0.1, W * (0.85 + k * 0.1), H + 20)
+    const g = ctx.createLinearGradient(0, y - H * 0.15, 0, H)
+    g.addColorStop(0, rgba(cfg.colors[k % cfg.colors.length], (cfg.alpha ?? 0.45) * 0.9)); g.addColorStop(1, rgba(cfg.colors[k % cfg.colors.length], 0.05))
+    ctx.fillStyle = g; ctx.fill()
+    ctx.strokeStyle = cfg.rim || 'rgba(255,255,255,0.18)'; ctx.lineWidth = 2.5; ctx.stroke()
+    ctx.restore()
+  }
+}
+
+// Fließende Farbformen wie „Ozean“: weiche Farbwolken plus wenige scharfe Wellen
+function flow(ctx, cfg, rand) {
+  ctx.save(); ctx.filter = 'blur(90px)'
+  for (let i = 0; i < 9; i++) {
+    const x = W * rand(), y = H * rand(), r = W * (0.15 + rand() * 0.25)
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r)
+    const c = cfg.colors[i % cfg.colors.length]
+    g.addColorStop(0, rgba(c, cfg.alpha ?? 0.9)); g.addColorStop(1, rgba(c, 0))
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+  }
+  ctx.restore()
+  for (let k = 0; k < (cfg.waves ?? 3); k++) {
+    const y = H * (0.35 + k * 0.2 + rand() * 0.08)
+    ctx.save()
+    ctx.beginPath()
+    ctx.moveTo(-50, y)
+    ctx.bezierCurveTo(W * 0.25, y - H * (0.25 + rand() * 0.15), W * 0.55, y + H * (0.2 + rand() * 0.1), W + 50, y - H * 0.15)
+    ctx.lineTo(W + 50, H + 50); ctx.lineTo(-50, H + 50); ctx.closePath()
+    const g = ctx.createLinearGradient(0, y - H * 0.3, W * 0.2, H)
+    const c = cfg.colors[(k + 1) % cfg.colors.length]
+    g.addColorStop(0, rgba(c, 0.85)); g.addColorStop(0.5, rgba(cfg.colors[k % cfg.colors.length], 0.55)); g.addColorStop(1, rgba(cfg.bg[1] || cfg.bg[0], 0.9))
+    ctx.shadowColor = cfg.shadow || 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 80; ctx.shadowOffsetY = -20
+    ctx.fillStyle = g; ctx.fill()
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0
+    ctx.strokeStyle = cfg.rim || 'rgba(255,255,255,0.3)'; ctx.lineWidth = 3; ctx.filter = 'blur(1.5px)'; ctx.stroke()
+    ctx.restore()
+  }
+}
+
+// Kugel über Wellen wie „Abendrot“
+function orb(ctx, cfg, rand) {
+  flow(ctx, { ...cfg, waves: 0 }, rand)
+  const x = W * 0.45, y = H * 0.4, r = H * 0.3
+  ctx.save()
+  const g = ctx.createRadialGradient(x + r * 0.4, y - r * 0.5, r * 0.1, x, y, r * 1.1)
+  g.addColorStop(0, cfg.colors[2] || cfg.colors[0]); g.addColorStop(0.6, cfg.colors[0]); g.addColorStop(1, cfg.colors[1])
+  ctx.shadowColor = cfg.shadow || 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 120
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill()
+  ctx.restore()
+  flow(ctx, { ...cfg, alpha: 0, waves: 2 }, rand)
+}
+
+function grain(ctx, amount) {
+  const img = ctx.getImageData(0, 0, W, H), d = img.data
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (Math.random() - 0.5) * amount
+    d[i] += n; d[i + 1] += n; d[i + 2] += n
+  }
+  ctx.putImageData(img, 0, 0)
+}
+
+window.render = (cfg) => {
+  const ctx = document.getElementById('c').getContext('2d')
+  const rand = rng(cfg.seed || 1)
+  ctx.filter = 'none'
+  background(ctx, cfg)
+  ;({ fins, veils, flow, orb })[cfg.style](ctx, cfg, rand)
+  ctx.filter = 'none'
+  grain(ctx, cfg.grain ?? 6)
+  return document.getElementById('c').toDataURL('image/jpeg', 0.84)
+}
+</script>

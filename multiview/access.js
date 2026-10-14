@@ -176,6 +176,8 @@ function createAccess({
   kesherActiveRoles = async () => [],
   releaseKesherRole = async () => {},
   ipOf = () => '',
+  // MAC-Adresse zur Geräteadresse (oder null): erkennt ein Gerät auch unter seiner anderen Adresse
+  macOf = () => null,
 }) {
   const file = path.join(dataDir, 'access-secret.json')
   // { adminPin: { salt, hash } | { kesher: true }, sessions: { sha256(token): session },
@@ -505,11 +507,18 @@ function createAccess({
     for (const [key, d] of Object.entries(secret.devices)) if (!keep.has(d.gen)) delete secret.devices[key]
   }
 
-  /** Ist dieses Gerät heute schon mit dem Code freigeschaltet? */
-  function deviceApproved(req) {
+  /**
+   * Ist dieses Gerät heute schon mit dem Code freigeschaltet? Am Cookie – oder an der MAC-Adresse,
+   * denn das Cookie gilt nur für den Namen, unter dem der Code eingegeben wurde (192.168.0.21 und
+   * intercom.local sind für den Browser zwei verschiedene Seiten).
+   */
+  function deviceApproved(req, ip) {
     const token = parseCookies(req.headers.cookie)[DEVICE_COOKIE]
     const device = token && secret.devices[sha256(token)]
-    return Boolean(device) && genValid(device.gen)
+    if (device && genValid(device.gen)) return true
+    const mac = macOf(ip)
+    // Ältere Freischaltungen ohne gespeicherte MAC: über ihre Adresse nachschlagen
+    return Boolean(mac) && Object.values(secret.devices).some((d) => genValid(d.gen) && (d.mac || macOf(d.ip)) === mac)
   }
 
   function devicesToday() {
@@ -543,7 +552,7 @@ function createAccess({
   /** Gerät für heute freischalten (Tagescode eingegeben oder Anmelde-QR eines angemeldeten Nutzers gescannt). */
   function approveDevice(ip, req, res) {
     const token = randomToken()
-    secret.devices[sha256(token)] = { gen: dayCode(Date.now()).gen, created: Date.now(), ip: String(ip ?? '') }
+    secret.devices[sha256(token)] = { gen: dayCode(Date.now()).gen, created: Date.now(), ip: String(ip ?? ''), mac: macOf(ip) || undefined }
     write()
     // Bis zum übernächsten Morgen reicht – danach braucht es ohnehin den neuen Code
     const secure = req.secure || req.get('x-forwarded-proto') === 'https' ? '; Secure' : ''
@@ -559,14 +568,25 @@ function createAccess({
    */
   const exemptNetworks = (filter = () => true) => secret.gateway.exempt.filter(filter).map((e) => parseNetwork(e.network))
   /** Feste Geräte aus der Liste (und der Server selbst) brauchen keinen Tagescode. */
-  const exemptIp = (ip) => isLoopback(ip) || isOwnAddress(ip) || ipInNetworks(ip, exemptNetworks())
-  /** … und die ohne „Anmeldung nötig“ (Stationen, Kiosk) auch keine Anmeldung bei Intercom und Dashboard. */
-  const openIp = (ip) => isLoopback(ip) || isOwnAddress(ip) || ipInNetworks(ip, exemptNetworks((e) => !e.login))
+  const exemptIp = (ip) => isLoopback(ip) || isOwnAddress(ip) || ipInNetworks(ip, exemptNetworks()) || exemptByMac(ip)
+  /** … und die ohne „Nur ohne Code“ (Stationen, Kiosk) auch keine Anmeldung bei Intercom und Dashboard. */
+  const openIp = (ip) =>
+    isLoopback(ip) || isOwnAddress(ip) || ipInNetworks(ip, exemptNetworks((e) => !e.login)) || exemptByMac(ip, (e) => !e.login)
+
+  /**
+   * Ein fest eingetragenes Gerät unter einer anderen Adresse, meist per IPv6 über die .local-Namen:
+   * gleiche MAC-Adresse wie eine einzeln eingetragene Adresse (Netze ohne einzelnes Gerät nicht).
+   */
+  function exemptByMac(ip, filter = () => true) {
+    const mac = macOf(ip)
+    if (!mac) return false
+    return secret.gateway.exempt.some((e) => filter(e) && !e.network.includes('/') && macOf(e.network) === mac)
+  }
 
   /** Muss dieses Gerät den Tagescode eingeben, und hat es das schon? */
   function deviceStatus(ip, req) {
     const required = gatewayActive() && !exemptIp(ip)
-    return { required, approved: !required || deviceApproved(req) }
+    return { required, approved: !required || deviceApproved(req, ip) }
   }
 
   /**
@@ -585,7 +605,7 @@ function createAccess({
     const user = userOf(req)
     // Feste Geräte (Stationen, Raspberry Pis, Desktop-App) können keinen Code eingeben
     if (openIp(ip) && level === 'user') return { action: 'allow', user }
-    if (!exempt && !deviceApproved(req)) return { action: 'code', user }
+    if (!exempt && !deviceApproved(req, ip)) return { action: 'code', user }
     if (!user) return { action: 'login', user: null }
     if (level === 'admin' && !user.admin) return { action: 'forbidden', user }
     return { action: 'allow', user }

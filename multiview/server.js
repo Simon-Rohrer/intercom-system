@@ -10,6 +10,7 @@ const { WebSocketServer } = require('ws')
 const { Atem } = require('atem-connection')
 const { createKesherChat } = require('./kesher-chat')
 const { createKesherRoles } = require('./kesher-roles')
+const { createNeighbors } = require('./neighbors')
 const { createChurchTools } = require('./churchtools')
 const QRCode = require('qrcode')
 const {
@@ -1268,6 +1269,8 @@ const access = createAccess({
   isLive: (id) => [...wss.clients].some((ws) => ws.readyState === 1 && ws.sessionId === id),
   // Geräteadresse für die Liste der Anmeldungen (clientIp ist weiter unten definiert, wird erst bei Anfragen aufgerufen)
   ipOf: (req) => (req?.socket ? clientIp(req).replace(/^::ffff:/, '') : ''),
+  // Dasselbe Gerät per IPv4 (IP-Adresse) und IPv6 (.local-Namen) erkennen
+  macOf: createNeighbors().macOf,
   // Übernommene oder vom Admin beendete Anmeldung: die offenen Seiten dort abmelden
   onRevoke: (ids, reason) => {
     for (const ws of wss.clients) {
@@ -1447,8 +1450,11 @@ app.get(['/zertifikat', '/.jms-auth/zertifikat'], async (req, res) => {
 const WALLPAPER_DIR = path.join(DATA_DIR, 'wallpapers')
 app.get(['/api/wallpaper/:file', '/.jms-auth/api/wallpaper/:file'], (req, res) => {
   if (!/^[a-z0-9-]{1,40}\.jpg$/.test(req.params.file)) return res.status(404).end()
-  const file = path.join(WALLPAPER_DIR, req.params.file)
-  if (!fs.existsSync(file)) return res.status(404).end()
+  // Erst der Datenordner (Fotos mit fremder Lizenz), dann die selbst erzeugten aus dem Repo (wallpapers/)
+  const file = [path.join(WALLPAPER_DIR, req.params.file), path.join(__dirname, 'wallpapers', req.params.file)].find((f) =>
+    fs.existsSync(f),
+  )
+  if (!file) return res.status(404).end()
   res.set('Cache-Control', 'public, max-age=604800').type('image/jpeg').sendFile(file)
 })
 

@@ -7,7 +7,7 @@ ARG MEDIAMTX_VERSION=v1.21.2
 ARG TARGETARCH
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl \
+  && apt-get install -y --no-install-recommends ca-certificates curl iproute2 \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -35,9 +35,10 @@ RUN set -eu; \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
-COPY server.js kesher-chat.js kesher-roles.js churchtools.js access.js legacy.js legacy-runtime.js ./
+COPY server.js kesher-chat.js kesher-roles.js churchtools.js access.js neighbors.js legacy.js legacy-runtime.js ./
 COPY public ./public
 COPY seed ./seed
+COPY wallpapers/*.jpg ./wallpapers/
 
 ENV NODE_ENV=production \
     PORT=8090 \

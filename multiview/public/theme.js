@@ -93,8 +93,10 @@ export function nextTheme(theme = currentPrefs().theme) {
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyPrefs(currentPrefs()))
 
 /** Vorschau eines Hintergrunds (kleines Bild bzw. der blaue Verlauf). */
-export function wallpaperThumb(wp) {
-  return wp.file ? `url('${window.MV_wallpaperBase || ''}/api/wallpaper/${wp.file}-s.jpg')` : 'linear-gradient(165deg, #07174d, #0d2f8f 50%, #2e7aff)'
+export function wallpaperThumb(wp, light = effectiveTheme() === 'light') {
+  const file = light && wp.light ? wp.light : wp.file
+  if (file) return `url('${window.MV_wallpaperBase || ''}/api/wallpaper/${file}-s.jpg')`
+  return light ? 'linear-gradient(160deg, #eaf2ff, #cfe0ff 45%, #e6ecff)' : 'linear-gradient(165deg, #07174d, #0d2f8f 50%, #2e7aff)'
 }
 
 /** Auswahl Hell/Dunkel/System und Hintergründe als HTML (für Dialoge). */
