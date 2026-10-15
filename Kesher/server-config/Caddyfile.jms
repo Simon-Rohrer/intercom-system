@@ -19,6 +19,12 @@
 #   sudo systemctl reload caddy
 
 {
+	# Kein HTTP/3 für die Namens-Adressen (443): Safari hängt bei Caddys interner CA im QUIC-Aufbau
+	# (weißer Bildschirm bei intercom.local, bis man neu lädt) – dann bleibt es bei h1/h2.
+	servers {
+		protocols h1 h2
+	}
+
 	# Klartext-Anfragen auf den HTTPS-Ports auf https umleiten (Caddy ≥ 2.6).
 	# Nur für die Port-Adressen, nicht für Port 80 (setup.local) und 443.
 	servers 192.168.0.21:8443 {
