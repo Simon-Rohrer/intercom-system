@@ -1228,6 +1228,9 @@ function templatesChanged() {
 }
 
 wss.on('connection', (ws, req) => {
+  // Kaputte Pakete (z. B. Caddy schickt beim Neuladen ein unmaskiertes Schlusspaket) beenden nur
+  // diese Verbindung – ohne Fehler-Handler würde ws den ganzen Server abstürzen lassen
+  ws.on('error', (err) => console.warn('WebSocket-Fehler:', err.code || err.message))
   // Ohne Anmeldung nur feste Geräte und der Server selbst (Kiosk) – alle anderen zur Anmeldeseite
   if (!access.trusted(clientIp(req), req)) return ws.close(4401, 'Bitte anmelden')
   // Welche Anmeldung hier offen ist – so gilt eine Rolle als belegt, solange ihre Seite offen ist
