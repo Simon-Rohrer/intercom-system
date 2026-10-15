@@ -2890,6 +2890,12 @@ $('#admin-form').addEventListener('submit', async (e) => {
     $('#admin-pin').select()
     return
   }
+  // Wie nach der Anmeldeseite: die neue Anmeldung zur zentralen Adresse bringen, sonst fragen
+  // portainer.local, dns.local usw. (eigene Cookies) wieder nach der Anmeldung
+  const sso = await fetch('/api/sso', { cache: 'no-store' })
+    .then((r) => r.json())
+    .catch(() => null)
+  if (sso?.origin && !sso.central) return location.replace(`/.jms-auth/sso/push?next=${encodeURIComponent(location.pathname + location.hash)}`)
   location.reload()
 })
 $('#admin-dialog').addEventListener('close', () => {
