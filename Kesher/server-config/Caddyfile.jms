@@ -96,6 +96,22 @@
 	}
 }
 
+# Fremde Oberflächen (Companion) merken An- und Abmeldung in anderen Tabs nicht selbst: Ihre
+# Seitenaufrufe holt der Multiview vom Dienst und hängt einen kleinen Wächter ein, der dann neu
+# lädt (multiview/public/watch-login.js). Nach „import jms_auth“ einbinden – das rewrite steht in
+# handle, läuft also erst nach der Anmeldeprüfung auf dem ursprünglichen Pfad.
+(jms_watch) {
+	@jms_page {
+		method GET
+		header Accept *text/html*
+		not path /.jms-auth/*
+	}
+	handle @jms_page {
+		rewrite * /.jms-auth/page/{args.0}{uri}
+		reverse_proxy 127.0.0.1:8090
+	}
+}
+
 # ---------------------------------------------------------------------------
 # Port-Adressen: https://192.168.0.21:<port>
 # ---------------------------------------------------------------------------
@@ -117,6 +133,7 @@ https://192.168.0.21:8090 {
 https://192.168.0.21:8000 {
 	import lan_port
 	import jms_auth companion
+	import jms_watch companion
 	reverse_proxy 127.0.0.1:8000
 }
 
@@ -169,6 +186,7 @@ https://dashboard.jms.de, https://dashboard.local {
 https://companion.jms.de, https://companion.local {
 	tls internal
 	import jms_auth companion
+	import jms_watch companion
 	reverse_proxy 127.0.0.1:8000
 }
 

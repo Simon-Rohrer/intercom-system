@@ -1708,6 +1708,42 @@ app.get('/.jms-auth/check', (req, res) => {
 
 app.get('/.jms-auth/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')))
 
+// Fremde Oberflächen hinter der zentralen Anmeldung (Companion) merken An- und Abmeldung in anderen
+// Tabs nicht selbst. Caddy schickt ihre Seitenaufrufe (Accept: text/html) hierher (Baustein
+// jms_watch im Caddyfile): Der Multiview holt die Seite vom Dienst und hängt watch-login.js ein,
+// das bei geänderter Anmeldung neu lädt. Nur HTML, nur für Angemeldete mit Zugang zum Dienst –
+// /.jms-auth/* ist auf jeder Adresse offen, das hier darf also kein Umweg an der Anmeldung vorbei sein.
+const WATCHED_SERVICES = { companion: process.env.COMPANION_URL || 'http://127.0.0.1:8000' }
+
+app.get(/^\/\.jms-auth\/page\/([a-z]+)(\/.*)?$/, async (req, res) => {
+  const service = req.params[0]
+  const upstream = WATCHED_SERVICES[service]
+  if (!upstream) return res.status(404).end()
+  const rest = req.params[1] || '/'
+  const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : ''
+  const { action } = access.check({ service, ip: clientIp(req) }, req)
+  if (action !== 'allow') return res.redirect(302, loginPath(rest + query))
+  let page
+  try {
+    page = await fetch(`${upstream}${rest}${query}`, {
+      headers: { Accept: 'text/html', 'Accept-Encoding': 'identity', 'User-Agent': req.get('user-agent') || '' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(5000),
+    })
+  } catch {
+    return res.status(502).type('text').send(`${service} ist gerade nicht erreichbar`)
+  }
+  const type = page.headers.get('content-type') || ''
+  if (page.status >= 300 && page.status < 400) return res.redirect(page.status, page.headers.get('location') || '/')
+  if (!/text\/html/i.test(type)) return res.status(404).end()
+  const html = await page.text()
+  const tag = '<script src="/.jms-auth/watch-login.js" defer></script>'
+  res
+    .status(page.status)
+    .set({ 'Content-Type': type, 'Cache-Control': 'no-store' })
+    .send(/<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${tag}</head>`) : tag + html)
+})
+
 app.get('/.jms-auth/logout', (req, res) => {
   access.logout(req, res)
   res.redirect(302, loginPath(req.query.next))
