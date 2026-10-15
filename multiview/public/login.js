@@ -21,11 +21,17 @@ const isPhone = matchMedia('(max-width: 700px)').matches
 const nextParam = params.get('next') || ''
 const fallback = gateway ? '/' : isPhone ? '/remote.html' : '/'
 const next = nextParam.startsWith('/') && !nextParam.startsWith('//') && !nextParam.startsWith('/\\') ? nextParam : fallback
+// Dienst nur für den Admin (Companion, Portainer …): nur die Admin-Anmeldung anbieten
+const adminOnly = gateway && params.get('nur') === 'admin'
+const SERVICE_NAMES = { companion: 'Companion', portainer: 'Portainer', glances: 'Glances', dns: 'DNS (AdGuard)' }
+const serviceName = SERVICE_NAMES[params.get('dienst')] || 'Dieser Bereich'
 $('#qr-note').hidden = params.get('qr') !== 'abgelaufen'
 $('#revoked-note').hidden = !params.has('abgemeldet')
 if (gateway) {
   $('#brand-text').innerHTML = 'Technik<small>Anmeldung</small>'
-  $('#login-lead').textContent = 'Name eingeben und deine Rolle wählen – das gilt dann für alle Dienste (Intercom, JMS Control, Dashboard).'
+  $('#login-lead').textContent = adminOnly
+    ? `${serviceName} ist nur für den Admin – Name und Admin-PIN eingeben.`
+    : 'Name eingeben und deine Rolle wählen – das gilt dann für alle Dienste (Intercom, JMS Control, Dashboard).'
 }
 
 function remembered(key) {
@@ -277,8 +283,8 @@ async function showLoginStep() {
   }
   $('#login-step').hidden = false
 
-  const lastRole = remembered('role')
-  $('#role').innerHTML = [
+  const lastRole = adminOnly ? 'admin' : remembered('role')
+  $('#role').innerHTML = adminOnly ? '<option value="admin" selected>Admin (mit PIN)</option>' : [
     `<option value="" disabled ${lastRole ? '' : 'selected'}>Rolle wählen …</option>`,
     ...roles.map((r) => `<option value="${esc(r.id)}" ${r.id === lastRole ? 'selected' : ''}>${esc(r.name)}</option>`),
     `<option value="admin" ${lastRole === 'admin' ? 'selected' : ''}>Admin (mit PIN)</option>`,
@@ -308,7 +314,9 @@ async function showLoginStep() {
   }
   setInterval(refreshOccupied, 3000)
   document.addEventListener('visibilitychange', refreshOccupied)
-  if (!roles.length) $('#error').textContent = 'Kesher ist gerade nicht erreichbar – nur die Admin-Anmeldung geht.'
+  // Nur Admin: keine Rollenauswahl, gleich die PIN
+  $('#role').closest('.field').hidden = adminOnly
+  if (!roles.length && !adminOnly) $('#error').textContent = 'Kesher ist gerade nicht erreichbar – nur die Admin-Anmeldung geht.'
   $('#name').value = remembered('name')
   // Großer Avatar über dem Formular, wächst beim Tippen des Namens mit
   const showAvatar = () => ($('#auth-avatar').innerHTML = avatarHtml({ name: $('#name').value.trim() || '?' }))
@@ -322,7 +330,7 @@ async function showLoginStep() {
   }
   syncPin()
   $('#role').addEventListener('change', syncPin)
-  ;($('#name').value ? $('#role') : $('#name')).focus()
+  ;($('#name').value ? (adminOnly ? $('#pin') : $('#role')) : $('#name')).focus()
 
   $('#role').addEventListener('change', () => ($('#error').textContent = ''))
   $('#login-form').addEventListener('submit', (e) => {
@@ -346,7 +354,8 @@ async function showLoginStep() {
       return
     }
     remember('name', body.name)
-    remember('role', body.roleId)
+    // Die Admin-Anmeldung für Companion & Co. soll nicht die gewohnte Rolle für Kesher verdrängen
+    if (!adminOnly) remember('role', body.roleId)
     continueAfterLogin()
   }
 }

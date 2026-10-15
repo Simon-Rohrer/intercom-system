@@ -16,6 +16,7 @@ const { createChurchTools } = require('./churchtools')
 const QRCode = require('qrcode')
 const {
   createAccess, normalizeAccess, roleRights, allowedOutputs, editableOutputs, visibleLayouts, applyRestrictedChanges, claimLayouts, ADMIN,
+  SERVICE_LEVELS,
 } = require('./access')
 
 const PORT = Number(process.env.PORT) || 8090
@@ -1668,7 +1669,14 @@ const safeNext = (value, fallback = '/') => {
   return next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : fallback
 }
 
-const loginPath = (next) => `/.jms-auth/login?next=${encodeURIComponent(safeNext(next))}`
+/**
+ * Anmeldeseite mit Rücksprungziel. Für Dienste nur für den Admin (Companion, Portainer …) bietet
+ * sie dann nur die Admin-Anmeldung an – eine Rolle brächte dort ja nur „Nur für den Admin“.
+ */
+const loginPath = (next, service = '') => {
+  const adminOnly = service && (SERVICE_LEVELS[service] ?? 'admin') === 'admin'
+  return `/.jms-auth/login?next=${encodeURIComponent(safeNext(next))}${adminOnly ? `&nur=admin&dienst=${encodeURIComponent(service)}` : ''}`
+}
 
 /**
  * Wächter für Seiten, die die Anmeldung nicht selbst verfolgen (Companion, „Nur für den Admin“):
@@ -1681,7 +1689,7 @@ function watchTag(user) {
   return `<script src="/.jms-auth/watch-login.js"${key === null ? '' : ` data-key="${escapeHtml(key)}"`} defer></script>`
 }
 
-function forbiddenPage(user, next) {
+function forbiddenPage(user, next, service) {
   return `<!doctype html>
 <html lang="de" data-theme="system"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -1692,7 +1700,7 @@ ${watchTag(user)}</head>
 <div class="brand"><span class="brand-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="brand-text">Technik<small>Anmeldung</small></span></div>
 <div><h1>Nur für den Admin</h1>
 <p class="muted">Du bist als <b>${escapeHtml(user?.name)}</b> angemeldet. Dieser Bereich ist nur mit der Admin-Anmeldung erreichbar.</p></div>
-<a class="btn primary block" href="${escapeHtml(`${loginPath(next)}&wechseln=1`)}">Als Admin anmelden</a>
+<a class="btn primary block" href="${escapeHtml(`${loginPath(next, service)}&wechseln=1`)}">Als Admin anmelden</a>
 <a class="btn block" href="/.jms-auth/logout">Abmelden</a>
 </div></div></body></html>`
 }
@@ -1716,9 +1724,9 @@ app.get('/.jms-auth/check', (req, res) => {
   const wantsPage =
     (req.get('x-forwarded-method') || 'GET') === 'GET' && /text\/html/.test(req.get('accept') || '') && !req.get('upgrade')
   if (action === 'forbidden')
-    return wantsPage ? res.status(403).type('html').send(forbiddenPage(user, next)) : res.status(403).json({ ok: false, error: 'Nur für den Admin' })
-  if (wantsPage) return res.redirect(302, loginPath(next))
-  res.set('X-Jms-Login', loginPath(next)).status(401).json({ ok: false, error: 'Bitte anmelden', login: loginPath(next) })
+    return wantsPage ? res.status(403).type('html').send(forbiddenPage(user, next, service)) : res.status(403).json({ ok: false, error: 'Nur für den Admin' })
+  if (wantsPage) return res.redirect(302, loginPath(next, service))
+  res.set('X-Jms-Login', loginPath(next, service)).status(401).json({ ok: false, error: 'Bitte anmelden', login: loginPath(next, service) })
 })
 
 app.get('/.jms-auth/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')))
@@ -1737,7 +1745,7 @@ app.get(/^\/\.jms-auth\/page\/([a-z]+)(\/.*)?$/, async (req, res) => {
   const rest = req.params[1] || '/'
   const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : ''
   const { action, user } = access.check({ service, ip: clientIp(req) }, req)
-  if (action !== 'allow') return res.redirect(302, loginPath(rest + query))
+  if (action !== 'allow') return res.redirect(302, loginPath(rest + query, service))
   let page
   try {
     page = await fetch(`${upstream}${rest}${query}`, {
