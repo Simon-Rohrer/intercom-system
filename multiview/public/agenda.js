@@ -1,6 +1,7 @@
 // ChurchTools-Ablauf als Kachel: Ablauf des heutigen Events, der laufende Punkt
-// ist hervorgehoben. Gibt es heute keinen Ablauf, steht der nächste Termin mit
-// Ablauf da (außer bei festem Datum). Die Daten kommen vom Multiview-Server.
+// ist hervorgehoben. Gibt es heute kein Event, steht der nächste Termin da (außer
+// bei festem Datum). Events ohne Ablauf erscheinen mit „Kein Ablauf hinterlegt“.
+// Die Daten kommen vom Multiview-Server.
 
 const views = new Set()
 
@@ -36,8 +37,6 @@ function matchesFilter(event, filter) {
   const f = String(filter || '').trim().toLowerCase()
   return !f || event.name.toLowerCase().includes(f) || (event.calendar || '').toLowerCase().includes(f)
 }
-
-const hasAgenda = (event) => Boolean(event.agenda?.items?.length)
 
 /**
  * Welches Event die Kachel zeigt: passend zum Filter (Name oder Kalender),
@@ -108,20 +107,15 @@ export function createAgendaView(tile) {
       if (ct.state === 'error') return message(ct.error || 'ChurchTools nicht erreichbar')
       return message(ct.state === 'connected' ? `Lade ${fmtDay(day)} …` : 'Verbinde mit ChurchTools …')
     }
-    let event = null
-    if (options.date) event = pickEvent(events, options.filter)
-    else {
-      // Aktuelles Datum: heutiges Event mit Ablauf, sonst der nächste Termin mit Ablauf
-      event = pickEvent(events.filter(hasAgenda), options.filter)
-      if (!event) {
-        event = (ct.upcoming || []).find((e) => matchesFilter(e, options.filter)) || null
-        if (event) {
-          live = false
-          label.textContent = 'Nächster Ablauf'
-        }
-      }
-      if (!event) {
-        const what = options.filter ? `kein Ablauf „${options.filter}“` : 'kein Ablauf'
+    let event = pickEvent(events, options.filter)
+    if (!event && !options.date) {
+      // Aktuelles Datum: heute kein passendes Event, dann der nächste Termin
+      event = (ct.upcoming || []).find((e) => matchesFilter(e, options.filter)) || null
+      if (event) {
+        live = false
+        label.textContent = 'Nächster Termin'
+      } else {
+        const what = options.filter ? `kein Event „${options.filter}“` : 'keine Events'
         return message(`Heute ${what} – auch nicht in den nächsten Wochen`)
       }
     }
@@ -129,7 +123,7 @@ export function createAgendaView(tile) {
     if (!event) return message(options.filter ? `${dayText} kein Event „${options.filter}“` : `${dayText} keine Events`)
     eventName.textContent = event.name
     when.textContent = `${fmtDate(event.startDate, tz)} · ${fmtTime(event.startDate, tz)}`
-    if (!event.agenda) return message(event.agendaError || 'Kein Ablauf')
+    if (!event.agenda) return message(event.agendaError || 'Kein Ablauf hinterlegt')
     if (!event.agenda.items.length) return message('Der Ablauf ist leer')
 
     const list = el('ol', 'agenda-list')

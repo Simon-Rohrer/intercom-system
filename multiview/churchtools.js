@@ -10,8 +10,7 @@ const path = require('path')
 
 const REFRESH_MS = 60 * 1000
 const MAX_DAYS = 10 // so viele verschiedene Tage werden höchstens abgefragt
-const LOOKAHEAD_DAYS = 42 // so weit voraus wird der nächste Ablauf gesucht
-const MAX_AGENDA_LOOKUPS = 12 // höchstens so viele Abläufe je Suche abfragen
+const LOOKAHEAD_DAYS = 42 // so weit voraus wird das nächste Event gesucht
 const RETRY_MS = 15 * 1000
 const TIMEOUT_MS = 10 * 1000
 
@@ -55,8 +54,6 @@ function matchesFilter(event, filter) {
   return !f || event.name.toLowerCase().includes(f) || (event.calendar || '').toLowerCase().includes(f)
 }
 
-const hasAgenda = (event) => Boolean(event.agenda?.items?.length)
-
 /** Gültiges Datum im Format YYYY-MM-DD? */
 function isDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && !Number.isNaN(Date.parse(value))
@@ -69,7 +66,7 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
   let error = ''
   let date = '' // heute
   let days = {} // { 'YYYY-MM-DD': events[] }
-  let upcoming = [] // nächste Events mit Ablauf, für Kacheln ohne heutigen Ablauf
+  let upcoming = [] // nächste Events (mit oder ohne Ablauf), für Kacheln ohne heutiges Event
   let daysKey = ''
   let lastPublished = ''
   let timer = null
@@ -296,9 +293,10 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
     try {
       const { data } = await request(base, `/events/${event.id}/agenda`, { token })
       const agenda = data?.data
-      return { agenda: { name: agenda?.name || '', items: agendaItems(agenda, event) }, agendaError: '' }
+      if (!agenda) return { agenda: null, agendaError: 'Kein Ablauf hinterlegt' }
+      return { agenda: { name: agenda.name || '', items: agendaItems(agenda, event) }, agendaError: '' }
     } catch (err) {
-      if (err.status === 404) return { agenda: null, agendaError: 'Kein Ablauf angelegt' }
+      if (err.status === 404) return { agenda: null, agendaError: 'Kein Ablauf hinterlegt' }
       if (err.status === 403) return { agenda: null, agendaError: 'Keine Berechtigung für den Ablauf' }
       throw err
     }
@@ -329,12 +327,12 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
   }
 
   /**
-   * Für Kacheln ohne festes Datum, deren Filter heute keinen Ablauf findet:
-   * das nächste Event (ab morgen) mit Ablauf. Je Filter wird nur bis zum ersten
-   * Treffer gesucht, damit nicht jeder Ablauf der nächsten Wochen geladen wird.
+   * Für Kacheln ohne festes Datum, deren Filter heute kein Event findet: das
+   * nächste passende Event (ab morgen), mit oder ohne Ablauf. Je Filter wird nur
+   * der Ablauf des ersten Treffers geladen.
    */
   async function loadUpcoming(base, token, tz, today, todays) {
-    const open = wantedFilters().filter((f) => !todays.some((e) => hasAgenda(e) && matchesFilter(e, f)))
+    const open = wantedFilters().filter((f) => !todays.some((e) => matchesFilter(e, f)))
     if (!open.length) return []
     const from = nextDay(today)
     const { data } = await request(base, `/events?from=${from}&to=${addDays(from, LOOKAHEAD_DAYS)}`, { token })
@@ -342,14 +340,11 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
       .filter((e) => !e.isCanceled && dateIn(tz, new Date(e.startDate)) > today)
       .sort((a, b) => Date.parse(a.startDate) - Date.parse(b.startDate))
     const found = []
-    let lookups = 0
     for (const e of list) {
-      if (!open.length || lookups >= MAX_AGENDA_LOOKUPS) break
+      if (!open.length) break
       const event = eventInfo(e)
       if (!open.some((f) => matchesFilter(event, f))) continue
-      lookups++
       const full = { ...event, ...(await loadAgenda(base, token, e)) }
-      if (!hasAgenda(full)) continue
       found.push(full)
       for (let i = open.length - 1; i >= 0; i--) if (matchesFilter(full, open[i])) open.splice(i, 1)
     }

@@ -178,7 +178,7 @@ Kacheln mit dem Inhalt **ChurchTools-Ablauf** zeigen den Ablauf des heutigen Eve
 2. Im Multiview-Editor unter *Einstellungen → ChurchTools* die Adresse (z. B. `https://gemeinde.church.tools`) sowie Benutzername und Passwort eintragen und **Verbinden** klicken. Alternativ direkt den Login-Token des Kontos eintragen.
 3. Das Passwort wird nur einmal zum Holen des Login-Tokens benutzt. Gespeichert wird nur der Token in `churchtools-secret.json` im Daten-Volume (nur für den Server lesbar, wird nie an Browser geschickt).
 
-Der Server fragt ChurchTools jede Minute ab. Pro Kachel lässt sich unter *Datum* **Aktuelles Datum** oder **Festes Datum** (mit Kalender, z. B. 15.10.) wählen; nur beim aktuellen Datum wird der laufende Punkt hervorgehoben. Bei mehreren Events am Tag zeigt die Kachel das laufende, sonst das nächste; im Kachel-Feld *Event* lässt sich ein Name oder Kalender als Filter eintragen. Unter *Einstellungen → ChurchTools* steht eine Übersicht aller abgefragten Tage mit ihren Events.
+Der Server fragt ChurchTools jede Minute ab. Pro Kachel lässt sich unter *Datum* **Aktuelles Datum** oder **Festes Datum** (mit Kalender, z. B. 15.10.) wählen; nur beim aktuellen Datum wird der laufende Punkt hervorgehoben. Bei mehreren Events am Tag zeigt die Kachel das laufende, sonst das nächste; im Kachel-Feld *Event* lässt sich ein Name oder Kalender als Filter eintragen. Events ohne Ablauf werden ebenfalls angezeigt, die Kachel meldet dann „Kein Ablauf hinterlegt“. Gibt es heute kein passendes Event, steht der nächste Termin der kommenden sechs Wochen da. Unter *Einstellungen → ChurchTools* steht eine Übersicht aller abgefragten Tage mit ihren Events.
 
 ## Wichtig im Fehlerfall
 

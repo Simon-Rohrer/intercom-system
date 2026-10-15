@@ -1787,7 +1787,7 @@ function tileInspector(tile, layout) {
       <label class="field"><span>Event (Name oder Kalender enthält, leer = laufendes/nächstes)</span><input type="text" data-t="ctFilter" value="${esc(tile.ctFilter)}" placeholder="z. B. Gottesdienst"></label>
       <label class="check"><input type="checkbox" data-t="ctResponsible" ${tile.ctResponsible !== false ? 'checked' : ''}> Verantwortliche anzeigen</label>
       <label class="check"><input type="checkbox" data-t="ctNotes" ${tile.ctNotes === true ? 'checked' : ''}> Notizen anzeigen</label>
-      <p class="muted">Zeigt den Ablauf des heutigen Events aus ChurchTools. Gibt es heute keinen, steht der nächste Termin mit Ablauf da (bis 6 Wochen voraus). Mit festem Datum nur dieser Tag. Verbindung unter <a href="#/einstellungen/churchtools">Einstellungen</a>.</p>`
+      <p class="muted">Zeigt den Ablauf des heutigen Events aus ChurchTools. Gibt es heute kein passendes Event, steht der nächste Termin da (bis 6 Wochen voraus). Events ohne Ablauf erscheinen mit „Kein Ablauf hinterlegt“. Mit festem Datum nur dieser Tag. Verbindung unter <a href="#/einstellungen/churchtools">Einstellungen</a>.</p>`
         : ''
     }
     ${kind === 'chat' ? chatSection(tile) : ''}
