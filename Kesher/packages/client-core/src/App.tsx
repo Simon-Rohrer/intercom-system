@@ -135,6 +135,19 @@ function isAdminPathname(pathname: string): boolean {
   return pathname === adminPathname;
 }
 
+// The /admin view is only for sessions that were opened as admin (PIN or the
+// central admin login). An operator session must never get the admin shell,
+// not even by typing /admin into the address bar.
+const adminTokenStorageKey = "intercom-admin-token";
+
+function markAdminToken(token: string): void {
+  sessionStorage.setItem(adminTokenStorageKey, token);
+}
+
+function isAdminToken(token: string | null): boolean {
+  return Boolean(token) && sessionStorage.getItem(adminTokenStorageKey) === token;
+}
+
 function syncPathname(pathname: string, replace = false) {
   if (window.location.pathname === pathname) return;
   const method = replace ? "replaceState" : "pushState";
@@ -435,6 +448,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       }
       centralIdentityRef.current = identity;
       setCentralIdentity(identity);
+      // A kept token of a central admin is the admin session opened for that identity
+      if (storedToken && keepToken && identity?.admin) markAdminToken(storedToken);
       if (storedToken && keepToken) setToken(storedToken);
       setCentralChecked(true);
     })();
@@ -1524,6 +1539,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         setShowBirthdayGreeting(false);
         setBirthdayGreetingUsername("");
         storeSessionToken(res.token, centralIdentityRef.current);
+        markAdminToken(res.token);
         setToken(res.token);
         setAdminOverrideActive(true);
       } catch (error) {
@@ -1864,7 +1880,9 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
   useEffect(() => {
     if (!token) return;
-    if (isAdminPathname(pathname)) setAuthMode("admin");
+    if (isAdminPathname(pathname)) {
+      setAuthMode(isAdminToken(token) ? "admin" : "operator");
+    }
   }, [pathname, token]);
 
   useEffect(() => {
@@ -1944,6 +1962,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       setShowBirthdayGreeting(false);
       setBirthdayGreetingUsername("");
       storeSessionToken(res.token, centralIdentityRef.current);
+      markAdminToken(res.token);
       setToken(res.token);
       setAdminOverrideActive(true);
     } catch (error) {
@@ -3124,7 +3143,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   }
 
   // ── Admin view ──
-  if (authMode === "admin") {
+  if (authMode === "admin" && isAdminToken(token)) {
     const displayUsername = adminOverrideActive
       ? "admin"
       : appData.self.username;
