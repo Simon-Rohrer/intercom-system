@@ -1,4 +1,5 @@
 import { getGlobalApiBaseUrl } from "../api";
+import { tokenStorageKey } from "../app/settings";
 import type { LoginSuccess } from "../types";
 
 /**
@@ -15,6 +16,28 @@ export type CentralIdentity = {
 };
 
 const BASE = "/.jms-auth";
+const sessionIdentityStorageKey = "intercom-central-identity";
+
+/** Compares central identities: name, role and admin. */
+export function centralIdentityKey(identity: CentralIdentity | null): string {
+  return identity ? `${identity.name}|${identity.roleId}|${identity.admin}` : "";
+}
+
+/**
+ * Stores the Kesher token together with the central identity it was opened
+ * for. After a reload the tab only keeps its session while the central login
+ * is still the same – otherwise it would stay e.g. "Licht 1" after signing in
+ * centrally as admin.
+ */
+export function storeSessionToken(token: string, identity: CentralIdentity | null): void {
+  sessionStorage.setItem(tokenStorageKey, token);
+  sessionStorage.setItem(sessionIdentityStorageKey, centralIdentityKey(identity));
+}
+
+/** Central identity the stored token was opened for ("" = none). */
+export function storedSessionIdentityKey(): string {
+  return sessionStorage.getItem(sessionIdentityStorageKey) ?? "";
+}
 
 export function centralLoginAvailable(): boolean {
   return getGlobalApiBaseUrl() === "" && typeof window !== "undefined";

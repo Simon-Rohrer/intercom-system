@@ -70,10 +70,13 @@ import { sortDirectUsersByRoleAndUsername } from "./lib/users";
 import { resolveAutoLoginConfiguration } from "./lib/autoLogin";
 import {
   centralAdminLogin,
+  centralIdentityKey,
   centralLoginAvailable,
   centralLoginUrl,
   centralLogout,
   fetchCentralIdentity,
+  storeSessionToken,
+  storedSessionIdentityKey,
   type CentralIdentity,
 } from "./lib/centralLogin";
 import {
@@ -335,9 +338,13 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   const [token, setToken] = useState<string | null>(() => {
     const t = sessionStorage.getItem(tokenStorageKey);
     console.debug("[App] Initial token from session storage:", t ? "exists" : "empty");
-    return t;
+    // With central login the stored token is only taken over once the central
+    // identity is checked (see below) – it may belong to another identity.
+    return centralLoginAvailable() ? null : t;
   });
-  const restoreStoredMatrixOnInitialBootstrap = useRef(token !== null).current;
+  const restoreStoredMatrixOnInitialBootstrapRef = useRef(
+    sessionStorage.getItem(tokenStorageKey) !== null,
+  );
   const [appData, setAppData] = useState<Bootstrap | null>(null);
   const [publicData, setPublicData] = useState<PublicBootstrap | null>(null);
   const [isPublicBootstrapLoading, setIsPublicBootstrapLoading] = useState(true);
@@ -408,12 +415,29 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   useEffect(() => {
     if (centralChecked) return;
     let cancelled = false;
-    void fetchCentralIdentity().then((identity) => {
+    void (async () => {
+      const identity = await fetchCentralIdentity();
       if (cancelled) return;
+      // Keep this tab's Kesher session only if it was opened for the same
+      // central identity; otherwise sign it out (frees the role) and log in
+      // again as whoever is signed in centrally now.
+      const storedToken = sessionStorage.getItem(tokenStorageKey);
+      let keepToken = false;
+      if (storedToken) {
+        keepToken = storedSessionIdentityKey() === centralIdentityKey(identity);
+        if (!keepToken) {
+          sessionStorage.removeItem(tokenStorageKey);
+          restoreStoredMatrixOnInitialBootstrapRef.current = false;
+          await logout(storedToken).catch(() => undefined);
+          if (cancelled) return;
+          setAuthMode("operator");
+        }
+      }
       centralIdentityRef.current = identity;
       setCentralIdentity(identity);
+      if (storedToken && keepToken) setToken(storedToken);
       setCentralChecked(true);
-    });
+    })();
     return () => {
       cancelled = true;
     };
@@ -423,8 +447,6 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   // visible again (and every 15 s) instead of waiting for a manual reload.
   useEffect(() => {
     if (!centralChecked || !centralLoginAvailable()) return;
-    const keyOf = (identity: CentralIdentity | null) =>
-      identity ? `${identity.name}|${identity.roleId}|${identity.admin}` : "";
     let busy = false;
     const check = async () => {
       if (busy || document.visibilityState === "hidden") return;
@@ -446,7 +468,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           user && !user.open && user.name && user.roleId
             ? { name: user.name, roleId: user.roleId, admin: Boolean(user.admin) }
             : null;
-        if (keyOf(identity) !== keyOf(centralIdentityRef.current)) {
+        if (centralIdentityKey(identity) !== centralIdentityKey(centralIdentityRef.current)) {
           window.location.reload();
         }
       } catch {
@@ -607,7 +629,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         setOperatorLoginError("");
         setShowBirthdayGreeting(Boolean(res.showBirthdayGreeting));
         setBirthdayGreetingUsername(res.user.username || useUsername);
-        sessionStorage.setItem(tokenStorageKey, res.token);
+        storeSessionToken(res.token, centralIdentityRef.current);
         setToken(res.token);
       } catch (error) {
         setOperatorLoginError(
@@ -721,7 +743,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     initialTalkRoomIds: storedSession.talkRoomIds ?? [],
     hadStoredSessionSettings:
       settings.hadStoredSessionSettings &&
-      restoreStoredMatrixOnInitialBootstrap,
+      restoreStoredMatrixOnInitialBootstrapRef.current,
     initialVoiceMode: settings.enableDirectPpt ? "ptt" : "always_on",
     onUpdateAppData: setAppData,
     onUpdatePublicData: setPublicData,
@@ -1435,7 +1457,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
             }
             res = await loginTakeover(paramUsername, targetRoleId);
           }
-          sessionStorage.setItem(tokenStorageKey, res.token);
+          storeSessionToken(res.token, centralIdentityRef.current);
           setShowBirthdayGreeting(Boolean(res.showBirthdayGreeting));
           setBirthdayGreetingUsername(res.user.username || paramUsername);
           setToken(res.token);
@@ -1486,7 +1508,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         setOperatorLoginError("");
         setShowBirthdayGreeting(false);
         setBirthdayGreetingUsername("");
-        sessionStorage.setItem(tokenStorageKey, res.token);
+        storeSessionToken(res.token, centralIdentityRef.current);
         setToken(res.token);
         setAdminOverrideActive(true);
       } catch (error) {
@@ -1874,7 +1896,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     }
     setOperatorLoginError("");
     setAdminLoginError("");
-    sessionStorage.setItem(tokenStorageKey, res.token);
+    storeSessionToken(res.token, centralIdentityRef.current);
     setShowBirthdayGreeting(Boolean(res.showBirthdayGreeting));
     setBirthdayGreetingUsername(res.user.username || useUsername);
     setToken(res.token);
@@ -1906,7 +1928,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       setOperatorLoginError("");
       setShowBirthdayGreeting(false);
       setBirthdayGreetingUsername("");
-      sessionStorage.setItem(tokenStorageKey, res.token);
+      storeSessionToken(res.token, centralIdentityRef.current);
       setToken(res.token);
       setAdminOverrideActive(true);
     } catch (error) {
@@ -2593,6 +2615,9 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   }, [token]);
 
   // ── Early returns ──
+  if (!centralChecked && !publicBootstrapError) {
+    return <div className="root">Loading configuration...</div>;
+  }
   if (!publicData) {
     if (isPublicBootstrapLoading && !publicBootstrapError) {
       return <div className="root">Loading configuration...</div>;
