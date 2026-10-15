@@ -1744,10 +1744,20 @@ const WATCHED_SERVICES = {
   // Eigene Anmeldung am Dienst: der Admin wird dort automatisch angemeldet (siehe unten)
   portainer: process.env.PORTAINER_URL || 'https://127.0.0.1:9443',
   router: process.env.ROUTER_URL || 'http://192.168.0.250',
+  dns: process.env.DNS_URL || 'http://127.0.0.1:8083',
 }
 
+/** Dienste, deren Seiten die Sitzung des Dienstes brauchen (Cookie des Browsers wird mitgeschickt). */
+const PAGE_COOKIE_SERVICES = new Set(['router'])
+/** Unsere eigenen Cookies gehen nie an einen fremden Dienst. */
+const withoutOwnCookies = (header) =>
+  String(header || '')
+    .split(/;\s*/)
+    .filter((c) => c && !/^(mv_session|jms_device)=/.test(c))
+    .join('; ')
+
 /** Seite eines Dienstes holen; Portainer hat nur ein selbst signiertes Zertifikat (nur 127.0.0.1). */
-function fetchUpstreamPage(url, userAgent) {
+function fetchUpstreamPage(url, userAgent, cookie = '') {
   return new Promise((resolve, reject) => {
     const target = new URL(url)
     const lib = target.protocol === 'https:' ? https : http
@@ -1755,7 +1765,7 @@ function fetchUpstreamPage(url, userAgent) {
       target,
       {
         method: 'GET',
-        headers: { Accept: 'text/html', 'Accept-Encoding': 'identity', 'User-Agent': userAgent || '' },
+        headers: { Accept: 'text/html', 'Accept-Encoding': 'identity', 'User-Agent': userAgent || '', ...(cookie ? { Cookie: cookie } : {}) },
         rejectUnauthorized: false,
         timeout: 5000,
       },
@@ -1861,12 +1871,22 @@ app.get(/^\/\.jms-auth\/page\/([a-z]+)(\/.*)?$/, async (req, res) => {
   if (action !== 'allow') return res.redirect(302, loginPath(rest + query, service))
   let page
   try {
-    page = await fetchUpstreamPage(`${upstream}${rest}${query}`, req.get('user-agent'))
+    page = await fetchUpstreamPage(
+      `${upstream}${rest}${query}`,
+      req.get('user-agent'),
+      PAGE_COOKIE_SERVICES.has(service) ? withoutOwnCookies(req.headers.cookie) : '',
+    )
   } catch {
     return res.status(502).type('text').send(`${service} ist gerade nicht erreichbar`)
   }
   const type = String(page.headers['content-type'] || '')
-  if (page.status >= 300 && page.status < 400) return res.redirect(page.status, String(page.headers.location || '/'))
+  for (const c of [].concat(page.headers['set-cookie'] || [])) if (PAGE_COOKIE_SERVICES.has(service)) res.append('Set-Cookie', c)
+  if (page.status >= 300 && page.status < 400) {
+    // Weiterleitungen auf die Adresse des Dienstes selbst (Router: http://192.168.0.250/…) bleiben auf dieser Adresse
+    const origin = new URL(upstream).origin
+    const target = String(page.headers.location || '/')
+    return res.redirect(page.status, target.startsWith(origin) ? target.slice(origin.length) || '/' : target)
+  }
   if (!/text\/html/i.test(type)) return res.status(404).end()
   // Eigene Anmeldung des Dienstes: den Admin automatisch anmelden, wenn Zugangsdaten hinterlegt sind
   const auto =

@@ -119,12 +119,17 @@
 }
 
 # Router (Speedport Smart 2, nur Admin): Der Router hat eine eigene Anmeldung mit Geräte-Passwort.
-# Die Anmeldeseite holt der Multiview vom Router und hängt autologin.js ein, das den Admin mit dem
-# in JMS Control hinterlegten Passwort anmeldet. Alle anderen Seiten gehen direkt zum Router.
+# Seitenaufrufe (HTML) holt der Multiview vom Router (mit dem Cookie des Browsers) und hängt
+# watch-login.js und autologin.js ein: Wechselt die Anmeldung, lädt die Seite neu; autologin.js
+# meldet den Admin mit dem in JMS Control hinterlegten Passwort an. Alles andere geht direkt zum Router.
 # „Location“ des Routers zeigt auf seine IP – das wird auf diese Adresse zurückgebogen.
 (jms_router) {
-	@router_login path /html/login/index.html
-	handle @router_login {
+	@router_page {
+		method GET
+		header Accept *text/html*
+		not path /.jms-auth/*
+	}
+	handle @router_page {
 		rewrite * /.jms-auth/page/router{uri}
 		reverse_proxy 127.0.0.1:8090
 	}
@@ -256,6 +261,7 @@ https://portainer.jms.de, https://portainer.local {
 https://dns.jms.de, https://dns.local {
 	tls internal
 	import jms_auth dns
+	import jms_watch dns
 	reverse_proxy 127.0.0.1:8083
 }
 
