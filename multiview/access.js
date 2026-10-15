@@ -571,6 +571,11 @@ function createAccess({
    * denn das Cookie gilt nur für den Namen, unter dem der Code eingegeben wurde (192.168.0.21 und
    * intercom.local sind für den Browser zwei verschiedene Seiten).
    */
+  function isAdminSession(req) {
+    const u = userOf(req)
+    return Boolean(u?.admin && !u.open)
+  }
+
   function deviceApproved(req, ip) {
     const token = parseCookies(req.headers.cookie)[DEVICE_COOKIE]
     const device = token && secret.devices[sha256(token)]
@@ -644,7 +649,9 @@ function createAccess({
 
   /** Muss dieses Gerät den Tagescode eingeben, und hat es das schon? */
   function deviceStatus(ip, req) {
-    const required = gatewayActive() && !exemptIp(ip)
+    // Der Admin hat sich mit der PIN ausgewiesen – er braucht den Tagescode nicht noch einmal
+    // (sonst fragt jeder weitere Dienst/Name, bei dem er noch kein Gerätecookie hat, wieder danach)
+    const required = gatewayActive() && !exemptIp(ip) && !isAdminSession(req)
     return { required, approved: !required || deviceApproved(req, ip) }
   }
 
@@ -664,7 +671,7 @@ function createAccess({
     const user = userOf(req)
     // Feste Geräte (Stationen, Raspberry Pis, Desktop-App) können keinen Code eingeben
     if (openIp(ip) && level === 'user') return { action: 'allow', user }
-    if (!exempt && !deviceApproved(req, ip)) return { action: 'code', user }
+    if (!exempt && !user?.admin && !deviceApproved(req, ip)) return { action: 'code', user }
     if (!user) return { action: 'login', user: null }
     if (level === 'admin' && !user.admin) return { action: 'forbidden', user }
     return { action: 'allow', user }
