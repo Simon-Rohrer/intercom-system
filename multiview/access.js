@@ -393,6 +393,8 @@ function createAccess({
     if (own) deleteSessions([own])
     write()
     res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`)
+    // Die Anmeldung gilt unter allen Adressen: offene Seiten (JMS Control, Fernbedienung …) sofort abmelden
+    if (own) onRevoke([own.id], 'abgemeldet')
   }
 
   /**
