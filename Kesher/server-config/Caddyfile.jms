@@ -112,6 +112,20 @@
 	}
 }
 
+# Dashboard (Homepage): Seiten nicht aus dem Browser-Zwischenspeicher zeigen. Homepage schickt nur
+# „s-maxage“, Safari hält die Seite dann auf eigene Faust fest – nach einem Neustart des Containers
+# blieb so unter technik.local eine Fassung ohne settings.yaml hängen (keine Reiter, alle Gruppen).
+# „no-cache“ heißt: jedes Mal beim Server nachfragen. Die Dateien unter /_next/static tragen eine
+# Prüfsumme im Namen und dürfen weiter zwischengespeichert werden. „defer“, weil Homepage selbst
+# einen Cache-Control-Kopf schickt, der sonst gewinnt.
+(dashboard_no_cache) {
+	@dashboard_page not path /_next/static/* /.jms-auth/*
+	header @dashboard_page {
+		Cache-Control "no-cache"
+		defer
+	}
+}
+
 # ---------------------------------------------------------------------------
 # Port-Adressen: https://192.168.0.21:<port>
 # ---------------------------------------------------------------------------
@@ -141,6 +155,7 @@ https://192.168.0.21:8000 {
 https://192.168.0.21:3000 {
 	import lan_port
 	import jms_auth dashboard
+	import dashboard_no_cache
 	reverse_proxy 127.0.0.1:3000
 }
 
@@ -180,6 +195,7 @@ https://multiview.jms.de, https://jmscontrol.local {
 https://dashboard.jms.de, https://dashboard.local, https://technik.local {
 	tls internal
 	import jms_auth dashboard
+	import dashboard_no_cache
 	reverse_proxy 127.0.0.1:3000
 }
 
