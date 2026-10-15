@@ -1670,12 +1670,24 @@ const safeNext = (value, fallback = '/') => {
 
 const loginPath = (next) => `/.jms-auth/login?next=${encodeURIComponent(safeNext(next))}`
 
+/**
+ * Wächter für Seiten, die die Anmeldung nicht selbst verfolgen (Companion, „Nur für den Admin“):
+ * lädt neu, sobald sich die Anmeldung ändert (public/watch-login.js). Der Server sagt ihm, für wen
+ * die Seite gebaut ist – sonst merkt er sich erst beim ersten Nachfragen, wer angemeldet ist, und
+ * übersieht einen Wechsel, der passiert, während die Seite noch im Hintergrund lädt.
+ */
+function watchTag(user) {
+  const key = user && !user.open ? `${user.name}|${user.roleId}|${Boolean(user.admin)}` : null
+  return `<script src="/.jms-auth/watch-login.js"${key === null ? '' : ` data-key="${escapeHtml(key)}"`} defer></script>`
+}
+
 function forbiddenPage(user, next) {
   return `<!doctype html>
 <html lang="de" data-theme="system"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Nur für den Admin</title>
-<script src="/.jms-auth/theme-boot.js"></script><link rel="stylesheet" href="/.jms-auth/admin.css"></head>
+<script src="/.jms-auth/theme-boot.js"></script><link rel="stylesheet" href="/.jms-auth/admin.css">
+${watchTag(user)}</head>
 <body><div class="auth-page"><div class="card auth-card">
 <div class="brand"><span class="brand-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="brand-text">Technik<small>Anmeldung</small></span></div>
 <div><h1>Nur für den Admin</h1>
@@ -1724,7 +1736,7 @@ app.get(/^\/\.jms-auth\/page\/([a-z]+)(\/.*)?$/, async (req, res) => {
   if (!upstream) return res.status(404).end()
   const rest = req.params[1] || '/'
   const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : ''
-  const { action } = access.check({ service, ip: clientIp(req) }, req)
+  const { action, user } = access.check({ service, ip: clientIp(req) }, req)
   if (action !== 'allow') return res.redirect(302, loginPath(rest + query))
   let page
   try {
@@ -1740,7 +1752,7 @@ app.get(/^\/\.jms-auth\/page\/([a-z]+)(\/.*)?$/, async (req, res) => {
   if (page.status >= 300 && page.status < 400) return res.redirect(page.status, page.headers.get('location') || '/')
   if (!/text\/html/i.test(type)) return res.status(404).end()
   const html = await page.text()
-  const tag = '<script src="/.jms-auth/watch-login.js" defer></script>'
+  const tag = watchTag(user)
   res
     .status(page.status)
     .set({ 'Content-Type': type, 'Cache-Control': 'no-store' })
