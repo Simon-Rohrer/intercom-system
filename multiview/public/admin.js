@@ -2223,14 +2223,24 @@ function renderChurchTools() {
   const time = (iso) => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: ct.timeZone })
   const dayLabel = (day) =>
     day === ct.date ? 'Heute' : new Date(`${day}T12:00:00Z`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', timeZone: 'UTC' })
-  const rows = Object.entries(ct.days || {})
+  // Die nächsten 4 Wochen, dazu fest gewählte Tage der Kacheln außerhalb davon
+  const byDay = {}
+  for (const [day, events] of Object.entries(ct.days || {}))
+    byDay[day] = events.map((e) => ({
+      ...e,
+      points: e.agenda ? e.agenda.items.filter((i) => i.type !== 'header').length : null,
+    }))
+  const overviewDays = {}
+  for (const e of ct.overview || []) (overviewDays[e.day] ||= []).push(e)
+  Object.assign(byDay, overviewDays)
+  const rows = Object.entries(byDay)
     .sort(([a], [b]) => a.localeCompare(b))
     .flatMap(([day, events]) =>
       events.length
         ? events.map(
             (e) =>
               `<tr><td>${esc(dayLabel(day))}, ${esc(time(e.startDate))}</td><td>${esc(e.name)}</td><td>${esc(e.calendar)}</td><td>${
-                e.agenda ? `${e.agenda.items.filter((i) => i.type !== 'header').length} Punkte` : esc(e.agendaError)
+                e.points != null ? `${e.points} Punkte` : esc(e.agendaError)
               }</td></tr>`,
           )
         : [`<tr><td>${esc(dayLabel(day))}</td><td colspan="3" class="muted">keine Events</td></tr>`],

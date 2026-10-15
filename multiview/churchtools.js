@@ -11,6 +11,8 @@ const path = require('path')
 const REFRESH_MS = 60 * 1000
 const MAX_DAYS = 10 // so viele verschiedene Tage werden höchstens abgefragt
 const LOOKAHEAD_DAYS = 42 // so weit voraus wird das nächste Event gesucht
+const OVERVIEW_DAYS = 28 // Übersicht in den Einstellungen: heute und die nächsten 4 Wochen
+const OVERVIEW_AGENDA_MS = 10 * 60 * 1000 // Abläufe der Übersicht so lange zwischenspeichern
 const RETRY_MS = 15 * 1000
 const TIMEOUT_MS = 10 * 1000
 
@@ -67,6 +69,8 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
   let date = '' // heute
   let days = {} // { 'YYYY-MM-DD': events[] }
   let upcoming = [] // je Filter das nächste Event ab morgen, für Kacheln „Nächstes Event“
+  let overview = [] // alle Events der nächsten 4 Wochen (ohne Ablauf-Inhalt), für die Einstellungen
+  const overviewCache = new Map() // Event-ID → { at, event }
   let daysKey = ''
   let lastPublished = ''
   let timer = null
@@ -103,6 +107,7 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
       events: days[date] || [],
       days,
       upcoming,
+      overview,
     }
   }
 
@@ -210,6 +215,7 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
     error = ''
     days = {}
     upcoming = []
+    overview = []
     publish()
   }
 
@@ -351,12 +357,54 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
     return found
   }
 
+  /**
+   * Übersicht für die Einstellungen: alle Events von heute bis in 4 Wochen, je
+   * Event nur die Zahl der Ablaufpunkte. Abläufe der schon geladenen Tage werden
+   * übernommen, die übrigen höchstens alle 10 Minuten neu abgefragt.
+   */
+  async function loadOverview(base, token, tz, today, loaded) {
+    const end = addDays(today, OVERVIEW_DAYS)
+    const { data } = await request(base, `/events?from=${today}&to=${end}`, { token })
+    const list = (data?.data || [])
+      .filter((e) => !e.isCanceled)
+      .map((e) => ({ e, day: dateIn(tz, new Date(e.startDate)) }))
+      .filter(({ day }) => day >= today && day < end)
+      .sort((a, b) => Date.parse(a.e.startDate) - Date.parse(b.e.startDate))
+    const known = new Map(Object.values(loaded).flat().map((e) => [e.id, e]))
+    const now = Date.now()
+    const result = []
+    for (const { e, day } of list) {
+      let event = known.get(e.id)
+      if (!event) {
+        const cached = overviewCache.get(e.id)
+        if (cached && now - cached.at < OVERVIEW_AGENDA_MS && cached.event.startDate === e.startDate) event = cached.event
+        else {
+          event = { ...eventInfo(e), ...(await loadAgenda(base, token, e)) }
+          overviewCache.set(e.id, { at: now, event })
+        }
+      }
+      result.push({
+        id: event.id,
+        day,
+        name: event.name,
+        startDate: event.startDate,
+        calendar: event.calendar,
+        points: event.agenda ? event.agenda.items.filter((i) => i.type !== 'header').length : null,
+        agendaError: event.agendaError,
+      })
+    }
+    const ids = new Set(list.map(({ e }) => e.id))
+    for (const id of overviewCache.keys()) if (!ids.has(id)) overviewCache.delete(id)
+    return result
+  }
+
   async function refreshNow() {
     clearTimeout(timer)
     if (!secret?.token || !secret?.url) {
       state = 'unconfigured'
       days = {}
       upcoming = []
+      overview = []
       publish()
       return
     }
@@ -380,6 +428,14 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
       state = 'connected'
       error = ''
       publish()
+      // Die Übersicht kommt danach, damit die Kacheln nicht auf sie warten
+      try {
+        overview = await loadOverview(base, token, tz, today, next)
+        publish()
+      } catch (err) {
+        if (err.status === 401) throw err
+        log(`ChurchTools: Übersicht nicht geladen: ${err.message}`)
+      }
       timer = setTimeout(refresh, REFRESH_MS)
     } catch (err) {
       state = 'error'
