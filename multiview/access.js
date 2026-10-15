@@ -89,6 +89,7 @@ const SERVICE_LEVELS = {
   portainer: 'admin',
   glances: 'admin',
   dns: 'admin',
+  router: 'admin',
 }
 
 /** Datum (JJJJ-MM-TT) und Stunde in deutscher Zeit. */

@@ -25,7 +25,7 @@ const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'zugang']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
 const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'raspberry', 'companion', 'bildschirme', 'geraete']
 // Unterseiten von Benutzer & Rechte: #/zugang/rollen …
-const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste']
+const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste', 'zugangsdaten']
 const SOURCE_TYPES = {
   device: 'Capture-Gerät',
   stream: 'Netzwerk-Stream',
@@ -2707,6 +2707,7 @@ const SEARCH_ENTRIES = [
   { label: 'Rollen', href: '#/zugang/rollen', admin: true, words: 'benutzer rechte sehen bearbeiten licht ton' },
   { label: 'Anmeldung & Admin-PIN', href: '#/zugang/anmeldung', admin: true, words: 'benutzer pin passwort admin' },
   { label: 'Anmeldung für alle Dienste', href: '#/zugang/dienste', admin: true, words: 'benutzer tagescode qr feste geräte gateway' },
+  { label: 'Zugangsdaten der Dienste (Portainer, Router)', href: '#/zugang/zugangsdaten', admin: true, words: 'passwort portainer router speedport automatisch anmelden' },
   { label: 'Darstellung', open: 'appearance-dialog', words: 'hintergrund hell dunkel farbe wallpaper theme' },
   { label: 'QR-Codes fürs Handy', open: 'qr-dialog', words: 'handy anmelden scannen' },
 ]
@@ -2960,8 +2961,69 @@ const pencilIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><pa
 const copyIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>'
 const trashIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>'
 
+// --- Zugangsdaten der Dienste (Portainer, Router): automatische Anmeldung des Admins ---------------
+
+let serviceCreds = null
+
+async function loadServiceCreds() {
+  const res = await fetch('/api/service-credentials', { cache: 'no-store' }).catch(() => null)
+  if (!res?.ok) return
+  serviceCreds = await res.json()
+  renderServiceCreds()
+}
+
+function renderServiceCreds() {
+  const card = $('#service-creds-card')
+  if (!card || !serviceCreds) return
+  if (card.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return
+  card.innerHTML = `
+    <div class="card-head"><div><h2>Zugangsdaten der Dienste</h2>
+      <p class="muted">Portainer und der Router haben eine eigene Anmeldung. Trägst du die Zugangsdaten hier ein, wirst du dort als Admin automatisch angemeldet – ohne dass du sie noch einmal eintippst. Das gilt nur, wenn du über die zentrale Anmeldung als Admin angemeldet bist (IP-Adresse und .local-Namen).</p></div></div>
+    ${Object.entries(serviceCreds)
+      .map(
+        ([id, c]) => `<form class="pin-form service-cred" data-service="${esc(id)}" autocomplete="off">
+          <div class="field" style="grid-column:1/-1"><span><b>${esc(c.label)}</b> – ${c.set ? 'Zugangsdaten hinterlegt' : 'noch keine Zugangsdaten'}</span></div>
+          ${c.username ? `<label class="field"><span>Benutzername</span><input type="text" name="username" value="${esc(c.user)}" autocomplete="off" required></label>` : ''}
+          <label class="field"><span>${c.username ? 'Passwort' : 'Gerätepasswort'}</span><input type="password" name="password" autocomplete="new-password" placeholder="${c.set ? 'neu eingeben zum Ändern' : ''}" required></label>
+          <div class="btn-row" style="grid-column:1/-1"><button class="btn primary" type="submit">Speichern</button>
+            ${c.set ? '<button class="btn danger" type="button" data-cred-remove>Entfernen</button>' : ''}</div>
+          <p class="form-error" data-cred-error></p>
+        </form>`,
+      )
+      .join('')}
+    <p class="muted" style="font-size:12.5px;margin-top:10px">Die Passwörter liegen auf dem Server im Datenordner von JMS Control und werden nur an den angemeldeten Admin ausgeliefert.</p>`
+}
+
+$('#service-creds-card')?.addEventListener('submit', async (e) => {
+  const form = e.target.closest('.service-cred')
+  if (!form) return
+  e.preventDefault()
+  const data = new FormData(form)
+  const error = form.querySelector('[data-cred-error]')
+  const res = await fetch(`/api/service-credentials/${encodeURIComponent(form.dataset.service)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: data.get('username') || '', password: data.get('password') }),
+  }).catch(() => null)
+  const body = await res?.json().catch(() => ({}))
+  if (!res?.ok) return (error.textContent = body?.error || 'Speichern fehlgeschlagen')
+  toast('Zugangsdaten gespeichert')
+  await loadServiceCreds()
+})
+
+$('#service-creds-card')?.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-cred-remove]')
+  if (!btn) return
+  const form = btn.closest('.service-cred')
+  if (!confirm('Gespeicherte Zugangsdaten entfernen?')) return
+  await fetch(`/api/service-credentials/${encodeURIComponent(form.dataset.service)}`, { method: 'DELETE' }).catch(() => null)
+  toast('Zugangsdaten entfernt')
+  await loadServiceCreds()
+})
+
 function renderAccess() {
   if (!config || !isAdmin() || page !== 'zugang') return
+  if (!serviceCreds) loadServiceCreds()
   // Nicht neu aufbauen, während jemand eine PIN tippt
   if ($('#access-pin-card').contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return
 

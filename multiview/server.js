@@ -4,6 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const http = require('http')
+const https = require('https')
 const { spawn } = require('child_process')
 const express = require('express')
 const { WebSocketServer } = require('ws')
@@ -1738,7 +1739,117 @@ app.get('/.jms-auth/login', (req, res) => res.sendFile(path.join(__dirname, 'pub
 // jms_watch im Caddyfile): Der Multiview holt die Seite vom Dienst und hängt watch-login.js ein,
 // das bei geänderter Anmeldung neu lädt. Nur HTML, nur für Angemeldete mit Zugang zum Dienst –
 // /.jms-auth/* ist auf jeder Adresse offen, das hier darf also kein Umweg an der Anmeldung vorbei sein.
-const WATCHED_SERVICES = { companion: process.env.COMPANION_URL || 'http://127.0.0.1:8000' }
+const WATCHED_SERVICES = {
+  companion: process.env.COMPANION_URL || 'http://127.0.0.1:8000',
+  // Eigene Anmeldung am Dienst: der Admin wird dort automatisch angemeldet (siehe unten)
+  portainer: process.env.PORTAINER_URL || 'https://127.0.0.1:9443',
+  router: process.env.ROUTER_URL || 'http://192.168.0.250',
+}
+
+/** Seite eines Dienstes holen; Portainer hat nur ein selbst signiertes Zertifikat (nur 127.0.0.1). */
+function fetchUpstreamPage(url, userAgent) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url)
+    const lib = target.protocol === 'https:' ? https : http
+    const request = lib.request(
+      target,
+      {
+        method: 'GET',
+        headers: { Accept: 'text/html', 'Accept-Encoding': 'identity', 'User-Agent': userAgent || '' },
+        rejectUnauthorized: false,
+        timeout: 5000,
+      },
+      (response) => {
+        const chunks = []
+        response.on('data', (c) => chunks.push(c))
+        response.on('end', () =>
+          resolve({
+            status: response.statusCode || 502,
+            headers: response.headers,
+            body: Buffer.concat(chunks).toString('utf8'),
+          }),
+        )
+        response.on('error', reject)
+      },
+    )
+    request.on('timeout', () => request.destroy(new Error('timeout')))
+    request.on('error', reject)
+    request.end()
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Zugangsdaten der Dienste mit eigener Anmeldung (Portainer, Router). Der Admin trägt sie einmal
+// in JMS Control ein; danach trägt ein kleines Skript sie auf der Anmeldeseite des Dienstes ein und
+// schickt sie ab – aber nur, wenn der Admin über die zentrale Anmeldung dort ist. Die Passwörter
+// liegen im Datenordner (nur für den Server lesbar) und gehen nie an andere als den angemeldeten Admin.
+// ---------------------------------------------------------------------------
+
+const SERVICE_CREDENTIALS_FILE = path.join(DATA_DIR, 'service-credentials.json')
+const CREDENTIAL_SERVICES = {
+  portainer: { label: 'Portainer', username: true },
+  router: { label: 'Router (Speedport)', username: false },
+}
+
+function readServiceCredentials() {
+  try {
+    const data = JSON.parse(fs.readFileSync(SERVICE_CREDENTIALS_FILE, 'utf8'))
+    return data && typeof data === 'object' ? data : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeServiceCredentials(data) {
+  fs.mkdirSync(DATA_DIR, { recursive: true })
+  const tmp = `${SERVICE_CREDENTIALS_FILE}.tmp`
+  fs.writeFileSync(tmp, JSON.stringify(data), { mode: 0o600 })
+  fs.renameSync(tmp, SERVICE_CREDENTIALS_FILE)
+}
+
+app.get('/api/service-credentials', requireAdmin, (req, res) => {
+  const stored = readServiceCredentials()
+  const out = {}
+  for (const [id, def] of Object.entries(CREDENTIAL_SERVICES)) {
+    out[id] = { label: def.label, username: def.username, set: Boolean(stored[id]?.password), user: def.username ? stored[id]?.username || '' : '' }
+  }
+  res.set('Cache-Control', 'no-store').json(out)
+})
+
+app.put('/api/service-credentials/:service', requireAdmin, (req, res) => {
+  const def = CREDENTIAL_SERVICES[req.params.service]
+  if (!def) return res.status(404).json({ ok: false, error: 'Unbekannter Dienst' })
+  const password = String(req.body?.password ?? '')
+  const username = def.username ? String(req.body?.username ?? '').trim() : ''
+  if (!password || password.length > 200) return res.status(400).json({ ok: false, error: 'Passwort fehlt' })
+  if (def.username && !username) return res.status(400).json({ ok: false, error: 'Benutzername fehlt' })
+  const stored = readServiceCredentials()
+  stored[req.params.service] = def.username ? { username, password } : { password }
+  writeServiceCredentials(stored)
+  res.json({ ok: true })
+})
+
+app.delete('/api/service-credentials/:service', requireAdmin, (req, res) => {
+  if (!CREDENTIAL_SERVICES[req.params.service]) return res.status(404).json({ ok: false, error: 'Unbekannter Dienst' })
+  const stored = readServiceCredentials()
+  delete stored[req.params.service]
+  writeServiceCredentials(stored)
+  res.json({ ok: true })
+})
+
+// Die Anmeldeseite des Dienstes holt sich hier die Zugangsdaten – nur der angemeldete Admin, nur
+// von der eigenen Seite (kein Zugriff aus fremden Tabs).
+app.get('/.jms-auth/api/autologin/:service', (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  const user = access.userOf(req)
+  const site = req.get('sec-fetch-site')
+  if (!CREDENTIAL_SERVICES[req.params.service] || !user?.admin || (site && site !== 'same-origin') || req.get('x-jms-autologin') !== '1') {
+    return res.status(404).json({ ok: false })
+  }
+  const stored = readServiceCredentials()[req.params.service]
+  if (!stored?.password) return res.status(404).json({ ok: false })
+  res.json({ ok: true, username: stored.username || '', password: stored.password })
+})
 
 app.get(/^\/\.jms-auth\/page\/([a-z]+)(\/.*)?$/, async (req, res) => {
   const service = req.params[0]
@@ -1750,19 +1861,20 @@ app.get(/^\/\.jms-auth\/page\/([a-z]+)(\/.*)?$/, async (req, res) => {
   if (action !== 'allow') return res.redirect(302, loginPath(rest + query, service))
   let page
   try {
-    page = await fetch(`${upstream}${rest}${query}`, {
-      headers: { Accept: 'text/html', 'Accept-Encoding': 'identity', 'User-Agent': req.get('user-agent') || '' },
-      redirect: 'manual',
-      signal: AbortSignal.timeout(5000),
-    })
+    page = await fetchUpstreamPage(`${upstream}${rest}${query}`, req.get('user-agent'))
   } catch {
     return res.status(502).type('text').send(`${service} ist gerade nicht erreichbar`)
   }
-  const type = page.headers.get('content-type') || ''
-  if (page.status >= 300 && page.status < 400) return res.redirect(page.status, page.headers.get('location') || '/')
+  const type = String(page.headers['content-type'] || '')
+  if (page.status >= 300 && page.status < 400) return res.redirect(page.status, String(page.headers.location || '/'))
   if (!/text\/html/i.test(type)) return res.status(404).end()
-  const html = await page.text()
-  const tag = watchTag(user)
+  // Eigene Anmeldung des Dienstes: den Admin automatisch anmelden, wenn Zugangsdaten hinterlegt sind
+  const auto =
+    user?.admin && CREDENTIAL_SERVICES[service] && readServiceCredentials()[service]?.password
+      ? `<script src="/.jms-auth/autologin.js" data-service="${service}" defer></script>`
+      : ''
+  const tag = watchTag(user) + auto
+  const html = page.body
   res
     .status(page.status)
     .set({ 'Content-Type': type, 'Cache-Control': 'no-store' })

@@ -1,6 +1,6 @@
 // Fernbedienung fürs Handy, iPad und den Desktop – wie eine kleine App mit Leiste unten
 // (am Desktop als Seitenleiste links, siehe remote.css):
-//   Bildschirme: die eigenen Multiviews umschalten (welches Layout läuft)
+//   Multiviews:  die eigenen Multiviews umschalten (welches Layout läuft)
 //   Chat:        Kesher-Chat lesen und als die angemeldete Rolle schreiben
 //   Bühne:       Bühnennachricht (Stage Display) in ProPresenter senden/löschen
 //   Beamer:      Meldung für die Gemeinde in ProPresenter vorbereiten – anzeigen tut sie der Bediener
@@ -248,7 +248,7 @@ function renderOutputs() {
   const keep = new Map([...box.querySelectorAll('.rm-preview')].map((el) => [el.dataset.id, el]))
   box.replaceChildren()
   if (!outputs.length) {
-    box.innerHTML = `<div class="rm-empty"><b>Noch kein Bildschirm freigegeben</b>Der Admin legt unter „Benutzer &amp; Rechte“ fest, welche Bildschirme deine Rolle bedienen darf.</div>`
+    box.innerHTML = `<div class="rm-empty"><b>Noch kein Multiview freigegeben</b>Der Admin legt unter „Benutzer &amp; Rechte“ fest, welche Multiviews deine Rolle bedienen darf.</div>`
     return
   }
   const keys = outputs.map((o) => `o:${o.id}`)

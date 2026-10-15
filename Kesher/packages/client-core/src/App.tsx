@@ -611,7 +611,13 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           autoLoginConfig.enabled && autoLoginConfig.secondary,
         );
         if ("requiresTakeover" in res) {
-          if (autoLoginConfig.enabled && autoLoginConfig.allowTakeover) {
+          const sameName =
+            useUsername.replace(/\s+/g, "").toLowerCase() ===
+            (res.conflictUsername ?? "").replace(/\s+/g, "").toLowerCase();
+          if (
+            (autoLoginConfig.enabled && autoLoginConfig.allowTakeover) ||
+            (centralIdentityRef.current !== null && sameName)
+          ) {
             res = await loginTakeover(useUsername, useRoleId);
           } else {
             sessionStorage.removeItem(tokenStorageKey);
@@ -1446,7 +1452,16 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
             autoLoginConfig.secondary,
           );
           if ("requiresTakeover" in res) {
-            if (!autoLoginConfig.allowTakeover) {
+            // Central login: the role is held by this very person's earlier
+            // session (tab closed without signing out, session not yet timed
+            // out) – take it over instead of showing "role in use".
+            const nameKey = (value: string | undefined) =>
+              (value ?? "").replace(/\s+/g, "").toLowerCase();
+            const ownStaleSession =
+              autoLoginConfig.central &&
+              nameKey(res.conflictUsername) !== "" &&
+              nameKey(res.conflictUsername) === nameKey(paramUsername);
+            if (!autoLoginConfig.allowTakeover && !ownStaleSession) {
               // Central login: the normal login form shows who holds the role
               setOperatorLoginError(
                 autoLoginConfig.central

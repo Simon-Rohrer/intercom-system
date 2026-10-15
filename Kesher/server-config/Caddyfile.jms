@@ -118,6 +118,22 @@
 	}
 }
 
+# Router (Speedport Smart 2, nur Admin): Der Router hat eine eigene Anmeldung mit Geräte-Passwort.
+# Die Anmeldeseite holt der Multiview vom Router und hängt autologin.js ein, das den Admin mit dem
+# in JMS Control hinterlegten Passwort anmeldet. Alle anderen Seiten gehen direkt zum Router.
+# „Location“ des Routers zeigt auf seine IP – das wird auf diese Adresse zurückgebogen.
+(jms_router) {
+	@router_login path /html/login/index.html
+	handle @router_login {
+		rewrite * /.jms-auth/page/router{uri}
+		reverse_proxy 127.0.0.1:8090
+	}
+	reverse_proxy http://192.168.0.250 {
+		header_up Host {upstream_hostport}
+		header_down Location ^http://192\.168\.0\.250(.*)$ $1
+	}
+}
+
 # Dashboard (Homepage): Seiten nicht aus dem Browser-Zwischenspeicher zeigen. Homepage schickt nur
 # „s-maxage“, Safari hält die Seite dann auf eigene Faust fest – nach einem Neustart des Containers
 # blieb so unter technik.local eine Fassung ohne settings.yaml hängen (keine Reiter, alle Gruppen).
@@ -176,11 +192,19 @@ https://192.168.0.21:61208 {
 https://192.168.0.21:9443 {
 	import lan_port
 	import jms_auth portainer
+	import jms_watch portainer
 	reverse_proxy https://127.0.0.1:9443 {
 		transport http {
 			tls_insecure_skip_verify
 		}
 	}
+}
+
+# Router (Speedport) – nur Admin, automatische Anmeldung (siehe jms_router)
+https://192.168.0.21:8250 {
+	import lan_port
+	import jms_auth router
+	import jms_router
 }
 
 # ---------------------------------------------------------------------------
@@ -221,6 +245,7 @@ https://glances.jms.de, https://glances.local {
 https://portainer.jms.de, https://portainer.local {
 	tls internal
 	import jms_auth portainer
+	import jms_watch portainer
 	reverse_proxy https://127.0.0.1:9443 {
 		transport http {
 			tls_insecure_skip_verify
@@ -232,6 +257,12 @@ https://dns.jms.de, https://dns.local {
 	tls internal
 	import jms_auth dns
 	reverse_proxy 127.0.0.1:8083
+}
+
+https://router.jms.de, https://router.local {
+	tls internal
+	import jms_auth router
+	import jms_router
 }
 
 http://setup.local {

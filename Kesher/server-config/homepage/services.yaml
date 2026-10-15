@@ -52,7 +52,7 @@
         icon: mdi-gesture-tap-button
     - Portainer:
         href: https://192.168.0.21:9443
-        description: Container verwalten (eigenes Passwort)
+        description: Container verwalten (Admin wird automatisch angemeldet)
         icon: mdi-docker
         server: local-docker
         container: portainer
@@ -69,8 +69,8 @@
         server: local-docker
         container: adguardhome
     - Router:
-        href: http://192.168.0.250
-        description: Speedport, WLAN „JMS Interkom“ (Gerätepasswort nötig)
+        href: https://192.168.0.21:8250
+        description: Speedport, WLAN „JMS Interkom“ (Admin wird automatisch angemeldet)
         icon: mdi-router-wireless
 
 - Server:
