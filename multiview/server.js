@@ -1695,7 +1695,7 @@ function forbiddenPage(user, next, service) {
   return `<!doctype html>
 <html lang="de" data-theme="system"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Nur für den Admin</title>
+<title>JMS - Technik</title>
 <script src="/.jms-auth/theme-boot.js"></script><link rel="stylesheet" href="/.jms-auth/admin.css">
 ${watchTag(user)}</head>
 <body><div class="auth-page"><div class="card auth-card">

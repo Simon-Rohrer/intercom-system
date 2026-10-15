@@ -77,7 +77,7 @@ export function ChatPopoutSection({ children }: ChatPopoutSectionProps) {
     popupDocument.documentElement.lang = document.documentElement.lang || "en";
     popupDocument.documentElement.className = "chat-popout-document";
     popupDocument.head.replaceChildren();
-    popupDocument.title = "Chat - kesher";
+    popupDocument.title = "JMS - Intercom Chat";
 
     const base = popupDocument.createElement("base");
     base.href = document.baseURI;

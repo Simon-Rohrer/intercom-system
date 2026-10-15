@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Kesher Desktop",
+        "title": "JMS - Intercom",
         "width": 1440,
         "height": 960,
         "resizable": true,

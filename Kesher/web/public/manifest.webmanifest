@@ -1,6 +1,6 @@
 {
-  "name": "Kesher Intercom",
-  "short_name": "Kesher",
+  "name": "JMS - Intercom",
+  "short_name": "JMS Intercom",
   "description": "Live production intercom with mobile-friendly audio controls.",
   "start_url": "/",
   "display": "standalone",
