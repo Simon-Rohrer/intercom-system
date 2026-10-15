@@ -144,6 +144,29 @@ Audio:
 sudo -u <user> XDG_RUNTIME_DIR=/run/user/$(id -u <user>) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u <user>)/bus /opt/kesher-pi/kesher-pi-launcher.py --print-audio
 ```
 
+## Messwerte im Dashboard (Glances)
+
+Im Dashboard steht unter *Admin* direkt unter *Server* der Abschnitt **Raspberry Pis** mit je einer
+Untergruppe pro Pi: Prozessor, Arbeitsspeicher, Temperatur, Speicherkarte, Lesen/Schreiben, WLAN,
+Prozesse. Die Werte liefert Glances auf dem Pi:
+
+```bash
+sudo ./install-glances.sh            # nur 192.168.0.21 (der Server) darf abfragen
+sudo ./install-glances.sh --remove   # Dienst wieder entfernen
+```
+
+- Dienst `kesher-glances` (systemd), nur die Schnittstelle auf Port `61208`, ohne Weboberfläche.
+  `IPAddressAllow` lässt nur den Server und den Pi selbst durch, alle anderen bekommen keine Antwort.
+- Kostet auf einem Pi 3 ca. 70 MB Arbeitsspeicher und im Schnitt ca. 14 % eines Kerns, aber nur,
+  solange jemand den Admin-Reiter offen hat (abgefragt wird alle 15 s).
+- **Neuer Pi:** Skript auf dem Pi ausführen, in `Kesher/server-config/homepage/services.yaml` die
+  Untergruppe `Kamera-1` kopieren (Name, `url` mit der IP des Pi), in `settings.yaml` den Namen unter
+  `Raspberry Pis` ergänzen, dann einspielen (siehe Dashboard in `BETRIEB.md`).
+- Das Dashboard fragt die **IP-Adresse** des Pi ab (Homepage kennt keine `.local`-Namen). Ändert sie
+  sich (DHCP), zeigt die Gruppe „API Error“ – dann die `url` anpassen. Abhilfe auf Dauer: feste
+  Adresse per DHCP-Reservierung auf `dc01`. Die aktuelle IP steht in JMS Control unter
+  *Einstellungen → Raspberry Pis*.
+
 ## Optional: Companion Satellite
 
 ```sh

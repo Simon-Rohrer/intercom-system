@@ -247,8 +247,8 @@ Wer über das WLAN (Handy, iPad, Laptop) auf Intercom, Dashboard oder die Techni
 Das Dashboard (Homepage, `https://192.168.0.21:3000`) hat oben zwei Seiten zum Umschalten:
 
 - **Start** – für alle: Intercom, Raspberry fernsteuern, Multiview, Fernbedienung, Prediger-Ansicht sowie *Konto* (Abmelden, Konto wechseln).
-- **Admin** – Companion, Portainer, Glances, lokaler DNS, Router; Serverwerte (Prozessor, Arbeitsspeicher, Temperatur, Laufwerk, Prozesse, Container-Auslastung) und der Zustand jedes Containers.
+- **Admin** – Companion, Portainer, Glances, lokaler DNS, Router; Serverwerte (Prozessor, Arbeitsspeicher, Temperatur, Laufwerk, Prozesse, Container-Auslastung), darunter dieselben Werte für jeden Raspberry Pi (Abschnitt *Raspberry Pis*, Glances auf dem Pi, siehe `RASPBERRY-PI-STATIONEN.md`) und der Zustand jedes Containers.
 
 Die Admin-Seite sieht nur, wer im Dashboard als Admin angemeldet ist (`custom.js` fragt `/.jms-auth/api/me`); alle anderen sehen nur „Start“ ohne Umschaltleiste – als Admin anmelden über *Konto → Konto wechseln*. Ist die zentrale Anmeldung aus, sehen alle beide Seiten. Die Admin-Dienste selbst prüft Caddy unabhängig davon.
 
-Konfiguration im Repo unter `Kesher/server-config/homepage/` (`settings.yaml`: welche Gruppe auf welcher Seite, `services.yaml`: Kacheln, `custom.js`, `custom.css`). Auf dem Server liegen sie in `/opt/homelab/config/homepage/` (gehört root – ohne sudo per `docker cp <datei> homepage:/app/config/` kopieren). Änderungen an `settings.yaml` wirken erst nach `docker restart homepage`.
+Konfiguration im Repo unter `Kesher/server-config/homepage/` (`settings.yaml`: welche Gruppe auf welcher Seite, `services.yaml`: Kacheln, `custom.js`, `custom.css`). Auf dem Server liegen sie in `/opt/homelab/config/homepage/` (gehört root – ohne sudo per `docker cp <datei> homepage:/app/config/` kopieren). Änderungen an `settings.yaml` wirken erst nach `docker restart homepage`. **Danach** einmal `curl -s -H "Host: dashboard.local" http://127.0.0.1:3000/api/revalidate` auf dem Server – sonst liefert Homepage nach dem Neustart noch die alte, vorgefertigte Seite aus (fehlende Gruppen, falsche Reiter).

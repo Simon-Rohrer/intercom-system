@@ -1,7 +1,7 @@
 # Dashboard (Homepage) auf dem JMS-Server – zwei Seiten (Tabs, siehe settings.yaml):
 #   Start: die Dienste für alle (Intercom, JMS Control, Fernbedienung …)
 #   Abmelden und Konto wechseln stehen oben in der Konto-Leiste (custom.js)
-#   Admin: Companion, Portainer und alles über den Server (Auslastung, Container)
+#   Admin: Companion, Portainer und alles über den Server (Auslastung, Container) und die Raspberry Pis
 # Alle Dateien aus diesem Ordner nach /opt/homelab/config/homepage/ kopieren, Homepage
 # lädt sie ohne Neustart. Links gehen auf die IP-Adressen (die Namen kennt der DNS im
 # LAN nicht, siehe BETRIEB.md), die zentrale Anmeldung fragt beim ersten Aufruf nach
@@ -130,6 +130,69 @@
           version: 4
           metric: containers
           refreshInterval: 5000
+
+# Raspberry-Stationen: je Pi eine Untergruppe mit denselben Werten wie beim Server. Auf dem Pi läuft
+# Glances (Kesher/deploy/raspberry-pi/install-glances.sh), es antwortet nur dem Server. Die Adresse ist
+# die aktuelle WLAN-IP des Pi (JMS Control → Einstellungen → Raspberry Pis zeigt sie) – ändert sie
+# sich, hier anpassen. Neuer Pi: Untergruppe kopieren, Name und Adresse ändern.
+- Raspberry Pis:
+    - Kamera-1:
+          - Prozessor:
+              icon: mdi-cpu-64-bit
+              widget:
+                type: glances
+                url: http://192.168.0.161:61208
+                version: 4
+                metric: cpu
+                refreshInterval: 15000
+          - Arbeitsspeicher:
+              icon: mdi-memory
+              widget:
+                type: glances
+                url: http://192.168.0.161:61208
+                version: 4
+                metric: memory
+                refreshInterval: 15000
+          - Temperatur:
+              icon: mdi-thermometer
+              widget:
+                type: glances
+                url: http://192.168.0.161:61208
+                version: 4
+                metric: sensor:cpu_thermal 0
+                refreshInterval: 15000
+          - Speicherkarte:
+              icon: mdi-micro-sd
+              widget:
+                type: glances
+                url: http://192.168.0.161:61208
+                version: 4
+                metric: fs:/
+                refreshInterval: 30000
+          - Speicherkarte lesen/schreiben:
+              icon: mdi-swap-vertical
+              widget:
+                type: glances
+                url: http://192.168.0.161:61208
+                version: 4
+                metric: disk:mmcblk0
+                refreshInterval: 15000
+          - WLAN:
+              icon: mdi-wifi
+              widget:
+                type: glances
+                url: http://192.168.0.161:61208
+                version: 4
+                metric: network:wlan0
+                refreshInterval: 15000
+          - Prozesse:
+              icon: mdi-format-list-bulleted
+              widget:
+                type: glances
+                url: http://192.168.0.161:61208
+                version: 4
+                metric: process
+                refreshInterval: 15000
 
 - Container:
     - Kesher:
