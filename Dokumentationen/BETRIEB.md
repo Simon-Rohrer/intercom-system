@@ -216,7 +216,7 @@ Ziel: Alle Weboberflächen unter `https://192.168.0.21:<gewohnter Port>`. Caddy 
 | Glances | `https://192.168.0.21:61208` | `127.0.0.1:61208` |
 | Portainer | `https://192.168.0.21:9443` | `127.0.0.1:9443` (eigenes HTTPS, Caddy davor) |
 
-Die bisherigen Namens-Adressen (`kesher.jms.de`, `dashboard.jms.de`, `companion.jms.de`, … sowie `*.local`) bleiben erhalten; neu ist `multiview.jms.de` / `multiview.local`.
+Die bisherigen Namens-Adressen (`kesher.jms.de`, `dashboard.jms.de`, `companion.jms.de`, … sowie `*.local`) bleiben erhalten; neu ist `multiview.jms.de` / `jmscontrol.local` (`multiview.local` gibt es seit 15.10.2026 nicht mehr).
 
 Vorlage: `Kesher/server-config/Caddyfile.jms` (aufgebaut auf der aktiven Server-Konfiguration vom 12.10.2026, mit `caddy adapt --validate` auf dem Server geprüft).
 

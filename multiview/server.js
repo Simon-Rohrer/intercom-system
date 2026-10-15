@@ -1751,7 +1751,7 @@ app.get('/.jms-auth/logout', (req, res) => {
 
 // ---------------------------------------------------------------------------
 // Abgleich der Anmeldung zwischen den Adressen. Unter der IP teilen sich alle Dienste ein Cookie
-// (Cookies kennen keine Ports), intercom.local, multiview.local usw. haben aber je ein eigenes.
+// (Cookies kennen keine Ports), intercom.local, jmscontrol.local usw. haben aber je ein eigenes.
 // Die Anmeldeseite holt die Anmeldung darum per Weiterleitung von der zentralen Adresse
 // (JMS_SSO_ORIGIN, z. B. https://192.168.0.21:8090) ab und bringt sie nach dem Anmelden dorthin.
 // Abmelden beendet die Anmeldung unter allen Adressen (gleiche ID, siehe access.js).

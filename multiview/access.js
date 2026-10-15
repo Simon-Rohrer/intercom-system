@@ -446,7 +446,7 @@ function createAccess({
 
   /**
    * Abgleich zwischen den Adressen: Ein Browser hat pro Name ein eigenes Cookie (192.168.0.21,
-   * intercom.local, multiview.local …). Die Seiten holen sich die Anmeldung per Weiterleitung
+   * intercom.local, jmscontrol.local …). Die Seiten holen sich die Anmeldung per Weiterleitung
    * von der zentralen Adresse ab bzw. bringen sie dorthin – mit einem kurzen Einmal-Ticket.
    * Die Anmeldung bekommt dort ein weiteres Cookie, bleibt aber dieselbe (gleiche ID): Abmelden
    * unter einer Adresse beendet sie unter allen.

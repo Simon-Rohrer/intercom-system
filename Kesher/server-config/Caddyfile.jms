@@ -3,7 +3,7 @@
 # Adressen (*.jms.de, *.local) bleiben erhalten. Neu:
 #   - jede Weboberfläche zusätzlich als https://192.168.0.21:<gewohnter Port>
 #   - http://192.168.0.21:<port> wird auf demselben Port auf https umgeleitet
-#   - Multiview (JMS Control) auch als multiview.jms.de / multiview.local / jmscontrol.local
+#   - Multiview (JMS Control) auch als multiview.jms.de / jmscontrol.local (multiview.local seit 15.10.2026 entfernt)
 #   - zentrale Anmeldung vor allen Diensten außer dem Multiview (Baustein jms_auth)
 # Die Dienste lauschen danach nur noch auf 127.0.0.1 (Caddy nur auf der LAN-Adresse),
 # darum passen beide auf denselben Port. Auf dem Server selbst (Kiosk, Companion)
@@ -172,7 +172,7 @@ https://intercom.jms.de, https://kesher.jms.de, https://intercom.local, https://
 	reverse_proxy 127.0.0.1:8080
 }
 
-https://multiview.jms.de, https://multiview.local, https://jmscontrol.local {
+https://multiview.jms.de, https://jmscontrol.local {
 	tls internal
 	reverse_proxy 127.0.0.1:8090
 }
