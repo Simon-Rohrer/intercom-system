@@ -1116,9 +1116,11 @@ const churchTools = createChurchTools({
   // Fest gewählte Tage aller ChurchTools-Kacheln
   getDates: () =>
     config.layouts.flatMap((l) => l.tiles.filter((t) => t.kind === 'churchtools' && t.ctDate).map((t) => t.ctDate)),
-  // Filter der Kacheln mit aktuellem Datum: dafür wird bei Bedarf der nächste Ablauf gesucht
+  // Filter der Kacheln „Nächstes Event“: dafür wird das nächste Event der kommenden Tage gesucht
   getFilters: () =>
-    config.layouts.flatMap((l) => l.tiles.filter((t) => t.kind === 'churchtools' && !t.ctDate).map((t) => t.ctFilter || '')),
+    config.layouts.flatMap((l) =>
+      l.tiles.filter((t) => t.kind === 'churchtools' && !t.ctDate && t.ctMode === 'next').map((t) => t.ctFilter || ''),
+    ),
   onUpdate: broadcast,
   log: console.log,
 })

@@ -66,7 +66,7 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
   let error = ''
   let date = '' // heute
   let days = {} // { 'YYYY-MM-DD': events[] }
-  let upcoming = [] // nächste Events (mit oder ohne Ablauf), für Kacheln ohne heutiges Event
+  let upcoming = [] // je Filter das nächste Event ab morgen, für Kacheln „Nächstes Event“
   let daysKey = ''
   let lastPublished = ''
   let timer = null
@@ -219,7 +219,7 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
     return [today, ...extra.slice(0, MAX_DAYS - 1)]
   }
 
-  /** Filter der Kacheln ohne festes Datum (leer = alle Events). */
+  /** Filter der Kacheln „Nächstes Event“ (leer = alle Events). */
   function wantedFilters() {
     return [...new Set(getFilters().map((f) => String(f || '').trim().toLowerCase()))].sort()
   }
@@ -327,12 +327,12 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
   }
 
   /**
-   * Für Kacheln ohne festes Datum, deren Filter heute kein Event findet: das
-   * nächste passende Event (ab morgen), mit oder ohne Ablauf. Je Filter wird nur
-   * der Ablauf des ersten Treffers geladen.
+   * Für Kacheln „Nächstes Event“: je Filter das nächste passende Event ab morgen,
+   * mit oder ohne Ablauf. Immer geladen, damit die Kachel nach dem letzten Event
+   * des Tages sofort weiterrücken kann. Je Filter nur der Ablauf des ersten Treffers.
    */
-  async function loadUpcoming(base, token, tz, today, todays) {
-    const open = wantedFilters().filter((f) => !todays.some((e) => matchesFilter(e, f)))
+  async function loadUpcoming(base, token, tz, today) {
+    const open = wantedFilters()
     if (!open.length) return []
     const from = nextDay(today)
     const { data } = await request(base, `/events?from=${from}&to=${addDays(from, LOOKAHEAD_DAYS)}`, { token })
@@ -369,7 +369,7 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
       const next = {}
       for (const day of wanted) next[day] = await loadDay(base, token, tz, day)
       try {
-        upcoming = await loadUpcoming(base, token, tz, today, next[today])
+        upcoming = await loadUpcoming(base, token, tz, today)
       } catch (err) {
         // Der heutige Ablauf soll nicht an der Vorschau scheitern: alten Stand behalten
         if (err.status === 401) throw err

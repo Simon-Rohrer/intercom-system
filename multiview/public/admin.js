@@ -1152,7 +1152,7 @@ function syncTileMedia(el, tile) {
     tile.kind === 'chat'
       ? JSON.stringify(['chat', tile.chatRole ?? '', chatOptions(tile.chat)])
       : tile.kind === 'churchtools'
-        ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctDate])
+        ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctDate, tile.ctMode])
         : livePreview && source
         ? JSON.stringify([source.type, source.device, source.url, source.name])
         : ''
@@ -1216,7 +1216,11 @@ function describeTile(tile) {
     return { title: 'Kesher-Intercom', sub: `${role} · nur auf dem Monitor bedienbar` }
   }
   if (tile.kind === 'churchtools') {
-    const day = tile.ctDate ? new Date(`${tile.ctDate}T12:00:00Z`).toLocaleDateString('de-DE', { timeZone: 'UTC' }) : 'heute'
+    const day = tile.ctDate
+      ? new Date(`${tile.ctDate}T12:00:00Z`).toLocaleDateString('de-DE', { timeZone: 'UTC' })
+      : tile.ctMode === 'next'
+        ? 'nächstes Event'
+        : 'heute'
     return { title: 'ChurchTools-Ablauf', sub: [day, tile.ctFilter].filter(Boolean).join(' · ') }
   }
   if (tile.kind === 'propresenter') return { title: 'ProPresenter', sub: 'Folien' }
@@ -1779,7 +1783,8 @@ function tileInspector(tile, layout) {
         ? `
       <label class="field"><span>Datum</span>
         <select data-t="ctDateMode">
-          <option value="today" ${!tile.ctDate ? 'selected' : ''}>Aktuelles Datum</option>
+          <option value="today" ${!tile.ctDate && tile.ctMode !== 'next' ? 'selected' : ''}>Heute</option>
+          <option value="next" ${!tile.ctDate && tile.ctMode === 'next' ? 'selected' : ''}>Nächstes Event</option>
           <option value="fixed" ${tile.ctDate ? 'selected' : ''}>Festes Datum …</option>
         </select>
       </label>
@@ -1787,7 +1792,7 @@ function tileInspector(tile, layout) {
       <label class="field"><span>Event (Name oder Kalender enthält, leer = laufendes/nächstes)</span><input type="text" data-t="ctFilter" value="${esc(tile.ctFilter)}" placeholder="z. B. Gottesdienst"></label>
       <label class="check"><input type="checkbox" data-t="ctResponsible" ${tile.ctResponsible !== false ? 'checked' : ''}> Verantwortliche anzeigen</label>
       <label class="check"><input type="checkbox" data-t="ctNotes" ${tile.ctNotes === true ? 'checked' : ''}> Notizen anzeigen</label>
-      <p class="muted">Zeigt den Ablauf des heutigen Events aus ChurchTools. Gibt es heute kein passendes Event, steht der nächste Termin da (bis 6 Wochen voraus). Events ohne Ablauf erscheinen mit „Kein Ablauf hinterlegt“. Mit festem Datum nur dieser Tag. Verbindung unter <a href="#/einstellungen/churchtools">Einstellungen</a>.</p>`
+      <p class="muted">Zeigt den Ablauf eines Events aus ChurchTools. <b>Heute</b>: das laufende, sonst das nächste Event von heute. <b>Nächstes Event</b>: das laufende, sonst das nächste – auch an späteren Tagen (bis 6 Wochen voraus). <b>Festes Datum</b>: nur dieser Tag. Events ohne Ablauf erscheinen mit „Kein Ablauf hinterlegt“. Verbindung unter <a href="#/einstellungen/churchtools">Einstellungen</a>.</p>`
         : ''
     }
     ${kind === 'chat' ? chatSection(tile) : ''}
@@ -1968,6 +1973,8 @@ function onInspectorField(e) {
   else if (key === 'ctDateMode') {
     // Festes Datum beginnt mit heute und lässt sich dann im Kalender ändern
     tile.ctDate = el.value === 'fixed' ? tile.ctDate || localDay() : ''
+    if (el.value === 'next') tile.ctMode = 'next'
+    else delete tile.ctMode
     renderInspector()
   } else if (key === 'ctDate') {
     if (!el.value) return // leeres Datumsfeld: alten Tag behalten

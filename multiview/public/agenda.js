@@ -1,7 +1,7 @@
-// ChurchTools-Ablauf als Kachel: Ablauf des heutigen Events, der laufende Punkt
-// ist hervorgehoben. Gibt es heute kein Event, steht der nächste Termin da (außer
-// bei festem Datum). Events ohne Ablauf erscheinen mit „Kein Ablauf hinterlegt“.
-// Die Daten kommen vom Multiview-Server.
+// ChurchTools-Ablauf als Kachel, der laufende Punkt ist hervorgehoben. Drei Arten:
+// „Heute“ (Events von heute), „Nächstes Event“ (das laufende, sonst das nächste,
+// auch an späteren Tagen) und ein festes Datum. Events ohne Ablauf erscheinen mit
+// „Kein Ablauf hinterlegt“. Die Daten kommen vom Multiview-Server.
 
 const views = new Set()
 
@@ -52,10 +52,22 @@ export function pickEvent(events, filter, now = Date.now()) {
   )
 }
 
+/** Für „Nächstes Event“: das laufende, sonst das nächste – heute oder an einem späteren Tag. */
+export function pickNextEvent(todays, upcoming, filter, now = Date.now()) {
+  const list = (todays || []).filter((e) => matchesFilter(e, filter))
+  return (
+    list.find((e) => Date.parse(e.startDate) <= now && now < Date.parse(e.endDate)) ||
+    list.find((e) => Date.parse(e.startDate) > now) ||
+    (upcoming || []).find((e) => matchesFilter(e, filter)) ||
+    null
+  )
+}
+
 export function createAgendaView(tile) {
   const options = {
     filter: tile.ctFilter || '',
-    date: tile.ctDate || '', // leer = aktuelles Datum
+    date: tile.ctDate || '', // leer = heute bzw. nächstes Event
+    next: !tile.ctDate && tile.ctMode === 'next',
     responsible: tile.ctResponsible !== false,
     notes: tile.ctNotes === true,
   }
@@ -74,6 +86,7 @@ export function createAgendaView(tile) {
   let data = null
   let rows = [] // { li, item, bar }
   let live = false // nur beim heutigen Tag: laufenden Punkt markieren
+  let shownId = null // gezeigtes Event, um beim Weiterrücken neu zu zeichnen
 
   function message(text) {
     rows = []
@@ -93,9 +106,18 @@ export function createAgendaView(tile) {
     tick,
   }
 
+  /** Welches Event die Kachel gerade zeigen soll (null = keins). */
+  function currentEvent() {
+    const ct = data
+    const events = ct?.days?.[options.date || ct?.date]
+    if (!events) return null
+    return options.next ? pickNextEvent(events, ct.upcoming, options.filter) : pickEvent(events, options.filter)
+  }
+
   function render() {
     const ct = data
     const tz = ct?.timeZone
+    shownId = null
     eventName.textContent = ''
     when.textContent = ''
     label.textContent = 'Ablauf'
@@ -107,16 +129,16 @@ export function createAgendaView(tile) {
       if (ct.state === 'error') return message(ct.error || 'ChurchTools nicht erreichbar')
       return message(ct.state === 'connected' ? `Lade ${fmtDay(day)} …` : 'Verbinde mit ChurchTools …')
     }
-    let event = pickEvent(events, options.filter)
-    if (!event && !options.date) {
-      // Aktuelles Datum: heute kein passendes Event, dann der nächste Termin
-      event = (ct.upcoming || []).find((e) => matchesFilter(e, options.filter)) || null
-      if (event) {
+    const event = currentEvent()
+    shownId = event?.id ?? null
+    if (options.next) {
+      if (!event) {
+        const what = options.filter ? `Kein Event „${options.filter}“` : 'Keine Events'
+        return message(`${what} in den nächsten Wochen`)
+      }
+      if (!events.includes(event)) {
         live = false
-        label.textContent = 'Nächster Termin'
-      } else {
-        const what = options.filter ? `kein Event „${options.filter}“` : 'keine Events'
-        return message(`Heute ${what} – auch nicht in den nächsten Wochen`)
+        label.textContent = 'Nächstes Event'
       }
     }
     const dayText = live ? 'Heute' : `Am ${fmtDay(day)}`
@@ -158,6 +180,8 @@ export function createAgendaView(tile) {
 
   /** Laufenden Punkt markieren, erledigte abdunkeln, mitscrollen. */
   function tick(force = false) {
+    // Laufendes Event vorbei oder nächstes begonnen: anderes Event zeigen
+    if (data && (currentEvent()?.id ?? null) !== shownId) return render()
     if (!rows.length || !live) return
     const now = Date.now()
     let current = null
