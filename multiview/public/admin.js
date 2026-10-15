@@ -2240,7 +2240,7 @@ function renderChurchTools() {
         ? events.map(
             (e) =>
               `<tr><td>${esc(dayLabel(day))}, ${esc(time(e.startDate))}</td><td>${esc(e.name)}</td><td>${esc(e.calendar)}</td><td>${
-                e.points != null ? `${e.points} Punkte` : esc(e.agendaError)
+                e.points != null ? `${e.points} ${e.points === 1 ? 'Punkt' : 'Punkte'}` : esc(e.agendaError)
               }</td></tr>`,
           )
         : [`<tr><td>${esc(dayLabel(day))}</td><td colspan="3" class="muted">keine Events</td></tr>`],
