@@ -177,7 +177,7 @@ https://multiview.jms.de, https://jmscontrol.local {
 	reverse_proxy 127.0.0.1:8090
 }
 
-https://dashboard.jms.de, https://dashboard.local {
+https://dashboard.jms.de, https://dashboard.local, https://technik.local {
 	tls internal
 	import jms_auth dashboard
 	reverse_proxy 127.0.0.1:3000
