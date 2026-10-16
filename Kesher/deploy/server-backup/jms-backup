@@ -20,7 +20,7 @@ KEEP_DAILY=7
 KEEP_WEEKLY=4
 
 SYSTEM_PATHS=(
-  /etc/caddy /etc/netplan /etc/wireguard /etc/kesher /etc/pam.d/kesher-chat-kiosk
+  /etc/caddy /etc/netplan /etc/kesher /etc/pam.d/kesher-chat-kiosk
   /etc/systemd/system /etc/chromium/policies/managed /etc/chromium-browser/policies/managed
   /opt/homelab/compose /opt/homelab/config /usr/local/sbin/jms-backup
 )
