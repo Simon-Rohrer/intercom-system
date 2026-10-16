@@ -214,7 +214,7 @@ test('neuer Code um Mitternacht, alte Freischaltung gilt bis 5 Uhr', async (t) =
     assert.throws(() => access.redeemDayCode(yesterdayCode, '192.168.0.61', fakeReq(), fakeRes()), /stimmt nicht/)
 })
 
-test('Rollen-Anmeldung endet mit dem Tagescode (5 Uhr), der Admin bleibt', async (t) => {
+test('Anmeldungen enden mit dem Tagescode (5 Uhr) – auch die des Admins', async (t) => {
   t.mock.timers.enable({ apis: ['Date'], now: berlin('2026-10-14T21:00:00') })
   const revoked = []
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
@@ -229,10 +229,10 @@ test('Rollen-Anmeldung endet mit dem Tagescode (5 Uhr), der Admin bleibt', async
 
   t.mock.timers.setTime(berlin('2026-10-15T05:00:00'))
   assert.equal(access.userOf(fakeReq({ mv_session: licht })), null)
-  assert.equal(access.userOf(fakeReq({ mv_session: admin }))?.admin, true)
+  assert.equal(access.userOf(fakeReq({ mv_session: admin })), null)
   access.expireSessions()
-  assert.equal(revoked.length, 1)
-  assert.deepEqual(access.sessions().map((s) => s.roleId), ['admin'])
+  assert.equal(revoked.length, 2)
+  assert.deepEqual(access.sessions(), [])
 })
 
 test('„Neuen Code erzeugen“ beendet auch die Rollen-Anmeldungen', async () => {

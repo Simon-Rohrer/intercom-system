@@ -22,7 +22,7 @@ const QR_TTL_MS = 10 * 60 * 1000
 const SSO_TTL_MS = 60 * 1000
 // Tagescode: neu um Mitternacht (deutsche Zeit); wer ihn am Vortag eingegeben hat, bleibt bis
 // 5 Uhr freigeschaltet, damit niemand mitten in einer Veranstaltung rausfliegt. Mit dem Code
-// enden auch die Rollen-Anmeldungen (nicht die des Admins).
+// enden auch die Anmeldungen (Rollen und Admin).
 const TIME_ZONE = 'Europe/Berlin'
 const GRACE_UNTIL_HOUR = 5
 const CODE_MAX_FAILS = 8
@@ -257,12 +257,13 @@ function createAccess({
 
   /**
    * Eine Rollen-Anmeldung gilt nur so lange wie der Tagescode, unter dem sie entstand – also
-   * wie eine Freischaltung: bis morgen 5 Uhr, oder bis „Neuen Code erzeugen“. Der Admin (PIN)
-   * bleibt angemeldet. Ohne eingeschaltete Anmeldung für alle Dienste gibt es keinen Tagescode.
+   * wie eine Freischaltung: bis morgen 5 Uhr, oder bis „Neuen Code erzeugen“. Gilt auch für den
+   * Admin – vergisst er das Abmelden, soll die Anmeldung nicht ewig bleiben. Ohne eingeschaltete
+   * Anmeldung für alle Dienste gibt es keinen Tagescode.
    * Ältere Anmeldungen ohne Code bekommen den heutigen und laufen mit ihm ab.
    */
   function sessionValid(s) {
-    if (s.admin || !gatewayActive()) return true
+    if (!gatewayActive()) return true
     if (!s.gen) {
       s.gen = dayCode().gen
       writeSoon()
