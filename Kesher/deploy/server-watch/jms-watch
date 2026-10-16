@@ -498,7 +498,14 @@ def find_chat(cfg, wait=180):
     offset = 0
     deadline = time.time() + wait
     while time.time() < deadline:
-        updates = telegram(cfg, "getUpdates", {"offset": offset, "timeout": 20}, timeout=30) or []
+        # Kurze Abfragen statt Long-Polling: Manche Firewalls lassen lange offene Anfragen hängen
+        try:
+            updates = telegram(cfg, "getUpdates", {"offset": offset, "timeout": 0}, timeout=10) or []
+        except Exception as e:  # noqa: BLE001 – einzelne Aussetzer abwarten
+            print(f"  (Telegram antwortet gerade nicht: {e.__class__.__name__}, neuer Versuch …)", file=sys.stderr)
+            updates = []
+        if not updates:
+            time.sleep(2)
         for upd in updates:
             offset = upd["update_id"] + 1
             chat = (upd.get("message") or {}).get("chat")
