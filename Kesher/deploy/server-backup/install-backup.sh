@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Richtet die nächtliche Sicherung des JMS-Servers ein – auf einen USB-Datenträger oder Google Drive.
+# Richtet die wöchentliche Sicherung des JMS-Servers ein – auf einen USB-Datenträger oder Google Drive.
 #
 #   USB-Stick/-Platte (empfohlen, keine Anmeldung nötig):
 #   cd ~/intercom-system/Kesher/deploy/server-backup && sudo ./install-backup.sh --usb
 #     - zeigt die angeschlossenen Datenträger; der gewählte wird dauerhaft unter
 #       /mnt/jms-backup eingebunden (fehlt er beim Start, startet der Server trotzdem)
-#     - legt das verschlüsselte Backup-Repository an und schaltet 3:30 Uhr ein
+#     - legt das verschlüsselte Backup-Repository an und schaltet montags 3:30 Uhr ein
 #   sudo ./install-backup.sh --usb --format   vorher mit ext4 neu formatieren (löscht ihn!)
 #
 #   Google Drive:
@@ -13,7 +13,7 @@
 #   - installiert /usr/local/sbin/jms-backup (ersetzt die bisherige Fassung)
 #   - verbindet Google Drive (Anmeldung einmalig über einen Rechner mit Browser)
 #   - legt das verschlüsselte Backup-Repository an
-#   - schaltet die nächtliche Sicherung um 3:30 Uhr ein
+#   - schaltet die wöchentliche Sicherung ein (montags 3:30 Uhr)
 #
 #   cd ~/intercom-system/Kesher/deploy/server-backup && sudo ./install-backup.sh
 #
@@ -52,7 +52,7 @@ while [[ "$#" -gt 0 ]]; do
       systemctl disable --now jms-backup-cloud.timer 2>/dev/null || true
       rm -f /etc/systemd/system/jms-backup-cloud.timer /etc/systemd/system/jms-backup-cloud.service
       systemctl daemon-reload
-      echo "Nächtliche Cloud-Sicherung abgeschaltet. ${CONFIG_DIR} und die Daten in Google Drive bleiben erhalten."
+      echo "Cloud-Sicherung abgeschaltet. ${CONFIG_DIR} und die Daten in Google Drive bleiben erhalten."
       exit 0
       ;;
     *) echo "Unbekannte Option: $1" >&2; exit 1 ;;
@@ -176,7 +176,7 @@ EOF
 
   install -d -m 0700 "${CONFIG_DIR}"
   [[ -f "${CONFIG_FILE}" ]] || cat >"${CONFIG_FILE}" <<EOF
-# Einstellungen für die nächtliche Sicherung (jms-backup --cloud)
+# Einstellungen für die wöchentliche Sicherung (jms-backup --cloud)
 RESTIC_REPOSITORY=${REPO}
 RESTIC_PASSWORD_FILE=${PASSWORD_FILE}
 USB_MOUNT=${MOUNT}

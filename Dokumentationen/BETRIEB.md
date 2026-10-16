@@ -66,11 +66,11 @@ docker compose -f deploy/compose/docker-compose.yml down
 
 ## Daten sichern
 
-Der JMS-Server sichert sich jede Nacht um 3:30 Uhr (deutsche Zeit) verschlüsselt auf einen **USB-Datenträger**, der dauerhaft am Server steckt (restic, eingebunden unter `/mnt/jms-backup`). Kesher und Companion sind dabei ca. 1 Minute aus. Gespeichert werden nur Änderungen; es bleiben 7 tägliche und 4 wöchentliche Sicherungen, sonntags wird ein Teil der Daten zurückgelesen und geprüft. Eine verpasste Sicherung (Server war um 3:30 aus) wird bewusst nicht beim Einschalten nachgeholt. Fehlt der Datenträger, bricht die Sicherung ab, bevor Kesher angehalten wird, und schreibt nie auf die Server-Festplatte.
+Der JMS-Server sichert sich **einmal pro Woche, montags um 3:30 Uhr** (deutsche Zeit, direkt nach dem Sonntag, an dem die Systeme am meisten genutzt werden), verschlüsselt auf einen **USB-Datenträger**, der dauerhaft am Server steckt (restic, eingebunden unter `/mnt/jms-backup`). Kesher und Companion sind dabei ca. 1 Minute aus. Gespeichert werden nur Änderungen; es bleiben 8 wöchentliche und 6 monatliche Sicherungen (ein halbes Jahr zurück), nach jeder Sicherung wird ein Teil der Daten zurückgelesen und geprüft. Eine verpasste Sicherung (Server war montags um 3:30 aus) wird bewusst nicht beim Einschalten nachgeholt – der Störungs-Bot meldet sich dann, und sie lässt sich von Hand starten (siehe unten). Fehlt der Datenträger, bricht die Sicherung ab, bevor Kesher angehalten wird, und schreibt nie auf die Server-Festplatte.
 
-Der Störungs-Bot (siehe unten) meldet eine fehlgeschlagene Sicherung, einen fehlenden oder fast vollen USB-Datenträger und wenn die letzte erfolgreiche Sicherung länger als 36 Stunden her ist. In `/status` steht, wann zuletzt gesichert wurde.
+Der Störungs-Bot (siehe unten) meldet eine fehlgeschlagene Sicherung, einen fehlenden oder fast vollen USB-Datenträger und wenn die letzte erfolgreiche Sicherung länger als 8 Tage her ist. In `/status` steht, wann zuletzt gesichert wurde.
 
-Größe: 64–128 GB reichen (eine Sicherung ist klein, weil Docker-Images und Betriebssystem nicht mitgesichert werden; jede weitere Nacht kommt nur die Änderung dazu). Belegung prüfen: `sudo jms-backup --list` bzw. `/status` im Bot. Besser als ein USB-Stick ist eine kleine USB-SSD oder -Festplatte – Sticks verschleißen bei nächtlichem Schreiben schneller.
+Größe: 64–128 GB reichen (eine Sicherung ist klein, weil Docker-Images und Betriebssystem nicht mitgesichert werden; jede weitere Woche kommt nur die Änderung dazu). Belegung prüfen: `sudo jms-backup --list` bzw. `/status` im Bot. Bei einer Sicherung pro Woche reicht ein guter Marken-USB-Stick; eine kleine USB-SSD hält noch länger.
 
 Einrichten (einmalig, Datenträger vorher anstecken):
 
@@ -88,7 +88,7 @@ Gesichert werden alle Docker-Volumes (u. a. Kesher-Datenbank, Multiview-Einstell
 sudo systemctl start jms-backup-cloud     # Sicherung jetzt
 journalctl -u jms-backup-cloud -n 50      # letzter Lauf
 systemctl list-timers jms-backup-cloud    # nächster Lauf
-sudo jms-backup --list                    # nächtliche Sicherungen anzeigen
+sudo jms-backup --list                    # wöchentliche Sicherungen anzeigen
 sudo jms-backup --restore /home/master/restore   # neueste Sicherung holen
 sudo jms-backup                           # Vollsicherung als Ordner unter /home/master/backups (für den Mac)
 ```
@@ -137,10 +137,10 @@ Der Server prüft sich jede Minute selbst (`jms-watch`) und meldet Störungen ü
 - **Dienste**: `docker`, `caddy`, `tailscaled`, `companion` (und `multiview`, `kesher-chat-kiosk`, falls eingeschaltet) müssen laufen. Zusätzlich wird jede systemd-Unit gemeldet, die als „failed“ steht, z. B. eine fehlgeschlagene Sicherung.
 - **Tailscale** auf dem Host und in Tailscale-Containern (z. B. `tailscale-lasse`): nicht verbunden oder abgemeldet.
 - **Companion-Weboberfläche** antwortet nicht, **Speicherplatz** über 90 %, **Arbeitsspeicher** über 95 %, **Temperatur** über 85 °C.
-- **Nächtliche Sicherung**: USB-Datenträger fehlt oder ist fast voll, letzte erfolgreiche Sicherung älter als 36 Stunden.
+- **Wöchentliche Sicherung**: USB-Datenträger fehlt oder ist fast voll, letzte erfolgreiche Sicherung älter als 8 Tage.
 - **Server war aus** (Strom, Absturz): Nach dem Hochfahren kommt eine Meldung mit dem letzten Lebenszeichen.
 
-Gemeldet wird erst nach 3 Minuten Störung (Internet: 2 Minuten), damit Neustarts und Updates keinen Alarm auslösen, und noch einmal, wenn es wieder läuft. Während der nächtlichen Sicherung werden Container und Dienste nicht geprüft. Im Bot zeigt `/status` jederzeit jeden überwachten Dienst mit eigenem Status, gegliedert nach Netzwerk, Container, Dienste, Weboberflächen und System (z. B. „🟢 kesher – läuft seit 9 Std. · gesund“). Die Antwort kommt nach wenigen Sekunden über den Dienst `jms-watch-bot`, Stand ist die letzte Prüfrunde.
+Gemeldet wird erst nach 3 Minuten Störung (Internet: 2 Minuten), damit Neustarts und Updates keinen Alarm auslösen, und noch einmal, wenn es wieder läuft. Während der wöchentlichen Sicherung werden Container und Dienste nicht geprüft. Im Bot zeigt `/status` jederzeit jeden überwachten Dienst mit eigenem Status, gegliedert nach Netzwerk, Container, Dienste, Weboberflächen und System (z. B. „🟢 kesher – läuft seit 9 Std. · gesund“). Die Antwort kommt nach wenigen Sekunden über den Dienst `jms-watch-bot`, Stand ist die letzte Prüfrunde.
 
 Einrichten (fragt nach dem Bot-Token und findet die Chat-ID selbst):
 

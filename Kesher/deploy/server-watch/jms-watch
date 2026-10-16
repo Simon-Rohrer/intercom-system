@@ -10,14 +10,14 @@
 Geprüft werden: Internet, DNS, Tailscale (Host und Tailscale-Container), alle
 Docker-Container mit Neustart-Regel (laufen sie, sind sie gesund?), die Dienste aus
 WATCH_UNITS, jede systemd-Unit im Zustand „failed“, HTTP-Adressen aus HTTP_CHECKS,
-Speicherplatz, Arbeitsspeicher, Temperatur und die nächtliche Sicherung (letzter
+Speicherplatz, Arbeitsspeicher, Temperatur und die wöchentliche Sicherung (letzter
 Erfolg, USB-Datenträger angeschlossen und nicht zu voll).
 
 Gemeldet wird erst, wenn ein Problem FAIL_AFTER Runden hintereinander besteht, und
 noch einmal, wenn es OK_AFTER Runden hintereinander behoben ist. Ohne Internet
 bleiben die Meldungen liegen und gehen raus, sobald Telegram wieder erreichbar ist.
 Nach einem Ausfall des ganzen Servers (Strom, Absturz) kommt beim Hochfahren eine
-Meldung mit dem letzten Lebenszeichen. Während der nächtlichen Sicherung
+Meldung mit dem letzten Lebenszeichen. Während der wöchentlichen Sicherung
 (jms-backup-cloud) werden Container und Dienste nicht geprüft.
 
 Einstellungen: /etc/jms-watch/watch.env, Zustand: /var/lib/jms-watch/state.json
@@ -63,8 +63,8 @@ DEFAULTS = {
     "BOOT_GRACE_SECONDS": "300",
     "BACKUP_CONFIG": "/etc/jms-backup/cloud.env",
     "BACKUP_LAST_SUCCESS": "/var/lib/jms-backup/last-success",
-    # Nächtliche Sicherung: Meldung, wenn die letzte erfolgreiche länger her ist
-    "BACKUP_MAX_AGE_HOURS": "36",
+    # Wöchentliche Sicherung: Meldung, wenn die letzte erfolgreiche länger her ist
+    "BACKUP_MAX_AGE_HOURS": "192",  # 8 Tage: einmal pro Woche + Puffer
 }
 
 MAX_OUTBOX = 60
@@ -414,7 +414,7 @@ def check_system(cfg):
 
 
 def check_backup(cfg):
-    """Nächtliche Sicherung: letzte erfolgreiche Runde und – bei USB – ob der Datenträger dran ist."""
+    """Wöchentliche Sicherung: letzte erfolgreiche Runde und – bei USB – ob der Datenträger dran ist."""
     _, out, _ = run(["systemctl", "is-enabled", "jms-backup-cloud.timer"], timeout=5)
     if out.strip() != "enabled":
         return {}
@@ -436,7 +436,7 @@ def check_backup(cfg):
         if age > int(cfg["BACKUP_MAX_AGE_HOURS"]) * 3600:
             problems.append(f"letzte erfolgreiche Sicherung vor {fmt_duration(age)}")
     except (OSError, ValueError):
-        parts.append("noch keine nächtliche Sicherung gelaufen")
+        parts.append("noch keine wöchentliche Sicherung gelaufen")
     mount = backup_cfg.get("USB_MOUNT")
     if mount:
         # Der Zugriff bindet den Datenträger ein (automount); fehlt er, gibt es die Kennung nicht

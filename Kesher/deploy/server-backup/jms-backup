@@ -3,12 +3,12 @@
 #
 #   sudo jms-backup            Vollsicherung als Ordner unter /home/master/backups/full-<Datum>
 #                              (zum Kopieren auf den Mac, wie bisher)
-#   sudo jms-backup --cloud    nächtliche Sicherung (restic, verschlüsselt, nur Änderungen) auf die
+#   sudo jms-backup --cloud    wöchentliche Sicherung (restic, verschlüsselt, nur Änderungen) auf die
 #                              USB-Platte bzw. das Ziel aus /etc/jms-backup/cloud.env,
-#                              danach Aufräumen: 7 tägliche + 4 wöchentliche bleiben.
-#                              Läuft jede Nacht über jms-backup-cloud.timer.
-#   sudo jms-backup --list     nächtliche Sicherungen anzeigen
-#   sudo jms-backup --restore <Ziel>   neueste nächtliche Sicherung nach <Ziel> holen
+#                              danach Aufräumen: 8 wöchentliche + 6 monatliche bleiben.
+#                              Läuft jeden Montag um 3:30 Uhr über jms-backup-cloud.timer.
+#   sudo jms-backup --list     wöchentliche Sicherungen anzeigen
+#   sudo jms-backup --restore <Ziel>   neueste wöchentliche Sicherung nach <Ziel> holen
 #
 # Kesher und Companion sind während des Kopierens der Daten ca. 1 Minute aus.
 set -euo pipefail
@@ -16,11 +16,11 @@ set -euo pipefail
 CONFIG_FILE="${JMS_BACKUP_CONFIG:-/etc/jms-backup/cloud.env}"
 BACKUP_DIR="${JMS_BACKUP_DIR:-/home/master/backups}"
 STAGE="${JMS_BACKUP_STAGE:-/var/lib/jms-backup/stage}"
-# Zeitpunkt der letzten erfolgreichen nächtlichen Sicherung (liest jms-watch)
+# Zeitpunkt der letzten erfolgreichen wöchentlichen Sicherung (liest jms-watch)
 LAST_SUCCESS_FILE="${JMS_BACKUP_LAST_SUCCESS:-/var/lib/jms-backup/last-success}"
 INTERCOM_DIR="${JMS_INTERCOM_DIR:-/home/master/intercom-system}"
-KEEP_DAILY=7
-KEEP_WEEKLY=4
+KEEP_WEEKLY=8
+KEEP_MONTHLY=6
 
 SYSTEM_PATHS=(
   /etc/caddy /etc/netplan /etc/kesher /etc/pam.d/kesher-chat-kiosk
@@ -61,7 +61,7 @@ existing() {
 }
 
 # ---------------------------------------------------------------------------
-# Einstellungen der nächtlichen Sicherung (restic-Repository, Passwort, USB-Platte, Telegram)
+# Einstellungen der wöchentlichen Sicherung (restic-Repository, Passwort, USB-Platte, Telegram)
 # ---------------------------------------------------------------------------
 load_cloud_config() {
   if [[ ! -r "${CONFIG_FILE}" ]]; then
@@ -121,7 +121,7 @@ on_exit() {
   start_services
   rm -rf "${STAGE}"
   if [[ "${rc}" -ne 0 && "${MODE}" == "cloud" ]]; then
-    notify "JMS-Server: Nächtliche Sicherung fehlgeschlagen (${STEP}). Details: journalctl -u jms-backup-cloud"
+    notify "JMS-Server: Wöchentliche Sicherung fehlgeschlagen (${STEP}). Details: journalctl -u jms-backup-cloud"
   fi
   exit "${rc}"
 }
@@ -188,7 +188,7 @@ if [[ "${MODE}" == "local" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 2b. Nächtlich: verschlüsselt ins restic-Repository (nur Änderungen), dann aufräumen
+# 2b. Wöchentlich: verschlüsselt ins restic-Repository (nur Änderungen), dann aufräumen
 # ---------------------------------------------------------------------------
 STEP="Sichern nach ${RESTIC_REPOSITORY}"
 echo "==> Sichern (${RESTIC_REPOSITORY})"
@@ -198,20 +198,18 @@ restic backup --host server --tag nightly --pack-size 64 \
   "${STAGE}" "${system_paths[@]}" "${INTERCOM_DIR}"
 
 STEP="Alte Sicherungen löschen"
-echo "==> Aufräumen: ${KEEP_DAILY} tägliche + ${KEEP_WEEKLY} wöchentliche behalten"
-restic forget --host server --keep-daily "${KEEP_DAILY}" --keep-weekly "${KEEP_WEEKLY}" --prune
+echo "==> Aufräumen: ${KEEP_WEEKLY} wöchentliche + ${KEEP_MONTHLY} monatliche behalten"
+restic forget --host server --keep-weekly "${KEEP_WEEKLY}" --keep-monthly "${KEEP_MONTHLY}" --prune
 
-# Sonntags einen Teil der gesicherten Daten zurücklesen und prüfen
-if [[ "$(date +%u)" == "7" ]]; then
-  STEP="Prüfung der Sicherungen"
-  echo "==> Prüfung (10 % der Daten)"
-  restic check --read-data-subset=10%
-fi
+# Bei jedem Lauf einen Teil der gesicherten Daten zurücklesen und prüfen
+STEP="Prüfung der Sicherungen"
+echo "==> Prüfung (10 % der Daten)"
+restic check --read-data-subset=10%
 
 STEP="fertig"
 mkdir -p "$(dirname "${LAST_SUCCESS_FILE}")"
 date +%s >"${LAST_SUCCESS_FILE}"
-echo "Fertig: nächtliche Sicherung $(date '+%d.%m.%Y %H:%M')"
+echo "Fertig: wöchentliche Sicherung $(date '+%d.%m.%Y %H:%M')"
 if [[ "${NOTIFY_SUCCESS:-false}" == "true" ]]; then
-  notify "JMS-Server: Nächtliche Sicherung erfolgreich ($(date '+%d.%m.%Y %H:%M'))."
+  notify "JMS-Server: Wöchentliche Sicherung erfolgreich ($(date '+%d.%m.%Y %H:%M'))."
 fi
