@@ -7,10 +7,10 @@
     jms-watch --find-chat  wartet auf eine Nachricht an den Bot und zeigt die Chat-ID
     jms-watch --listen     beantwortet /status im Bot (läuft dauerhaft als jms-watch-bot.service)
 
-Geprüft werden: Internet, DNS, alle Docker-Container mit Neustart-Regel (laufen sie,
-sind sie gesund?), die Dienste aus WATCH_UNITS, jede systemd-Unit im Zustand
-„failed“, Tailscale (Host und Tailscale-Container), HTTP-Adressen aus HTTP_CHECKS
-und der freie Speicher.
+Geprüft werden: Internet, DNS, Tailscale (Host und Tailscale-Container), alle
+Docker-Container mit Neustart-Regel (laufen sie, sind sie gesund?), die Dienste aus
+WATCH_UNITS, jede systemd-Unit im Zustand „failed“, HTTP-Adressen aus HTTP_CHECKS,
+Speicherplatz, Arbeitsspeicher und Temperatur.
 
 Gemeldet wird erst, wenn ein Problem FAIL_AFTER Runden hintereinander besteht, und
 noch einmal, wenn es OK_AFTER Runden hintereinander behoben ist. Ohne Internet
@@ -22,8 +22,11 @@ Meldung mit dem letzten Lebenszeichen. Während der nächtlichen Sicherung
 Einstellungen: /etc/jms-watch/watch.env, Zustand: /var/lib/jms-watch/state.json
 """
 
+import glob
+import html
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -32,7 +35,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 CONFIG_FILE = os.environ.get("JMS_WATCH_CONFIG", "/etc/jms-watch/watch.env")
@@ -53,11 +56,40 @@ DEFAULTS = {
     "IGNORE_CONTAINERS": "",
     "HTTP_CHECKS": "Companion=http://127.0.0.1:8000",
     "DISK_WARN_PERCENT": "90",
+    "MEM_WARN_PERCENT": "95",
+    "TEMP_WARN_CELSIUS": "85",
     "INTERNET_HOSTS": "1.1.1.1 8.8.8.8 9.9.9.9",
     "BOOT_GRACE_SECONDS": "300",
 }
 
 MAX_OUTBOX = 60
+
+# Bereiche der Statusübersicht: (Kennung, Überschrift, Wort in Meldungen)
+GROUPS = [
+    ("net", "🌐 Netzwerk", ""),
+    ("container", "🐳 Container", "Container"),
+    ("unit", "⚙️ Dienste", "Dienst"),
+    ("http", "🖥 Weboberflächen", "Weboberfläche"),
+    ("system", "💻 System", ""),
+]
+
+
+def group_of(key):
+    if key in ("internet", "dns") or key.startswith(("tailscale:", "tailscale-container:")):
+        return "net"
+    if key == "docker" or key.startswith("container:"):
+        return "container"
+    if key.startswith(("unit:", "failed:")):
+        return "unit"
+    if key.startswith("http:"):
+        return "http"
+    return "system"
+
+
+def noun_of(key):
+    if key == "docker":
+        return "Dienst"
+    return next(noun for gid, _, noun in GROUPS if gid == group_of(key))
 
 
 def load_config():
@@ -83,6 +115,7 @@ def load_state():
         state = {}
     state.setdefault("checks", {})
     state.setdefault("outbox", [])
+    state.setdefault("last", {})
     return state
 
 
@@ -107,10 +140,11 @@ def run(cmd, timeout=10):
         return 124, "", "Zeitüberschreitung"
 
 
-def fmt_time(ts, now=None):
-    now = now or time.time()
+def fmt_time(ts, ref=None):
+    """Uhrzeit, mit Datum davor, wenn es nicht derselbe Tag wie ref (Standard: jetzt) ist."""
+    ref = ref or time.time()
     dt = datetime.fromtimestamp(ts, TZ)
-    if dt.date() == datetime.fromtimestamp(now, TZ).date():
+    if dt.date() == datetime.fromtimestamp(ref, TZ).date():
         return dt.strftime("%H:%M")
     return dt.strftime("%d.%m. %H:%M")
 
@@ -123,31 +157,83 @@ def fmt_duration(seconds):
     if hours < 24:
         return f"{hours} Std. {minutes} Min." if minutes else f"{hours} Std."
     days, hours = divmod(hours, 24)
-    return f"{days} Tg. {hours} Std."
+    return f"{days} Tg. {hours} Std." if hours else f"{days} Tg."
+
+
+def fmt_gb(num_bytes):
+    return f"{num_bytes / 1e9:.1f}".replace(".", ",") + " GB"
 
 
 def words(value):
     return [w for w in value.replace(",", " ").split() if w]
 
 
+def esc(text):
+    return html.escape(str(text), quote=False)
+
+
+def boot_time():
+    with open("/proc/uptime", encoding="ascii") as fh:
+        return time.time() - float(fh.read().split()[0])
+
+
+def result(ok, name, info=""):
+    return {"ok": ok, "name": name, "info": info}
+
+
 # ---------------------------------------------------------------------------
-# Prüfungen: jede liefert {schlüssel: (ok, bezeichnung, detail)}
+# Prüfungen: jede liefert {schlüssel: result(ok, name, info)}
+# info beschreibt bei ok den Zustand (für /status), sonst die Störung.
 # ---------------------------------------------------------------------------
 def check_internet(cfg):
-    for host in words(cfg["INTERNET_HOSTS"]):
+    hosts = words(cfg["INTERNET_HOSTS"])
+    for host in hosts:
+        start = time.monotonic()
         try:
             with socket.create_connection((host, 443), timeout=4):
-                return {"internet": (True, "Internet", "")}
+                ms = (time.monotonic() - start) * 1000
+                return {"internet": result(True, "Internet", f"erreichbar · {ms:.0f} ms")}
         except OSError:
             continue
-    return {"internet": (False, "Internet", "keine Verbindung nach außen")}
+    return {"internet": result(False, "Internet", f"keine Verbindung nach außen ({', '.join(hosts)})")}
 
 
 def check_dns():
+    start = time.monotonic()
     code, _, err = run(["getent", "hosts", "api.telegram.org"], timeout=8)
+    ms = (time.monotonic() - start) * 1000
     if code == 0:
-        return {"dns": (True, "DNS", "")}
-    return {"dns": (False, "DNS", "Namensauflösung klappt nicht" + (f" ({err.strip()})" if err.strip() else ""))}
+        return {"dns": result(True, "DNS", f"Namensauflösung klappt · {ms:.0f} ms")}
+    return {"dns": result(False, "DNS", "Namensauflösung klappt nicht" + (f" ({err.strip()})" if err.strip() else ""))}
+
+
+def check_tailscale(cmd, key, name):
+    code, out, err = run([*cmd, "status", "--json"], timeout=10)
+    if code == 127:
+        return {}
+    try:
+        data = json.loads(out)
+    except ValueError:
+        return {key: result(False, name, f"antwortet nicht ({(err or out).strip()[:200]})")}
+    backend = data.get("BackendState", "?")
+    if backend != "Running":
+        hint = " – neu anmelden: tailscale up" if backend == "NeedsLogin" else ""
+        return {key: result(False, name, f"Zustand {backend}{hint}")}
+    ips = (data.get("Self") or {}).get("TailscaleIPs") or []
+    peers = list((data.get("Peer") or {}).values())
+    online = sum(1 for p in peers if p.get("Online"))
+    parts = ["verbunden"]
+    if ips:
+        parts.append(ips[0])
+    parts.append(f"{online} von {len(peers)} Geräten online")
+    return {key: result(True, name, " · ".join(parts))}
+
+
+def parse_docker_time(value):
+    try:
+        return datetime.fromisoformat(value[:19]).replace(tzinfo=timezone.utc).timestamp()
+    except ValueError:
+        return None
 
 
 def check_containers(cfg, unknown):
@@ -156,7 +242,7 @@ def check_containers(cfg, unknown):
         return {}
     if code != 0:
         unknown.update(("container:", "tailscale-container:"))
-        return {"docker": (False, "Docker", f"antwortet nicht ({(err or out).strip()[:200]})")}
+        return {"docker": result(False, "Docker", f"antwortet nicht ({(err or out).strip()[:200]})")}
     ids = out.split()
     if not ids:
         return {}
@@ -166,9 +252,10 @@ def check_containers(cfg, unknown):
         unknown.update(("container:", "tailscale-container:"))
         return {}
     ignore = set(words(cfg["IGNORE_CONTAINERS"]))
+    now = time.time()
     results = {}
     tailscale_containers = []
-    for c in json.loads(out):
+    for c in sorted(json.loads(out), key=lambda c: c.get("Name", "")):
         name = c.get("Name", "").lstrip("/")
         if not name or name in ignore:
             continue
@@ -177,37 +264,34 @@ def check_containers(cfg, unknown):
         expected = policy in ("always", "unless-stopped") or (policy == "on-failure" and st.get("ExitCode", 0) != 0)
         if not expected:
             continue
-        label = f"{name} (Container)"
+        key = f"container:{name}"
         status = st.get("Status", "?")
         health = (st.get("Health") or {}).get("Status")
+        restarts = c.get("RestartCount", 0)
         if status != "running":
-            detail = f"läuft nicht (Zustand {status}, Exit-Code {st.get('ExitCode')})"
+            info = f"läuft nicht (Zustand {status}, Exit-Code {st.get('ExitCode')})"
             if st.get("OOMKilled"):
-                detail += ", Arbeitsspeicher voll"
-            results[f"container:{name}"] = (False, label, detail)
-        elif health == "unhealthy":
-            results[f"container:{name}"] = (False, label, "läuft, meldet sich aber als ungesund (unhealthy)")
-        else:
-            results[f"container:{name}"] = (True, label, "")
-            if "tailscale" in c.get("Config", {}).get("Image", ""):
-                tailscale_containers.append(name)
+                info += ", Arbeitsspeicher voll"
+            results[key] = result(False, name, info)
+            continue
+        if health == "unhealthy":
+            results[key] = result(False, name, "läuft, meldet sich aber als ungesund (unhealthy)")
+            continue
+        started = parse_docker_time(st.get("StartedAt", ""))
+        parts = [f"läuft seit {fmt_duration(now - started)}" if started else "läuft"]
+        if health == "healthy":
+            parts.append("gesund")
+        elif health == "starting":
+            parts.append("startet")
+        if restarts:
+            parts.append(f"{restarts}× neu gestartet")
+        results[key] = result(True, name, " · ".join(parts))
+        if "tailscale" in c.get("Config", {}).get("Image", ""):
+            tailscale_containers.append(name)
     for name in tailscale_containers:
-        results.update(check_tailscale(["docker", "exec", name, "tailscale"], f"tailscale-container:{name}", f"Tailscale {name}"))
+        results.update(check_tailscale(["docker", "exec", name, "tailscale"],
+                                       f"tailscale-container:{name}", f"Tailscale ({name})"))
     return results
-
-
-def check_tailscale(cmd, key, label):
-    code, out, err = run([*cmd, "status", "--json"], timeout=10)
-    if code == 127:
-        return {}
-    try:
-        backend = json.loads(out).get("BackendState", "?")
-    except ValueError:
-        return {key: (False, label, f"antwortet nicht ({(err or out).strip()[:200]})")}
-    if backend == "Running":
-        return {key: (True, label, "")}
-    hint = " – neu anmelden: tailscale up" if backend == "NeedsLogin" else ""
-    return {key: (False, label, f"Zustand {backend}{hint}")}
 
 
 def last_log_lines(unit):
@@ -218,24 +302,33 @@ def last_log_lines(unit):
 
 def check_units(cfg, unknown):
     results = {}
-    watch = words(cfg["WATCH_UNITS"])
     ignore = set(words(cfg["IGNORE_UNITS"]))
+    booted = boot_time()
     covered = set()
-    for unit in watch:
+    for unit in words(cfg["WATCH_UNITS"]):
         full = unit if "." in unit else unit + ".service"
         covered.add(full)
-        code, out, _ = run(["systemctl", "show", full, "-p", "LoadState,ActiveState,SubState,UnitFileState"], timeout=10)
+        code, out, _ = run(["systemctl", "show", full, "-p",
+                            "LoadState,ActiveState,SubState,UnitFileState,ActiveEnterTimestampMonotonic,MemoryCurrent"],
+                           timeout=10)
         props = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
         # Nur Dienste, die es gibt und die beim Start an sein sollen
         if code != 0 or props.get("LoadState") != "loaded" or props.get("UnitFileState") not in ("enabled", "enabled-runtime"):
             continue
-        label = f"{unit} (Dienst)"
+        key = f"unit:{full}"
         if props.get("ActiveState") in ("active", "activating", "reloading"):
-            results[f"unit:{full}"] = (True, label, "")
+            parts = ["aktiv"]
+            mono = props.get("ActiveEnterTimestampMonotonic", "0")
+            if mono.isdigit() and int(mono) > 0:
+                parts[0] = f"aktiv seit {fmt_duration(time.time() - (booted + int(mono) / 1e6))}"
+            mem = props.get("MemoryCurrent", "")
+            if mem.isdigit() and int(mem) < 2**60:
+                parts.append(f"{int(mem) / 1e6:.0f} MB RAM")
+            results[key] = result(True, unit, " · ".join(parts))
         else:
-            detail = f"{props.get('ActiveState')}/{props.get('SubState')}"
+            info = f"{props.get('ActiveState')}/{props.get('SubState')}"
             logs = last_log_lines(full)
-            results[f"unit:{full}"] = (False, label, detail + (f" – {logs}" if logs else ""))
+            results[key] = result(False, unit, info + (f" – {logs}" if logs else ""))
     code, out, _ = run(["systemctl", "list-units", "--state=failed", "--plain", "--no-legend", "--no-pager"], timeout=10)
     if code != 0:
         unknown.add("failed:")
@@ -247,7 +340,8 @@ def check_units(cfg, unknown):
         if unit in covered or unit in ignore or unit.split(".")[0] in ignore:
             continue
         logs = last_log_lines(unit)
-        results[f"failed:{unit}"] = (False, f"{unit} (Dienst)", "fehlgeschlagen" + (f" – {logs}" if logs else ""))
+        name = unit[:-8] if unit.endswith(".service") else unit
+        results[f"failed:{unit}"] = result(False, name, "fehlgeschlagen" + (f" – {logs}" if logs else ""))
     return results
 
 
@@ -257,35 +351,70 @@ def check_http(cfg):
         if "=" not in item:
             continue
         name, url = item.split("=", 1)
-        key, label = f"http:{name}", f"{name} (Weboberfläche)"
+        key = f"http:{name}"
+        start = time.monotonic()
         try:
             with urllib.request.urlopen(url, timeout=6) as resp:
                 code = resp.status
         except urllib.error.HTTPError as e:
             code = e.code
         except Exception as e:  # noqa: BLE001 – jede Art „keine Antwort“
-            results[key] = (False, label, f"keine Antwort ({e.__class__.__name__})")
+            results[key] = result(False, name, f"keine Antwort ({e.__class__.__name__})")
             continue
-        results[key] = (code < 500, label, "" if code < 500 else f"Fehler {code}")
+        ms = (time.monotonic() - start) * 1000
+        if code >= 500:
+            results[key] = result(False, name, f"Fehler {code}")
+        else:
+            results[key] = result(True, name, f"antwortet · HTTP {code} · {ms:.0f} ms")
     return results
 
 
-def check_disk(cfg):
-    limit = int(cfg["DISK_WARN_PERCENT"])
+def check_system(cfg):
+    results = {}
     usage = shutil.disk_usage("/")
     percent = round(usage.used * 100 / usage.total)
-    free_gb = usage.free / 1e9
-    ok = percent < limit
-    return {"disk:/": (ok, "Speicherplatz", "" if ok else f"{percent} % belegt, nur noch {free_gb:.1f} GB frei")}
+    info = f"{percent} % belegt · {fmt_gb(usage.free)} frei von {fmt_gb(usage.total)}"
+    results["disk:/"] = result(percent < int(cfg["DISK_WARN_PERCENT"]), "Speicherplatz", info)
 
+    try:
+        mem = {}
+        with open("/proc/meminfo", encoding="ascii") as fh:
+            for line in fh:
+                k, v = line.split(":", 1)
+                mem[k] = int(v.split()[0]) * 1024
+        used = mem["MemTotal"] - mem["MemAvailable"]
+        percent = round(used * 100 / mem["MemTotal"])
+        info = f"{percent} % belegt · {fmt_gb(mem['MemAvailable'])} frei von {fmt_gb(mem['MemTotal'])}"
+        results["mem"] = result(percent < int(cfg["MEM_WARN_PERCENT"]), "Arbeitsspeicher", info)
+    except (OSError, KeyError, ValueError):
+        pass
 
-def backup_running():
-    code, out, _ = run(["systemctl", "is-active", "jms-backup-cloud.service"], timeout=5)
-    return out.strip() in ("active", "activating")
+    load1, load5, _ = os.getloadavg()
+    cores = os.cpu_count() or 1
+    results["load"] = result(True, "Prozessor", f"Last {load1:.2f} / {load5:.2f} · {cores} Kerne".replace(".", ","))
+
+    temps = []
+    for path in glob.glob("/sys/class/thermal/thermal_zone*/temp") + glob.glob("/sys/class/hwmon/hwmon*/temp*_input"):
+        try:
+            with open(path, encoding="ascii") as fh:
+                value = int(fh.read().strip()) / 1000
+            if 0 < value < 150:
+                temps.append(value)
+        except (OSError, ValueError):
+            continue
+    if temps:
+        hottest = max(temps)
+        results["temp"] = result(hottest < int(cfg["TEMP_WARN_CELSIUS"]), "Temperatur", f"{hottest:.0f} °C")
+    return results
 
 
 # Diese Prüfungen werden während der Sicherung ausgelassen – ihr Zustand bleibt stehen
 BACKUP_PAUSED_PREFIXES = ("container:", "docker", "unit:", "failed:", "http:", "tailscale-container:")
+
+
+def backup_running():
+    _, out, _ = run(["systemctl", "is-active", "jms-backup-cloud.service"], timeout=5)
+    return out.strip() in ("active", "activating")
 
 
 def collect(cfg, during_backup):
@@ -293,15 +422,70 @@ def collect(cfg, during_backup):
     results, unknown = {}, set()
     results.update(check_internet(cfg))
     results.update(check_dns())
-    results.update(check_tailscale(["tailscale"], "tailscale:host", "Tailscale"))
-    results.update(check_disk(cfg))
+    results.update(check_tailscale(["tailscale"], "tailscale:host", "Tailscale (Server)"))
     if during_backup:
         unknown.update(BACKUP_PAUSED_PREFIXES)
     else:
         results.update(check_containers(cfg, unknown))
         results.update(check_units(cfg, unknown))
         results.update(check_http(cfg))
+    results.update(check_system(cfg))
     return results, unknown
+
+
+# ---------------------------------------------------------------------------
+# Texte
+# ---------------------------------------------------------------------------
+def title(key, name):
+    noun = noun_of(key)
+    return f"<b>{esc(name)}</b>" + (f" · {noun}" if noun else "")
+
+
+def render_status(cfg, state, now):
+    last = state.get("last", {})
+    checks = state.get("checks", {})
+    at = state.get("last_at")
+    failing = [k for k, item in last.items() if not item["ok"]]
+    alerted = [k for k in failing if checks.get(k, {}).get("alerted")]
+    watching = [k for k in failing if k not in alerted]
+
+    lines = [f"<b>{esc(cfg['SERVER_NAME'])}</b> · Status" + (f" von {fmt_time(at, now)}" if at else "")]
+    if alerted:
+        lines.append(f"🔴 <b>{len(alerted)} Störung{'en' if len(alerted) > 1 else ''}</b>")
+    elif watching:
+        lines.append(f"🟡 <b>Alles läuft</b> – {len(watching)} Auffälligkeit{'en' if len(watching) > 1 else ''} wird beobachtet")
+    else:
+        lines.append("🟢 <b>Alles in Ordnung</b>")
+    lines.append(f"Server läuft seit {fmt_duration(time.time() - boot_time())}")
+    if not last:
+        lines.append("\nNoch keine Prüfrunde gelaufen.")
+        return "\n".join(lines)
+
+    for gid, heading, _ in GROUPS:
+        keys = [k for k in last if group_of(k) == gid]
+        if not keys:
+            continue
+        lines.append("")
+        lines.append(f"<b>{heading}</b>")
+        # Störungen zuerst, sonst in der Reihenfolge der Prüfung
+        for key in sorted(keys, key=lambda k: last[k]["ok"]):
+            item = last[key]
+            entry = checks.get(key)
+            if item["ok"]:
+                icon = "🟢"
+            elif entry and entry.get("alerted"):
+                icon = "🔴"
+            else:
+                icon = "🟡"
+            info = item["info"][:160]
+            if entry and not item["ok"]:
+                info += f" · seit {fmt_time(entry['down_since'], now)}"
+            lines.append(f"{icon} <b>{esc(item['name'])}</b> – {esc(info)}" if info else f"{icon} <b>{esc(item['name'])}</b>")
+    return "\n".join(lines)
+
+
+def plain(text):
+    return html.unescape(re.sub(r"</?[a-z]+>", "", text))
 
 
 # ---------------------------------------------------------------------------
@@ -313,14 +497,21 @@ def telegram(cfg, method, params, timeout=15):
         raise RuntimeError("TELEGRAM_BOT_TOKEN fehlt in " + CONFIG_FILE)
     data = urllib.parse.urlencode(params).encode()
     req = urllib.request.Request(f"https://api.telegram.org/bot{token}/{method}", data=data)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = json.load(resp)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.load(resp)
+    except urllib.error.HTTPError as e:
+        try:
+            body = json.load(e)
+        except ValueError:
+            raise RuntimeError(f"Telegram-Fehler {e.code}") from None
     if not body.get("ok"):
         raise RuntimeError(body.get("description", "Telegram-Fehler"))
     return body.get("result")
 
 
 def send(cfg, text):
+    """Schickt HTML-Text, bei Bedarf in mehreren Teilen (Telegram: max. 4096 Zeichen)."""
     chunks, current = [], ""
     for part in text.split("\n\n"):
         if current and len(current) + len(part) + 2 > 3800:
@@ -330,7 +521,17 @@ def send(cfg, text):
     if current:
         chunks.append(current)
     for chunk in chunks:
-        telegram(cfg, "sendMessage", {"chat_id": cfg["TELEGRAM_CHAT_ID"], "text": chunk[:4000]})
+        params = {"chat_id": cfg["TELEGRAM_CHAT_ID"], "text": chunk[:4000],
+                  "parse_mode": "HTML", "disable_web_page_preview": "true"}
+        try:
+            telegram(cfg, "sendMessage", params)
+        except RuntimeError as e:
+            if "parse" not in str(e).lower():
+                raise
+            # Formatierung kaputt (sollte nicht vorkommen) – dann eben ohne
+            params.pop("parse_mode")
+            params["text"] = plain(chunk)[:4000]
+            telegram(cfg, "sendMessage", params)
 
 
 def flush_outbox(cfg, state):
@@ -344,7 +545,9 @@ def flush_outbox(cfg, state):
     ready = [i for i in state["outbox"] if not recovering(i)]
     if not ready:
         return
-    text = cfg["SERVER_NAME"] + "\n\n" + "\n\n".join(item["text"] for item in ready)
+    text = f"<b>{esc(cfg['SERVER_NAME'])}</b>\n\n" + "\n\n".join(item["text"] for item in ready)
+    if any(i.get("kind") == "down" for i in ready):
+        text += "\n\nAlle Dienste: /status"
     try:
         send(cfg, text)
     except Exception as e:  # noqa: BLE001 – bleibt im Postausgang, nächste Runde
@@ -359,26 +562,6 @@ def flush_outbox(cfg, state):
 def queue(state, text, key=None, kind=None):
     state["outbox"].append({"text": text, "key": key, "kind": kind})
     del state["outbox"][:-MAX_OUTBOX]
-
-
-def status_text(cfg, state, now):
-    problems = [c for c in state["checks"].values() if c.get("alerted")]
-    pending = [c for c in state["checks"].values() if not c.get("alerted") and c.get("down_since")]
-    lines = []
-    if problems:
-        lines.append(f"🔴 {len(problems)} Störung(en):")
-        for c in problems:
-            lines.append(f"• {c['label']}: {c['detail']} (seit {fmt_time(c['down_since'], now)})")
-    else:
-        lines.append("🟢 Alles in Ordnung.")
-    for c in pending:
-        lines.append(f"• wird beobachtet: {c['label']}: {c['detail']}")
-    summary = state.get("summary", {})
-    if summary:
-        lines.append(f"Überwacht: {summary.get('count', 0)} Prüfungen, zuletzt {fmt_time(summary.get('at', now), now)}.")
-    uptime = time.time() - boot_time()
-    lines.append(f"Server läuft seit {fmt_duration(uptime)}")
-    return "\n".join(lines)
 
 
 def listen(cfg, interval=3):
@@ -413,7 +596,7 @@ def listen(cfg, interval=3):
             text = (msg.get("text") or "").strip().lower()
             if text.startswith(("/status", "/start")):
                 try:
-                    send(cfg, cfg["SERVER_NAME"] + "\n\n" + status_text(cfg, load_state(), time.time()))
+                    send(cfg, render_status(cfg, load_state(), time.time()))
                 except Exception as e:  # noqa: BLE001
                     print(f"Antwort nicht gesendet: {e}", file=sys.stderr)
         if updates:
@@ -426,27 +609,23 @@ def listen(cfg, interval=3):
 # ---------------------------------------------------------------------------
 # Ablauf
 # ---------------------------------------------------------------------------
-def boot_time():
-    with open("/proc/uptime", encoding="ascii") as fh:
-        return time.time() - float(fh.read().split()[0])
-
-
 def evaluate(cfg, state, results, unknown, now):
     fail_after = int(cfg["FAIL_AFTER"])
     internet_fail_after = int(cfg["INTERNET_FAIL_AFTER"])
     ok_after = int(cfg["OK_AFTER"])
     checks = state["checks"]
+    results = dict(results)
 
     # Was in dieser Runde nicht mehr auftaucht (Unit nicht mehr „failed“, Container
     # entfernt), gilt als behoben – außer es wurde gar nicht geprüft (Sicherung, Docker hängt).
     for key in list(checks):
         if key in results or key.startswith(tuple(unknown)):
             continue
-        results[key] = (True, checks[key]["label"], "")
+        results[key] = result(True, checks[key].get("name") or checks[key].get("label", key))
 
-    for key, (ok, label, detail) in results.items():
+    for key, item in results.items():
         entry = checks.get(key)
-        if ok:
+        if item["ok"]:
             if not entry:
                 continue
             entry["oks"] = entry.get("oks", 0) + 1
@@ -454,28 +633,31 @@ def evaluate(cfg, state, results, unknown, now):
                 continue
             if entry.get("alerted"):
                 since = entry["down_since"]
+                name = entry.get("name") or item["name"]
+                span = f"{fmt_time(since, now)} – {fmt_time(now, since)} ({fmt_duration(now - since)})"
                 unsent = [i for i in state["outbox"] if i.get("key") == key and i.get("kind") == "down"]
                 if unsent:
                     # Die Störungsmeldung ging nie raus (z. B. kein Internet): eine Meldung reicht
                     state["outbox"] = [i for i in state["outbox"] if i not in unsent]
-                    queue(state, f"🟠 {label} war gestört: {fmt_time(since, now)} bis {fmt_time(now, since)} "
-                                 f"({fmt_duration(now - since)}).\n{entry['detail']}", key, "up")
-                else:
-                    queue(state, f"🟢 {label} läuft wieder ({fmt_time(now, now)}), war {fmt_duration(now - since)} gestört.",
+                    queue(state, f"🟠 {title(key, name)} war gestört\n{span}\n<i>{esc(entry.get('info', ''))}</i>",
                           key, "up")
+                else:
+                    queue(state, f"🟢 {title(key, name)} wieder in Ordnung\ngestört {span}", key, "up")
             del checks[key]
             continue
 
         if not entry:
-            entry = checks[key] = {"label": label, "down_since": now, "fails": 0, "alerted": False}
+            entry = checks[key] = {"down_since": now, "fails": 0, "alerted": False}
+        entry.pop("label", None)
         entry["fails"] += 1
         entry["oks"] = 0
-        entry["label"] = label
-        entry["detail"] = detail
+        entry["name"] = item["name"]
+        entry["info"] = item["info"]
         needed = internet_fail_after if key == "internet" else fail_after
         if not entry["alerted"] and entry["fails"] >= needed:
             entry["alerted"] = True
-            queue(state, f"🔴 {label} ausgefallen (seit {fmt_time(entry['down_since'], now)}):\n{detail}", key, "down")
+            queue(state, f"🔴 {title(key, item['name'])} ausgefallen\nseit {fmt_time(entry['down_since'], now)}"
+                         f"\n<i>{esc(item['info'])}</i>", key, "down")
 
 
 def main_round(cfg):
@@ -483,12 +665,13 @@ def main_round(cfg):
     state = load_state()
     booted = boot_time()
 
-    last = state.get("last_run")
-    if last and booted > last + 30:
-        queue(state, f"🔄 Server wurde neu gestartet. Letztes Lebenszeichen {fmt_time(last, now)}, "
-                     f"wieder an seit {fmt_time(booted, now)} (etwa {fmt_duration(booted - last)} aus).")
-    elif not last:
-        queue(state, "👋 Störungsmeldungen sind eingerichtet. Mit /status lässt sich der Zustand jederzeit abfragen.")
+    last_run = state.get("last_run")
+    if last_run and booted > last_run + 30:
+        queue(state, f"🔄 <b>Server wurde neu gestartet</b>\nletztes Lebenszeichen {fmt_time(last_run, now)} · "
+                     f"wieder an seit {fmt_time(booted, now)} (etwa {fmt_duration(booted - last_run)} aus)")
+    elif not last_run:
+        queue(state, "👋 <b>Störungsmeldungen sind eingerichtet</b>\nFällt etwas aus, kommt hier eine Nachricht. "
+                     "/status zeigt jederzeit alle Dienste.")
     state["last_run"] = now
 
     if now - booted < int(cfg["BOOT_GRACE_SECONDS"]):
@@ -499,16 +682,25 @@ def main_round(cfg):
 
     results, unknown = collect(cfg, backup_running())
     evaluate(cfg, state, results, unknown, now)
-    state["summary"] = {"count": len(results), "at": now}
+    # Für /status: was diese Runde nicht geprüft wurde (Sicherung), mit dem letzten Stand zeigen
+    kept = {k: v for k, v in state["last"].items() if k.startswith(tuple(unknown)) and k not in results}
+    state["last"] = {**results, **kept}
+    state["last_at"] = now
+    state.pop("summary", None)
     flush_outbox(cfg, state)
     save_state(state)
 
 
 def print_status(cfg):
     results, _ = collect(cfg, during_backup=False)
-    for key, (ok, label, detail) in sorted(results.items(), key=lambda kv: (kv[1][0], kv[0])):
-        print(f"{'OK    ' if ok else 'FEHLER'} {label}" + (f": {detail}" if detail else ""))
     state = load_state()
+    now = time.time()
+    state["last"], state["last_at"] = results, now
+    # Im Terminal zählt, was jetzt gerade ist: jede Störung rot, ohne Wartezeit
+    for key, item in results.items():
+        if not item["ok"]:
+            state["checks"].setdefault(key, {"down_since": now})["alerted"] = True
+    print(plain(render_status(cfg, state, time.time())))
     if state["outbox"]:
         print(f"\n{len(state['outbox'])} Meldung(en) warten noch auf Versand.")
     print("\nBot eingerichtet:", "ja" if cfg["TELEGRAM_BOT_TOKEN"] and cfg["TELEGRAM_CHAT_ID"] else "nein", f"({CONFIG_FILE})")
@@ -549,7 +741,7 @@ def main():
         print_status(cfg)
         return 0
     if arg == "--test":
-        send(cfg, f"{cfg['SERVER_NAME']}\n\n✅ Testnachricht – die Störungsmeldungen kommen hier an.")
+        send(cfg, f"<b>{esc(cfg['SERVER_NAME'])}</b>\n\n✅ Testnachricht – die Störungsmeldungen kommen hier an.")
         print("Testnachricht gesendet.")
         return 0
     if arg == "--find-chat":
