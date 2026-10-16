@@ -1518,6 +1518,26 @@ app.get(['/api/wallpaper/:file', '/.jms-auth/api/wallpaper/:file'], (req, res) =
   res.set('Cache-Control', 'public, max-age=604800').type('image/jpeg').sendFile(file)
 })
 
+// Dashboard (Admin): Verbindung jeder Raspberry-Station live aus Kesher – mit WLAN-IP aus dem Herzschlag
+// und den Rollennamen (die Messwerte zeigt das Dashboard über Glances auf dem Pi)
+app.get(['/api/raspberry-pis/live', '/.jms-auth/api/raspberry-pis/live'], requireAdmin, async (req, res) => {
+  try {
+    const data = await kesherChat.raspberryPis()
+    const names = Object.fromEntries((kesherChat.snapshot().roles ?? []).map((r) => [r.id, r.name]))
+    res.set('Cache-Control', 'no-store').json({
+      ok: true,
+      offlineAfterMs: data.offlineAfterMs,
+      stations: (data.stations ?? []).map((s) => ({
+        ...s,
+        roleName: names[s.roleId] || s.roleId || '',
+        intercomRoleName: s.intercomRoleId ? names[s.intercomRoleId] || s.intercomRoleId : '',
+      })),
+    })
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err.message })
+  }
+})
+
 app.get(['/api/avatar/:id', '/.jms-auth/api/avatar/:id'], requireTrusted, (req, res) => {
   if (!/^[0-9a-f]{20}$/.test(req.params.id)) return res.status(404).end()
   const file = avatarFile(req.params.id)

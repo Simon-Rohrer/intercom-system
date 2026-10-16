@@ -120,6 +120,14 @@ function createKesherChat({ getConfig, onUpdate, onFlash, onPresence = () => {},
     token = (await res.json()).token
   }
 
+  /** Raspberry-Pi-Stationen mit Herzschlag (IP, Rolle, Browser, Anmeldung …) – mit der Sitzung des Chat-Monitors. */
+  async function raspberryPis() {
+    if (!token) throw new Error('Kesher ist gerade nicht verbunden')
+    const res = await api('/api/raspberry-pis', { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) throw new Error(`Kesher antwortet mit HTTP ${res.status}`)
+    return res.json()
+  }
+
   async function loadBootstrap() {
     const res = await api('/api/bootstrap', { headers: { Authorization: `Bearer ${token}` } })
     if (res.status === 401 || res.status === 403) {
@@ -407,7 +415,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, onPresence = () => {},
   }
 
   return {
-    start: connect, reconfigure, refresh, stop, snapshot, verifyAdminPin, sendText, activeRoleIds,
+    start: connect, reconfigure, refresh, stop, snapshot, verifyAdminPin, sendText, activeRoleIds, raspberryPis,
     presence: () => presence,
   }
 }
