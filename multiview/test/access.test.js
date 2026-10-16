@@ -214,6 +214,43 @@ test('neuer Code um Mitternacht, alte Freischaltung gilt bis 5 Uhr', async (t) =
     assert.throws(() => access.redeemDayCode(yesterdayCode, '192.168.0.61', fakeReq(), fakeRes()), /stimmt nicht/)
 })
 
+test('Rollen-Anmeldung endet mit dem Tagescode (5 Uhr), der Admin bleibt', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: berlin('2026-10-14T21:00:00') })
+  const revoked = []
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-access-'))
+  const access = createAccess({ dataDir: dir, log: () => {}, onRevoke: (ids) => revoked.push(...ids) })
+  await access.setAdminPin({ pin: '123456', source: 'own' }, { open: true })
+  access.setGateway({ enabled: true })
+  const licht = await loginAs(access, 'Simon', 'licht1')
+  const admin = await loginAs(access, 'Chef', 'admin')
+
+  t.mock.timers.setTime(berlin('2026-10-15T04:59:00'))
+  assert.equal(access.userOf(fakeReq({ mv_session: licht }))?.roleId, 'licht1')
+
+  t.mock.timers.setTime(berlin('2026-10-15T05:00:00'))
+  assert.equal(access.userOf(fakeReq({ mv_session: licht })), null)
+  assert.equal(access.userOf(fakeReq({ mv_session: admin }))?.admin, true)
+  access.expireSessions()
+  assert.equal(revoked.length, 1)
+  assert.deepEqual(access.sessions().map((s) => s.roleId), ['admin'])
+})
+
+test('„Neuen Code erzeugen“ beendet auch die Rollen-Anmeldungen', async () => {
+  const { access } = await setup()
+  access.setGateway({ enabled: true })
+  const session = await loginAs(access, 'Simon', 'licht1')
+  assert.equal(access.userOf(fakeReq({ mv_session: session }))?.roleId, 'licht1')
+  access.renewDayCode()
+  assert.equal(access.userOf(fakeReq({ mv_session: session })), null)
+})
+
+test('ohne Anmeldung für alle Dienste gibt es keinen Tagescode – Rollen bleiben angemeldet', async () => {
+  const { access } = await setup()
+  const session = await loginAs(access, 'Simon', 'licht1')
+  access.renewDayCode()
+  assert.equal(access.userOf(fakeReq({ mv_session: session }))?.roleId, 'licht1')
+})
+
 test('„Neuen Code erzeugen“ beendet alle Freischaltungen sofort', async () => {
   const { access } = await setup()
   access.setGateway({ enabled: true })

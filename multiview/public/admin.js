@@ -3403,7 +3403,7 @@ function renderGateway() {
       <div class="day-code-info">
         <span class="field"><span>Code für Laptops</span></span>
         <output class="day-code-digits" aria-label="Code von heute: ${esc(info.code.split('').join(' '))}">${esc(digits)}</output>
-        <p class="muted">Neu um Mitternacht. Wer ihn heute eingegeben hat, bleibt bis morgen 5 Uhr freigeschaltet.
+        <p class="muted">Neu um Mitternacht. Wer ihn heute eingegeben hat, bleibt bis morgen 5 Uhr freigeschaltet – danach müssen sich auch die Rollen (nicht der Admin) neu anmelden.
           <b>${info.devicesToday}</b> ${info.devicesToday === 1 ? 'Gerät ist' : 'Geräte sind'} gerade freigeschaltet.</p>
         <button class="btn small" type="button" id="gateway-renew">Neuen Code erzeugen</button>
         <div class="day-qr-monitor">

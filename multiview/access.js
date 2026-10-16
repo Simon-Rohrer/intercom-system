@@ -21,7 +21,8 @@ const QR_TTL_MS = 10 * 60 * 1000
 // Ticket für den Abgleich der Anmeldung zwischen den Adressen (nur für eine Weiterleitung)
 const SSO_TTL_MS = 60 * 1000
 // Tagescode: neu um Mitternacht (deutsche Zeit); wer ihn am Vortag eingegeben hat, bleibt bis
-// 5 Uhr freigeschaltet, damit niemand mitten in einer Veranstaltung rausfliegt
+// 5 Uhr freigeschaltet, damit niemand mitten in einer Veranstaltung rausfliegt. Mit dem Code
+// enden auch die Rollen-Anmeldungen (nicht die des Admins).
 const TIME_ZONE = 'Europe/Berlin'
 const GRACE_UNTIL_HOUR = 5
 const CODE_MAX_FAILS = 8
@@ -247,14 +248,37 @@ function createAccess({
       created: Date.now(),
       seen: Date.now(),
       ip: ip || undefined,
+      // Tagescode, unter dem die Anmeldung entstand: mit ihm endet auch sie (siehe sessionValid)
+      gen: dayCode().gen,
     }
     write()
     return token
   }
 
+  /**
+   * Eine Rollen-Anmeldung gilt nur so lange wie der Tagescode, unter dem sie entstand – also
+   * wie eine Freischaltung: bis morgen 5 Uhr, oder bis „Neuen Code erzeugen“. Der Admin (PIN)
+   * bleibt angemeldet. Ohne eingeschaltete Anmeldung für alle Dienste gibt es keinen Tagescode.
+   * Ältere Anmeldungen ohne Code bekommen den heutigen und laufen mit ihm ab.
+   */
+  function sessionValid(s) {
+    if (s.admin || !gatewayActive()) return true
+    if (!s.gen) {
+      s.gen = dayCode().gen
+      writeSoon()
+    }
+    return genValid(s.gen)
+  }
+
+  /** Abgelaufene Rollen-Anmeldungen beenden und die offenen Seiten dort abmelden. */
+  function expireSessions() {
+    endSessions(Object.values(secret.sessions).filter((s) => !sessionValid(s)), 'abgelaufen')
+  }
+
   function lookupSession(req) {
     const token = parseCookies(req.headers.cookie)[COOKIE]
-    return (token && secret.sessions[sha256(token)]) || null
+    const s = token && secret.sessions[sha256(token)]
+    return s && sessionValid(s) ? s : null
   }
 
   function deleteSessions(list) {
@@ -303,11 +327,13 @@ function createAccess({
 
   /** Wer hat die Rolle gerade (andere Personen als group)? */
   function holdersOf(roleId, group = null) {
+    expireSessions()
     return Object.values(secret.sessions).filter((s) => s.roleId === roleId && !s.admin && (s.group ?? s.id) !== group)
   }
 
   /** Belegte Rollen für die Anmeldeseite: { roleId: Name } */
   function occupiedRoles() {
+    expireSessions()
     const out = {}
     for (const s of Object.values(secret.sessions)) if (!s.admin && isActive(s)) out[s.roleId] = s.name
     return out
@@ -472,7 +498,7 @@ function createAccess({
     ssoTickets.delete(key)
     if (!entry || entry.expires < Date.now()) return false
     const s = Object.values(secret.sessions).find((x) => x.id === entry.id)
-    if (!s) return false
+    if (!s || !sessionValid(s)) return false
     // eigene, andere Anmeldung dieses Browsers unter dieser Adresse ersetzen
     const own = parseCookies(req.headers.cookie)[COOKIE]
     const ownSession = own ? secret.sessions[sha256(own)] : null
@@ -491,6 +517,7 @@ function createAccess({
 
   /** Angemeldete Geräte – jede Anmeldung einmal, auch wenn sie unter mehreren Adressen gilt. */
   function sessions() {
+    expireSessions()
     const byId = new Map()
     for (const s of Object.values(secret.sessions)) if (!byId.has(s.id) || byId.get(s.id).seen < s.seen) byId.set(s.id, s)
     return [...byId.values()]
@@ -692,7 +719,7 @@ function createAccess({
 
   return {
     enabled, pinSource, userOf, sessionIdOf, occupiedRoles, occupiedForLogin, login, createSsoTicket, redeemSsoTicket, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession,
-    gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, approveDevice, check, trusted, createTicket,
+    expireSessions, gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, approveDevice, check, trusted, createTicket,
     flush: write,
   }
 }

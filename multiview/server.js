@@ -2403,6 +2403,8 @@ server.listen(PORT, HOST, () => {
   console.log(`  Monitor:  http://localhost:${PORT}/output.html?id=1`)
   refreshScreens()
   setInterval(refreshScreens, 3000)
+  // Mit dem Tagescode enden die Rollen-Anmeldungen – offene Seiten sofort abmelden, nicht erst bei der nächsten Anfrage
+  setInterval(() => access.expireSessions(), 60_000)
   applyAtemIp()
   applyProPresenter()
   startMediamtx()
