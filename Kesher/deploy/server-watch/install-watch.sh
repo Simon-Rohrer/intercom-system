@@ -24,8 +24,8 @@ case "${1:-}" in
   "") ;;
   --new-bot) NEW_BOT="true" ;;
   --uninstall)
-    systemctl disable --now jms-watch.timer 2>/dev/null || true
-    rm -f /etc/systemd/system/jms-watch.timer /etc/systemd/system/jms-watch.service
+    systemctl disable --now jms-watch.timer jms-watch-bot.service 2>/dev/null || true
+    rm -f /etc/systemd/system/jms-watch.timer /etc/systemd/system/jms-watch.service /etc/systemd/system/jms-watch-bot.service
     systemctl daemon-reload
     echo "Störungsmeldungen abgeschaltet. ${CONFIG_DIR} bleibt erhalten."
     exit 0
@@ -39,7 +39,10 @@ echo "==> jms-watch installieren"
 install -m 0755 "${SCRIPT_DIR}/jms-watch" /usr/local/sbin/jms-watch
 install -m 0644 "${SCRIPT_DIR}/jms-watch.service" /etc/systemd/system/jms-watch.service
 install -m 0644 "${SCRIPT_DIR}/jms-watch.timer" /etc/systemd/system/jms-watch.timer
+install -m 0644 "${SCRIPT_DIR}/jms-watch-bot.service" /etc/systemd/system/jms-watch-bot.service
 systemctl daemon-reload
+# Der Bot-Dienst liest dieselben Nachrichten wie die Chat-ID-Suche – solange anhalten
+systemctl stop jms-watch-bot.service 2>/dev/null || true
 
 install -d -m 0700 "${CONFIG_DIR}"
 if [[ ! -f "${CONFIG_FILE}" ]]; then
@@ -113,8 +116,8 @@ fi
 curl -fsS --max-time 15 "https://api.telegram.org/bot$(current TELEGRAM_BOT_TOKEN)/setMyCommands" \
   --data-urlencode 'commands=[{"command":"status","description":"Zustand des Servers"}]' >/dev/null || true
 
-systemctl enable jms-watch.timer
-systemctl restart jms-watch.timer
+systemctl enable jms-watch.timer jms-watch-bot.service
+systemctl restart jms-watch.timer jms-watch-bot.service
 # Erste Runde sofort: schickt beim ersten Mal die Begrüßung an den Bot
 systemctl start jms-watch.service || true
 

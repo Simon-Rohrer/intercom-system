@@ -125,7 +125,7 @@ Der Server prüft sich jede Minute selbst (`jms-watch`) und meldet Störungen ü
 - **Companion-Weboberfläche** antwortet nicht, **Speicherplatz** über 90 %.
 - **Server war aus** (Strom, Absturz): Nach dem Hochfahren kommt eine Meldung mit dem letzten Lebenszeichen.
 
-Gemeldet wird erst nach 3 Minuten Störung (Internet: 2 Minuten), damit Neustarts und Updates keinen Alarm auslösen, und noch einmal, wenn es wieder läuft. Während der nächtlichen Sicherung werden Container und Dienste nicht geprüft. Im Bot zeigt `/status` jederzeit den aktuellen Zustand.
+Gemeldet wird erst nach 3 Minuten Störung (Internet: 2 Minuten), damit Neustarts und Updates keinen Alarm auslösen, und noch einmal, wenn es wieder läuft. Während der nächtlichen Sicherung werden Container und Dienste nicht geprüft. Im Bot zeigt `/status` jederzeit den aktuellen Zustand (Antwort nach wenigen Sekunden über den Dienst `jms-watch-bot`, Stand der letzten Prüfrunde).
 
 Einrichten (fragt nach dem Bot-Token und findet die Chat-ID selbst):
 
