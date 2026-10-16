@@ -23,6 +23,7 @@ SYSTEM_PATHS=(
   /etc/caddy /etc/netplan /etc/kesher /etc/pam.d/kesher-chat-kiosk
   /etc/systemd/system /etc/chromium/policies/managed /etc/chromium-browser/policies/managed
   /opt/homelab/compose /opt/homelab/config /usr/local/sbin/jms-backup
+  /etc/jms-watch /usr/local/sbin/jms-watch
 )
 COMPANION_PATHS=(
   /home/companion/.config/companion-nodejs

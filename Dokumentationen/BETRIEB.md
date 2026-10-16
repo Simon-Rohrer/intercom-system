@@ -114,6 +114,29 @@ Wenn direkt auf die Datenbank zugegriffen werden muss, liegt sie im Container un
 /app/data/intercom.db
 ```
 
+## Störungsmeldungen per Telegram
+
+Der Server prüft sich jede Minute selbst (`jms-watch`) und meldet Störungen über einen **eigenen Telegram-Bot**, der nur dafür da ist (nicht der Kesher-Bot):
+
+- **Internet und DNS**: Ohne Internet kann der Server nichts schicken. Die Meldung kommt deshalb, sobald die Verbindung wieder steht, als „war gestört von … bis …“. Den Ausfall vom 15.10.2026 (17:04 bis 08:57, kein Tailscale-Zugang von außen) hätte er so gemeldet.
+- **Docker-Container**: jeder Container mit Neustart-Regel (`always`, `unless-stopped`) muss laufen und darf nicht `unhealthy` sein.
+- **Dienste**: `docker`, `caddy`, `tailscaled`, `companion` (und `multiview`, `kesher-chat-kiosk`, falls eingeschaltet) müssen laufen. Zusätzlich wird jede systemd-Unit gemeldet, die als „failed“ steht, z. B. eine fehlgeschlagene Sicherung.
+- **Tailscale** auf dem Host und in Tailscale-Containern (z. B. `tailscale-lasse`): nicht verbunden oder abgemeldet.
+- **Companion-Weboberfläche** antwortet nicht, **Speicherplatz** über 90 %.
+- **Server war aus** (Strom, Absturz): Nach dem Hochfahren kommt eine Meldung mit dem letzten Lebenszeichen.
+
+Gemeldet wird erst nach 3 Minuten Störung (Internet: 2 Minuten), damit Neustarts und Updates keinen Alarm auslösen, und noch einmal, wenn es wieder läuft. Während der nächtlichen Sicherung werden Container und Dienste nicht geprüft. Im Bot zeigt `/status` jederzeit den aktuellen Zustand.
+
+Einrichten (fragt nach dem Bot-Token und findet die Chat-ID selbst):
+
+1. In Telegram `@BotFather` öffnen, `/newbot` senden, Namen (z. B. „JMS Störungen“) und Benutzernamen vergeben, Token kopieren.
+2. Auf dem Server: `cd ~/intercom-system/Kesher/deploy/server-watch && sudo ./install-watch.sh`, Token einfügen.
+3. Wenn das Skript es sagt, in Telegram den neuen Bot öffnen und auf **Start** tippen. Danach kommt die Begrüßung vom Bot.
+
+Weitere Befehle: `sudo jms-watch --status` (Zustand im Terminal), `sudo jms-watch --test` (Testnachricht), `sudo ./install-watch.sh --new-bot` (anderer Bot/Chat), `sudo ./install-watch.sh --uninstall`. Einstellungen (Wartezeiten, auszunehmende Container oder Dienste über `IGNORE_CONTAINERS` / `IGNORE_UNITS`) stehen in `/etc/jms-watch/watch.env` und wirken ab der nächsten Minute. Protokoll: `journalctl -u jms-watch -n 50`.
+
+Wird ein Container absichtlich länger gestoppt, meldet der Bot das nach 3 Minuten einmal. Soll das nicht passieren, den Container in `IGNORE_CONTAINERS` eintragen.
+
 ## Chat automatisch leeren
 
 Kommt 6 Stunden lang keine neue Chat-Nachricht, leert Kesher den Chat für alle: Verlauf auf dem Server, Stationen und Chat-Anzeige. Der Server prüft das einmal pro Minute. Jede neue Nachricht (auch per Stream Deck oder Telegram) startet die 6 Stunden neu. Manuell geht es weiterhin im Admin-Bereich unter `Chatverlauf`.

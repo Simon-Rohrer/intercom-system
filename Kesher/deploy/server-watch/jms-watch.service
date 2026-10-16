@@ -1,0 +1,8 @@
+[Unit]
+Description=JMS-Server: Prüfrunde für Störungsmeldungen per Telegram
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jms-watch
+TimeoutStartSec=55
+Nice=5

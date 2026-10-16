@@ -1,0 +1,10 @@
+[Unit]
+Description=JMS-Server: Störungen jede Minute prüfen
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
