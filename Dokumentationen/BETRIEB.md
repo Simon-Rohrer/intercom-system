@@ -66,13 +66,34 @@ docker compose -f deploy/compose/docker-compose.yml down
 
 ## Daten sichern
 
-Der JMS-Server sichert sich jede Nacht um 3:30 Uhr (deutsche Zeit) verschlüsselt in Google Drive (restic über rclone, Ordner `JMS-Backup`). Kesher und Companion sind dabei ca. 1 Minute aus. Hochgeladen werden nur Änderungen; es bleiben 7 tägliche und 4 wöchentliche Sicherungen, sonntags wird ein Teil der Daten zurückgelesen und geprüft. Schlägt eine Sicherung fehl, kommt eine Telegram-Nachricht (wenn in `/etc/jms-backup/cloud.env` eingetragen). Eine verpasste Sicherung (Server war um 3:30 aus) wird bewusst nicht beim Einschalten nachgeholt.
+Der JMS-Server sichert sich jede Nacht um 3:30 Uhr (deutsche Zeit) verschlüsselt auf einen **USB-Datenträger**, der dauerhaft am Server steckt (restic, eingebunden unter `/mnt/jms-backup`). Kesher und Companion sind dabei ca. 1 Minute aus. Gespeichert werden nur Änderungen; es bleiben 7 tägliche und 4 wöchentliche Sicherungen, sonntags wird ein Teil der Daten zurückgelesen und geprüft. Eine verpasste Sicherung (Server war um 3:30 aus) wird bewusst nicht beim Einschalten nachgeholt. Fehlt der Datenträger, bricht die Sicherung ab, bevor Kesher angehalten wird, und schreibt nie auf die Server-Festplatte.
 
-**Stand 16.10.2026: Die Cloud-Sicherung ist auf dem JMS-Server nicht eingerichtet** (bewusst kein Google-Konto hinterlegt), der Timer ist abgeschaltet: `sudo systemctl disable --now jms-backup-cloud.timer`. Gesichert wird von Hand mit `sudo jms-backup` (Ordner unter `/home/master/backups`).
+Der Störungs-Bot (siehe unten) meldet eine fehlgeschlagene Sicherung, einen fehlenden oder fast vollen USB-Datenträger und wenn die letzte erfolgreiche Sicherung länger als 36 Stunden her ist. In `/status` steht, wann zuletzt gesichert wurde.
+
+Größe: 64–128 GB reichen (eine Sicherung ist klein, weil Docker-Images und Betriebssystem nicht mitgesichert werden; jede weitere Nacht kommt nur die Änderung dazu). Belegung prüfen: `sudo jms-backup --list` bzw. `/status` im Bot. Besser als ein USB-Stick ist eine kleine USB-SSD oder -Festplatte – Sticks verschleißen bei nächtlichem Schreiben schneller.
+
+Einrichten (einmalig, Datenträger vorher anstecken):
+
+```sh
+cd ~/intercom-system/Kesher/deploy/server-backup
+sudo ./install-backup.sh --usb            # vorhandenes Dateisystem nutzen (ext4, exFAT, NTFS …)
+sudo ./install-backup.sh --usb --format   # vorher mit ext4 neu formatieren (löscht den Datenträger)
+```
+
+Das Skript zeigt die angeschlossenen Datenträger (die Systemplatte nie), fragt nach der Partition (z. B. `sdb1`), trägt sie in `/etc/fstab` ein (`nofail`: der Server startet auch ohne) und zeigt am Ende das **Backup-Passwort**. Es muss außerhalb des Servers aufbewahrt werden – ohne es ist keine Sicherung lesbar, auch nicht vom USB-Datenträger.
 
 Gesichert werden alle Docker-Volumes (u. a. Kesher-Datenbank, Multiview-Einstellungen, Portainer), Companion, Caddy, Netzwerk, Kiosk, systemd-Dienste, `/opt/homelab` und der Quellstand `~/intercom-system` mit lokalen Änderungen.
 
-Einrichten (einmalig am Server, Google-Anmeldung über einen Rechner mit Browser):
+```sh
+sudo systemctl start jms-backup-cloud     # Sicherung jetzt
+journalctl -u jms-backup-cloud -n 50      # letzter Lauf
+systemctl list-timers jms-backup-cloud    # nächster Lauf
+sudo jms-backup --list                    # nächtliche Sicherungen anzeigen
+sudo jms-backup --restore /home/master/restore   # neueste Sicherung holen
+sudo jms-backup                           # Vollsicherung als Ordner unter /home/master/backups (für den Mac)
+```
+
+**Alternative Google Drive** (auf dem JMS-Server bewusst nicht genutzt, Einrichtung aufwändig; Google-Anmeldung über einen Rechner mit Browser):
 
 ```sh
 cd ~/intercom-system/Kesher/deploy/server-backup
@@ -82,15 +103,6 @@ sudo ./install-backup.sh
 Das Skript zeigt am Ende das **Backup-Passwort**. Es muss außerhalb des Servers aufbewahrt werden – ohne es ist keine Sicherung lesbar.
 
 **Eigener Google-Zugang (nötig):** Der eingebaute Zugang von rclone wird von Google oft gebremst („rateLimitExceeded“). Einmalig mit dem Technik-Konto in der [Google Cloud Console](https://console.cloud.google.com): Projekt anlegen → *APIs & Dienste* → *Google Drive API* aktivieren → *OAuth-Zustimmungsbildschirm*: extern, App-Name, E-Mail, Bereich `…/auth/drive.file`, danach **„App veröffentlichen“** (sonst läuft die Anmeldung nach 7 Tagen ab) → *Anmeldedaten* → *OAuth-Client-ID* vom Typ **Desktop-App**. Dann auf dem Server `sudo ./install-backup.sh --client-id <ID> --client-secret <Secret>` und neu anmelden. Mit `drive.file` sieht ein neuer Zugang die Dateien des alten nicht – einen alten Ordner `JMS-Backup` vorher in Drive löschen; das Skript legt ihn neu an.
-
-```sh
-sudo systemctl start jms-backup-cloud     # Sicherung jetzt
-journalctl -u jms-backup-cloud -n 50      # letzter Lauf
-systemctl list-timers jms-backup-cloud    # nächster Lauf
-sudo jms-backup --list                    # Sicherungen in Google Drive
-sudo jms-backup --restore /home/master/restore   # neueste Sicherung holen
-sudo jms-backup                           # Vollsicherung als Ordner unter /home/master/backups (für den Mac)
-```
 
 Nach `--restore` liegen die Daten unter `/home/master/restore/var/lib/jms-backup/stage` (Volumes, Companion, Kesher-Version und lokale Änderungen), Systemdateien und Quellstand unter ihrem ursprünglichen Pfad in `/home/master/restore`. Ein Volume zurückspielen (Kesher vorher anhalten):
 
@@ -125,6 +137,7 @@ Der Server prüft sich jede Minute selbst (`jms-watch`) und meldet Störungen ü
 - **Dienste**: `docker`, `caddy`, `tailscaled`, `companion` (und `multiview`, `kesher-chat-kiosk`, falls eingeschaltet) müssen laufen. Zusätzlich wird jede systemd-Unit gemeldet, die als „failed“ steht, z. B. eine fehlgeschlagene Sicherung.
 - **Tailscale** auf dem Host und in Tailscale-Containern (z. B. `tailscale-lasse`): nicht verbunden oder abgemeldet.
 - **Companion-Weboberfläche** antwortet nicht, **Speicherplatz** über 90 %, **Arbeitsspeicher** über 95 %, **Temperatur** über 85 °C.
+- **Nächtliche Sicherung**: USB-Datenträger fehlt oder ist fast voll, letzte erfolgreiche Sicherung älter als 36 Stunden.
 - **Server war aus** (Strom, Absturz): Nach dem Hochfahren kommt eine Meldung mit dem letzten Lebenszeichen.
 
 Gemeldet wird erst nach 3 Minuten Störung (Internet: 2 Minuten), damit Neustarts und Updates keinen Alarm auslösen, und noch einmal, wenn es wieder läuft. Während der nächtlichen Sicherung werden Container und Dienste nicht geprüft. Im Bot zeigt `/status` jederzeit jeden überwachten Dienst mit eigenem Status, gegliedert nach Netzwerk, Container, Dienste, Weboberflächen und System (z. B. „🟢 kesher – läuft seit 9 Std. · gesund“). Die Antwort kommt nach wenigen Sekunden über den Dienst `jms-watch-bot`, Stand ist die letzte Prüfrunde.

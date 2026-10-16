@@ -10,7 +10,8 @@
 Geprüft werden: Internet, DNS, Tailscale (Host und Tailscale-Container), alle
 Docker-Container mit Neustart-Regel (laufen sie, sind sie gesund?), die Dienste aus
 WATCH_UNITS, jede systemd-Unit im Zustand „failed“, HTTP-Adressen aus HTTP_CHECKS,
-Speicherplatz, Arbeitsspeicher und Temperatur.
+Speicherplatz, Arbeitsspeicher, Temperatur und die nächtliche Sicherung (letzter
+Erfolg, USB-Datenträger angeschlossen und nicht zu voll).
 
 Gemeldet wird erst, wenn ein Problem FAIL_AFTER Runden hintereinander besteht, und
 noch einmal, wenn es OK_AFTER Runden hintereinander behoben ist. Ohne Internet
@@ -60,6 +61,10 @@ DEFAULTS = {
     "TEMP_WARN_CELSIUS": "85",
     "INTERNET_HOSTS": "1.1.1.1 8.8.8.8 9.9.9.9",
     "BOOT_GRACE_SECONDS": "300",
+    "BACKUP_CONFIG": "/etc/jms-backup/cloud.env",
+    "BACKUP_LAST_SUCCESS": "/var/lib/jms-backup/last-success",
+    # Nächtliche Sicherung: Meldung, wenn die letzte erfolgreiche länger her ist
+    "BACKUP_MAX_AGE_HOURS": "36",
 }
 
 MAX_OUTBOX = 60
@@ -408,6 +413,46 @@ def check_system(cfg):
     return results
 
 
+def check_backup(cfg):
+    """Nächtliche Sicherung: letzte erfolgreiche Runde und – bei USB – ob der Datenträger dran ist."""
+    _, out, _ = run(["systemctl", "is-enabled", "jms-backup-cloud.timer"], timeout=5)
+    if out.strip() != "enabled":
+        return {}
+    backup_cfg = {}
+    try:
+        with open(cfg["BACKUP_CONFIG"], encoding="utf-8") as fh:
+            for line in fh:
+                if "=" in line and not line.lstrip().startswith("#"):
+                    k, v = line.strip().split("=", 1)
+                    backup_cfg[k] = v.strip('"').strip("'")
+    except OSError:
+        pass
+    problems, parts = [], []
+    try:
+        with open(cfg["BACKUP_LAST_SUCCESS"], encoding="ascii") as fh:
+            last = float(fh.read().strip())
+        age = time.time() - last
+        parts.append(f"zuletzt {fmt_time(last)}")
+        if age > int(cfg["BACKUP_MAX_AGE_HOURS"]) * 3600:
+            problems.append(f"letzte erfolgreiche Sicherung vor {fmt_duration(age)}")
+    except (OSError, ValueError):
+        parts.append("noch keine nächtliche Sicherung gelaufen")
+    mount = backup_cfg.get("USB_MOUNT")
+    if mount:
+        # Der Zugriff bindet den Datenträger ein (automount); fehlt er, gibt es die Kennung nicht
+        if os.path.isfile(os.path.join(mount, ".jms-backup-disk")):
+            usage = shutil.disk_usage(mount)
+            percent = round(usage.used * 100 / usage.total)
+            parts.append(f"USB {percent} % belegt · {fmt_gb(usage.free)} frei")
+            if percent >= int(cfg["DISK_WARN_PERCENT"]):
+                problems.append(f"USB-Datenträger fast voll ({percent} %)")
+        else:
+            problems.append("USB-Datenträger nicht angeschlossen")
+    if problems:
+        return {"backup": result(False, "Sicherung", " · ".join(problems + parts))}
+    return {"backup": result(True, "Sicherung", " · ".join(parts))}
+
+
 # Diese Prüfungen werden während der Sicherung ausgelassen – ihr Zustand bleibt stehen
 BACKUP_PAUSED_PREFIXES = ("container:", "docker", "unit:", "failed:", "http:", "tailscale-container:")
 
@@ -430,6 +475,7 @@ def collect(cfg, during_backup):
         results.update(check_units(cfg, unknown))
         results.update(check_http(cfg))
     results.update(check_system(cfg))
+    results.update(check_backup(cfg))
     return results, unknown
 
 
