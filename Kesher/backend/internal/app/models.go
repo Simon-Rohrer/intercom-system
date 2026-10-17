@@ -199,7 +199,12 @@ type Session struct {
 	Secondary bool
 	// CentralAdmin is an admin session opened through the server's central
 	// login (signed ticket from the Multiview) instead of the admin PIN.
-	CentralAdmin bool
+	CentralAdmin     bool
+	CentralSessionID string
+	CentralVersion   string
+	DeviceID         string
+	DeviceVersion    string
+	StationDeviceID  string
 }
 
 type StreamDeckActionType string
@@ -207,27 +212,27 @@ type StreamDeckActionType string
 type StreamDeckPageType string
 
 const (
-	StreamDeckActionTypeNone           StreamDeckActionType = "none"
-	StreamDeckActionTypePTTRoom        StreamDeckActionType = "ptt_room"
-	StreamDeckActionTypeSelectTalkRoom StreamDeckActionType = "select_talk_room"
-	StreamDeckActionTypeSelectListen   StreamDeckActionType = "select_listen_room"
-	StreamDeckActionTypePTTSelected    StreamDeckActionType = "ptt_selected"
-	StreamDeckActionTypeListenRoom     StreamDeckActionType = "listen_room"
-	StreamDeckActionTypeCallRoom       StreamDeckActionType = "call_room"
-	StreamDeckActionTypeDirectUser     StreamDeckActionType = "direct_user"
-	StreamDeckActionTypeDirectRole     StreamDeckActionType = "direct_role"
-	StreamDeckActionTypeReplyToCaller  StreamDeckActionType = "reply_to_caller"
-	StreamDeckActionTypeIncomingCall   StreamDeckActionType = "incoming_call_indicator"
+	StreamDeckActionTypeNone            StreamDeckActionType = "none"
+	StreamDeckActionTypePTTRoom         StreamDeckActionType = "ptt_room"
+	StreamDeckActionTypeSelectTalkRoom  StreamDeckActionType = "select_talk_room"
+	StreamDeckActionTypeSelectListen    StreamDeckActionType = "select_listen_room"
+	StreamDeckActionTypePTTSelected     StreamDeckActionType = "ptt_selected"
+	StreamDeckActionTypeListenRoom      StreamDeckActionType = "listen_room"
+	StreamDeckActionTypeCallRoom        StreamDeckActionType = "call_room"
+	StreamDeckActionTypeDirectUser      StreamDeckActionType = "direct_user"
+	StreamDeckActionTypeDirectRole      StreamDeckActionType = "direct_role"
+	StreamDeckActionTypeReplyToCaller   StreamDeckActionType = "reply_to_caller"
+	StreamDeckActionTypeIncomingCall    StreamDeckActionType = "incoming_call_indicator"
 	StreamDeckActionTypeRaspberryStatus StreamDeckActionType = "raspberry_status"
-	StreamDeckActionTypeBroadcastPTT   StreamDeckActionType = "broadcast_ptt"
-	StreamDeckActionTypeMuteToggle     StreamDeckActionType = "mute_toggle"
-	StreamDeckActionTypeVolumeDelta    StreamDeckActionType = "volume_delta"
-	StreamDeckActionTypeChatMessage    StreamDeckActionType = "chat_message"
-	StreamDeckActionTypePageUp         StreamDeckActionType = "page_up"
-	StreamDeckActionTypePageDown       StreamDeckActionType = "page_down"
-	StreamDeckActionTypePageJump       StreamDeckActionType = "page_jump"
-	StreamDeckActionTypePageHome       StreamDeckActionType = "page_home"
-	StreamDeckActionTypePageBack       StreamDeckActionType = "page_back"
+	StreamDeckActionTypeBroadcastPTT    StreamDeckActionType = "broadcast_ptt"
+	StreamDeckActionTypeMuteToggle      StreamDeckActionType = "mute_toggle"
+	StreamDeckActionTypeVolumeDelta     StreamDeckActionType = "volume_delta"
+	StreamDeckActionTypeChatMessage     StreamDeckActionType = "chat_message"
+	StreamDeckActionTypePageUp          StreamDeckActionType = "page_up"
+	StreamDeckActionTypePageDown        StreamDeckActionType = "page_down"
+	StreamDeckActionTypePageJump        StreamDeckActionType = "page_jump"
+	StreamDeckActionTypePageHome        StreamDeckActionType = "page_home"
+	StreamDeckActionTypePageBack        StreamDeckActionType = "page_back"
 )
 
 const (

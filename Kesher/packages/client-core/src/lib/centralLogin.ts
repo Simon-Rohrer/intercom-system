@@ -13,6 +13,9 @@ export type CentralIdentity = {
   name: string;
   roleId: string;
   admin: boolean;
+  sessionId: string;
+  version: string;
+  expiresAt: number;
 };
 
 const BASE = "/.jms-auth";
@@ -20,7 +23,7 @@ const sessionIdentityStorageKey = "intercom-central-identity";
 
 /** Compares central identities: name, role and admin. */
 export function centralIdentityKey(identity: CentralIdentity | null): string {
-  return identity ? `${identity.name}|${identity.roleId}|${identity.admin}` : "";
+  return identity ? `${identity.name}|${identity.roleId}|${identity.admin}|${identity.sessionId}|${identity.version}|${identity.expiresAt}` : "";
 }
 
 /**
@@ -55,18 +58,18 @@ export async function fetchCentralIdentity(): Promise<CentralIdentity | null> {
       return null;
     }
     const data = (await res.json()) as {
-      user?: { name?: string; roleId?: string; admin?: boolean; open?: boolean } | null;
+      user?: Partial<CentralIdentity> & { open?: boolean } | null;
     };
     const user = data?.user;
-    if (!user || user.open || !user.name || !user.roleId) return null;
-    return { name: user.name, roleId: user.roleId, admin: Boolean(user.admin) };
+    if (!user || user.open || !user.name || !user.roleId || !user.sessionId || !user.version || !user.expiresAt || user.expiresAt <= Date.now()) return null;
+    return { name: user.name, roleId: user.roleId, admin: Boolean(user.admin), sessionId: user.sessionId, version: user.version, expiresAt: user.expiresAt };
   } catch {
     return null;
   }
 }
 
 /** Kesher admin session for the central admin (signed ticket, no PIN). */
-export async function centralAdminLogin(): Promise<LoginSuccess> {
+export async function centralSessionLogin(): Promise<LoginSuccess> {
   const ticketRes = await fetch(`${BASE}/api/ticket?aud=kesher`, {
     cache: "no-store",
     credentials: "same-origin",
@@ -76,9 +79,9 @@ export async function centralAdminLogin(): Promise<LoginSuccess> {
     error?: string;
   };
   if (!ticketRes.ok || !ticketData.ticket) {
-    throw new Error(ticketData.error || "Zentrale Admin-Anmeldung nicht möglich.");
+    throw new Error(ticketData.error || "Zentrale Anmeldung nicht möglich.");
   }
-  const res = await fetch("/api/admin/login/central", {
+  const res = await fetch("/api/login/central", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ticket: ticketData.ticket }),

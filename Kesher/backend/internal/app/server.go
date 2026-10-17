@@ -74,6 +74,12 @@ type Server struct {
 	companionImageEffectMapChecked      time.Time
 	companionImageEffectMapErr          string
 	udpAudio                            *UDPAudioRelay
+	centralHTTPClient                   *http.Client
+	centralCleanupCancel                context.CancelFunc
+	adminPINMu                          sync.Mutex
+	adminPINAttempts                    map[string]*adminPINAttempt
+	adminPINInFlight                    int
+	adminCredentialsMu                  sync.RWMutex
 }
 
 type tlsProvider interface {
@@ -244,6 +250,11 @@ func (s *Server) handleCompanionWS(w http.ResponseWriter, r *http.Request) {
 	if !s.requireCompanionSecret(w, r) {
 		return
 	}
+	validateAccess, allowed := s.serviceAuthorization(r, "companion")
+	if !allowed {
+		http.Error(w, "device capability required", http.StatusForbidden)
+		return
+	}
 	roleID, err := s.resolveCompanionRoleIDFromRequest(r.Context(), r)
 	if err != nil {
 		if errors.Is(err, errCompanionUserNotAllowed) {
@@ -286,6 +297,7 @@ func (s *Server) handleCompanionWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
+	defer watchServiceConnection(validateAccess, conn.Close)()
 	resolveUsernameForRole := func(targetRoleID string) string {
 		targetRoleID = strings.TrimSpace(targetRoleID)
 		if targetRoleID == "" {
@@ -3441,23 +3453,23 @@ type CompanionChatTextRequest struct {
 
 const companionChatTextMaxRunes = 500
 
-// handleCompanionChatText lets a trusted service on this server (the multiview's chat
-// window) post free text as a role - like a Stream Deck chat button, but with any text.
-// The role's online station is the sender, otherwise the role itself. Party-line
-// messages need the role's talk permission. Only direct requests from this machine
-// are accepted (never through the HTTPS reverse proxy), plus the Companion secret
-// when one is configured.
 func (s *Server) handleCompanionChatText(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !isDirectLocalRequest(r) {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-	if !s.requireCompanionSecret(w, r) {
-		return
+	if s.cfg.JMSAuthURL != "" {
+		if !s.requireServiceCapability(w, r, "chat-monitor") {
+			return
+		}
+	} else {
+		if !isDirectLocalRequest(r) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if !s.requireCompanionSecret(w, r) {
+			return
+		}
 	}
 	var req CompanionChatTextRequest
 	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&req); err != nil {
@@ -3825,9 +3837,16 @@ func NewServer(cfg Config) (*Server, error) {
 		ackEnabled:                          true,
 		ackSet:                              true,
 		upgrader: websocket.Upgrader{
-			CheckOrigin:      func(r *http.Request) bool { return true },
+			CheckOrigin:      allowedWebSocketOrigin,
 			HandshakeTimeout: 10 * time.Second,
 		},
+	}
+	if cfg.JMSAuthURL != "" {
+		s.centralHTTPClient, err = newCentralHTTPClient(cfg)
+		if err != nil {
+			_ = store.Close()
+			return nil, err
+		}
 	}
 	s.media = NewMediaManager(s.hub, logger)
 	s.hub.SetMediaManager(s.media)
@@ -3867,7 +3886,9 @@ func NewServer(cfg Config) (*Server, error) {
 	mux.HandleFunc("/api/public-bootstrap", s.handlePublicBootstrap)
 	mux.HandleFunc("/api/login", s.handleLogin)
 	mux.HandleFunc("/api/admin/login", s.handleAdminLogin)
+	mux.HandleFunc("/api/admin/pin/verify-central", s.handleCentralPINVerification)
 	mux.HandleFunc("/api/admin/login/central", s.handleCentralAdminLogin)
+	mux.HandleFunc("/api/login/central", s.handleCentralSessionLogin)
 	mux.HandleFunc("/api/login/takeover", s.handleLoginTakeover)
 	mux.HandleFunc("/api/logout", s.withAuth(s.handleLogout))
 	mux.HandleFunc("/api/bootstrap", s.withAuth(s.handleBootstrap))
@@ -3961,6 +3982,8 @@ func (s *Server) startChatHistoryIdleCleanup() {
 }
 
 func (s *Server) ListenAndServe() error {
+	s.startCentralSessionCleanup()
+	defer s.centralCleanupCancel()
 	s.startChatHistoryIdleCleanup()
 	// Start Telegram long polling if configured
 	if s.telegram != nil && s.telegram.Mode() == "polling" {
@@ -4012,6 +4035,9 @@ func (s *Server) ListenAndServe() error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.centralCleanupCancel != nil {
+		s.centralCleanupCancel()
+	}
 	if s.telegram != nil {
 		s.telegram.StopPolling()
 	}
@@ -4033,6 +4059,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) requireRaspberryPiHeartbeatSecret(w http.ResponseWriter, r *http.Request) bool {
+	if s.cfg.JMSAuthURL != "" {
+		return s.requireServiceCapability(w, r, "heartbeat")
+	}
 	configuredSecret := strings.TrimSpace(s.cfg.RaspberryPiHeartbeatSecret)
 	if configuredSecret == "" {
 		return true
@@ -4065,6 +4094,16 @@ func (s *Server) handleRaspberryPiHeartbeat(w http.ResponseWriter, r *http.Reque
 	if err := json.NewDecoder(io.LimitReader(r.Body, 32*1024)).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
+	}
+	if s.cfg.JMSAuthURL != "" {
+		device, err := s.machineForRequest(r)
+		if err != nil || device.DeviceID == "" || device.RoleID == "" || (req.DeviceID != "" && req.DeviceID != device.DeviceID) || (req.RoleID != "" && req.RoleID != device.RoleID) {
+			http.Error(w, "registered heartbeat identity required", http.StatusForbidden)
+			return
+		}
+		req.DeviceID = device.DeviceID
+		req.RoleID = device.RoleID
+		req.Name = device.Name
 	}
 	if strings.TrimSpace(req.IPAddress) == "" {
 		req.IPAddress = remoteHostFromRequest(r)
@@ -4155,7 +4194,13 @@ func (s *Server) buildRaspberryPiStationsResponse(ctx context.Context) (Raspberr
 	activeClients := map[string]ActiveClient{}
 	if s.hub != nil {
 		for _, client := range s.hub.GetActiveClients(ctx) {
-			activeClients[raspberryPiActiveClientKey(client.Username, client.RoleID)] = client
+			if s.cfg.JMSAuthURL != "" {
+				if client.StationDeviceID != "" {
+					activeClients[raspberryPiActiveClientKey(client.StationDeviceID, client.RoleID)] = client
+				}
+			} else {
+				activeClients[raspberryPiActiveClientKey(client.Username, client.RoleID)] = client
+			}
 		}
 	}
 	now := time.Now()
@@ -4171,7 +4216,11 @@ func (s *Server) buildRaspberryPiStationsResponse(ctx context.Context) (Raspberr
 			continue
 		}
 		online := ageMs <= offlineAfterMs
-		activeClient, intercomConnected := activeClients[raspberryPiActiveClientKey(record.Name, record.RoleID)]
+		identity := record.Name
+		if s.cfg.JMSAuthURL != "" {
+			identity = record.DeviceID
+		}
+		activeClient, intercomConnected := activeClients[raspberryPiActiveClientKey(identity, record.RoleID)]
 		if !online {
 			activeClient = ActiveClient{}
 			intercomConnected = false
@@ -4333,6 +4382,11 @@ func (s *Server) resolveRaspberryPiRemoteTarget(ctx context.Context, deviceID st
 }
 
 func (s *Server) handleRaspberryPiRemoteStations(w http.ResponseWriter, r *http.Request) {
+	device, allowed := s.raspberryPiReadScope(r)
+	if !allowed {
+		http.Error(w, "device status permission required", http.StatusForbidden)
+		return
+	}
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -4343,10 +4397,22 @@ func (s *Server) handleRaspberryPiRemoteStations(w http.ResponseWriter, r *http.
 		s.internalErr(w, err)
 		return
 	}
+	if device.DeviceID != "" {
+		stations := make([]RaspberryPiRemoteStationStatus, 0, 1)
+		for _, station := range response.Stations {
+			if station.DeviceID == device.DeviceID && station.RoleID == device.RoleID {
+				stations = append(stations, station)
+			}
+		}
+		response.Stations = stations
+	}
 	s.writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) handleRaspberryPiRemoteCommand(w http.ResponseWriter, r *http.Request) {
+	if !s.requireServiceCapability(w, r, "pi-manage") {
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -4476,6 +4542,9 @@ func (s *Server) handlePublicBootstrap(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if !s.allowIndependentLogin(w, r) {
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -4492,6 +4561,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.ContainsAny(req.Username, " \t\n\r") {
 		http.Error(w, "username must not contain whitespace", http.StatusBadRequest)
+		return
+	}
+	device, allowed := s.authorizeMachineLogin(w, r, req.RoleID)
+	if !allowed {
 		return
 	}
 	ok, err := s.store.RoleExists(r.Context(), req.RoleID)
@@ -4524,7 +4597,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, err)
 		return
 	}
-	session := s.createOperatorSession(user, req.Secondary)
+	session := s.createOperatorSession(user, req.Secondary, device)
 	s.writeJSON(w, http.StatusOK, LoginResponse{
 		Token:                session.Token,
 		User:                 user,
@@ -4540,9 +4613,11 @@ const operatorSessionConnectGrace = 2 * time.Minute
 // client opens its websocket in time (handleWS cancels the pending logout).
 // Without this, a login whose window is closed right away kept the role
 // occupied until the session TTL.
-func (s *Server) createOperatorSession(user User, secondary bool) Session {
+func (s *Server) createOperatorSession(user User, secondary bool, devices ...centralMachineStatus) Session {
 	var session Session
-	if secondary {
+	if len(devices) > 0 && devices[0].ID != "" {
+		session = s.sessions.CreateDevice(user, devices[0], secondary)
+	} else if secondary {
 		session = s.sessions.CreateSecondary(user)
 	} else {
 		session = s.sessions.Create(user)
@@ -4572,6 +4647,9 @@ func (s *Server) shouldShowBirthdayGreeting(ctx context.Context, username string
 }
 
 func (s *Server) handleLoginTakeover(w http.ResponseWriter, r *http.Request) {
+	if !s.allowIndependentLogin(w, r) {
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -4588,6 +4666,10 @@ func (s *Server) handleLoginTakeover(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.ContainsAny(req.Username, " \t\n\r") {
 		http.Error(w, "username must not contain whitespace", http.StatusBadRequest)
+		return
+	}
+	device, allowed := s.authorizeMachineLogin(w, r, req.RoleID)
+	if !allowed {
 		return
 	}
 	ok, err := s.store.RoleExists(r.Context(), req.RoleID)
@@ -4624,7 +4706,7 @@ func (s *Server) handleLoginTakeover(w http.ResponseWriter, r *http.Request) {
 		s.internalErr(w, err)
 		return
 	}
-	session := s.createOperatorSession(user, false)
+	session := s.createOperatorSession(user, false, device)
 	s.writeJSON(w, http.StatusOK, LoginResponse{
 		Token:                session.Token,
 		User:                 user,
@@ -4633,23 +4715,23 @@ func (s *Server) handleLoginTakeover(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.JMSAuthURL != "" {
+		http.Error(w, "central administrator login required", http.StatusForbidden)
+		return
+	}
+	if !s.allowIndependentLogin(w, r) {
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	var req AdminLoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
-	configuredPIN, err := s.store.GetAdminPIN(r.Context())
-	if err != nil || strings.TrimSpace(configuredPIN) == "" {
-		http.Error(w, "admin pin unavailable", http.StatusForbidden)
-		return
-	}
-	presentedPIN := strings.TrimSpace(req.PIN)
-	if subtle.ConstantTimeCompare([]byte(presentedPIN), []byte(configuredPIN)) != 1 {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	if !s.verifyAdminPIN(w, r, req.PIN) {
 		return
 	}
 	session := s.sessions.Create(User{Username: "admin"})
@@ -5084,6 +5166,9 @@ func (s *Server) handleUserCompanionPublish(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) requireCompanionSecret(w http.ResponseWriter, r *http.Request) bool {
+	if s.cfg.JMSAuthURL != "" {
+		return s.requireServiceCapability(w, r, "companion")
+	}
 	expected := strings.TrimSpace(s.cfg.CompanionSharedSecret)
 	if expected == "" {
 		return true
@@ -6036,21 +6121,23 @@ func (s *Server) handleAdminBroadcastGroupByID(w http.ResponseWriter, r *http.Re
 }
 
 func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request, session Session) bool {
+	if session.DeviceID != "" || (s.cfg.JMSAuthURL != "" && session.CentralSessionID == "") {
+		http.Error(w, "central administrator required", http.StatusForbidden)
+		return false
+	}
 	// Opened through the central login (signed ticket) – no PIN header needed
 	if session.CentralAdmin {
-		return true
-	}
-	configuredPIN, err := s.store.GetAdminPIN(r.Context())
-	if err != nil || strings.TrimSpace(configuredPIN) == "" {
-		http.Error(w, "admin pin unavailable", http.StatusForbidden)
+		if s.validateSessionRequest(r, session) {
+			return true
+		}
+		http.Error(w, "central session invalid", http.StatusUnauthorized)
 		return false
 	}
-	presentedPIN := strings.TrimSpace(r.Header.Get("X-Admin-Pin"))
-	if subtle.ConstantTimeCompare([]byte(presentedPIN), []byte(configuredPIN)) != 1 {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	if session.CentralSessionID != "" {
+		http.Error(w, "central administrator required", http.StatusForbidden)
 		return false
 	}
-	return true
+	return s.verifyAdminPIN(w, r, r.Header.Get("X-Admin-Pin"))
 }
 
 type updateAdminPINRequest struct {
@@ -6070,12 +6157,27 @@ func (s *Server) handleAdminPin(w http.ResponseWriter, r *http.Request, session 
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
 	}
+	if !validAdminPINFormat(req.NewPIN) {
+		http.Error(w, "invalid pin", http.StatusBadRequest)
+		return
+	}
+	s.adminCredentialsMu.Lock()
+	defer s.adminCredentialsMu.Unlock()
+	if err := s.revokeCentralAdmins(r.Context()); err != nil {
+		http.Error(w, "central revocation unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	if err := s.store.SetAdminPIN(r.Context(), req.NewPIN); err != nil {
 		if s.writeStoreErr(w, err) {
 			return
 		}
 		s.internalErr(w, err)
 		return
+	}
+	for _, active := range s.sessions.Snapshot() {
+		if active.CentralAdmin || (active.RoleID == "" && active.Username == "admin") {
+			s.revokeSession(active)
+		}
 	}
 	s.logAdminAction(session, r.Method, r.URL.Path, "admin pin updated", http.StatusOK)
 	s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -6532,7 +6634,7 @@ func (s *Server) withAuth(next func(http.ResponseWriter, *http.Request, Session)
 			return
 		}
 		session, ok := s.sessions.Get(auth)
-		if !ok {
+		if !ok || !s.validateSessionRequest(r, session) {
 			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
 		}
@@ -6561,7 +6663,7 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimSpace(r.URL.Query().Get("token"))
 	session, ok := s.sessions.Get(token)
-	if !ok {
+	if !ok || !s.validateSessionRequest(r, session) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -6694,12 +6796,17 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		var in WSInbound
 		if err := conn.ReadJSON(&in); err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				s.logger.Warn("websocket closed unexpectedly", "token", session.Token, "error", err)
+				s.logger.Warn("websocket closed unexpectedly", "role", session.RoleID, "error", err)
 			}
 			_ = conn.Close()
 			return
 		}
 		refreshWebSocketReadDeadline(conn)
+		if _, active := s.sessions.Get(session.Token); !active {
+			s.revokeSession(session)
+			_ = conn.Close()
+			return
+		}
 		switch in.Type {
 		case "webrtc_ready":
 			mediaReady = true

@@ -69,7 +69,7 @@ import { withResolvedStreamDeckButtonLabel } from "./lib/streamDeckLabels";
 import { sortDirectUsersByRoleAndUsername } from "./lib/users";
 import { resolveAutoLoginConfiguration } from "./lib/autoLogin";
 import {
-  centralAdminLogin,
+  centralSessionLogin,
   centralIdentityKey,
   centralLoginAvailable,
   centralLoginUrl,
@@ -464,7 +464,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     if (!centralChecked || !centralLoginAvailable()) return;
     let busy = false;
     const check = async () => {
-      if (busy || document.visibilityState === "hidden") return;
+      if (busy) return;
       busy = true;
       try {
         // Only act on a real answer – a network hiccup must not look like a logout
@@ -475,13 +475,13 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         if (!res.ok || !res.headers.get("content-type")?.includes("json")) return;
         const data = (await res.json()) as {
           access?: { enabled?: boolean };
-          user?: { name?: string; roleId?: string; admin?: boolean; open?: boolean } | null;
+          user?: Partial<CentralIdentity> & { open?: boolean } | null;
         };
         if (!data?.access?.enabled) return;
         const user = data.user;
         const identity =
-          user && !user.open && user.name && user.roleId
-            ? { name: user.name, roleId: user.roleId, admin: Boolean(user.admin) }
+          user && !user.open && user.name && user.roleId && user.sessionId && user.version && user.expiresAt && user.expiresAt > Date.now()
+            ? { name: user.name, roleId: user.roleId, admin: Boolean(user.admin), sessionId: user.sessionId, version: user.version, expiresAt: user.expiresAt }
             : null;
         if (centralIdentityKey(identity) !== centralIdentityKey(centralIdentityRef.current)) {
           window.location.reload();
@@ -494,7 +494,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     };
     document.addEventListener("visibilitychange", check);
     window.addEventListener("focus", check);
-    const timer = window.setInterval(check, 15000);
+    const timer = window.setInterval(check, 5000);
     return () => {
       document.removeEventListener("visibilitychange", check);
       window.removeEventListener("focus", check);
@@ -620,7 +620,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           return;
         }
 
-        let res = await login(
+        let res = centralIdentityRef.current ? await centralSessionLogin() : await login(
           useUsername,
           useRoleId,
           autoLoginConfig.enabled && autoLoginConfig.secondary,
@@ -1461,7 +1461,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
       void (async () => {
         try {
-          let res = await login(
+          let res = centralIdentityRef.current ? await centralSessionLogin() : await login(
             paramUsername,
             targetRoleId,
             autoLoginConfig.secondary,
@@ -1532,7 +1532,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     centralAdminTriedRef.current = true;
     void (async () => {
       try {
-        const res = await centralAdminLogin();
+        const res = await centralSessionLogin();
         setAuthMode("admin");
         setAdminLoginError("");
         setOperatorLoginError("");
@@ -1915,7 +1915,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         : settings.username.trim();
     const useRoleId =
       typeof overrideRoleId === "string" ? overrideRoleId : settings.roleId;
-    const res = await login(useUsername, useRoleId);
+    const res = centralIdentityRef.current ? await centralSessionLogin() : await login(useUsername, useRoleId);
     if ("requiresTakeover" in res) {
       // Occupied roles cannot be taken over by hand; only fixed devices
       // (auto-login URL with autoTakeover) reclaim their own role.

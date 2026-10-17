@@ -34,10 +34,16 @@ func (m *SessionManager) CreateSecondary(user User) Session {
 	return m.create(Session{UserID: user.ID, Username: user.Username, RoleID: user.RoleID, Secondary: true})
 }
 
-// CreateCentralAdmin creates an admin session confirmed by the central login
-// (see Session.CentralAdmin).
-func (m *SessionManager) CreateCentralAdmin(user User) Session {
-	return m.create(Session{UserID: user.ID, Username: user.Username, RoleID: user.RoleID, CentralAdmin: true})
+func (m *SessionManager) CreateCentral(user User, parent centralSessionStatus, secondary bool) Session {
+	return m.create(Session{UserID: user.ID, Username: user.Username, RoleID: user.RoleID, CentralAdmin: parent.Admin, CentralSessionID: parent.SessionID, CentralVersion: parent.Version, ExpiresAt: time.UnixMilli(parent.ExpiresAt), Secondary: secondary})
+}
+
+func (m *SessionManager) CreateDevice(user User, device centralMachineStatus, secondary bool) Session {
+	expiresAt := time.Now().Add(m.ttl)
+	if deviceExpiry := time.UnixMilli(device.ExpiresAt); deviceExpiry.Before(expiresAt) {
+		expiresAt = deviceExpiry
+	}
+	return m.create(Session{UserID: user.ID, Username: user.Username, RoleID: user.RoleID, DeviceID: device.ID, DeviceVersion: device.Version, StationDeviceID: device.DeviceID, ExpiresAt: expiresAt, Secondary: secondary})
 }
 
 // create stores s under a new token with a fresh expiry.
@@ -45,7 +51,9 @@ func (m *SessionManager) create(s Session) Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s.Token = uuid.NewString()
-	s.ExpiresAt = time.Now().Add(m.ttl)
+	if s.ExpiresAt.IsZero() {
+		s.ExpiresAt = time.Now().Add(m.ttl)
+	}
 	m.sessions[s.Token] = s
 	return s
 }
@@ -62,6 +70,16 @@ func (m *SessionManager) Get(token string) (Session, bool) {
 		return Session{}, false
 	}
 	return s, true
+}
+
+func (m *SessionManager) Snapshot() []Session {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make([]Session, 0, len(m.sessions))
+	for _, session := range m.sessions {
+		result = append(result, session)
+	}
+	return result
 }
 
 func (m *SessionManager) Delete(token string) {

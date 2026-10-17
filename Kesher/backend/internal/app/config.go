@@ -45,6 +45,8 @@ type Config struct {
 	// JMSAuthSecret verifies tickets from the server's central login (the
 	// Multiview), so its admin is also admin here without the PIN.
 	JMSAuthSecret               string
+	JMSAuthURL                  string
+	JMSAuthCAFile               string
 	CompanionAllowedUsernames   []string
 	CompanionImageEffectMapFile string
 	CompanionDynamicPaging      bool
@@ -84,11 +86,13 @@ type fileConfig struct {
 	TelegramMode                       string   `yaml:"telegram_mode"`
 	CompanionSharedSecret              string   `yaml:"companion_shared_secret"`
 	JMSAuthSecret                      string   `yaml:"jms_auth_secret"`
+	JMSAuthURL                         string   `yaml:"jms_auth_url"`
+	JMSAuthCAFile                      string   `yaml:"jms_auth_ca_file"`
 	CompanionAllowedUsernames          []string `yaml:"companion_allowed_usernames"`
 	CompanionImageEffectMapFile        string   `yaml:"companion_image_effect_map_file"`
 	CompanionDynamicPaging             *bool    `yaml:"companion_dynamic_paging"`
 	RaspberryPiHeartbeatSecret         string   `yaml:"raspberry_pi_heartbeat_secret"`
-	UDPAudioAddr                       string   `yaml:"udp_audio_addr"`
+	UDPAudioAddr                       *string  `yaml:"udp_audio_addr"`
 	UDPAudioAdvertiseIP                string   `yaml:"udp_audio_advertise_ip"`
 }
 
@@ -134,7 +138,7 @@ func defaultConfig() Config {
 		CompanionImageEffectMapFile: "image-effect-map.json",
 		CompanionDynamicPaging:      false,
 		RaspberryPiHeartbeatSecret:  "",
-		UDPAudioAddr:                ":8081",
+		UDPAudioAddr:                "",
 		UDPAudioAdvertiseIP:         "",
 	}
 }
@@ -272,6 +276,12 @@ func loadConfigFromFile(path string) (Config, error) {
 	if fileCfg.JMSAuthSecret != "" {
 		cfg.JMSAuthSecret = fileCfg.JMSAuthSecret
 	}
+	if fileCfg.JMSAuthURL != "" {
+		cfg.JMSAuthURL = fileCfg.JMSAuthURL
+	}
+	if fileCfg.JMSAuthCAFile != "" {
+		cfg.JMSAuthCAFile = fileCfg.JMSAuthCAFile
+	}
 	if len(fileCfg.CompanionAllowedUsernames) > 0 {
 		cfg.CompanionAllowedUsernames = append([]string{}, splitCSV(strings.Join(fileCfg.CompanionAllowedUsernames, ","))...)
 	}
@@ -284,8 +294,8 @@ func loadConfigFromFile(path string) (Config, error) {
 	if strings.TrimSpace(fileCfg.RaspberryPiHeartbeatSecret) != "" {
 		cfg.RaspberryPiHeartbeatSecret = strings.TrimSpace(fileCfg.RaspberryPiHeartbeatSecret)
 	}
-	if strings.TrimSpace(fileCfg.UDPAudioAddr) != "" {
-		cfg.UDPAudioAddr = strings.TrimSpace(fileCfg.UDPAudioAddr)
+	if fileCfg.UDPAudioAddr != nil {
+		cfg.UDPAudioAddr = strings.TrimSpace(*fileCfg.UDPAudioAddr)
 	}
 	if strings.TrimSpace(fileCfg.UDPAudioAdvertiseIP) != "" {
 		cfg.UDPAudioAdvertiseIP = strings.TrimSpace(fileCfg.UDPAudioAdvertiseIP)
@@ -341,6 +351,8 @@ func loadConfigFromEnv() Config {
 		TelegramMode:              getEnv("TELEGRAM_MODE", "polling"),
 		CompanionSharedSecret:     getEnv("COMPANION_SHARED_SECRET", ""),
 		JMSAuthSecret:             getEnv("JMS_AUTH_SECRET", ""),
+		JMSAuthURL:                getEnv("JMS_AUTH_URL", ""),
+		JMSAuthCAFile:             getEnv("JMS_AUTH_CA_FILE", ""),
 		CompanionAllowedUsernames: splitCSV(getEnv("COMPANION_ALLOWED_USERNAMES", "")),
 		CompanionImageEffectMapFile: getEnv(
 			"COMPANION_IMAGE_EFFECT_MAP_FILE",
@@ -348,7 +360,7 @@ func loadConfigFromEnv() Config {
 		),
 		CompanionDynamicPaging:     getEnv("COMPANION_DYNAMIC_PAGING", "false") == "true",
 		RaspberryPiHeartbeatSecret: getEnv("RASPBERRY_PI_HEARTBEAT_SECRET", ""),
-		UDPAudioAddr:               getEnv("UDP_AUDIO_ADDR", ":8081"),
+		UDPAudioAddr:               strings.TrimSpace(getEnv("UDP_AUDIO_ADDR", "")),
 		UDPAudioAdvertiseIP:        getEnv("UDP_AUDIO_ADVERTISE_IP", ""),
 	}
 }
