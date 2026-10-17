@@ -41,6 +41,22 @@ export function berlinParts(date = new Date()) {
   return { hour: parts.hour === '24' ? '00' : parts.hour, minute: parts.minute, second: parts.second }
 }
 
+/** Hochformat-Layout (9:16, z. B. für einen hochkant gedrehten Monitor)? */
+export const isPortrait = (layout) => layout?.orientation === 'portrait'
+
+/** Interne Größe einer Layout-Fläche – so groß wie der Monitor, auf dem es läuft. */
+export const layoutSize = (layout) => (isPortrait(layout) ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 })
+
+/**
+ * Vorschau in Monitorgröße verkleinern: Querformat füllt die Breite der Karte,
+ * Hochformat ihre Höhe und steht mittig (Karten bleiben im Raster gleich hoch).
+ */
+export function previewMetrics(el) {
+  if (!el.classList.contains('portrait')) return { scale: el.clientWidth / 1920, left: 0 }
+  const scale = el.clientHeight / 1920
+  return { scale, left: Math.max(0, (el.clientWidth - 1080 * scale) / 2) }
+}
+
 /** Kennung der Anmeldung aus /api/me – '' ohne Anmeldung. */
 export const loginKey = (user) => (user && !user.open ? `${user.name}|${user.roleId}|${Boolean(user.admin)}|${user.sessionId}|${user.version}|${user.expiresAt}` : '')
 

@@ -1,4 +1,4 @@
-import { connect, reloadWhenIdle, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
+import { isPortrait, layoutSize, previewMetrics, connect, reloadWhenIdle, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
 import { createAgendaView } from './agenda.js'
@@ -362,7 +362,11 @@ function layoutOptions(selected) {
   ].join('')
 }
 
-const scalePreview = (el) => el.style.setProperty('--preview-scale', String(el.clientWidth / 1920))
+const scalePreview = (el) => {
+  const { scale, left } = previewMetrics(el)
+  el.style.setProperty('--preview-scale', String(scale))
+  el.style.setProperty('--preview-left', `${left}px`)
+}
 const previewScaler =
   typeof ResizeObserver === 'function'
     ? new ResizeObserver((entries) => entries.forEach((entry) => scalePreview(entry.target)))
@@ -412,6 +416,13 @@ function renderOutputs() {
   for (const preview of grid.querySelectorAll('.output-preview')) previewScaler.observe(preview)
   for (const card of grid.querySelectorAll('.output-card')) {
     const output = config.outputs.find((o) => o.id === card.dataset.id)
+    // Hochformat-Layout: Vorschau hochkant und mittig
+    const preview = card.querySelector('.output-preview')
+    const portrait = isPortrait(config.layouts.find((l) => l.id === output?.layoutId))
+    if (preview && preview.classList.contains('portrait') !== portrait) {
+      preview.classList.toggle('portrait', portrait)
+      scalePreview(preview)
+    }
     const name = card.querySelector('[data-o="name"]')
     if (document.activeElement !== name) name.value = output.name
     const select = card.querySelector('[data-o="layoutId"]')
@@ -509,12 +520,17 @@ function renderScreens() {
       <td><code>${esc(id)}</code></td>
       <td><input type="text" data-s="name" value="${esc(saved?.name)}" placeholder="${esc(connectorLabel(id))}"></td>
       <td><select data-s="outputId">${outputOptions}</select></td>
+      <td><select data-s="rotate" aria-label="Drehung">
+        <option value="0" ${!saved?.rotate ? 'selected' : ''}>normal</option>
+        <option value="90" ${saved?.rotate === 90 ? 'selected' : ''}>hochkant ↻ 90°</option>
+        <option value="270" ${saved?.rotate === 270 ? 'selected' : ''}>hochkant ↺ 270°</option>
+      </select></td>
       <td>${status}</td>
     </tr>`
   })
   body.innerHTML =
     rows.join('') ||
-    `<tr><td colspan="4" class="muted">Keine Anschlüsse gefunden. Sie erscheinen hier, wenn JMS Control
+    `<tr><td colspan="5" class="muted">Keine Anschlüsse gefunden. Sie erscheinen hier, wenn JMS Control
       auf dem Linux-Rechner läuft, an dem die Monitore hängen.</td></tr>`
 }
 
@@ -526,7 +542,7 @@ function onScreenField(e) {
   const id = el.closest('tr').dataset.id
   let screen = config.screens.find((s) => s.id === id)
   if (!screen) config.screens.push((screen = { id, name: '', outputId: null }))
-  screen[key] = key === 'name' ? el.value : el.value || null
+  screen[key] = key === 'name' ? el.value : key === 'rotate' ? Number(el.value) || 0 : el.value || null
   renderCompanion()
   changed(key === 'name' ? 350 : 0)
 }
@@ -1052,10 +1068,12 @@ livePreviewToggle.addEventListener('change', () => {
 const canvas = $('#canvas')
 // Die Arbeitsfläche ist intern so groß wie ein Monitor (1920×1080) und wird verkleinert –
 // so sehen Schriften, Abstände und Rahmen genau so aus wie später auf dem Monitor.
-const CANVAS_WIDTH = 1920
 const canvasFrame = document.getElementById('canvas-frame')
 function scaleCanvas() {
-  const scale = canvasFrame.clientWidth / CANVAS_WIDTH
+  // Hochformat-Layouts: Arbeitsfläche 1080×1920 (Monitor hochkant)
+  const portrait = isPortrait(currentLayout())
+  canvasFrame.classList.toggle('portrait', portrait)
+  const scale = canvasFrame.clientWidth / layoutSize(currentLayout()).width
   if (scale > 0) canvasFrame.style.setProperty('--canvas-scale', String(scale))
 }
 if (typeof ResizeObserver === 'function') new ResizeObserver(scaleCanvas).observe(canvasFrame)
@@ -1466,6 +1484,10 @@ function layoutInspector(layout) {
   return `
     <h3>Layout</h3>
     <label class="field"><span>Name</span><input type="text" data-l="name" value="${esc(layout.name)}"></label>
+    <label class="field"><span>Format</span><select data-l="orientation">
+      <option value="landscape" ${isPortrait(layout) ? '' : 'selected'}>Querformat 16:9 (normaler Monitor)</option>
+      <option value="portrait" ${isPortrait(layout) ? 'selected' : ''}>Hochformat 9:16 (Monitor hochkant)</option>
+    </select></label>
     <div class="row">
       <label class="field"><span>Raster Spalten</span><input type="number" min="1" max="48" data-l="cols" value="${layout.cols}"></label>
       <label class="field"><span>Raster Zeilen</span><input type="number" min="1" max="48" data-l="rows" value="${layout.rows}"></label>

@@ -140,6 +140,8 @@ function normalizeScreens(list) {
       id: s.id,
       name: typeof s.name === 'string' ? s.name.trim() : '',
       outputId: typeof s.outputId === 'string' && s.outputId ? s.outputId : null,
+      // Monitor hochkant aufgehängt: Bild um 90° bzw. 270° drehen (0 = normal)
+      rotate: [90, 270].includes(Number(s.rotate)) ? Number(s.rotate) : 0,
     }))
 }
 
@@ -1095,6 +1097,7 @@ function screenList() {
       name: saved?.name || id,
       connected: detected?.connected ?? false,
       outputId: saved?.outputId ?? null,
+      rotate: saved?.rotate ?? 0,
     }
   })
 }

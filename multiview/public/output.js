@@ -1,4 +1,4 @@
-import { TIME_ZONE, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder } from './common.js'
+import { isPortrait, TIME_ZONE, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions } from './meters.js'
 import { createChatView } from './chat.js'
 import { chatFor, chatRoleFor } from './rights.js'
@@ -125,10 +125,19 @@ function render() {
     ? `Bildschirm ${screenRef} · Multiview`
     : output ? `${output.name} – Multiview` : 'Multiview'
 
+  // Monitor hochkant aufgehängt (Bildschirme am Server → Drehung): das ganze Bild drehen
+  const rotate = screen?.rotate === 90 || screen?.rotate === 270 ? String(screen.rotate) : ''
+  if ((document.body.dataset.rotate || '') !== rotate) {
+    if (rotate) document.body.dataset.rotate = rotate
+    else delete document.body.dataset.rotate
+  }
   // Nur neu aufbauen, wenn sich für diesen Ausgang wirklich etwas geändert hat,
   // sonst würden die Videos bei jeder Änderung an anderen Layouts kurz flackern.
   const key = JSON.stringify([output ?? outputRef, layout, config.sources, config.chat])
-  if (key === renderedKey) return updateOverlays()
+  if (key === renderedKey) {
+    fitStage(layout) // z. B. Drehung des Bildschirms geändert
+    return updateOverlays()
+  }
   renderedKey = key
 
   stage.replaceChildren()
@@ -150,6 +159,7 @@ function render() {
   if (!output) return showMessage(`Ausgang „${outputRef}“ nicht gefunden`)
   if (!layout) return showMessage(`${output.name}\nKein Layout zugewiesen`)
 
+  fitStage(layout)
   for (const el of [stage, frameLayer]) {
     el.style.setProperty('--bg', layout.background || '#000')
     el.style.setProperty('--gap', `${Number(layout.gap) || 0}px`)
@@ -162,6 +172,31 @@ function render() {
   updateOverlays()
   tick()
 }
+
+/**
+ * Fläche passend zum Layout-Format: Ein Hochformat-Layout (9:16) – oder ein Querformat-Layout auf
+ * einem hochkant stehenden Bildschirm – wird mittig mit schwarzen Rändern gezeigt statt verzerrt.
+ * Sonst füllt die Fläche wie bisher den ganzen Bildschirm.
+ */
+let fittedLayout = null
+function fitStage(layout) {
+  fittedLayout = layout
+  const W = document.body.clientWidth
+  const H = document.body.clientHeight
+  const portrait = isPortrait(layout)
+  const ratio = portrait ? 9 / 16 : 16 / 9
+  const fit = layout && (portrait || W / H < 1)
+  for (const el of [stage, frameLayer]) {
+    if (!fit) {
+      for (const p of ['width', 'height', 'left', 'top', 'right', 'bottom']) el.style.removeProperty(p)
+      continue
+    }
+    const w = Math.min(W, H * ratio)
+    const h = w / ratio
+    Object.assign(el.style, { width: `${w}px`, height: `${h}px`, left: `${(W - w) / 2}px`, top: `${(H - h) / 2}px`, right: 'auto', bottom: 'auto' })
+  }
+}
+window.addEventListener('resize', () => fittedLayout && fitStage(fittedLayout))
 
 function showMessage(text) {
   const el = document.createElement('div')

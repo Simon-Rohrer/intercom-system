@@ -31,7 +31,9 @@ function filterMessage(msg, config, user, station = null) {
   }
   if (!user) return null
   if (msg.type === 'config') return { ...msg, config: viewConfig(config, user) }
-  if (['devices', 'screens', 'server', 'sessions_changed'].includes(msg.type)) return null
+  // Nur die Versionskennung – damit offene Seiten nach einem Update von selbst neu laden
+  if (msg.type === 'server') return { type: 'server', bootId: msg.bootId }
+  if (['devices', 'screens', 'sessions_changed'].includes(msg.type)) return null
   if (msg.type === 'chat') {
     const rooms = (msg.rooms || []).filter((room) => room.listeners?.includes(user.roleId) || room.talkers?.includes(user.roleId))
     const permitted = new Set(rooms.map((room) => room.id))

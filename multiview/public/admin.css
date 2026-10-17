@@ -1909,3 +1909,12 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 @media (max-width: 560px) {
   .msg-link { flex-direction: column; }
 }
+
+/* Hochformat (Monitor hochkant): Arbeitsfläche 1080×1920, Vorschau hochkant mittig */
+.canvas-frame.portrait {
+  aspect-ratio: 9 / 16;
+  width: min(100%, calc(78vh * 9 / 16));
+  margin: 0 auto;
+}
+.canvas-frame.portrait > .canvas { width: 1080px; height: 1920px; }
+.output-preview.portrait iframe { width: 1080px; height: 1920px; left: var(--preview-left, 0px); }

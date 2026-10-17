@@ -52,7 +52,11 @@ test('Chat and broadcast filtering enforces role audience instead of frontend-on
   assert.deepEqual(filtered.rooms.map((room) => room.id), ['one'])
   assert.deepEqual(filtered.messages.map((message) => message.id), ['global', 'own'])
   assert.equal(filterMessage({ type: 'chatFlash', audience: ['stage'] }, config(), { roleId: 'light' }), null)
-  assert.equal(filterMessage({ type: 'server' }, config(), { roleId: 'light' }), null)
+  // Nur die Versionskennung (zum Neuladen nach Updates) – keine Adressen, Ports oder MediaMTX-Zustand
+  assert.deepEqual(
+    filterMessage({ type: 'server', bootId: 'v1', addresses: ['192.168.0.21'], ports: { rtsp: 8554 }, mediamtx: { status: 'ok' } }, config(), { roleId: 'light' }),
+    { type: 'server', bootId: 'v1' },
+  )
   assert.equal(filterMessage(payload, config(), null), null)
 })
 

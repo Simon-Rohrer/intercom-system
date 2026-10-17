@@ -5,7 +5,7 @@
 //   Bühne:       Bühnennachricht (Stage Display) in ProPresenter senden/löschen
 //   Beamer:      Meldung für die Gemeinde in ProPresenter vorbereiten – anzeigen tut sie der Bediener
 //   Monitore:    (nur Admin) welcher Multiview auf welchem Monitor am Server läuft
-import { connect, reloadWhenIdle, watchLogin, loginKey, TIME_ZONE } from './common.js'
+import { isPortrait, previewMetrics, connect, reloadWhenIdle, watchLogin, loginKey, TIME_ZONE } from './common.js'
 import { adoptServerPrefs, applyPrefs, currentPrefs, nextTheme, setPrefs, themeIcon } from './theme.js'
 import { visibleOutputs, visibleLayouts, canEditOutput, chatFor } from './rights.js'
 import { createComposer } from './chat-compose.js'
@@ -303,6 +303,7 @@ function renderOutputs() {
           innerHTML: `<iframe src="/output.html?id=${encodeURIComponent(output.id)}&embed=1" allow="microphone; camera; fullscreen; autoplay; speaker-selection" title="${esc(output.name)}"></iframe>`,
         })
       preview.dataset.id = output.id
+      preview.classList.toggle('portrait', isPortrait(current))
       card.querySelector('.rm-card-head').after(preview)
       previewScaler.observe(preview)
     }
@@ -312,8 +313,12 @@ function renderOutputs() {
 
 // Vorschau in Monitorgröße rendern und verkleinern – sonst wäre die Schrift im Verhältnis
 // zu den Kacheln viel zu groß (der Multiview rechnet Schriftgrößen mit Mindestwerten).
-const PREVIEW_WIDTH = 1920
-const scalePreview = (el) => el.style.setProperty('--rm-scale', String(el.clientWidth / PREVIEW_WIDTH))
+const scalePreview = (el) => {
+  // Querformat füllt die Kartenbreite, Hochformat (Monitor hochkant) die Höhe – mittig
+  const { scale, left } = previewMetrics(el)
+  el.style.setProperty('--rm-scale', String(scale))
+  el.style.setProperty('--rm-left', `${left}px`)
+}
 // Ältere iPhones (iOS 12) kennen ResizeObserver nicht – dann beim Drehen/Ändern der Größe neu rechnen
 const previewScaler =
   typeof ResizeObserver === 'function'
