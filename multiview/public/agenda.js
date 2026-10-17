@@ -106,6 +106,7 @@ export function pickNextEvent(todays, upcoming, filter, now = Date.now(), timeZo
 
 const DENSITIES = ['compact', 'normal', 'airy']
 const ACCENTS = ['#00d1ff', '#30d158', '#ffb020', '#ff5a4f', '#bf5af2', '#ffffff']
+const CCLI_COLORS = ['#a9b2be', '#ffffff', '#00d1ff', '#ffd60a', '#ffb020', '#30d158', '#ff5a4f', '#bf5af2']
 
 /** Darstellung der Ablauf-Kachel (tile.agendaLook) mit Standardwerten */
 export function agendaOptions(look) {
@@ -125,10 +126,59 @@ export function agendaOptions(look) {
     hideDone: bool(o.hideDone, false), // erledigte Punkte ausblenden
     openAll: bool(o.openAll, false), // Programmspalten immer aufgeklappt
     columns: String(o.columns || ''), // nur diese Programmspalten (Komma), leer = alle
+    ccliSize: Number.isFinite(Number(o.ccliSize)) && o.ccliSize != null ? Math.min(2.5, Math.max(0.5, Number(o.ccliSize))) : 1,
+    ccliColor: CCLI_COLORS.includes(o.ccliColor) ? o.ccliColor : CCLI_COLORS[0],
   }
 }
 
 export const AGENDA_ACCENTS = ACCENTS
+export const AGENDA_CCLI_COLORS = CCLI_COLORS
+
+/** Text in die Zwischenablage – auch ohne HTTPS bzw. ohne Clipboard-API (ältere Geräte) */
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // weiter mit dem alten Weg
+  }
+  const area = document.createElement('textarea')
+  area.value = text
+  area.setAttribute('readonly', '')
+  area.style.cssText = 'position:fixed;top:0;left:0;opacity:0;'
+  document.body.append(area)
+  area.select()
+  area.setSelectionRange(0, text.length)
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } catch {
+    ok = false
+  }
+  area.remove()
+  return ok
+}
+
+function copyButton(text) {
+  const btn = el('button', 'agenda-copy', 'Kopieren')
+  btn.type = 'button'
+  btn.title = `CCLI ${text} kopieren`
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation() // nicht den Punkt auf-/zuklappen
+    const ok = await copyText(text)
+    btn.textContent = ok ? '✓ Kopiert' : 'Fehler'
+    btn.classList.toggle('done', ok)
+    clearTimeout(btn.resetTimer)
+    btn.resetTimer = setTimeout(() => {
+      btn.textContent = 'Kopieren'
+      btn.classList.remove('done')
+    }, 1600)
+  })
+  btn.addEventListener('keydown', (e) => e.stopPropagation())
+  return btn
+}
 
 export function createAgendaView(tile) {
   const look = agendaOptions(tile.agendaLook)
@@ -145,6 +195,8 @@ export function createAgendaView(tile) {
   const root = el('div', `agenda density-${look.density}`)
   root.style.setProperty('--ag-scale', String(look.size))
   root.style.setProperty('--k-accent', look.accent)
+  root.style.setProperty('--ag-ccli-scale', String(look.ccliSize))
+  root.style.setProperty('--ag-ccli-color', look.ccliColor)
   root.classList.toggle('no-header', !look.header)
   root.classList.toggle('no-time', !look.time)
   root.classList.toggle('no-dur', !look.duration)
@@ -285,7 +337,11 @@ export function createAgendaView(tile) {
       if (item.song) {
         const facts = options.songInfo ? [item.song.key && `Tonart ${item.song.key}`, item.song.arrangement].filter(Boolean) : []
         if (facts.length) title.append(el('span', 'agenda-song', facts.join(' · ')))
-        if (options.ccli && item.song.ccli) title.append(el('span', 'agenda-ccli', `CCLI ${item.song.ccli}`))
+        if (options.ccli && item.song.ccli) {
+          const ccli = el('span', 'agenda-ccli-wrap')
+          ccli.append(el('span', 'agenda-ccli', `CCLI ${item.song.ccli}`), copyButton(item.song.ccli))
+          title.append(ccli)
+        }
       }
       main.append(title)
       if (options.responsible && item.responsible) main.append(el('div', 'agenda-resp', item.responsible))

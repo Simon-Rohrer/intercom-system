@@ -20,6 +20,15 @@ const outputRef = params.get('id') || '1'
 const embedded = params.has('embed')
 document.body.classList.toggle('embedded', embedded)
 
+// Bedienbare Extras (z. B. CCLI kopieren) nur im Monitor-Modus und im Vollbild –
+// nicht am HDMI-Ausgang und nicht in den kleinen Vorschauen
+function updateCanCopy() {
+  const fills = window.innerWidth >= screen.width - 4 && window.innerHeight >= screen.height - 4
+  document.body.classList.toggle('can-copy', !screenRef && (!embedded || fills))
+}
+updateCanCopy()
+window.addEventListener('resize', updateCanCopy)
+
 const stage = document.getElementById('stage')
 const frameLayer = document.getElementById('frames')
 const badgeServer = document.getElementById('badge-server')

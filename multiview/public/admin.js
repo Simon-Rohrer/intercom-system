@@ -1,7 +1,7 @@
 import { isPortrait, layoutSize, isStandardLayout, setPreviewSize, LAYOUT_MIN_PX, LAYOUT_MAX_PX, previewMetrics, connect, reloadWhenIdle, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
-import { createAgendaView, agendaOptions, AGENDA_ACCENTS } from './agenda.js'
+import { createAgendaView, agendaOptions, AGENDA_ACCENTS, AGENDA_CCLI_COLORS } from './agenda.js'
 import {
   createProPresenterView, createPlaylistView, createPreacherView, ppOptions, playlistOptions, preacherOptions,
 } from './propresenter.js'
@@ -390,7 +390,7 @@ function renderOutputs() {
         .map(
           (o) => `<article class="card output-card" data-id="${esc(o.id)}">
           <div class="output-preview">
-            <iframe src="${esc(outputUrl(o, true))}" allow="microphone; camera; fullscreen; autoplay; speaker-selection" title="${esc(o.name)}"></iframe>
+            <iframe src="${esc(outputUrl(o, true))}" allow="microphone; camera; fullscreen; autoplay; speaker-selection; clipboard-write" title="${esc(o.name)}"></iframe>
           </div>
           <div class="output-body">
             <div class="output-title">
@@ -1792,6 +1792,7 @@ function agendaLookSection(tile) {
   const o = agendaOptions(tile.agendaLook)
   const check = (key, label) =>
     `<label class="check"><input type="checkbox" data-ag="${key}" ${o[key] ? 'checked' : ''}> ${label}</label>`
+  const ccliNames = { '#a9b2be': 'Hellgrau', '#ffffff': 'Weiß', '#00d1ff': 'Cyan', '#ffd60a': 'Gelb', '#ffb020': 'Orange', '#30d158': 'Grün', '#ff5a4f': 'Rot', '#bf5af2': 'Lila' }
   const accentNames = { '#00d1ff': 'Cyan', '#30d158': 'Grün', '#ffb020': 'Orange', '#ff5a4f': 'Rot', '#bf5af2': 'Lila', '#ffffff': 'Weiß' }
   return `
     <div class="meter-settings">
@@ -1816,6 +1817,13 @@ function agendaLookSection(tile) {
       ${check('before', 'Punkte vor Beginn des Events')}
       ${check('hideDone', 'Erledigte Punkte ausblenden')}
       ${check('openAll', 'Programmspalten immer aufgeklappt (für Monitore ohne Bedienung)')}
+      <label class="field"><span>CCLI-Nummer: Größe <output>${Math.round(o.ccliSize * 100)} %</output></span>
+        <input type="range" min="0.5" max="2.5" step="0.1" data-ag="ccliSize" value="${o.ccliSize}"></label>
+      <label class="field"><span>CCLI-Nummer: Farbe</span>
+        <select data-ag="ccliColor">
+          ${AGENDA_CCLI_COLORS.map((c) => `<option value="${c}" ${o.ccliColor === c ? 'selected' : ''}>${ccliNames[c] || c}</option>`).join('')}
+        </select></label>
+      <p class="muted small">Im Monitor-Modus und im Vollbild steht neben der CCLI-Nummer ein Knopf „Kopieren“.</p>
       <label class="field"><span>Nur diese Programmspalten (Komma getrennt, leer = alle)</span>
         <input type="text" data-ag="columns" value="${esc(o.columns)}" placeholder="z. B. Technik, Programm"></label>
     </div>`

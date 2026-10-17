@@ -300,7 +300,7 @@ function renderOutputs() {
         keep.get(output.id) ??
         Object.assign(document.createElement('div'), {
           className: 'rm-preview',
-          innerHTML: `<iframe src="/output.html?id=${encodeURIComponent(output.id)}&embed=1" allow="microphone; camera; fullscreen; autoplay; speaker-selection" title="${esc(output.name)}"></iframe>`,
+          innerHTML: `<iframe src="/output.html?id=${encodeURIComponent(output.id)}&embed=1" allow="microphone; camera; fullscreen; autoplay; speaker-selection; clipboard-write" title="${esc(output.name)}"></iframe>`,
         })
       preview.dataset.id = output.id
       setPreviewSize(preview, current)

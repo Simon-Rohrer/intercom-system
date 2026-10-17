@@ -111,15 +111,38 @@
 }
 .agenda-resp { color: var(--k-ink-2); font-size: 0.85em; }
 .agenda-note { color: var(--k-ink-3); font-size: 0.8em; white-space: pre-wrap; }
+.agenda-ccli-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: calc(0.8em * var(--ag-ccli-scale, 1));
+}
 .agenda-ccli {
   font-family: var(--k-font-mono);
-  font-weight: 500;
-  font-size: 0.68em;
-  color: var(--k-ink-3);
+  font-weight: 600;
+  color: var(--ag-ccli-color, #a9b2be);
   padding: 0.05em 0.45em;
-  border: 1px solid var(--k-line-strong);
+  border: 1px solid currentColor;
   border-radius: 0.3em;
+  white-space: nowrap;
 }
+/* Kopieren nur im Monitor-Modus und im Vollbild (output.js setzt body.can-copy) */
+.agenda-copy {
+  display: none;
+  font: 600 0.8em var(--k-font-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--k-ink);
+  background: var(--k-face-hi);
+  border: 1px solid var(--k-line-strong);
+  border-radius: 0.35em;
+  padding: 0.2em 0.6em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.agenda-copy:hover { border-color: var(--ag-ccli-color, #a9b2be); }
+.agenda-copy.done { color: var(--k-ok); border-color: var(--k-ok); }
+body.can-copy .agenda-copy { display: inline-block; }
 
 /* Aufklappbare Punkte: Programmspalten und ausgeblendete Angaben */
 .agenda-item.has-sub { cursor: pointer; -webkit-tap-highlight-color: transparent; }
