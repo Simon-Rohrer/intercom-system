@@ -4,6 +4,7 @@ import { createChatView } from './chat.js'
 import { chatFor, chatRoleFor } from './rights.js'
 import { createComposer } from './chat-compose.js'
 import { createAgendaView } from './agenda.js'
+import { createUplinkView, mergeUplink } from './uplink.js'
 import { createProPresenterView, createPlaylistView, createPreacherView } from './propresenter.js'
 import { createStageView } from './stage.js'
 import {
@@ -71,6 +72,8 @@ fetch('/api/me', { cache: 'no-store' })
 let chat = { state: 'connecting', messages: [], stationName: '' }
 let bootId = null
 const agendaViews = new Set() // ChurchTools-Kacheln
+const uplinkViews = new Set() // Upload-Kacheln (FRITZ!Box)
+let uplink = null
 let churchtools = { state: 'connecting', events: [] }
 const frames = new Map() // Kesher-Intercom: tile.id → { wrap, url }
 
@@ -97,6 +100,9 @@ const ws = connect(
     } else if (msg.type === 'churchtools') {
       churchtools = msg
       for (const view of agendaViews) view.update(churchtools)
+    } else if (msg.type === 'uplink') {
+      uplink = mergeUplink(uplink, msg)
+      for (const view of uplinkViews) view.update(uplink)
     } else if (msg.type === 'session_revoked') {
       location.reload() // Anmeldung übernommen: ohne persönlichen Chat weiter
     } else if (msg.type === 'chatFlash') {
@@ -157,6 +163,7 @@ function render() {
   chatViews.clear()
   composers.clear()
   agendaViews.clear()
+  uplinkViews.clear()
   stageViews.clear()
 
   syncFrames(layout)
@@ -258,6 +265,12 @@ function buildTile(tile, layout, usedStreams) {
     // Die Kesher-Seite selbst liegt in der Ebene #frames (syncFrames) über dieser Kachel
     media.classList.add('chat')
     media.append(placeholder('Kesher-Intercom\nwird geladen …'))
+  } else if (tile.kind === 'uplink') {
+    const view = createUplinkView(tile.uplink)
+    view.update(uplink)
+    uplinkViews.add(view)
+    media.classList.add('chat')
+    media.append(view.el)
   } else if (tile.kind === 'churchtools') {
     const view = createAgendaView(tile)
     view.update(churchtools)

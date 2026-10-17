@@ -1,0 +1,90 @@
+/* Kachel „Upload / Stream“ – gleiche Gestaltung wie Ablauf- und Chat-Kachel */
+
+.uplink {
+  --ul-bg: #000000;
+  --ul-line: #2c2c2e;
+  --ul-ink: #eceff3;
+  --ul-ink-2: #a9b2be;
+  --ul-ink-3: #6c7581;
+  --ul-accent: #30d158;
+  --ul-bad: #ff5a4f;
+
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  align-content: start;
+  background: var(--ul-bg);
+  color: var(--ul-ink);
+  font-family: "Barlow", "Segoe UI", system-ui, sans-serif;
+  font-size: calc(clamp(10px, min(2.6cqw, 5cqh), 34px) * var(--ul-scale, 1));
+  overflow: hidden;
+  text-align: left;
+  transition: background 0.4s ease;
+}
+
+.ul-header {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  padding: 0.55em 1.1em;
+  background: #0a0a0a;
+  border-bottom: 1px solid var(--ul-line);
+  min-width: 0;
+}
+.ul-title {
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 1.25em;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ul-pill {
+  margin-left: auto;
+  padding: 0.2em 0.7em;
+  border: 1px solid var(--ul-line);
+  border-radius: 999px;
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 600;
+  font-size: 0.7em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ul-ink-2);
+  white-space: nowrap;
+}
+.ul-pill.bad { border-color: var(--ul-bad); color: var(--ul-bad); }
+
+.ul-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25em;
+  padding: 0.3em 0.45em 0;
+  line-height: 1;
+}
+.ul-value {
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-weight: 700;
+  font-size: 3.4em;
+  color: var(--ul-accent);
+  font-variant-numeric: tabular-nums;
+}
+.ul-unit { font-size: 1.1em; color: var(--ul-ink-2); font-weight: 600; }
+.ul-sub { padding: 0.35em 1.1em 0; color: var(--ul-ink-2); font-size: 0.85em; }
+.ul-status { padding: 0.25em 1.1em 0; font-weight: 700; font-size: 1em; min-height: 0; }
+.ul-status:empty { display: none; }
+
+.ul-chart { width: 100%; height: 100%; min-height: 0; display: block; margin-top: 0.4em; }
+.ul-area { fill: rgba(48, 209, 88, 0.2); stroke: none; }
+.ul-area { fill: color-mix(in srgb, var(--ul-accent) 22%, transparent); stroke: none; }
+.ul-line { fill: none; stroke: var(--ul-accent); stroke-width: 3; vector-effect: non-scaling-stroke; }
+.ul-down { fill: none; stroke: var(--ul-ink-3); stroke-width: 2; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
+.ul-alarm { stroke: var(--ul-bad); stroke-width: 1.5; stroke-dasharray: 8 6; vector-effect: non-scaling-stroke; opacity: 0.8; }
+
+.uplink.stale .ul-value { color: var(--ul-ink-3); }
+.uplink.alarm { --ul-accent: var(--ul-bad); background: #2a0505; }
+.uplink.alarm .ul-status { color: var(--ul-bad); animation: ul-pulse 1.2s ease-in-out infinite alternate; }
+@keyframes ul-pulse { from { opacity: 1; } to { opacity: 0.45; } }

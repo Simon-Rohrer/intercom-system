@@ -14,6 +14,7 @@ const { createKesherRoles } = require('./kesher-roles')
 const { createNeighbors } = require('./neighbors')
 const { normalizeRaspberry, parsePiRequest, createPiRegistry } = require('./raspberry-pis')
 const { createChurchTools } = require('./churchtools')
+const { createUplink, normalizeUplink } = require('./uplink')
 const { createMessageLinks } = require('./message-links')
 const QRCode = require('qrcode')
 const { normalizeDayQr, normalizeOutputDayQr } = require('./day-qr')
@@ -116,6 +117,7 @@ function normalizeConfig(c) {
     screens: normalizeScreens(c?.screens),
     chat: normalizeChat(c?.chat),
     churchtools: normalizeChurchTools(c?.churchtools),
+    uplink: normalizeUplink(c?.uplink),
     access: normalizeAccess(c?.access),
     raspberry: normalizeRaspberry(c?.raspberry),
   }
@@ -1170,6 +1172,16 @@ const churchTools = createChurchTools({
   log: console.log,
 })
 
+// Upload der Internetleitung (FRITZ!Box) für die Kachel „Upload / Stream“
+const uplink = createUplink({ getConfig: () => config.uplink, onUpdate: broadcast, log: console.log })
+let uplinkKey = ''
+function applyUplink() {
+  const key = JSON.stringify(normalizeUplink(config.uplink))
+  if (key === uplinkKey) return
+  if (uplinkKey) uplink.reconfigure()
+  uplinkKey = key
+}
+
 const kesherChat = createKesherChat({
   getConfig: () => config.chat,
   getHeaders: () => kesherDeviceHeaders(),
@@ -1199,6 +1211,7 @@ function configChanged(origin = null) {
   kesherChat.reconfigure()
   applyProPresenter()
   churchTools.datesChanged()
+  applyUplink()
   if (mediamtx.proc) writeMediamtxConfig()
 }
 
@@ -1303,6 +1316,7 @@ wss.on('connection', (ws, req) => {
   send(ws, serverInfo())
   send(ws, kesherChat.snapshot())
   send(ws, churchTools.snapshot())
+  send(ws, uplink.snapshot())
   send(ws, { type: 'propresenter', ...ppState })
   send(ws, { type: 'ppstage', ...stageState })
 
@@ -2746,4 +2760,6 @@ server.listen(PORT, HOST, () => {
   applyProPresenter()
   startMediamtx()
   churchTools.start()
+  applyUplink()
+  uplink.start()
 })

@@ -1,6 +1,7 @@
 import { isPortrait, layoutSize, isStandardLayout, setPreviewSize, LAYOUT_MIN_PX, LAYOUT_MAX_PX, previewMetrics, connect, reloadWhenIdle, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
+import { createUplinkView, mergeUplink, uplinkOptions } from './uplink.js'
 import { createAgendaView, agendaOptions, AGENDA_ACCENTS, AGENDA_CCLI_COLORS } from './agenda.js'
 import {
   createProPresenterView, createPlaylistView, createPreacherView, ppOptions, playlistOptions, preacherOptions,
@@ -86,6 +87,8 @@ let chat = { state: 'connecting', messages: [], stationName: '' }
 const chatViews = new Set()
 let churchtools = { state: 'connecting', events: [] }
 const agendaViews = new Set()
+const uplinkViews = new Set()
+let uplink = null
 let templates = [] // gespeicherte Layouts { id, name, savedAt, owner, tiles, own }
 
 // Wer ist angemeldet? Wird in start() geladen, bevor die Verbindung zum Server aufgeht.
@@ -114,6 +117,14 @@ function onMessage(msg) {
     if (!config) return
     renderScreens()
     renderCompanion()
+  } else if (msg.type === 'uplink') {
+    uplink = mergeUplink(uplink, msg)
+    for (const view of uplinkViews) {
+      if (view.el.isConnected) view.update(uplink)
+      else uplinkViews.delete(view)
+    }
+    const hint = inspector.querySelector('[data-uplink-state]')
+    if (hint) hint.textContent = uplinkStateText()
   } else if (msg.type === 'churchtools') {
     churchtools = msg
     renderChurchTools()
@@ -1225,6 +1236,8 @@ function syncTileMedia(el, tile) {
   const key =
     tile.kind === 'chat'
       ? JSON.stringify(['chat', tile.chatRole ?? '', chatOptions(tile.chat)])
+      : tile.kind === 'uplink'
+        ? JSON.stringify(['uplink', uplinkOptions(tile.uplink)])
       : tile.kind === 'churchtools'
         ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctSongInfo, tile.ctCcli, tile.ctDate, tile.ctMode, agendaOptions(tile.agendaLook)])
         : livePreview && source
@@ -1234,7 +1247,7 @@ function syncTileMedia(el, tile) {
   el.dataset.mediaKey = key
   el.querySelector('.etile-media')?.remove()
   el.classList.toggle('live', Boolean(key))
-  el.classList.toggle('chat-tile', tile.kind === 'chat' || tile.kind === 'churchtools')
+  el.classList.toggle('chat-tile', tile.kind === 'chat' || tile.kind === 'churchtools' || tile.kind === 'uplink')
   if (!key) return
   const media = document.createElement('div')
   media.className = 'etile-media'
@@ -1248,6 +1261,11 @@ function syncTileMedia(el, tile) {
     const view = createAgendaView(tile)
     view.update(churchtools)
     agendaViews.add(view)
+    media.append(view.el)
+  } else if (tile.kind === 'uplink') {
+    const view = createUplinkView(tile.uplink)
+    view.update(uplink)
+    uplinkViews.add(view)
     media.append(view.el)
   } else if (source.type === 'device') {
     const hint = document.createElement('span')
@@ -1297,6 +1315,7 @@ function describeTile(tile) {
         : 'heute'
     return { title: 'ChurchTools-Ablauf', sub: [day, tile.ctFilter].filter(Boolean).join(' · ') }
   }
+  if (tile.kind === 'uplink') return { title: 'Upload / Stream', sub: 'Internet-Upload (FRITZ!Box)' }
   if (tile.kind === 'propresenter') return { title: 'ProPresenter', sub: 'Folien' }
   if (tile.kind === 'playlist') return { title: 'Playlist', sub: 'ProPresenter' }
   if (tile.kind === 'preacher') return { title: 'Prediger', sub: 'ProPresenter-Steuerung' }
@@ -1787,6 +1806,43 @@ function chatSection(tile) {
       <p class="muted">Der Chat zeigt, was die Rolle auch in Kesher sieht: globale Nachrichten und die ihrer Party Lines. „Angemeldete Rolle“: Wer angemeldet ist, sieht seinen Chat – Monitore ohne Anmeldung zeigen alles.</p>`
 }
 
+function uplinkStateText() {
+  if (!uplink) return 'Verbinde …'
+  if (uplink.state === 'ok') {
+    const last = uplink.history?.[uplink.history.length - 1]
+    return `Verbunden – gerade ${last ? (last.up / 1e6).toFixed(1).replace('.', ',') : '–'} Mbit/s Upload`
+  }
+  return uplink.state === 'off' ? 'Abfrage ausgeschaltet' : `Fehler: ${uplink.error || 'keine Antwort'}`
+}
+
+/** Upload-Kachel: Titel, Kurve, Warnung und (nur Admin) die Adresse der FRITZ!Box */
+function uplinkSection(tile) {
+  const o = uplinkOptions(tile.uplink)
+  const u = config.uplink || { enabled: true, host: '192.168.178.1' }
+  return `
+    <label class="field"><span>Titel</span><input type="text" data-ul="title" value="${esc(o.title)}" maxlength="40"></label>
+    <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+      <input type="range" min="0.5" max="2.5" step="0.1" data-ul="size" value="${o.size}"></label>
+    <label class="check"><input type="checkbox" data-ul="chart" ${o.chart ? 'checked' : ''}> Kurve anzeigen</label>
+    <label class="field"><span>Zeitraum der Kurve <output>${o.minutes} min</output></span>
+      <input type="range" min="1" max="15" step="1" data-ul="minutes" value="${o.minutes}"></label>
+    <label class="check"><input type="checkbox" data-ul="down" ${o.down ? 'checked' : ''}> Download zusätzlich zeigen</label>
+    <label class="field"><span>Warnen, wenn der Upload unter … Mbit/s fällt (0 = aus)</span>
+      <input type="number" min="0" max="1000" step="0.5" data-ul="alarm" value="${o.alarm}"></label>
+    <p class="muted small">Die Warnung (rot) kommt nur, wenn vorher schon mehr lief – also wenn ein laufender Stream einbricht, nicht wenn gar nicht gestreamt wird.</p>
+    ${
+      user?.admin
+        ? `<div class="meter-settings">
+      <h4>FRITZ!Box</h4>
+      <label class="check"><input type="checkbox" data-uplink="enabled" ${u.enabled !== false ? 'checked' : ''}> Upload abfragen</label>
+      <label class="field"><span>Adresse der FRITZ!Box</span><input type="text" data-uplink="host" value="${esc(u.host)}" placeholder="192.168.178.1"></label>
+      <p class="muted small" data-uplink-state>${esc(uplinkStateText())}</p>
+      <p class="muted small">Ohne Anmeldung über UPnP (Port 49000). Gezeigt wird der Upload der ganzen Internetleitung – während des YouTube-Streams ist das fast nur der Stream. Klappt es nicht: In der FRITZ!Box unter Heimnetz → Netzwerk → Netzwerkeinstellungen „Statusinformationen über UPnP übertragen“ einschalten.</p>
+    </div>`
+        : ''
+    }`
+}
+
 /** Ablauf-Kachel: Schriftgröße, Abstände und was angezeigt wird. */
 function agendaLookSection(tile) {
   const o = agendaOptions(tile.agendaLook)
@@ -1899,6 +1955,7 @@ function tileInspector(tile, layout) {
         <option value="chat" ${kind === 'chat' ? 'selected' : ''}>Kesher-Chat</option>
         <option value="kesher" ${kind === 'kesher' ? 'selected' : ''}>Kesher-Intercom (bedienbar)</option>
         <option value="churchtools" ${kind === 'churchtools' ? 'selected' : ''}>ChurchTools-Ablauf</option>
+        <option value="uplink" ${kind === 'uplink' ? 'selected' : ''}>Upload / Stream (Internet)</option>
         <option value="propresenter" ${kind === 'propresenter' ? 'selected' : ''}>ProPresenter (Folien / Hintergründe)</option>
         <option value="playlist" ${kind === 'playlist' ? 'selected' : ''}>ProPresenter-Playlist</option>
         <option value="preacher" ${kind === 'preacher' ? 'selected' : ''}>ProPresenter-Prediger (Folien steuern)</option>
@@ -1938,6 +1995,7 @@ function tileInspector(tile, layout) {
       <p class="muted">Zeigt den Ablauf eines Events aus ChurchTools. <b>Heute</b>: das laufende, sonst das nächste Event von heute. <b>Nächstes Event</b>: das laufende, sonst das nächste – auch an späteren Tagen (bis 6 Wochen voraus). <b>Festes Datum</b>: nur dieser Tag. Events ohne Ablauf erscheinen mit „Kein Ablauf hinterlegt“. Ein Klick auf einen Punkt klappt die Programmspalten auf. Die CCLI-Nummer braucht im ChurchTools-Benutzer Leserecht auf Songs. Verbindung unter <a href="#/einstellungen/churchtools">Einstellungen</a>.</p>`
         : ''
     }
+    ${kind === 'uplink' ? uplinkSection(tile) : ''}
     ${kind === 'chat' ? chatSection(tile) : ''}
     ${kind === 'kesher' ? kesherSection(tile) : ''}
     ${kind === 'audio' ? bankSection(tile) : ''}
@@ -1983,6 +2041,26 @@ function onInspectorField(e) {
     }
     tile.stage = o
     renderCanvas()
+    changed()
+    return
+  }
+
+  if (el.dataset.ul) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const key = el.dataset.ul
+    const value = el.type === 'checkbox' ? el.checked : key === 'title' ? el.value : Number(el.value)
+    tile.uplink = { ...uplinkOptions(tile.uplink), [key]: value }
+    const out = el.closest('label').querySelector('output')
+    if (out) out.textContent = key === 'size' ? `${Math.round(value * 100)} %` : `${value} min`
+    renderCanvas()
+    changed()
+    return
+  }
+
+  if (el.dataset.uplink) {
+    const key = el.dataset.uplink
+    config.uplink = { enabled: true, host: '192.168.178.1', ...config.uplink, [key]: el.type === 'checkbox' ? el.checked : el.value.trim() }
     changed()
     return
   }
