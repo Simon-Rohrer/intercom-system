@@ -1,3 +1,4 @@
+import { berlinParts } from './common.js'
 // Videoquellen für die Webseite und die Monitor-Ansicht:
 // Capture-Geräte (DeckLink, USB-Grabber, ATEM-USB), Netzwerk-Streams (WebRTC über MediaMTX) und Testbilder.
 
@@ -221,7 +222,8 @@ const testCanvases = new Set()
 function timecode(d) {
   const pad = (n) => String(n).padStart(2, '0')
   const frames = Math.floor((d.getMilliseconds() / 1000) * 25)
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}:${pad(frames)}`
+  const t = berlinParts(d)
+  return `${t.hour}:${t.minute}:${t.second}:${pad(frames)}`
 }
 
 function drawTestPattern(canvas, now) {

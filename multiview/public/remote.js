@@ -5,7 +5,7 @@
 //   Bühne:       Bühnennachricht (Stage Display) in ProPresenter senden/löschen
 //   Beamer:      Meldung für die Gemeinde in ProPresenter vorbereiten – anzeigen tut sie der Bediener
 //   Monitore:    (nur Admin) welcher Multiview auf welchem Monitor am Server läuft
-import { connect, reloadWhenIdle, watchLogin, loginKey } from './common.js'
+import { connect, reloadWhenIdle, watchLogin, loginKey, TIME_ZONE } from './common.js'
 import { adoptServerPrefs, applyPrefs, currentPrefs, nextTheme, setPrefs, themeIcon } from './theme.js'
 import { visibleOutputs, visibleLayouts, canEditOutput, chatFor } from './rights.js'
 import { createComposer } from './chat-compose.js'
@@ -439,8 +439,8 @@ function scrollChatToEnd() {
   requestAnimationFrame(() => window.scrollTo(0, document.documentElement.scrollHeight))
 }
 
-const time = (ms) => new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
-const day = (ms) => new Date(ms).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
+const time = (ms) => new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: TIME_ZONE })
+const day = (ms) => new Date(ms).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TIME_ZONE })
 
 // Beamer-/Bühnen-Meldungen nur 15 s rot, danach wie jede andere Nachricht
 const ALERT_MS = 15 * 1000

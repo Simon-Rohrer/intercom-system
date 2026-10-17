@@ -1,4 +1,4 @@
-import { connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder } from './common.js'
+import { TIME_ZONE, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions } from './meters.js'
 import { createChatView } from './chat.js'
 import { chatFor, chatRoleFor } from './rights.js'
@@ -451,7 +451,7 @@ function updateOverlays() {
 }
 
 function tick() {
-  const text = new Date().toLocaleTimeString('de-DE')
+  const text = new Date().toLocaleTimeString('de-DE', { timeZone: TIME_ZONE })
   for (const c of clocks) if (c.textContent !== text) c.textContent = text
 }
 setInterval(tick, 200)

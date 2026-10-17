@@ -1,3 +1,4 @@
+import { TIME_ZONE } from './common.js'
 // Kesher-Chat als Kachel: gleiche Darstellung wie die Kesher-Chat-Anzeige (?viewMode=chat).
 // Die Nachrichten kommen vom Multiview-Server, der einmal bei Kesher angemeldet ist.
 
@@ -17,7 +18,7 @@ function el(tag, className, text) {
 }
 
 function shortTime(ts) {
-  return new Date(ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+  return new Date(ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: TIME_ZONE })
 }
 
 /** Darstellung der Chat-Kachel (im Layout-Editor einstellbar). */
@@ -156,7 +157,7 @@ export function createChatView(options) {
 }
 
 function tickClock(view) {
-  const text = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+  const text = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: TIME_ZONE })
   if (view.clock.textContent !== text) view.clock.textContent = text
 }
 

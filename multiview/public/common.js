@@ -26,6 +26,21 @@ function showCertHint() {
   document.body.appendChild(el)
 }
 
+/**
+ * Alle Uhren zeigen deutsche Zeit – auch auf Geräten, die auf UTC laufen (z. B. der Kiosk-Browser
+ * am HDMI-Ausgang des Servers). Sommer-/Winterzeit rechnet der Browser selbst.
+ */
+export const TIME_ZONE = 'Europe/Berlin'
+
+/** Bestandteile einer Uhrzeit in deutscher Zeit (für Timecode u. Ä.). */
+export function berlinParts(date = new Date()) {
+  const parts = {}
+  for (const p of new Intl.DateTimeFormat('de-DE', {
+    timeZone: TIME_ZONE, hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(date)) parts[p.type] = p.value
+  return { hour: parts.hour === '24' ? '00' : parts.hour, minute: parts.minute, second: parts.second }
+}
+
 /** Kennung der Anmeldung aus /api/me – '' ohne Anmeldung. */
 export const loginKey = (user) => (user && !user.open ? `${user.name}|${user.roleId}|${Boolean(user.admin)}|${user.sessionId}|${user.version}|${user.expiresAt}` : '')
 
