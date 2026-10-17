@@ -336,3 +336,7 @@
     display: none;
   }
 }
+
+/* Zurück zum Dashboard */
+.simple-shell .simple-dashboard { text-decoration: none; margin-left: auto; }
+.simple-shell .simple-dashboard + .simple-logout { margin-left: 8px; }

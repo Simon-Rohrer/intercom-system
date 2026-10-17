@@ -8,6 +8,7 @@ import {
 import { createStageView, stageOptions, fmtTimer } from './stage.js'
 import { adoptServerPrefs, appearanceHtml, bindAppearance, currentPrefs, nextTheme, setPrefs, themeIcon, THEMES, onPrefsChange } from './theme.js'
 import { avatarHtml, pickAvatar, removeAvatar } from './avatar.js'
+import { SERVICE_GROUPS, SERVICE_ICONS, serviceUrl, findService } from './services.js'
 import { roleRights, visibleOutputs, visibleLayouts, canEditLayout, canEditOutput, claimLayouts, publicOrigin, chatFor, chatRoleFor } from './rights.js'
 import {
   attachDevice, attachNetworkStream, makeVideo, makeTestPattern, mediaKey,
@@ -20,12 +21,12 @@ const esc = (s) =>
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max)
 
 const CLIENT_ID = uid('c')
-const PAGES = ['uebersicht', 'multiviews', 'eingaenge', 'layouts', 'einstellungen', 'zugang']
-const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'zugang']
+const PAGES = ['uebersicht', 'multiviews', 'eingaenge', 'layouts', 'einstellungen', 'zugang', 'services']
+const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'zugang', 'services']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
 const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'raspberry', 'companion', 'bildschirme', 'geraete']
 // Unterseiten von Benutzer & Rechte: #/zugang/rollen …
-const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste', 'zugangsdaten']
+const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste', 'zugangsdaten', 'nachrichten']
 const SOURCE_TYPES = {
   device: 'Capture-Gerät',
   stream: 'Netzwerk-Stream',
@@ -142,6 +143,9 @@ function onMessage(msg) {
     for (const el of canvas.querySelectorAll('.etile')) el.ppView?.updateStage?.(ppStage)
     // Timer-Auswahl der Bühnen-Kachel nachziehen, wenn ProPresenter andere Timer meldet
     if (timersChanged && inspector.querySelector('[data-st-timer]')) renderInspector()
+  } else if (msg.type === 'raspberry_changed') {
+    // An einem Pi wurde ein Kopfhörer oder Mikrofon ein- oder ausgesteckt: Auswahl gleich nachziehen
+    if (page === 'einstellungen' && !$('#set-raspberry').hidden) loadRaspberryStatus()
   } else if (msg.type === 'sessions_changed') {
     // Gerät an- oder abgemeldet, Seite geöffnet oder geschlossen: Liste gleich nachziehen
     if (page === 'einstellungen' && !$('#set-sessions').hidden) loadSessions()
@@ -224,6 +228,27 @@ function toast(text) {
 // Seiten
 // ---------------------------------------------------------------------------
 
+// „Dashboard“ in der Seitenleiste: zurück zur Startseite – unter derselben Art Adresse (IP, .local, jms.de)
+$('#nav-dashboard').href = serviceUrl(findService('dashboard'))
+
+/** Seite „Services“: alle Dienste als Kacheln, Verwaltung nur für Admins. */
+function renderServices() {
+  $('#services-list').innerHTML = SERVICE_GROUPS.filter((g) => !g.admin || isAdmin())
+    .map((g) => `<section class="services-group">
+      <h2>${esc(g.title)}</h2>
+      <div class="services-grid">${g.services
+        .map((svc) => {
+          const url = serviceUrl(svc)
+          return `<a class="glass service-card" href="${esc(url)}" ${svc.id === 'jmscontrol' ? '' : 'target="_blank" rel="noopener"'}>
+            <span class="app-icon ${svc.color}"><svg viewBox="0 0 24 24" aria-hidden="true">${SERVICE_ICONS[svc.icon] ?? ''}</svg></span>
+            <span class="service-text"><b>${esc(svc.name)}</b><span class="desc">${esc(svc.desc)}</span><code>${esc(url.replace(/^https:\/\//, '').replace(/\/$/, ''))}</code></span>
+          </a>`
+        })
+        .join('')}</div>
+    </section>`)
+    .join('')
+}
+
 function showPage() {
   let [requested, sub] = location.hash.replace(/^#\/?/, '').split('/')
   // Layouts sind eine Unterseite der Multiviews (die alte Adresse #/layouts geht weiter)
@@ -247,6 +272,8 @@ function showPage() {
   if (page === 'einstellungen' && sub === 'geraete') loadSessions()
   if (page === 'einstellungen' && sub === 'raspberry') loadRaspberryStatus()
   if (page === 'zugang') loadGateway()
+  if (page === 'zugang' && sub === 'nachrichten') loadMessageLinks()
+  if (page === 'services') renderServices()
   renderAll()
   window.scrollTo(0, 0)
 }
@@ -2377,6 +2404,39 @@ function piSeenMatches(pi, seen) {
   return Boolean(pi.ipAddress) && seen.ips.includes(pi.ipAddress)
 }
 
+/**
+ * Auswahl für Mikrofon bzw. Kopfhörer mit den Geräten, die der Pi gerade meldet (live über Kesher).
+ * Gespeichert wird der Gerätename; ein gespeichertes, aber gerade nicht eingestecktes Gerät bleibt sichtbar.
+ */
+function piDeviceSelect(pi, key, kind) {
+  const station = piStatus.stations?.find((s) => s.deviceId === piDeviceId(pi))
+  const devices = (kind === 'input' ? station?.audioState?.inputDevices : station?.audioState?.outputDevices) ?? []
+  const labels = [
+    ...new Set(
+      devices
+        .filter((d) => !['default', 'communications'].includes(String(d.deviceId)))
+        .map((d) => String(d.label || '').trim())
+        .filter(Boolean),
+    ),
+  ]
+  const current = String(pi[key] || '')
+  const known = !current || labels.some((label) => label === current || label.toLowerCase().includes(current.toLowerCase()))
+  const options = [
+    `<option value="">${kind === 'input' ? 'Automatisch (erstes Mikrofon)' : 'Standard-Ausgang'}</option>`,
+    ...labels.map((label) => `<option value="${esc(label)}" ${label === current ? 'selected' : ''}>${esc(label)}</option>`),
+    // gespeicherter Teilname (ältere Einträge) passt auf ein Gerät: als eigene Option behalten
+    ...(current && !labels.includes(current) ? [`<option value="${esc(current)}" selected>${esc(current)}${known ? ' (passt)' : ' – nicht eingesteckt'}</option>`] : []),
+  ].join('')
+  const hint = !station?.audioState
+    ? '<small class="muted">Geräte erscheinen, sobald der Pi im Intercom ist.</small>'
+    : !labels.length
+      ? `<small class="muted">Der Pi meldet kein ${kind === 'input' ? 'Mikrofon' : 'Audiogerät'}.</small>`
+      : !known
+        ? '<small class="pi-device-missing">Gespeichertes Gerät ist gerade nicht eingesteckt.</small>'
+        : ''
+  return `<select data-p="${key}">${options}</select>${hint}`
+}
+
 /** Zustand laut Kesher (Heartbeat des Launchers und Intercom-Verbindung). */
 function piStationPill(pi) {
   if (!piStatus.stations) return ''
@@ -2438,10 +2498,10 @@ function renderRaspberry() {
                 <input type="text" data-p="ipAddress" value="${esc(pi.ipAddress)}" placeholder="192.168.0.157" spellcheck="false"></label>
               <label class="field"><span>Geräte-ID</span>
                 <input type="text" data-p="deviceId" value="${esc(pi.deviceId)}" placeholder="${esc(piDeviceId({ name: pi.name }) || 'kamera-1-pi')}" spellcheck="false"></label>
-              <label class="field"><span>Mikrofon <small>(Name enthält)</small></span>
-                <input type="text" data-p="audioInputMatch" value="${esc(pi.audioInputMatch)}" placeholder="Headset" spellcheck="false"></label>
-              <label class="field"><span>Kopfhörer <small>(Name enthält)</small></span>
-                <input type="text" data-p="audioOutputMatch" value="${esc(pi.audioOutputMatch)}" placeholder="Headset" spellcheck="false"></label>
+              <label class="field"><span>Mikrofon <small>(live vom Pi)</small></span>
+                ${piDeviceSelect(pi, 'audioInputMatch', 'input')}</label>
+              <label class="field"><span>Kopfhörer <small>(live vom Pi)</small></span>
+                ${piDeviceSelect(pi, 'audioOutputMatch', 'output')}</label>
               <label class="check pi-check"><input type="checkbox" data-p="lowPowerMode" ${pi.lowPowerMode ? 'checked' : ''}> Sparmodus (schwache Pis)</label>
             </div>
             ${problems.length ? `<p class="pi-problem">⚠ ${esc(problems.join(' · '))}</p>` : ''}
@@ -2545,7 +2605,6 @@ $('#pi-list').addEventListener('change', onPiField)
 $('#pi-list').addEventListener('focusout', () => setTimeout(() => !$('#pi-list').contains(document.activeElement) && renderRaspberry()))
 
 $('#set-raspberry').addEventListener('click', (e) => {
-  if (e.target.closest('#pi-refresh')) return loadRaspberryStatus()
   const remove = e.target.closest('[data-pi-remove]')
   if (remove) {
     const r = piSettings()
@@ -2693,6 +2752,8 @@ function renderUserCard() {
 
 const SEARCH_ENTRIES = [
   { label: 'Übersicht', href: '#/', words: 'start status profil qr handy anmelden' },
+  { label: 'Services', href: '#/services', admin: true, words: 'dienste links dashboard intercom companion portainer glances dns router prediger' },
+  { label: 'Dashboard', href: serviceUrl(findService('dashboard')), words: 'zurück startseite technik dashboard' },
   { label: 'Multiviews', href: '#/multiviews', words: 'vorschau vollbild ausgabe monitor live' },
   { label: 'Layouts', href: '#/multiviews/layouts', words: 'multiviews editor kacheln raster trennlinien vorlagen' },
   { label: 'Eingänge', href: '#/eingaenge', admin: true, words: 'kamera capture stream video quellen testbild' },
@@ -2707,6 +2768,7 @@ const SEARCH_ENTRIES = [
   { label: 'Rollen', href: '#/zugang/rollen', admin: true, words: 'benutzer rechte sehen bearbeiten licht ton' },
   { label: 'Anmeldung & Admin-PIN', href: '#/zugang/anmeldung', admin: true, words: 'benutzer pin passwort admin' },
   { label: 'Anmeldung für alle Dienste', href: '#/zugang/dienste', admin: true, words: 'benutzer tagescode qr feste geräte gateway' },
+  { label: 'Nachrichten-Links (Ordner, ohne Anmeldung)', href: '#/zugang/nachrichten', admin: true, words: 'ordner beamer stage display bühne meldung qr helfer' },
   { label: 'Zugangsdaten der Dienste (Portainer, Router)', href: '#/zugang/zugangsdaten', admin: true, words: 'passwort portainer router speedport automatisch anmelden' },
   { label: 'Darstellung', open: 'appearance-dialog', words: 'hintergrund hell dunkel farbe wallpaper theme' },
   { label: 'QR-Codes fürs Handy', open: 'qr-dialog', words: 'handy anmelden scannen' },
@@ -2830,7 +2892,11 @@ loginQrCard.innerHTML = `<img alt="QR-Code zum Anmelden am Handy" width="168" he
   <div class="qr-hero-text">
     <h3>Handy anmelden</h3>
     <p class="muted">Mit der Handy-Kamera scannen – das Handy ist dann gleich angemeldet.</p>
-    <button type="button" class="btn small">Neuer Code</button>
+    <div class="qr-hero-code" hidden>
+      <span>Code für Laptops</span>
+      <output class="day-code-digits"></output>
+    </div>
+    <button type="button" class="btn small">Neuer QR-Code</button>
   </div>`
 let heroQrTimer = null
 async function renewHeroQr() {
@@ -2844,6 +2910,12 @@ async function renewHeroQr() {
       if (!data.ok) throw new Error(data.error)
       img.src = qrUrl(`${publicOrigin(server)}/q/${data.token}`)
       img.style.opacity = ''
+      const code = loginQrCard.querySelector('.qr-hero-code')
+      code.hidden = !data.dayCode
+      if (data.dayCode) {
+        code.querySelector('output').textContent = `${data.dayCode.slice(0, 3)} ${data.dayCode.slice(3)}`
+        code.querySelector('output').setAttribute('aria-label', `Code von heute: ${data.dayCode.split('').join(' ')}`)
+      }
     }
   } catch {
     img.style.opacity = '0.25'
@@ -3606,3 +3678,113 @@ async function start() {
 }
 
 start()
+
+// ---------------------------------------------------------------------------
+// Nachrichten-Links: Ordner & Co. schicken ohne Anmeldung eine Meldung auf Beamer oder Stage
+// Display (nachricht.html, Server: message-links.js). Der Admin legt je Gruppe einen Link an.
+// ---------------------------------------------------------------------------
+let messageLinks = null
+const messageLinkUrl = (link) => `${publicOrigin(server)}/nachricht.html?k=${encodeURIComponent(link.token)}`
+
+async function loadMessageLinks() {
+  if (!isAdmin()) return
+  try {
+    const res = await fetch('/api/message-links', { cache: 'no-store' })
+    const data = await res.json()
+    messageLinks = data.ok ? data.links : []
+  } catch {
+    messageLinks = []
+  }
+  renderMessageLinks()
+}
+
+function renderMessageLinks() {
+  const card = $('#message-links-card')
+  // Nicht neu aufbauen, während jemand einen Namen ändert
+  if (card.contains(document.activeElement) && document.activeElement.matches('[data-link-name]')) return
+  const when = (t) => (t ? new Date(t).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : 'noch nie')
+  const rows = (messageLinks ?? [])
+    .map(
+      (l) => `<div class="msg-link ${l.enabled ? '' : 'off'}" data-link="${esc(l.id)}">
+        <a class="qr-frame msg-link-qr" href="${esc(qrUrl(messageLinkUrl(l)))}" target="_blank" rel="noopener" title="QR-Code groß öffnen (zum Drucken)">
+          <img src="${esc(qrUrl(messageLinkUrl(l)))}" alt="QR-Code für ${esc(l.name)}" width="112" height="112">
+        </a>
+        <div class="msg-link-body">
+          <div class="msg-link-head">
+            <input type="text" data-link-name value="${esc(l.name)}" maxlength="40" aria-label="Name des Links">
+            <label class="switch"><input type="checkbox" data-link-field="enabled" ${l.enabled ? 'checked' : ''}><span class="switch-track"></span><span>${l.enabled ? 'Aktiv' : 'Gesperrt'}</span></label>
+          </div>
+          <div class="btn-row">
+            <label class="check"><input type="checkbox" data-link-field="beamer" ${l.beamer ? 'checked' : ''}> Beamer (Freigabe durch ProPresenter)</label>
+            <label class="check"><input type="checkbox" data-link-field="stage" ${l.stage ? 'checked' : ''}> Stage Display (sofort)</label>
+          </div>
+          <p class="muted small">${l.used || 0}× benutzt · zuletzt ${esc(when(l.lastUsed))}</p>
+          <div class="btn-row">
+            <button class="btn small" type="button" data-link-copy>Link kopieren</button>
+            <a class="btn small" href="${esc(messageLinkUrl(l))}" target="_blank" rel="noopener">Öffnen</a>
+            <button class="btn small" type="button" data-link-renew title="Der alte Link und gedruckte QR-Codes gelten dann nicht mehr">Neuen Link erzeugen</button>
+            <button class="btn small danger" type="button" data-link-remove>Löschen</button>
+          </div>
+        </div>
+      </div>`,
+    )
+    .join('')
+  card.innerHTML = `<div class="card-head">
+      <div>
+        <h2>Nachrichten-Links</h2>
+        <p class="muted">Für Ordner und andere Helfer ohne Anmeldung: Wer den Link oder QR-Code hat, gibt nur seinen Namen ein und schickt eine Meldung auf den <b>Beamer</b> (die Technik gibt sie in ProPresenter frei) oder das <b>Stage Display</b> (erscheint sofort). Jede Nachricht kommt mit Namen in den Kesher-Chat. Pro Link höchstens eine Nachricht alle 10 Sekunden.</p>
+        <p class="muted">Gibt jemand den Link weiter, einfach <b>Neuen Link erzeugen</b> oder sperren.</p>
+      </div>
+    </div>
+    <form class="msg-link-new" id="msg-link-new">
+      <input type="text" name="name" maxlength="40" placeholder="Name, z. B. Ordner" aria-label="Name des neuen Links" required>
+      <label class="check"><input type="checkbox" name="beamer" checked> Beamer</label>
+      <label class="check"><input type="checkbox" name="stage"> Stage Display</label>
+      <button class="btn primary small" type="submit">+ Link anlegen</button>
+    </form>
+    ${messageLinks === null ? '<p class="muted">Lädt …</p>' : rows || '<p class="muted">Noch keine Nachrichten-Links.</p>'}`
+}
+
+async function messageLinkRequest(method, url, body) {
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }).catch(() => null)
+  const data = await res?.json().catch(() => null)
+  if (!data?.ok) toast(data?.error || 'Speichern fehlgeschlagen')
+  await loadMessageLinks()
+  return data?.ok
+}
+
+$('#message-links-card').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const form = e.target
+  const data = new FormData(form)
+  if (await messageLinkRequest('POST', '/api/message-links', { name: data.get('name'), beamer: data.has('beamer'), stage: data.has('stage') })) toast('Link angelegt')
+})
+
+$('#message-links-card').addEventListener('change', (e) => {
+  const row = e.target.closest('[data-link]')
+  if (!row) return
+  const id = row.dataset.link
+  if (e.target.matches('[data-link-name]')) return messageLinkRequest('PUT', `/api/message-links/${id}`, { name: e.target.value })
+  const field = e.target.dataset.linkField
+  if (field) messageLinkRequest('PUT', `/api/message-links/${id}`, { [field]: e.target.checked })
+})
+
+$('#message-links-card').addEventListener('click', async (e) => {
+  const row = e.target.closest('[data-link]')
+  if (!row) return
+  const link = messageLinks?.find((l) => l.id === row.dataset.link)
+  if (!link) return
+  if (e.target.closest('[data-link-copy]')) {
+    try {
+      await navigator.clipboard.writeText(messageLinkUrl(link))
+      toast('Link kopiert')
+    } catch {
+      prompt('Link zum Kopieren:', messageLinkUrl(link))
+    }
+  } else if (e.target.closest('[data-link-renew]')) {
+    if (confirm(`Neuen Link für „${link.name}“ erzeugen? Der alte Link und gedruckte QR-Codes gelten dann nicht mehr.`))
+      (await messageLinkRequest('PUT', `/api/message-links/${link.id}`, { renew: true })) && toast('Neuer Link erzeugt')
+  } else if (e.target.closest('[data-link-remove]')) {
+    if (confirm(`Link „${link.name}“ löschen?`)) (await messageLinkRequest('DELETE', `/api/message-links/${link.id}`)) && toast('Gelöscht')
+  }
+})

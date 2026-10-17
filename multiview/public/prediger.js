@@ -7,6 +7,7 @@
 //   ?tasten=aus         keine Tasten (Folien antippen und Tastatur/Clicker gehen weiter)
 import { connect, keepTouchScrollInside } from './common.js'
 import { createPreacherView } from './propresenter.js'
+import { serviceUrl, findService } from './services.js'
 
 const params = new URLSearchParams(location.search)
 const view = createPreacherView(
@@ -19,6 +20,14 @@ const view = createPreacherView(
 )
 document.getElementById('app').append(view.el)
 keepTouchScrollInside()
+
+// Zurück zum Dashboard (nur hier auf der eigenen Seite, nicht in der Multiview-Kachel)
+const back = document.createElement('a')
+back.className = 'pr-dashboard'
+back.href = serviceUrl(findService('dashboard'))
+back.title = 'Zurück zum Dashboard'
+back.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg><span>Dashboard</span>'
+view.el.querySelector('.pr-head')?.prepend(back)
 
 const offline = document.getElementById('offline')
 let bootId = null

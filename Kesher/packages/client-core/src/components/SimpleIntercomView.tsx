@@ -3,6 +3,7 @@ import { createHoldButtonProps } from "../lib/holdButton";
 import type { InputChannelSelection } from "../app/settings";
 import { BrandLogo } from "./BrandLogo";
 import { LowPowerModeBadge } from "./LowPowerModeBadge";
+import { centralLoginAvailable, dashboardUrl } from "../lib/centralLogin";
 
 type DirectReplyTarget = {
   userId: string;
@@ -150,6 +151,25 @@ export function SimpleIntercomView({
           {connectionState === "connected" ? "Live" : "Offline"}
         </span>
         {lowPowerMode ? <LowPowerModeBadge /> : null}
+        {centralLoginAvailable() ? (
+          <a
+            className="simple-logout simple-dashboard"
+            href={dashboardUrl()}
+            aria-label="Zurück zum Dashboard"
+            title="Zurück zum Dashboard"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M15 6l-6 6 6 6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </a>
+        ) : null}
         <button
           type="button"
           className="simple-logout"

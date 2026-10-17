@@ -14,6 +14,7 @@ const { createKesherRoles } = require('./kesher-roles')
 const { createNeighbors } = require('./neighbors')
 const { normalizeRaspberry, launcherConfig, parsePiRequest, createPiRegistry } = require('./raspberry-pis')
 const { createChurchTools } = require('./churchtools')
+const { createMessageLinks } = require('./message-links')
 const QRCode = require('qrcode')
 const {
   createAccess, normalizeAccess, roleRights, allowedOutputs, editableOutputs, visibleLayouts, applyRestrictedChanges, claimLayouts, ADMIN,
@@ -692,7 +693,7 @@ function updateAnnounceRequests(list) {
 }
 
 const publicRequests = () =>
-  announceRequests.map(({ id, name, text, from, at, status, shownAt }) => ({ id, name, text, from, at, status, shownAt }))
+  announceRequests.map(({ id, name, text, from, at, status, shownAt, link }) => ({ id, name, text, from, at, status, shownAt, link }))
 
 /** Text mit eingesetzten Platzhaltern, wie ihn ProPresenter anzeigen wird. */
 /**
@@ -1132,6 +1133,8 @@ const kesherChat = createKesherChat({
   onFlash: broadcast,
   // Wer in Kesher verbunden ist, zählt bei den angemeldeten Geräten als online (Handys im WLAN)
   onPresence: sessionsChanged,
+  // Kopfhörer/Mikrofon an einem Pi eingesteckt oder abgezogen: Einstellungsseite lädt neu (ohne Inhalt, nur für Admins relevant)
+  onAudioDevices: () => broadcast({ type: 'raspberry_changed' }),
   log: console.log,
 })
 
@@ -1584,7 +1587,11 @@ app.post('/api/chat/send', requireUser, async (req, res) => {
 })
 
 // QR-Code-Anmeldung fürs Handy: Einmal-Link, 10 Minuten gültig
-app.post(['/api/me/qr', '/.jms-auth/api/me/qr'], requireUser, (req, res) => res.json({ ok: true, ...access.createQrToken(req.user) }))
+// Dazu der Tagescode (nur wenn die Freischaltung an ist) – für Laptops, die keinen QR scannen können
+app.post(['/api/me/qr', '/.jms-auth/api/me/qr'], requireUser, (req, res) => {
+  const dayCode = access.gateway().active ? access.dayCode().code : null
+  res.json({ ok: true, ...access.createQrToken(req.user), dayCode })
+})
 
 app.get('/q/:token', (req, res) => {
   const ok = access.redeemQrToken(req.params.token, req, res)
@@ -1765,6 +1772,7 @@ const WATCHED_SERVICES = {
   portainer: process.env.PORTAINER_URL || 'https://127.0.0.1:9443',
   router: process.env.ROUTER_URL || 'http://192.168.0.250',
   dns: process.env.DNS_URL || 'http://127.0.0.1:8083',
+  glances: process.env.GLANCES_URL || 'http://127.0.0.1:61208',
 }
 
 /** Dienste, deren Seiten die Sitzung des Dienstes brauchen (Cookie des Browsers wird mitgeschickt). */
@@ -1913,7 +1921,8 @@ app.get(/^\/\.jms-auth\/page\/([a-z]+)(\/.*)?$/, async (req, res) => {
     user?.admin && CREDENTIAL_SERVICES[service] && readServiceCredentials()[service]?.password
       ? `<script src="/.jms-auth/autologin.js" data-service="${service}" defer></script>`
       : ''
-  const tag = watchTag(user) + auto
+  // JMS-Leiste unten links: zurück zum Dashboard, wer angemeldet ist, Konto wechseln, Abmelden
+  const tag = watchTag(user) + auto + '<script src="/.jms-auth/jms-bar.js" defer></script>'
   const html = page.body
   res
     .status(page.status)
@@ -2222,6 +2231,112 @@ app.post('/api/propresenter/announce', requireUser, async (req, res) => {
   )
   res.json({ ok: true, request: publicRequests().find((r) => r.id === request.id), notified })
 })
+// ---------------------------------------------------------------------------
+// Nachrichten-Links (message-links.js): Ordner & Co. schicken ohne Anmeldung eine Meldung auf
+// den Beamer (vorbereitet, angezeigt vom ProPresenter-Bediener) oder das Stage Display.
+// Seite: /nachricht.html?k=<Token>. Verwalten nur der Admin (Benutzer & Rechte → Nachrichten-Links).
+// ---------------------------------------------------------------------------
+const messageLinks = createMessageLinks({ dataDir: DATA_DIR })
+const linkStage = new Map() // Link-ID → zuletzt über diesen Link gesetzte Bühnennachricht (nur die darf er löschen)
+
+app.get('/api/message-links', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json({ ok: true, links: messageLinks.list() }))
+app.post('/api/message-links', requireAdmin, (req, res) => {
+  try {
+    res.json({ ok: true, link: messageLinks.create(req.body) })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
+})
+app.put('/api/message-links/:id', requireAdmin, (req, res) => {
+  try {
+    res.json({ ok: true, link: messageLinks.update(req.params.id, req.body) })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
+})
+app.delete('/api/message-links/:id', requireAdmin, (req, res) => {
+  try {
+    messageLinks.remove(req.params.id)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
+})
+
+function linkOf(req, res) {
+  res.set('Cache-Control', 'no-store')
+  const link = messageLinks.byToken(req.params.token)
+  if (!link) res.status(404).json({ ok: false, error: 'Dieser Link gilt nicht (mehr). Bitte beim Technik-Team einen neuen holen.' })
+  return link
+}
+
+app.get('/api/nachricht/:token', (req, res) => {
+  const link = linkOf(req, res)
+  if (!link) return
+  res.json({
+    ok: true,
+    name: link.name,
+    stage: link.stage,
+    beamer: link.beamer,
+    connected: stageState.connected,
+    stageMessage: link.stage ? stageState.message : '',
+    ownStage: link.stage && Boolean(stageState.message) && linkStage.get(link.id) === stageState.message,
+    templates: link.beamer ? stageState.templates.filter((t) => !t.free) : [],
+    requests: link.beamer ? publicRequests().filter((r) => r.link === link.id && r.status !== 'ersetzt').slice(0, 3) : [],
+  })
+})
+
+app.post('/api/nachricht/:token', async (req, res) => {
+  const link = linkOf(req, res)
+  if (!link) return
+  const from = messageLinks.cleanName(req.body?.from)
+  const target = req.body?.target
+  const fail = (err) =>
+    res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
+  if (!from) return res.status(400).json({ ok: false, error: 'Bitte deinen Namen eingeben' })
+  const who = `${from} (${link.name})`
+  try {
+    if (target === 'stage') {
+      if (!link.stage) return res.status(403).json({ ok: false, error: 'Dieser Link darf nicht aufs Stage Display schicken' })
+      const text = String(req.body?.text ?? '').trim().slice(0, 200)
+      if (!text) {
+        // Löschen nur, was über diesen Link kam – eine Nachricht der Technik bleibt stehen
+        if (linkStage.get(link.id) !== stageState.message) return res.status(403).json({ ok: false, error: 'Diese Nachricht kam nicht von hier' })
+        await setStageMessage('')
+        linkStage.delete(link.id)
+        console.log(`ProPresenter: Bühnennachricht gelöscht (Nachrichten-Link „${link.name}“, ${from})`)
+        return res.json({ ok: true })
+      }
+      messageLinks.check(link)
+      await setStageMessage(text)
+      messageLinks.record(link)
+      linkStage.set(link.id, text)
+      console.log(`ProPresenter: Bühnennachricht „${text}“ (Nachrichten-Link „${link.name}“, ${from})`)
+      notifyChat(null, `Bühnennachricht (Stage Display) von ${who}: „${text}“`)
+      return res.json({ ok: true })
+    }
+    if (target === 'beamer') {
+      if (!link.beamer) return res.status(403).json({ ok: false, error: 'Dieser Link darf nicht auf den Beamer schicken' })
+      messageLinks.check(link)
+      const request = await prepareAnnouncement(
+        { uuid: req.body?.uuid ? String(req.body.uuid) : '', fields: req.body?.fields || {}, text: req.body?.text },
+        who,
+      )
+      messageLinks.record(link)
+      request.link = link.id
+      console.log(`ProPresenter: Beamer-Meldung vorbereitet „${request.text}“ (Nachrichten-Link „${link.name}“, ${from})`)
+      const notified = await notifyChat(
+        null,
+        `Beamer-Meldung von ${who} wartet in ProPresenter: „${request.text}“ – bitte „${FREE_MESSAGE_NAME}“ unter Meldungen anzeigen`,
+      )
+      return res.json({ ok: true, notified })
+    }
+    res.status(400).json({ ok: false, error: 'Ziel fehlt (Beamer oder Stage Display)' })
+  } catch (err) {
+    fail(err)
+  }
+})
+
 app.all('/api/propresenter/stage-message', requireTrusted, (req, res) => {
   const text = req.body?.text ?? req.query.text
   // Ohne Text nichts tun (ein versehentlich geöffneter Link soll die Nachricht nicht löschen)

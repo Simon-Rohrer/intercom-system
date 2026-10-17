@@ -29,6 +29,7 @@ import { createHoldButtonProps } from "../lib/holdButton";
 import { resolveInputDeviceChannelCount } from "../lib/audioDeviceChannels";
 import { withResolvedStreamDeckButtonLabel } from "../lib/streamDeckLabels";
 import { roleAllowed } from "../lib/intercom";
+import { centralLoginAvailable, dashboardUrl } from "../lib/centralLogin";
 import { fitKeyGrid, type KeyGridFit } from "../lib/keyGridFit";
 import { resolveEmbedMode, resolveHideTalkControls } from "../lib/runtimeMode";
 import { sortDirectUsersByRoleAndUsername } from "../lib/users";
@@ -2699,6 +2700,26 @@ export function StationIntercomView({
             <LowPowerModeBadge className="station-low-power-badge" />
           ) : null}
           <div className="station-top-actions">
+            {centralLoginAvailable() && !embedMode && !remoteControl ? (
+              <a
+                className="station-top-admin station-top-dashboard"
+                href={dashboardUrl()}
+                aria-label="Zurück zum Dashboard"
+                title="Zurück zum Dashboard"
+              >
+                <svg viewBox="0 0 24 24" className="station-top-admin-icon" aria-hidden="true">
+                  <path
+                    d="M15 6l-6 6 6 6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Dashboard</span>
+              </a>
+            ) : null}
             <button
               type="button"
               className="station-top-admin"

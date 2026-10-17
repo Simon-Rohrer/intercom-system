@@ -10,9 +10,11 @@ import { adoptServerPrefs, applyPrefs, currentPrefs, nextTheme, setPrefs, themeI
 import { visibleOutputs, visibleLayouts, canEditOutput, chatFor } from './rights.js'
 import { createComposer } from './chat-compose.js'
 import { fillAvatar, pickAvatar } from './avatar.js'
+import { serviceUrl, findService } from './services.js'
 
 const $ = (sel) => document.querySelector(sel)
 const $$ = (sel) => [...document.querySelectorAll(sel)]
+$('#dashboard-link').href = serviceUrl(findService('dashboard'))
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 

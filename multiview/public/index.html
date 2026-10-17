@@ -35,6 +35,10 @@
       </div>
 
       <nav class="site-nav" aria-label="Bereiche">
+        <a href="https://technik.local/" class="nav-dashboard" id="nav-dashboard" title="Zurück zum Dashboard">
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+          <span>Dashboard</span>
+        </a>
         <a href="#/" data-page="uebersicht">
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>
           <span>Übersicht</span>
@@ -54,6 +58,10 @@
         <a href="#/zugang" data-page="zugang" data-admin>
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16.5 14.2a5 5 0 0 1 5 5.3"/></svg>
           <span>Benutzer &amp; Rechte</span>
+        </a>
+        <a href="#/services" data-page="services" data-admin>
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><path d="M17.5 14v7M14 17.5h7"/></svg>
+          <span>Services</span>
         </a>
       </nav>
 
@@ -107,6 +115,17 @@
           <div id="profile-card" class="profile-hero"></div>
 
           <div id="status-strip" class="status-strip"></div>
+        </section>
+
+        <!-- Services: alle Dienste auf einen Blick (nur Admin) -->
+        <section id="page-services" class="page" hidden>
+          <div class="page-head">
+            <div>
+              <h1>Services</h1>
+              <p class="lead">Alle Dienste auf dem Technik-Server. Ein Klick öffnet den Dienst – angemeldet bist du dort schon.</p>
+            </div>
+          </div>
+          <div id="services-list" class="services-list"></div>
         </section>
 
         <!-- Multiviews (Unterseiten: Multiviews und Layouts) -->
@@ -461,7 +480,6 @@
                   <h3>Pis im Netz</h3>
                   <p class="muted">Pis, die in letzter Zeit nach ihren Einstellungen gefragt haben. Einen neuen Pi übernimmst du mit einem Klick – mit den Werten aus seiner Datei.</p>
                 </div>
-                <button class="btn small" type="button" id="pi-refresh">Aktualisieren</button>
               </div>
               <div id="pi-seen"></div>
 
@@ -497,11 +515,13 @@
             <a href="#/zugang/anmeldung" data-section-link="anmeldung">Anmeldung &amp; Admin-PIN</a>
             <a href="#/zugang/dienste" data-section-link="dienste">Anmeldung für alle Dienste</a>
             <a href="#/zugang/zugangsdaten" data-section-link="zugangsdaten">Zugangsdaten der Dienste</a>
+            <a href="#/zugang/nachrichten" data-section-link="nachrichten">Nachrichten-Links</a>
           </nav>
           <div class="settings-stack">
             <div class="card" id="access-pin-card" data-section="anmeldung"></div>
             <div class="card" id="access-gateway-card" data-section="dienste"></div>
             <div class="card" id="service-creds-card" data-section="zugangsdaten"></div>
+            <div class="card" id="message-links-card" data-section="nachrichten"></div>
             <div class="card" data-section="rollen">
               <div class="card-head">
                 <div>

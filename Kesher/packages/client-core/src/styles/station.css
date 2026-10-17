@@ -1672,3 +1672,6 @@ body.panel-resizing-row {
   text-transform: uppercase;
   color: var(--k-ink);
 }
+
+/* Zurück zum Dashboard (Link im Look der Kopfleisten-Knöpfe) */
+.station-shell .station-top-dashboard { text-decoration: none; }

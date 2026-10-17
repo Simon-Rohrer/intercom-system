@@ -862,6 +862,9 @@ a.status-tile:hover { border-color: var(--accent-line); }
 .pi-item .field small { font-weight: 400; color: var(--muted); }
 .pi-item .field input.invalid { border-color: var(--red); }
 .pi-problem { margin: 10px 0 0; color: var(--amber); font-size: 13px; }
+/* Mikrofon/Kopfhörer-Auswahl: Hinweis unter dem Feld */
+.pi-grid .field small.muted, .pi-device-missing { font-size: 12px; margin-top: 2px; }
+.pi-device-missing { color: var(--amber); }
 .pi-seen-table td { vertical-align: middle; }
 
 /* ------------------------------------------------------------------ Benutzer & Rechte */
@@ -1605,6 +1608,10 @@ body::before {
 .qr-hero p { margin: 0; font-size: 13px; line-height: 1.4; }
 .qr-hero .btn { margin-top: 10px; }
 .qr-hero-text { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.qr-hero-code { display: flex; flex-direction: column; align-items: inherit; gap: 2px; margin-top: 8px; }
+.qr-hero-code[hidden] { display: none; }
+.qr-hero-code span { font-size: 12px; font-weight: 600; color: var(--muted, inherit); opacity: 0.8; }
+.qr-hero-code .day-code-digits { font-size: 26px; letter-spacing: 0.08em; }
 @media (max-width: 1180px) {
   .profile-hero.with-qr { grid-template-columns: minmax(240px, 300px) 1fr; }
   .profile-hero.with-qr .qr-hero { grid-column: 1 / -1; flex-direction: row; text-align: left; gap: 18px; }
@@ -1868,4 +1875,45 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 @media (max-width: 760px) {
   .app-icon { width: 58px; height: 58px; border-radius: 13.5px; }
   .app-icon svg { width: 31px; height: 31px; }
+}
+
+/* Zurück zum Dashboard (erster Eintrag der Seitenleiste) und Seite „Services“ */
+.site-nav a.nav-dashboard .icon { background: linear-gradient(180deg, #8e8e96, #5c5c64); }
+.site-nav a.nav-dashboard { margin-bottom: 6px; }
+.site-nav a[data-page="services"] .icon { background: linear-gradient(180deg, #ff8fb1, #ff2d6f); }
+.app-icon.red { background: linear-gradient(180deg, #ff7a7a 0%, #ff453a 55%, #d70015 100%); --icon-shadow: rgba(215, 0, 21, 0.5); }
+.services-list { display: flex; flex-direction: column; gap: 22px; }
+.services-group h2 { font-size: 15px; margin: 0 0 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.services-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.service-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border-radius: var(--radius);
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.15s ease;
+}
+.service-card:hover { transform: translateY(-2px); }
+.service-card:active { transform: scale(0.98); }
+.service-card .app-icon { width: 46px; height: 46px; border-radius: 12px; flex: none; }
+.service-card .app-icon svg { width: 26px; height: 26px; fill: #fff; stroke: none; }
+.service-card b { display: block; font-size: 15px; }
+.service-card span.desc { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.service-card code { display: block; font-size: 11.5px; color: var(--muted); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.service-card .service-text { min-width: 0; }
+
+/* Benutzer & Rechte → Nachrichten-Links */
+.msg-link-new { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+.msg-link-new input[type="text"] { flex: 1 1 200px; }
+.msg-link { display: flex; gap: 16px; padding: 14px 0; border-top: 1px solid var(--line); }
+.msg-link.off { opacity: 0.6; }
+.msg-link-qr.qr-frame { flex: none; display: block; width: 132px; height: 132px; }
+.msg-link-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.msg-link-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.msg-link-head input[type="text"] { flex: 1 1 160px; font-weight: 600; }
+.msg-link .muted.small { margin: 0; font-size: 12px; }
+@media (max-width: 560px) {
+  .msg-link { flex-direction: column; }
 }

@@ -190,6 +190,7 @@ https://192.168.0.21:3000 {
 https://192.168.0.21:61208 {
 	import lan_port
 	import jms_auth glances
+	import jms_watch glances
 	reverse_proxy 127.0.0.1:61208
 }
 
@@ -244,6 +245,7 @@ https://companion.jms.de, https://companion.local {
 https://glances.jms.de, https://glances.local {
 	tls internal
 	import jms_auth glances
+	import jms_watch glances
 	reverse_proxy 127.0.0.1:61208
 }
 
