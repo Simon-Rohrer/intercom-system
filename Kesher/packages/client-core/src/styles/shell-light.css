@@ -1,0 +1,1117 @@
+/* ERZEUGT von scripts/gen-shell-light.mjs – nicht von Hand ändern.
+   Helle Fassung der festen Farben aus app.css, station.css, settings.css, chat.css, simple.css, admin.css:
+   gilt nur innerhalb der Seitenleiste (.k-shell) und nur im hellen Modus. */
+
+:where(.k-shell[data-scheme="light"]) .panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+:where(.k-shell[data-scheme="light"]) .mic-dropdown-item:hover,
+:where(.k-shell[data-scheme="light"]) .mic-dropdown-item.active {
+  background: var(--btn-bg-hover);
+}
+:where(.k-shell[data-scheme="light"]) .meter {
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+:where(.k-shell[data-scheme="light"]) .admin-collapsible {
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  background: var(--panel);
+}
+:where(.k-shell[data-scheme="light"]) .admin-collapsible-bar {
+  border-bottom: 1px solid rgba(20, 40, 90, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .admin-inline-button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+}
+:where(.k-shell[data-scheme="light"]) .admin-inline-button:hover {
+  color: var(--text);
+  background: rgba(20, 40, 90, 0.026);
+}
+:where(.k-shell[data-scheme="light"]) .admin-inline-button.active {
+  border: 1px solid rgba(243, 195, 55, 0.14);
+  background: transparent;
+  color: var(--text);
+}
+:where(.k-shell[data-scheme="light"]) .secondary {
+  background: transparent;
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  color: var(--text);
+}
+:where(.k-shell[data-scheme="light"]) .routing-matrix-toggle {
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  background: rgba(20, 40, 90, 0.039);
+  color: var(--text-dark);
+}
+:where(.k-shell[data-scheme="light"]) .routing-matrix-toggle:hover:not(:disabled) {
+  border-color: rgba(20, 40, 90, 0.15);
+  background: rgba(20, 40, 90, 0.078);
+}
+:where(.k-shell[data-scheme="light"]) .routing-matrix-talk.active {
+  background: var(--talk);
+  color: #fff;
+  border-color: var(--talk);
+}
+:where(.k-shell[data-scheme="light"]) .routing-matrix-default-talk.active {
+  background: #f2c94c;
+  color: #2b2100;
+  border-color: #f2c94c;
+}
+:where(.k-shell[data-scheme="light"]) .routing-matrix-listen.active {
+  background: var(--listen);
+  color: #fff;
+  border-color: var(--listen);
+}
+:where(.k-shell[data-scheme="light"]) .routing-matrix-forced.active {
+  background: var(--forced, #af52de);
+  color: #fff;
+  border-color: var(--forced, #af52de);
+}
+:where(.k-shell[data-scheme="light"]) .admin-metric {
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  background: rgba(20, 40, 90, 0.026);
+}
+:where(.k-shell[data-scheme="light"]) .admin-tabs-nav {
+  background: transparent;
+  border: 1px solid rgba(20, 40, 90, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .admin-accordion-section {
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  background: transparent;
+}
+:where(.k-shell[data-scheme="light"]) .admin-accordion-header {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+}
+:where(.k-shell[data-scheme="light"]) .admin-accordion-header:hover {
+  background: rgba(20, 40, 90, 0.026);
+  color: var(--text);
+}
+:where(.k-shell[data-scheme="light"]) .admin-accordion-body {
+  border-top: 1px solid rgba(20, 40, 90, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .admin-tab-button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+}
+:where(.k-shell[data-scheme="light"]) .admin-tab-button:hover {
+  background: rgba(20, 40, 90, 0.026);
+  color: var(--text);
+}
+:where(.k-shell[data-scheme="light"]) .admin-tab-button.active {
+  background: transparent;
+  border: 2px solid var(--accent);
+  color: var(--muted);
+}
+:where(.k-shell[data-scheme="light"]) .admin-tab-button.active .admin-tab-badge {
+  background: rgba(255, 255, 255, 0.93);
+  color: var(--accent);
+}
+:where(.k-shell[data-scheme="light"]) .admin-tab-badge {
+  background: rgba(20, 40, 90, 0.091);
+  color: var(--text);
+}
+:where(.k-shell[data-scheme="light"]) .admin-error {
+  color: var(--admin-error);
+  background: rgba(255, 255, 255, 0.598);
+  border: 1px solid rgba(193, 18, 31, 0.22);
+}
+:where(.k-shell[data-scheme="light"]) .admin-block {
+  background: rgba(20, 40, 90, 0.02);
+  border: 1px solid rgba(47, 67, 96, 0.12);
+}
+:where(.k-shell[data-scheme="light"]) .admin-pin-field input {
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  background: rgba(20, 40, 90, 0.026);
+  color: var(--admin-title);
+}
+:where(.k-shell[data-scheme="light"]) .admin-pin-field textarea {
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  background: rgba(20, 40, 90, 0.026);
+  color: var(--admin-title);
+}
+:where(.k-shell[data-scheme="light"]) .admin-pin-field input:focus {
+  background: rgba(20, 40, 90, 0.052);
+  border-color: rgba(20, 40, 90, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .admin-pin-field textarea:focus {
+  background: rgba(20, 40, 90, 0.052);
+  border-color: rgba(20, 40, 90, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .admin-pin-message-error {
+  background: rgba(255, 255, 255, 0.61);
+  border: 1px solid rgba(193, 18, 31, 0.3);
+  color: var(--admin-modal-text);
+}
+:where(.k-shell[data-scheme="light"]) .admin-showfile-sections .admin-checkbox-wide {
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  background: rgba(20, 40, 90, 0.026);
+}
+:where(.k-shell[data-scheme="light"]) .admin-showfile-sections .admin-checkbox-wide:hover {
+  border-color: rgba(20, 40, 90, 0.08);
+  background: rgba(20, 40, 90, 0.039);
+}
+:where(.k-shell[data-scheme="light"]) .admin-list li {
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  background: rgba(20, 40, 90, 0.026);
+}
+:where(.k-shell[data-scheme="light"]) .admin-list li:hover {
+  background: rgba(20, 40, 90, 0.039);
+  border-color: rgba(20, 40, 90, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .birthday-gate {
+  background: radial-gradient(circle at 20% 20%, rgba(255, 186, 73, 0.22), transparent 40%),
+    radial-gradient(circle at 85% 10%, rgba(169, 178, 190, 0.25), transparent 35%),
+    linear-gradient(140deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.95) 55%, rgba(255, 255, 255, 0.95) 100%);
+}
+:where(.k-shell[data-scheme="light"]) .birthday-gate-card {
+  background: rgba(255, 255, 255, 0.838);
+  border: 1px solid rgba(20, 40, 90, 0.16);
+}
+:where(.k-shell[data-scheme="light"]) .birthday-gate-kicker {
+  color: var(--k-call);
+}
+:where(.k-shell[data-scheme="light"]) .birthday-gate-card h1 {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .birthday-gate-card p {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .admin-role-modal-backdrop {
+  background: rgba(255, 255, 255, 0.862);
+}
+:where(.k-shell[data-scheme="light"]) .admin-role-modal {
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(20, 40, 90, 0.046), transparent 34%),
+    var(--panel);
+  border: 1px solid rgba(20, 40, 90, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .admin-role-modal-header {
+  border-bottom: 1px solid rgba(20, 40, 90, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .admin-role-modal-close {
+  color: var(--muted);
+  background: rgba(20, 40, 90, 0.033);
+  border: 1px solid rgba(20, 40, 90, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .admin-role-modal-close:hover:not(:disabled) {
+  color: var(--text);
+  border-color: rgba(0, 209, 255, 0.24);
+  background: rgba(0, 209, 255, 0.07);
+}
+:where(.k-shell[data-scheme="light"]) .admin-role-modal input:not([type="checkbox"]),
+:where(.k-shell[data-scheme="light"]) .admin-role-modal select {
+  color: var(--text);
+  background: rgba(20, 40, 90, 0.033);
+  border: 1px solid rgba(20, 40, 90, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .admin-role-modal-actions {
+  border-top: 1px solid rgba(20, 40, 90, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .admin-edit-panel {
+  border: 1px dashed rgba(62, 84, 116, 0.36);
+  background: rgba(255, 255, 255, 0.71);
+}
+:where(.k-shell[data-scheme="light"]) .admin-room-form-main,
+:where(.k-shell[data-scheme="light"]) .admin-room-form-side,
+:where(.k-shell[data-scheme="light"]) .admin-room-form-roles {
+  border: 1px solid rgba(72, 97, 136, 0.35);
+  background: rgba(255, 255, 255, 0.718);
+}
+:where(.k-shell[data-scheme="light"]) .admin-status-ok {
+  color: var(--k-ink);
+  background: rgba(52, 199, 89, 0.12);
+  border: 1px solid rgba(52, 199, 89, 0.22);
+}
+:where(.k-shell[data-scheme="light"]) .admin-status-wait {
+  color: var(--k-ink);
+  background: rgba(0, 209, 255, 0.12);
+  border: 1px solid rgba(0, 209, 255, 0.22);
+}
+:where(.k-shell[data-scheme="light"]) .admin-status-warn {
+  color: var(--k-ink-2);
+  background: rgba(255, 255, 255, 0.598);
+  border: 1px solid rgba(193, 18, 31, 0.22);
+}
+:where(.k-shell[data-scheme="light"]) .admin-monitoring-dropdown-toggle {
+  border: 1px solid rgba(169, 178, 190, 0.14);
+  background: rgba(20, 40, 90, 0.046);
+  color: var(--admin-title);
+}
+:where(.k-shell[data-scheme="light"]) .admin-code {
+  background: rgba(255, 255, 255, 0.89);
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  color: var(--text-bright-alt2);
+}
+:where(.k-shell[data-scheme="light"]) .admin-chat-toggle-row {
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  background: rgba(20, 40, 90, 0.026);
+}
+:where(.k-shell[data-scheme="light"]) .admin-chat-actions .secondary {
+  border-color: rgba(193, 18, 31, 0.25);
+}
+:where(.k-shell[data-scheme="light"]) .admin-chat-actions .secondary:hover {
+  border-color: rgba(193, 18, 31, 0.45);
+  background: rgba(255, 255, 255, 0.59);
+}
+:where(.k-shell[data-scheme="light"]) .admin-chat-message-success {
+  color: var(--k-ink);
+  background: rgba(52, 199, 89, 0.14);
+  border-color: rgba(52, 199, 89, 0.24);
+}
+:where(.k-shell[data-scheme="light"]) .role-multiselect-details {
+  border: 1px solid rgba(51, 72, 101, 0.3);
+  background: rgba(255, 255, 255, 0.69);
+}
+:where(.k-shell[data-scheme="light"]) .role-multiselect-reset {
+  border-color: rgba(20, 40, 90, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .role-multiselect-option {
+  border: 1px solid rgba(63, 95, 138, 0.65);
+  background: rgba(255, 255, 255, 0.67);
+  color: var(--text);
+}
+:where(.k-shell[data-scheme="light"]) .role-multiselect-option:hover {
+  border-color: var(--input-border-hover);
+  background: rgba(255, 255, 255, 0.73);
+}
+:where(.k-shell[data-scheme="light"]) button.secondary {
+  background: transparent;
+}
+:where(.k-shell[data-scheme="light"]) .low-power-mode-badge {
+  border: 1px solid rgba(169, 178, 190, 0.42);
+  background: rgba(255, 255, 255, 0.926);
+  color: var(--k-ink-3);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-backdrop {
+  background: rgba(255, 255, 255, 0.862);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-backdrop-low-power {
+  background: rgba(255, 255, 255, 0.918);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-backdrop-low-power .station-modal.panel {
+  background: var(--panel);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-backdrop-low-power .station-settings-card {
+  background: rgba(255, 255, 255, 0.942);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-backdrop-low-power .station-settings-nav button.active {
+  background: rgba(0, 209, 255, 0.1);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal.panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.942), rgba(255, 255, 255, 0.942)),
+    var(--panel);
+  border: 1px solid rgba(169, 178, 190, 0.16);
+}
+:where(.k-shell[data-scheme="light"]) .station-settings-nav {
+  border-right: 1px solid rgba(169, 178, 190, 0.12);
+  background: rgba(255, 255, 255, 0.694);
+}
+:where(.k-shell[data-scheme="light"]) .station-settings-nav button:hover,
+:where(.k-shell[data-scheme="light"]) .station-settings-nav button:focus-visible,
+:where(.k-shell[data-scheme="light"]) .station-settings-nav button.active {
+  color: var(--text-bright-alt2);
+  border-color: rgba(0, 209, 255, 0.22);
+  background: rgba(0, 209, 255, 0.07);
+}
+:where(.k-shell[data-scheme="light"]) .station-settings-nav button.active {
+  border-color: rgba(0, 209, 255, 0.34);
+  background: linear-gradient(180deg, rgba(0, 209, 255, 0.14), rgba(52, 116, 255, 0.08)),
+    rgba(20, 40, 90, 0.033);
+}
+:where(.k-shell[data-scheme="light"]) .station-settings-card {
+  border: 1px solid rgba(169, 178, 190, 0.13);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.838), rgba(255, 255, 255, 0.822)),
+    rgba(20, 40, 90, 0.033);
+}
+:where(.k-shell[data-scheme="light"]) .station-settings-section-title {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-settings-status-card {
+  border: 1px solid rgba(169, 178, 190, 0.12);
+  background: rgba(255, 255, 255, 0.742);
+}
+:where(.k-shell[data-scheme="light"]) .station-settings-meta {
+  color: var(--k-ink-3);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .audio-section h4 {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .audio-box {
+  background: rgba(255, 255, 255, 0.734);
+  border: 1px solid rgba(169, 178, 190, 0.13);
+}
+:where(.k-shell[data-scheme="light"]) .audio-box-header {
+  background: rgba(20, 40, 90, 0.033);
+}
+:where(.k-shell[data-scheme="light"]) .audio-box-toggle {
+  background: transparent;
+  border: 0;
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .audio-box-toggle:hover {
+  background: rgba(20, 40, 90, 0.052);
+}
+:where(.k-shell[data-scheme="light"]) .audio-subsection {
+  border: 1px solid rgba(169, 178, 190, 0.12);
+  background: rgba(255, 255, 255, 0.686);
+}
+:where(.k-shell[data-scheme="light"]) .audio-subsection-toggle {
+  border: 0;
+  background: rgba(20, 40, 90, 0.039);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .audio-subsection-toggle:hover {
+  background: rgba(20, 40, 90, 0.072);
+}
+:where(.k-shell[data-scheme="light"]) .audio-device-card,
+:where(.k-shell[data-scheme="light"]) .audio-gate-card {
+  border: 1px solid rgba(169, 178, 190, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.822), rgba(255, 255, 255, 0.806)),
+    rgba(20, 40, 90, 0.026);
+}
+:where(.k-shell[data-scheme="light"]) .audio-gate-card.active {
+  border-color: rgba(0, 209, 255, 0.26);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.862), rgba(255, 255, 255, 0.838)),
+    rgba(0, 209, 255, 0.035);
+}
+:where(.k-shell[data-scheme="light"]) .audio-card-head h4,
+:where(.k-shell[data-scheme="light"]) .audio-gate-header h4 {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .audio-status-pill {
+  border: 1px solid rgba(169, 178, 190, 0.14);
+  background: rgba(169, 178, 190, 0.07);
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .audio-status-pill.ok {
+  border-color: rgba(0, 224, 143, 0.24);
+  background: rgba(0, 224, 143, 0.08);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .audio-status-pill.warning {
+  border-color: rgba(255, 99, 99, 0.28);
+  background: rgba(255, 99, 99, 0.1);
+  color: var(--k-bad);
+}
+:where(.k-shell[data-scheme="light"]) .audio-status-pill.paused {
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .audio-control small {
+  color: var(--k-ink-3);
+}
+:where(.k-shell[data-scheme="light"]) .audio-meter-card,
+:where(.k-shell[data-scheme="light"]) .audio-test-card,
+:where(.k-shell[data-scheme="light"]) .audio-slider-card {
+  border: 1px solid rgba(169, 178, 190, 0.1);
+  background: rgba(255, 255, 255, 0.694);
+}
+:where(.k-shell[data-scheme="light"]) .audio-slider-card {
+  border-top: 1px solid rgba(169, 178, 190, 0.1);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .audio-slider-card label strong,
+:where(.k-shell[data-scheme="light"]) .station-modal-body .audio-gate-slider label strong {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .audio-gate-switch input:checked + .station-setting-toggle {
+  border-color: rgba(0, 209, 255, 0.72);
+  background: rgba(0, 209, 255, 0.18);
+}
+:where(.k-shell[data-scheme="light"]) .audio-gate-switch input:checked + .station-setting-toggle::after {
+  background: var(--accent);
+}
+:where(.k-shell[data-scheme="light"]) .audio-gate-switch input:disabled + .station-setting-toggle {
+  border-color: rgba(119, 134, 161, 0.25);
+  background: rgba(255, 255, 255, 0.806);
+}
+:where(.k-shell[data-scheme="light"]) .audio-gate-copy,
+:where(.k-shell[data-scheme="light"]) .audio-gate-status {
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .audio-gate-readout {
+  border: 1px solid rgba(169, 178, 190, 0.1);
+  background: rgba(255, 255, 255, 0.718);
+}
+:where(.k-shell[data-scheme="light"]) .audio-gate-readout strong {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .audio-gate-scale {
+  color: var(--k-ink-3);
+}
+:where(.k-shell[data-scheme="light"]) .audio-gate-card.active .audio-gate-status {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .input-channel-control > span {
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .input-channel-control select {
+  border: 1px solid rgba(20, 40, 90, 0.1);
+  background: rgba(20, 40, 90, 0.052);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .input-channel-control small {
+  color: var(--k-ink-3);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-room-manager {
+  border: 1px solid rgba(169, 178, 190, 0.14);
+  background: rgba(255, 255, 255, 0.718);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-room-manager-head strong,
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-toolbar strong {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-room-manager-head small,
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-toolbar small {
+  color: var(--k-ink-3);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-room-item {
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  background: rgba(20, 40, 90, 0.033);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-room-main small {
+  color: var(--k-ink-3);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-room-meta span {
+  border: 1px solid rgba(169, 178, 190, 0.13);
+  color: var(--k-ink-2);
+  background: rgba(169, 178, 190, 0.06);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-room-create input {
+  border: 1px solid rgba(20, 40, 90, 0.1);
+  background: rgba(20, 40, 90, 0.052);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-card {
+  border: 1px solid rgba(169, 178, 190, 0.14);
+  background: rgba(255, 255, 255, 0.782);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-summary-main strong {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-summary-main small {
+  color: var(--k-ink-3);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-summary-meta span {
+  border: 1px solid rgba(169, 178, 190, 0.13);
+  color: var(--k-ink-2);
+  background: rgba(169, 178, 190, 0.06);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-enabled {
+  border: 1px solid rgba(20, 40, 90, 0.09);
+  background: rgba(20, 40, 90, 0.046);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-status {
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-status.live {
+  color: var(--k-ok);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-status.starting {
+  color: var(--k-ink-3);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-status.error {
+  color: var(--k-bad);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-room-editor-backdrop {
+  background: rgba(255, 255, 255, 0.814);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-room-editor {
+  border: 1px solid rgba(169, 178, 190, 0.22);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.942), rgba(255, 255, 255, 0.942));
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-room-editor-header h4 {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-room-editor-header p {
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-editor-fields {
+  border: 1px solid rgba(169, 178, 190, 0.12);
+  background: rgba(255, 255, 255, 0.662);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-derived-room strong {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-feed-derived-room small {
+  color: var(--k-ink-3);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-room-role-group {
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  background: rgba(20, 40, 90, 0.033);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-room-role-group legend {
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-room-role-option {
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .channel-audio-room-role-option.locked {
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .input-level-head strong {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .input-level-row .meter {
+  border-color: rgba(169, 178, 190, 0.28);
+  background: rgba(255, 255, 255, 0.85);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .input-level-row-muted {
+  border: 1px solid rgba(169, 178, 190, 0.16);
+  background: rgba(255, 255, 255, 0.718);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .input-level-row-muted .input-level-head strong,
+:where(.k-shell[data-scheme="light"]) .station-modal-body .input-level-row-muted .input-level-status {
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .input-level-row .input-level-status.is-ok {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .input-level-row .input-level-status.is-clipping {
+  color: var(--k-bad);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .local-monitor-hint {
+  color: var(--k-ink-3);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .local-monitor-btn {
+  background: rgba(20, 40, 90, 0.065);
+  border: 1px solid rgba(20, 40, 90, 0.12);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .local-monitor-btn:hover {
+  background: rgba(20, 40, 90, 0.117);
+  border-color: rgba(20, 40, 90, 0.2);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .local-monitor-btn:disabled:hover {
+  background: rgba(20, 40, 90, 0.065);
+  border-color: rgba(20, 40, 90, 0.12);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .local-monitor-btn.active {
+  background: rgba(0, 224, 143, 0.12);
+  border-color: rgba(0, 224, 143, 0.45);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .local-monitor-status {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .mic-dropdown-trigger {
+  background: rgba(20, 40, 90, 0.052);
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-body .mic-dropdown-trigger:hover {
+  background: rgba(20, 40, 90, 0.078);
+  border-color: rgba(20, 40, 90, 0.12);
+}
+:where(.k-shell[data-scheme="light"]) .station-setting {
+  background: rgba(20, 40, 90, 0.046);
+  border: 1px solid rgba(169, 178, 190, 0.12);
+}
+:where(.k-shell[data-scheme="light"]) .station-setting:hover {
+  background: rgba(0, 209, 255, 0.055);
+  border-color: rgba(0, 209, 255, 0.2);
+}
+:where(.k-shell[data-scheme="light"]) .station-setting-toggle {
+  border: 1px solid rgba(159, 176, 203, 0.48);
+  background: rgba(255, 255, 255, 0.91);
+}
+:where(.k-shell[data-scheme="light"]) .station-setting-toggle::after {
+  background: var(--text-tertiary);
+}
+:where(.k-shell[data-scheme="light"]) .station-setting input[type="checkbox"]:checked + .station-setting-toggle {
+  border-color: rgba(0, 209, 255, 0.72);
+  background: rgba(0, 209, 255, 0.18);
+}
+:where(.k-shell[data-scheme="light"]) .station-setting input[type="checkbox"]:checked + .station-setting-toggle::after {
+  background: var(--accent);
+}
+:where(.k-shell[data-scheme="light"]) .station-setting-label {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-setting.disabled:hover {
+  background: rgba(20, 40, 90, 0.046);
+  border-color: rgba(169, 178, 190, 0.12);
+}
+:where(.k-shell[data-scheme="light"]) .station-setting.disabled .station-setting-label {
+  color: var(--text-muted);
+}
+:where(.k-shell[data-scheme="light"]) .station-setting.disabled .station-setting-toggle {
+  border-color: rgba(119, 134, 161, 0.25);
+  background: rgba(255, 255, 255, 0.806);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-settings-header {
+  border: 1px solid rgba(169, 178, 190, 0.16);
+  background: rgba(255, 255, 255, 0.782);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-error {
+  color: var(--k-bad);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-notice {
+  border: 1px solid rgba(169, 178, 190, 0.16);
+  background: rgba(255, 255, 255, 0.838);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-notice.success {
+  border-color: rgba(52, 199, 89, 0.32);
+  background: rgba(255, 255, 255, 0.718);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-notice.error {
+  border-color: rgba(255, 107, 107, 0.34);
+  background: rgba(255, 255, 255, 0.73);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-notice-icon {
+  background: rgba(20, 40, 90, 0.091);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-notice.success .streamdeck-notice-icon {
+  color: var(--color-success);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-notice.error .streamdeck-notice-icon {
+  color: var(--k-bad);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-notice strong {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-status-card {
+  border: 1px solid rgba(169, 178, 190, 0.14);
+  background: rgba(255, 255, 255, 0.798);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-status-card::before {
+  background: rgba(169, 178, 190, 0.35);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-status-card.ok::before {
+  background: var(--color-success);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-status-card strong {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-backdrop {
+  background: rgba(255, 255, 255, 0.838);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-dialog {
+  border: 1px solid rgba(169, 178, 190, 0.28);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.942), rgba(255, 255, 255, 0.942)),
+    var(--panel);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-icon {
+  color: var(--k-ink);
+  border: 1px solid rgba(169, 178, 190, 0.34);
+  background: linear-gradient(180deg, rgba(169, 178, 190, 0.24), rgba(255, 255, 255, 0.622)),
+    rgba(20, 40, 90, 0.052);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-icon.success {
+  color: var(--k-ok);
+  border-color: rgba(34, 197, 94, 0.4);
+  background: linear-gradient(180deg, rgba(20, 198, 75, 0.2), rgba(255, 255, 255, 0.61)),
+    rgba(20, 40, 90, 0.052);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-icon.error {
+  color: var(--k-ink-2);
+  border-color: rgba(239, 68, 68, 0.4);
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.2), rgba(255, 255, 255, 0.61)),
+    rgba(20, 40, 90, 0.052);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-content h4 {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-content strong {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-summary > div,
+:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-path {
+  border: 1px solid rgba(169, 178, 190, 0.16);
+  background: rgba(255, 255, 255, 0.734);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-path {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-page-bar {
+  border: 1px solid rgba(169, 178, 190, 0.13);
+  background: rgba(255, 255, 255, 0.782);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-deck-panel,
+:where(.k-shell[data-scheme="light"]) .streamdeck-editor.panel {
+  border: 1px solid rgba(169, 178, 190, 0.14);
+  background: rgba(255, 255, 255, 0.814);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-panel-heading strong,
+:where(.k-shell[data-scheme="light"]) .streamdeck-editor-heading h5 {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-button {
+  border: 1px solid rgba(20, 40, 90, 0.12);
+  background: rgba(255, 255, 255, 0.95);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-button:hover {
+  border-color: rgba(169, 178, 190, 0.7);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-button.active {
+  border-color: #a9b2be;
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-control input,
+:where(.k-shell[data-scheme="light"]) .streamdeck-control select,
+:where(.k-shell[data-scheme="light"]) .streamdeck-control textarea {
+  border: 1px solid rgba(20, 40, 90, 0.13);
+  background: rgba(255, 255, 255, 0.91);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-control input::placeholder,
+:where(.k-shell[data-scheme="light"]) .streamdeck-control textarea::placeholder {
+  color: var(--k-ink-3);
+}
+:where(.k-shell[data-scheme="light"]) .keyboard-shortcuts-settings h4 {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .shortcuts-table th {
+  color: var(--muted);
+  border-bottom: 1px solid rgba(20, 40, 90, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .shortcuts-table td {
+  border-bottom: 1px solid rgba(20, 40, 90, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .shortcut-key {
+  background: rgba(20, 40, 90, 0.104);
+  border: 1px solid rgba(20, 40, 90, 0.15);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .shortcut-btn {
+  background: rgba(20, 40, 90, 0.091);
+  border: 1px solid rgba(20, 40, 90, 0.12);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .shortcut-btn:hover {
+  background: rgba(20, 40, 90, 0.182);
+}
+:where(.k-shell[data-scheme="light"]) .shortcut-btn.active {
+  color: var(--station-call-active-text);
+  border-color: rgba(255, 204, 0, 0.62);
+  background: var(--station-call-active-bg);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-close {
+  background: rgba(20, 40, 90, 0.033);
+  border: 1px solid rgba(20, 40, 90, 0.08);
+  color: var(--text-tertiary);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-close:hover {
+  color: var(--text);
+  border-color: rgba(0, 209, 255, 0.25);
+  background: rgba(0, 209, 255, 0.08);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-header {
+  border-bottom: 1px solid rgba(169, 178, 190, 0.12);
+  background: rgba(255, 255, 255, 0.718);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-header h3 {
+  color: var(--k-ink);
+}
+@media (max-width: 980px) {
+  :where(.k-shell[data-scheme="light"]) .station-settings-nav {
+    border-right: 0;
+    border-bottom: 1px solid rgba(169, 178, 190, 0.12);
+    background: rgba(255, 255, 255, 0.918);
+  }
+}
+@media (max-width: 640px) {
+  :where(.k-shell[data-scheme="light"]) .station-modal.panel {
+    border-right: 0;
+    border-left: 0;
+  }
+  :where(.k-shell[data-scheme="light"]) .shortcuts-table tr {
+    border-bottom: 1px solid rgba(20, 40, 90, 0.08);
+  }
+  :where(.k-shell[data-scheme="light"]) .shortcuts-table td {
+    border-bottom: 0;
+  }
+}
+:where(.k-shell[data-scheme="light"]) .attention-flash-signal {
+  background: transparent;
+}
+:where(.k-shell[data-scheme="light"]) .attention-flash-call {
+  background: transparent;
+}
+:where(.k-shell[data-scheme="light"]) .attention-flash-signal::before {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(20, 40, 90, 0.2),
+    rgba(255, 255, 255, 0.63) 46%,
+    rgba(255, 255, 255, 0.16) 74%
+  );
+}
+:where(.k-shell[data-scheme="light"]) .attention-flash-call::before {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 232, 120, 0.72),
+    rgba(243, 195, 55, 0.5) 52%,
+    rgba(255, 255, 255, 0.598) 82%
+  );
+}
+:where(.k-shell[data-scheme="light"]) .attention-flash-card {
+  border: 1px solid rgba(20, 40, 90, 0.3);
+  background: rgba(255, 255, 255, 0.902);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-tools .shortcut-btn {
+  background: transparent;
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-tools .shortcut-btn:hover:not(:disabled) {
+  background: var(--k-face);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-panel .streamdeck-page-bar {
+  border-color: var(--k-line);
+  background: var(--k-rack);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-panel .streamdeck-deck-panel,
+:where(.k-shell[data-scheme="light"]) .streamdeck-panel .streamdeck-editor.panel {
+  border-color: var(--k-line);
+  background: var(--k-rack);
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-panel .streamdeck-editor-actions .shortcut-btn {
+  background: transparent;
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-toast.success {
+  border-color: color-mix(in srgb, var(--k-ok) 55%, var(--k-line));
+}
+:where(.k-shell[data-scheme="light"]) .streamdeck-toast.error {
+  border-color: color-mix(in srgb, var(--k-bad) 60%, var(--k-line));
+}
+:where(.k-shell[data-scheme="light"]) .station-mic-meter span {
+  background: rgba(255, 255, 255, 0.95);
+}
+:where(.k-shell[data-scheme="light"]) .station-mic-meter span.active.warning {
+  background: var(--k-call);
+}
+:where(.k-shell[data-scheme="light"]) .station-shell .station-reply.has-caller.active {
+  background: var(--k-call);
+  color: #1a1205;
+}
+:where(.k-shell[data-scheme="light"]) .station-shell .station-ptt.active,
+:where(.k-shell[data-scheme="light"]) .station-shell .station-ptt.live {
+  background: var(--k-talk);
+  border-color: var(--k-talk);
+  color: #fff;
+}
+:where(.k-shell[data-scheme="light"]) .station-ptt.active small,
+:where(.k-shell[data-scheme="light"]) .station-ptt.live small {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-always-on-indicator {
+  background: rgba(255, 255, 255, 0.95);
+}
+:where(.k-shell[data-scheme="light"]) .station-always-on-indicator::after {
+  background: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .station-shell .station-always-on.active {
+  color: var(--k-ink);
+  border-color: var(--k-talk);
+}
+:where(.k-shell[data-scheme="light"]) .station-always-on.active .station-always-on-indicator {
+  background: var(--k-talk);
+}
+:where(.k-shell[data-scheme="light"]) .station-always-on.active .station-always-on-indicator::after {
+  background: #fff;
+}
+:where(.k-shell[data-scheme="light"]) .station-shell .station-direct-tab.active {
+  border-color: var(--k-direct);
+  color: var(--k-ink);
+  background: color-mix(in srgb, var(--k-direct) 12%, transparent);
+}
+:where(.k-shell[data-scheme="light"]) .station-channel-meter-segment {
+  background: rgba(255, 255, 255, 0.95);
+}
+:where(.k-shell[data-scheme="light"]) .station-channel-meter-segment.signal.active {
+  background: var(--k-listen);
+}
+:where(.k-shell[data-scheme="light"]) .station-channel-meter-segment.warning.active {
+  background: var(--k-call);
+}
+:where(.k-shell[data-scheme="light"]) .station-channel-meter-segment.peak.active {
+  background: var(--k-talk);
+}
+:where(.k-shell[data-scheme="light"]) .priority-badge,
+:where(.k-shell[data-scheme="light"]) .station-receiving-badge,
+:where(.k-shell[data-scheme="light"]) .station-broadcast-receiving {
+  border: 1px solid var(--k-line);
+  color: var(--k-ink-3);
+}
+:where(.k-shell[data-scheme="light"]) .station-presence-badge {
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .station-gain-control input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    90deg,
+    var(--k-ink-2) var(--fill, 70%),
+    rgba(255, 255, 255, 0.95) var(--fill, 70%)
+  );
+}
+:where(.k-shell[data-scheme="light"]) .station-gain-control input[type="range"]::-moz-range-track {
+  background: linear-gradient(
+    90deg,
+    var(--k-ink-2) var(--fill, 70%),
+    rgba(255, 255, 255, 0.95) var(--fill, 70%)
+  );
+}
+:where(.k-shell[data-scheme="light"]) .station-listen-led {
+  background: rgba(255, 255, 255, 0.95);
+}
+:where(.k-shell[data-scheme="light"]) .listen.on .station-listen-led {
+  background: var(--k-listen);
+}
+:where(.k-shell[data-scheme="light"]) .station-card[data-talk="live"] .station-card-head small,
+:where(.k-shell[data-scheme="light"]) .station-card[data-talk="live"] .station-card-head em,
+:where(.k-shell[data-scheme="light"]) .station-card[data-talk="live"] .station-presence-badge {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-card[data-talk="live"] .station-channel-meter-segment {
+  background: rgba(255, 255, 255, 0.65);
+}
+:where(.k-shell[data-scheme="light"]) .station-card[data-talk="live"] .station-channel-meter-segment.active {
+  background: #fff;
+}
+:where(.k-shell[data-scheme="light"]) .station-card[data-talk="live"] .priority-badge {
+  border-color: rgba(20, 40, 90, 0.3);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-direct-avatar {
+  background: var(--k-direct-deep);
+  color: var(--k-direct);
+}
+:where(.k-shell[data-scheme="light"]) .station-shell .station-pin-top.active {
+  color: var(--k-call);
+}
+:where(.k-shell[data-scheme="light"]) .station-direct-card[data-talk="live"] .station-direct-avatar {
+  background: rgba(255, 255, 255, 0.63);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-shell .station-direct-card[data-talk="live"] .station-card-head small {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-broadcast-card[data-talk="live"] .station-broadcast-button small {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-shell .station-chat-popout-button:hover,
+:where(.k-shell[data-scheme="light"]) .station-shell .station-chat-popout-button.active {
+  color: var(--k-ink);
+  border-color: var(--k-accent);
+}
+:where(.k-shell[data-scheme="light"]) .attention-flash-card {
+  border: 2px solid var(--k-call);
+  background: rgba(255, 255, 255, 0.918);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-backdrop {
+  background: rgba(255, 255, 255, 0.862);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal.panel {
+  background: var(--k-rack);
+  border: 1px solid var(--k-line);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-header {
+  border-bottom: 1px solid var(--k-line);
+  background: var(--k-rack);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-header h3 {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-shell .station-modal-close {
+  border: 1px solid var(--k-line);
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .station-shell .station-modal-close:hover {
+  color: var(--k-ink);
+  border-color: var(--k-line-strong);
+  background: var(--k-face);
+}
+:where(.k-shell[data-scheme="light"]) .station-settings-nav {
+  border-right: 1px solid var(--k-line-soft);
+  background: var(--k-rack);
+}
+:where(.k-shell[data-scheme="light"]) .station-shell .station-settings-nav button.active {
+  background: var(--k-face-hi);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .station-settings-card {
+  border: 1px solid var(--k-line);
+  background: var(--k-rack);
+}
+:where(.k-shell[data-scheme="light"]) .station-modal-backdrop-low-power .station-settings-card {
+  background: var(--k-rack);
+}
+:where(.k-shell[data-scheme="light"]) .station-settings-section-title {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .chat-feed-room,
+:where(.k-shell[data-scheme="light"]) .chat-feed-source-icon {
+  border: 1px solid var(--k-line);
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .chat-feed-room.chat-tag-line {
+  border-color: #4a1d1a;
+  color: var(--k-bad);
+}
+:where(.k-shell[data-scheme="light"]) .chat-feed-source-icon {
+  border-color: #1d3a52;
+  color: var(--k-ink-2);
+}
+:where(.k-shell[data-scheme="light"]) .chat-panel-body .chat-ack-btn.active {
+  border-color: var(--k-call);
+  color: var(--k-call);
+  background: var(--k-call-deep);
+}
+:where(.k-shell[data-scheme="light"]) .chat-panel-body .chat-autocomplete button.active,
+:where(.k-shell[data-scheme="light"]) .chat-panel-body .chat-autocomplete button:hover {
+  background: var(--k-face);
+}
+:where(.k-shell[data-scheme="light"]) .simple-shell .simple-ptt.active {
+  background: var(--k-talk);
+  border-color: var(--k-talk);
+  color: #fff;
+}
+:where(.k-shell[data-scheme="light"]) .simple-ptt.active small {
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .simple-audio-status.has-error strong {
+  color: var(--k-bad);
+}
+:where(.k-shell[data-scheme="light"]) .simple-shell .simple-reply.active {
+  background: var(--k-call);
+}
+:where(.k-shell[data-scheme="light"]) .admin-shell .admin-card-body button:not([class]),
+:where(.k-shell[data-scheme="light"]) .admin-shell .admin-card-body button[class=""],
+:where(.k-shell[data-scheme="light"]) .admin-shell .secondary {
+  border: 1px solid var(--k-line);
+  background: var(--k-face-hi);
+  color: var(--k-ink);
+}
+:where(.k-shell[data-scheme="light"]) .admin-shell .secondary:hover:not(:disabled) {
+  border-color: var(--k-line-strong);
+}
+:where(.k-shell[data-scheme="light"]) .admin-shell .delete,
+:where(.k-shell[data-scheme="light"]) .admin-shell .secondary.danger {
+  border: 1px solid var(--k-talk-deep);
+  background: color-mix(in srgb, var(--k-talk) 14%, transparent);
+  color: #ffb3ad;
+}
+:where(.k-shell[data-scheme="light"]) .admin-shell .delete:hover:not(:disabled),
+:where(.k-shell[data-scheme="light"]) .admin-shell .secondary.danger:hover:not(:disabled) {
+  background: var(--k-talk);
+  border-color: var(--k-talk);
+  color: #fff;
+}
+:where(.k-shell[data-scheme="light"]) .admin-shell .admin-block {
+  border: 1px solid var(--k-line);
+  background: var(--k-rack);
+}
+:where(.k-shell[data-scheme="light"]) .admin-shell .admin-list .secondary {
+  background: transparent;
+}
+:where(.k-shell[data-scheme="light"]) .admin-shell .admin-list .delete {
+  border-color: var(--k-line);
+  background: transparent;
+  color: var(--k-ink-3);
+}
+:where(.k-shell[data-scheme="light"]) .admin-shell .admin-list li:hover .delete {
+  border-color: var(--k-talk-deep);
+  color: var(--k-bad);
+}

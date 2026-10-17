@@ -24,8 +24,8 @@ export function PartyLineMultiSelect({
       setState={setState}
       keyPrefix={keyPrefix}
       options={partyLines.map((pl) => ({ id: pl.id, label: pl.name }))}
-      noneSelectedLabel="No party lines selected"
-      clearLabel="Clear selection"
+      noneSelectedLabel="Keine Party Line gewählt"
+      clearLabel="Auswahl leeren"
     />
   );
 }

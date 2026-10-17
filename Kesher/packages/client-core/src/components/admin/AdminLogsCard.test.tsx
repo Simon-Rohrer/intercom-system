@@ -57,7 +57,7 @@ describe("AdminLogsCard", () => {
     render(<AdminLogsCard token="token-123" adminPin="1234" />);
 
     await user.click(screen.getByRole("button", { name: "Einblenden" }));
-    await user.click(screen.getByRole("button", { name: "Download TXT" }));
+    await user.click(screen.getByRole("button", { name: "Als TXT herunterladen" }));
 
     await waitFor(() => {
       expect(exportAdminLogsText).toHaveBeenCalledWith(

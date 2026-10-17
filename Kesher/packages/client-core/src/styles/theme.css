@@ -9,7 +9,10 @@
 @import "@fontsource/jetbrains-mono/latin-400.css";
 @import "@fontsource/jetbrains-mono/latin-600.css";
 
-:root {
+/* .k-shell (Seitenleiste wie JMS Control) setzt die Tokens noch einmal, damit
+   shell.css sie für hell/dunkel umstellen kann und die Aliase unten mitziehen. */
+:root,
+.k-shell {
   color-scheme: dark;
 
   /* ==========================================

@@ -74,9 +74,9 @@ describe("AdminRolesCard", () => {
     await user.click(screen.getByRole("button", { name: "Einblenden" }));
     await user.click(screen.getByRole("button", { name: "+ Neue Rolle" }));
     expect(screen.getByRole("dialog")).toBeVisible();
-    await user.type(screen.getByLabelText("Role ID"), "editor");
-    await user.type(screen.getByLabelText("Role name"), "Editor");
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.type(screen.getByLabelText("Kennung der Rolle"), "editor");
+    await user.type(screen.getByLabelText("Name der Rolle"), "Editor");
+    await user.click(screen.getByRole("button", { name: "Speichern" }));
 
     await waitFor(() => {
       expect(createRole).toHaveBeenCalledWith(
@@ -103,12 +103,12 @@ describe("AdminRolesCard", () => {
 
     await user.click(screen.getByRole("button", { name: "Einblenden" }));
     await user.click(screen.getByRole("button", { name: "Bearbeiten" }));
-    expect(screen.getByRole("dialog")).toHaveAccessibleName("Edit role");
-    expect(screen.getByLabelText("Role ID")).toHaveAttribute("readonly");
-    const roleNameInput = screen.getByLabelText("Role name");
+    expect(screen.getByRole("dialog")).toHaveAccessibleName("Rolle bearbeiten");
+    expect(screen.getByLabelText("Kennung der Rolle")).toHaveAttribute("readonly");
+    const roleNameInput = screen.getByLabelText("Name der Rolle");
     await user.clear(roleNameInput);
     await user.type(roleNameInput, "Operator Team");
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Speichern" }));
 
     await waitFor(() => {
       expect(updateRole).toHaveBeenCalledWith(
@@ -136,7 +136,7 @@ describe("AdminRolesCard", () => {
 
     await user.click(screen.getByRole("button", { name: "Einblenden" }));
     const duplicateButton = screen.getByRole("button", {
-      name: "Duplicate role Operator",
+      name: "Rolle Operator duplizieren",
     });
     const editButton = screen.getByRole("button", { name: "Bearbeiten" });
     expect(
@@ -146,13 +146,13 @@ describe("AdminRolesCard", () => {
     await user.click(duplicateButton);
 
     expect(duplicateRole).not.toHaveBeenCalled();
-    expect(screen.getByRole("dialog")).toHaveAccessibleName("Duplicate role");
-    expect(screen.getByLabelText("Role ID")).toHaveValue("op-2");
-    const roleNameInput = screen.getByLabelText("Role name");
+    expect(screen.getByRole("dialog")).toHaveAccessibleName("Rolle duplizieren");
+    expect(screen.getByLabelText("Kennung der Rolle")).toHaveValue("op-2");
+    const roleNameInput = screen.getByLabelText("Name der Rolle");
     expect(roleNameInput).toHaveValue("Operator 2");
     await user.clear(roleNameInput);
     await user.type(roleNameInput, "Operator Backup");
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Speichern" }));
 
     await waitFor(() => {
       expect(duplicateRole).toHaveBeenCalledWith("token-123", "1234", "op", {
@@ -180,8 +180,8 @@ describe("AdminRolesCard", () => {
 
     await user.click(screen.getByRole("button", { name: "Einblenden" }));
     await user.click(screen.getByRole("button", { name: "+ Neue Rolle" }));
-    const cancelButton = screen.getByRole("button", { name: "Cancel" });
-    const saveButton = screen.getByRole("button", { name: "Save" });
+    const cancelButton = screen.getByRole("button", { name: "Abbrechen" });
+    const saveButton = screen.getByRole("button", { name: "Speichern" });
     expect(
       cancelButton.compareDocumentPosition(saveButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -191,12 +191,12 @@ describe("AdminRolesCard", () => {
     expect(createRole).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "+ Neue Rolle" }));
-    await user.click(screen.getByRole("button", { name: "Close role dialog" }));
+    await user.click(screen.getByRole("button", { name: "Fenster schließen" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(createRole).not.toHaveBeenCalled();
   });
 
-  it("leaves creating, duplicating and deleting roles to the Multiview", async () => {
+  it("greys out the roles and points to JMS Control when roles are managed centrally", async () => {
     const user = userEvent.setup();
     render(
       <AdminRolesCard
@@ -208,36 +208,55 @@ describe("AdminRolesCard", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Einblenden" }));
+    const overlay = screen.getByRole("dialog", {
+      name: "Rollen werden in JMS Control verwaltet",
+    });
+    expect(overlay).toBeVisible();
     expect(
-      screen.getByText(/im Multiview unter „Benutzer & Rechte“/),
+      screen.getByText(/Rollen legst du in JMS Control unter Benutzer & Rechte an/),
     ).toBeVisible();
+
+    const link = screen.getByRole("link", { name: "Rechte in JMS Control anpassen" });
+    expect(link).toHaveAttribute("href", expect.stringContaining("#/zugang/rollen"));
+    expect(link).toHaveAttribute("target", "_blank");
+
+    // the list stays visible, but greyed out and not usable
+    expect(screen.getByText("Operator")).toBeInTheDocument();
+    expect(screen.getByRole("list")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("list")).toHaveClass("admin-roles-central");
+    expect(screen.getByRole("button", { name: "Bearbeiten" })).toBeDisabled();
     expect(
       screen.queryByRole("button", { name: "+ Neue Rolle" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /Duplicate role/ }),
+      screen.queryByRole("button", { name: /duplizieren/ }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Löschen" }),
     ).not.toBeInTheDocument();
 
-    expect(
-      screen.getByRole("link", { name: "Zur Rollenverwaltung" }),
-    ).toHaveAttribute("href", expect.stringContaining("/#/zugang"));
-
-    await user.click(screen.getByRole("button", { name: "Standardwerte" }));
-    expect(screen.getByLabelText("Role name")).toHaveAttribute("readonly");
+    await user.click(screen.getByRole("button", { name: "Bearbeiten" }));
+    expect(screen.queryByLabelText("Name der Rolle")).not.toBeInTheDocument();
   });
 
-  it("points to the Multiview on the matching address", () => {
-    expect(multiviewRolesUrl({ protocol: "https:", hostname: "192.168.0.21" })).toBe(
-      "https://192.168.0.21:8090/#/zugang",
+  it("points to the roles page of JMS Control on the matching address", () => {
+    expect(multiviewRolesUrl({ hostname: "192.168.0.21" })).toBe(
+      "https://192.168.0.21:8090/#/zugang/rollen",
     );
-    expect(multiviewRolesUrl({ protocol: "https:", hostname: "kesher.jms.de" })).toBe(
-      "https://multiview.jms.de/#/zugang",
+    expect(multiviewRolesUrl({ hostname: "kesher.jms.de" })).toBe(
+      "https://multiview.jms.de/#/zugang/rollen",
     );
-    expect(multiviewRolesUrl({ protocol: "https:", hostname: "intercom.local" })).toBe(
-      "https://multiview.local/#/zugang",
+    expect(multiviewRolesUrl({ hostname: "intercom.jms.de" })).toBe(
+      "https://multiview.jms.de/#/zugang/rollen",
+    );
+    expect(multiviewRolesUrl({ hostname: "intercom.local" })).toBe(
+      "https://jmscontrol.local/#/zugang/rollen",
+    );
+    expect(multiviewRolesUrl({ hostname: "kesher.local" })).toBe(
+      "https://jmscontrol.local/#/zugang/rollen",
+    );
+    expect(multiviewRolesUrl({ hostname: "server" })).toBe(
+      "https://server:8090/#/zugang/rollen",
     );
   });
 });

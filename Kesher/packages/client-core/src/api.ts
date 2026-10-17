@@ -55,7 +55,7 @@ let globalApiBaseUrl: string | null = null;
 export function normalizeServerAddressInput(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) {
-    throw new Error("Server address must not be empty.");
+    throw new Error("Die Serveradresse darf nicht leer sein.");
   }
 
   let parsed: URL;
@@ -66,11 +66,11 @@ export function normalizeServerAddressInput(input: string): string {
       parsed = new URL(`http://${trimmed}`);
     }
   } catch {
-    throw new Error("Invalid server address.");
+    throw new Error("Ungültige Serveradresse.");
   }
 
   if (!["http:", "https:"].includes(parsed.protocol)) {
-    throw new Error("Server address must use http or https.");
+    throw new Error("Die Serveradresse muss http oder https verwenden.");
   }
 
   if (parsed.pathname === "/") {
@@ -155,14 +155,14 @@ export function buildWebSocketUrl(
     (typeof window !== "undefined" ? window.location.origin : "");
 
   if (!base) {
-    throw new Error("Unable to resolve websocket origin.");
+    throw new Error("WebSocket-Adresse konnte nicht ermittelt werden.");
   }
 
   let parsedBase: URL;
   try {
     parsedBase = new URL(base);
   } catch {
-    throw new Error("Invalid base URL for websocket.");
+    throw new Error("Ungültige Basis-URL für die WebSocket-Verbindung.");
   }
   
   // Strip pathname to ensure clean origin
@@ -252,6 +252,8 @@ function normalizeBootstrap(data: unknown): Bootstrap {
 
   return {
     ...normalizedPublic,
+    // Roles managed centrally in JMS Control (otherwise dropped here)
+    ...(raw.centralRoles === true ? { centralRoles: true } : {}),
     self: {
       ...self,
       id: typeof self.id === "string" ? self.id : "",
@@ -562,7 +564,7 @@ export function normalizeStreamDeckSettings(data: unknown): StreamDeckSettings {
 
 export async function getPublicBootstrap(): Promise<PublicBootstrap> {
   const res = await fetch(apiUrl("/api/public-bootstrap"));
-  if (!res.ok) throw new Error("failed to load public bootstrap");
+  if (!res.ok) throw new Error("Öffentliche Startdaten konnten nicht geladen werden");
   const raw = (await res.json()) as unknown;
   return normalizePublicBootstrap(raw);
 }
@@ -612,7 +614,7 @@ export async function bootstrap(token: string): Promise<Bootstrap> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
-    throw new ApiError(res.status, await res.text(), "failed to load bootstrap");
+    throw new ApiError(res.status, await res.text(), "Startdaten konnten nicht geladen werden");
   }
   const raw = (await res.json()) as unknown;
   return normalizeBootstrap(raw);
@@ -638,7 +640,7 @@ export async function getRealtimeStats(
     cache: "no-store",
     signal,
   });
-  if (!res.ok) throw new Error("failed to load realtime stats");
+  if (!res.ok) throw new Error("Echtzeit-Statistiken konnten nicht geladen werden");
   return res.json() as Promise<RealtimeStatsResponse>;
 }
 
@@ -655,7 +657,7 @@ export async function getRaspberryPiStations(
     cache: "no-store",
     signal,
   });
-  if (!res.ok) throw new Error("failed to load Raspberry Pi stations");
+  if (!res.ok) throw new Error("Raspberry-Pi-Stationen konnten nicht geladen werden");
   return res.json() as Promise<RaspberryPiStationsResponse>;
 }
 
@@ -668,7 +670,7 @@ export async function getRaspberryPiStationStatuses(
     cache: "no-store",
     signal,
   });
-  if (!res.ok) throw new Error("failed to load Raspberry Pi stations");
+  if (!res.ok) throw new Error("Raspberry-Pi-Stationen konnten nicht geladen werden");
   return res.json() as Promise<RaspberryPiStationsResponse>;
 }
 
@@ -676,7 +678,7 @@ export async function getRaspberryPiRemoteStations(): Promise<RaspberryPiRemoteS
   const res = await fetch(apiUrl("/api/raspberry-pis/remote"), {
     cache: "no-store",
   });
-  if (!res.ok) throw new Error("failed to load Raspberry Pi remote stations");
+  if (!res.ok) throw new Error("Raspberry-Pi-Fernstationen konnten nicht geladen werden");
   const raw = (await res.json()) as Record<string, unknown>;
   const stations = Array.isArray(raw.stations) ? raw.stations : [];
   return {
@@ -739,7 +741,7 @@ export async function sendRaspberryPiRemoteCommand(
   });
   if (!res.ok) {
     const message = (await res.text()).trim();
-    throw new Error(message || "failed to send Raspberry Pi remote command");
+    throw new Error(message || "Fernbefehl an den Raspberry Pi konnte nicht gesendet werden");
   }
   return res.json() as Promise<RaspberryPiRemoteCommandResult>;
 }
@@ -753,7 +755,7 @@ export async function getStatus(
     cache: "no-store",
     signal,
   });
-  if (!res.ok) throw new Error("failed to load status");
+  if (!res.ok) throw new Error("Status konnte nicht geladen werden");
   return res.json() as Promise<StatusResponse>;
 }
 
@@ -1092,7 +1094,7 @@ export async function getTelegramStatus(
       [adminPinHeaderName]: adminPin,
     },
   });
-  if (!res.ok) throw new Error("failed to load telegram status");
+  if (!res.ok) throw new Error("Telegram-Status konnte nicht geladen werden");
   return res.json() as Promise<TelegramStatus>;
 }
 
@@ -1142,7 +1144,7 @@ export async function getTelegramAllowlist(
       [adminPinHeaderName]: adminPin,
     },
   });
-  if (!res.ok) throw new Error("failed to load telegram allowlist");
+  if (!res.ok) throw new Error("Telegram-Freigabeliste konnte nicht geladen werden");
   return res.json() as Promise<TelegramAllowlistEntry[]>;
 }
 

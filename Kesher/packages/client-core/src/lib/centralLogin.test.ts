@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { centralIdentityKey, centralSessionLogin, fetchCentralIdentity } from "./centralLogin";
+import { centralIdentityKey, centralSessionLogin, fetchCentralIdentity, resolveStoredTokenRestore } from "./centralLogin";
 import { resolveAutoLoginConfiguration } from "./autoLogin";
 
 vi.mock("../api", () => ({ getGlobalApiBaseUrl: () => "" }));
@@ -73,5 +73,53 @@ describe("central session binding", () => {
       }), { headers: { "Content-Type": "application/json" } }));
       expect(await fetchCentralIdentity()).toBeNull();
     }
+  });
+});
+
+const tim = { ...identity, roleId: "ton" };
+
+describe("resolveStoredTokenRestore", () => {
+  it("keeps the tab's session for the same central identity", () => {
+    expect(
+      resolveStoredTokenRestore({
+        storedToken: "t1",
+        storedIdentityKey: centralIdentityKey(tim),
+        identity: tim,
+        raspberryRemoteLogin: false,
+      }),
+    ).toBe("keep");
+  });
+
+  it("drops the session when someone else is signed in centrally", () => {
+    expect(
+      resolveStoredTokenRestore({
+        storedToken: "t1",
+        storedIdentityKey: centralIdentityKey(tim),
+        identity: { ...identity, name: "Anna", roleId: "licht" },
+        raspberryRemoteLogin: false,
+      }),
+    ).toBe("discard");
+  });
+
+  it("never restores the own session when opened with login=raspberry", () => {
+    expect(
+      resolveStoredTokenRestore({
+        storedToken: "t1",
+        storedIdentityKey: centralIdentityKey(tim),
+        identity: tim,
+        raspberryRemoteLogin: true,
+      }),
+    ).toBe("discard");
+  });
+
+  it("has nothing to do without a stored token", () => {
+    expect(
+      resolveStoredTokenRestore({
+        storedToken: null,
+        storedIdentityKey: "",
+        identity: tim,
+        raspberryRemoteLogin: true,
+      }),
+    ).toBe("none");
   });
 });

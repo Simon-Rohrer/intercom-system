@@ -21,12 +21,12 @@ export function AdminPinCard({ onUpdateAdminPin }: AdminPinCardProps) {
     setPinMessage("");
     setPinMessageType("");
     if (!pinNewInput.trim()) {
-      setPinMessage("New PIN cannot be empty.");
+      setPinMessage("Die neue PIN darf nicht leer sein.");
       setPinMessageType("error");
       return;
     }
     if (pinNewInput !== pinConfirmInput) {
-      setPinMessage("New PIN and confirmation do not match.");
+      setPinMessage("Neue PIN und Bestätigung stimmen nicht überein.");
       setPinMessageType("error");
       return;
     }
@@ -39,7 +39,7 @@ export function AdminPinCard({ onUpdateAdminPin }: AdminPinCardProps) {
       setPinNewInput("");
       setPinConfirmInput("");
     } catch {
-      setPinMessage("✗ Failed to update PIN.");
+      setPinMessage("✗ PIN konnte nicht geändert werden.");
       setPinMessageType("error");
     } finally {
       setPinBusy(false);
@@ -57,33 +57,33 @@ export function AdminPinCard({ onUpdateAdminPin }: AdminPinCardProps) {
         <div className="admin-card-body">
           <div className="admin-pin-form">
             <div className="admin-pin-field">
-              <label htmlFor="pin-current">Current PIN</label>
+              <label htmlFor="pin-current">Aktuelle PIN</label>
               <input
                 id="pin-current"
                 type="password"
                 value={pinCurrentInput}
                 onChange={(e) => setPinCurrentInput(e.target.value)}
-                placeholder="Enter current PIN"
+                placeholder="Aktuelle PIN eingeben"
               />
             </div>
             <div className="admin-pin-field">
-              <label htmlFor="pin-new">New PIN</label>
+              <label htmlFor="pin-new">Neue PIN</label>
               <input
                 id="pin-new"
                 type="password"
                 value={pinNewInput}
                 onChange={(e) => setPinNewInput(e.target.value)}
-                placeholder="Enter new PIN"
+                placeholder="Neue PIN eingeben"
               />
             </div>
             <div className="admin-pin-field">
-              <label htmlFor="pin-confirm">Confirm PIN</label>
+              <label htmlFor="pin-confirm">PIN bestätigen</label>
               <input
                 id="pin-confirm"
                 type="password"
                 value={pinConfirmInput}
                 onChange={(e) => setPinConfirmInput(e.target.value)}
-                placeholder="Confirm new PIN"
+                placeholder="Neue PIN wiederholen"
               />
             </div>
           </div>
@@ -95,7 +95,7 @@ export function AdminPinCard({ onUpdateAdminPin }: AdminPinCardProps) {
               className="primary"
               disabled={pinBusy}
             >
-              Update PIN
+              PIN ändern
             </button>
             {pinMessage ? (
               <div

@@ -53,7 +53,7 @@ describe("AdminRoutingMatrixCard", () => {
     // Initially expanded
     expect(screen.getByRole("grid")).toBeVisible();
     // header corner should mention party line instead of room
-    expect(screen.getByText("Role ╲ Party Line")).toBeVisible();
+    expect(screen.getByText("Rolle ╲ Party Line")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Ausblenden" }));
     expect(screen.queryByRole("grid")).not.toBeInTheDocument();
   });
@@ -69,31 +69,31 @@ describe("AdminRoutingMatrixCard", () => {
     );
 
     // Audio can talk on FOH (active)
-    const audioFohTalk = screen.getByLabelText("Talk Audio → FOH: on");
+    const audioFohTalk = screen.getByLabelText("Sprechen Audio → FOH: an");
     expect(audioFohTalk).toHaveClass("active");
 
     const audioFohDefaultTalk = screen.getByLabelText(
-      "Default Talk Audio → FOH: on",
+      "Vorauswahl Sprechen Audio → FOH: an",
     );
     expect(audioFohDefaultTalk).toHaveClass("active");
     expect(
-      screen.getByLabelText("Default Talk Audio → Stage: off"),
+      screen.getByLabelText("Vorauswahl Sprechen Audio → Stage: aus"),
     ).toBeDisabled();
 
     // Audio can listen on FOH (active)
-    const audioFohListen = screen.getByLabelText("Listen Audio → FOH: on");
+    const audioFohListen = screen.getByLabelText("Hören Audio → FOH: an");
     expect(audioFohListen).toHaveClass("active");
 
     // Video cannot talk on FOH (inactive)
-    const videoFohTalk = screen.getByLabelText("Talk Video → FOH: off");
+    const videoFohTalk = screen.getByLabelText("Sprechen Video → FOH: aus");
     expect(videoFohTalk).not.toHaveClass("active");
 
     // Video can listen on FOH (active)
-    const videoFohListen = screen.getByLabelText("Listen Video → FOH: on");
+    const videoFohListen = screen.getByLabelText("Hören Video → FOH: an");
     expect(videoFohListen).toHaveClass("active");
 
     // Audio cannot talk on Stage (inactive)
-    const audioStageTalk = screen.getByLabelText("Talk Audio → Stage: off");
+    const audioStageTalk = screen.getByLabelText("Sprechen Audio → Stage: aus");
     expect(audioStageTalk).not.toHaveClass("active");
   });
 
@@ -111,23 +111,23 @@ describe("AdminRoutingMatrixCard", () => {
     );
 
     // No save button initially
-    expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Änderungen speichern")).not.toBeInTheDocument();
 
     // Toggle Video talk on FOH
-    const videoFohTalk = screen.getByLabelText("Talk Video → FOH: off");
+    const videoFohTalk = screen.getByLabelText("Sprechen Video → FOH: aus");
     await user.click(videoFohTalk);
 
     // The label should now say "on"
     expect(
-      screen.getByLabelText("Talk Video → FOH: on"),
+      screen.getByLabelText("Sprechen Video → FOH: an"),
     ).toBeInTheDocument();
 
     // Save/Discard buttons should appear
-    expect(screen.getByText("Save changes")).toBeVisible();
-    expect(screen.getByText("Discard")).toBeVisible();
+    expect(screen.getByText("Änderungen speichern")).toBeVisible();
+    expect(screen.getByText("Verwerfen")).toBeVisible();
 
     // Click save
-    await user.click(screen.getByText("Save changes"));
+    await user.click(screen.getByText("Änderungen speichern"));
 
     await waitFor(() => {
       expect(updateRoutingMatrix).toHaveBeenCalledWith(
@@ -157,17 +157,17 @@ describe("AdminRoutingMatrixCard", () => {
     );
 
     // Toggle Audio talk on Stage (off→on)
-    const audioStageTalk = screen.getByLabelText("Talk Audio → Stage: off");
+    const audioStageTalk = screen.getByLabelText("Sprechen Audio → Stage: aus");
     await user.click(audioStageTalk);
 
     // Now discard
-    await user.click(screen.getByText("Discard"));
+    await user.click(screen.getByText("Verwerfen"));
 
     // Should be back to off
     expect(
-      screen.getByLabelText("Talk Audio → Stage: off"),
+      screen.getByLabelText("Sprechen Audio → Stage: aus"),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Änderungen speichern")).not.toBeInTheDocument();
   });
 
   it("allows only one Default Talk party line per role", async () => {
@@ -182,18 +182,18 @@ describe("AdminRoutingMatrixCard", () => {
     );
 
     await user.click(
-      screen.getByLabelText("Default Talk Audio → FOH: on"),
+      screen.getByLabelText("Vorauswahl Sprechen Audio → FOH: an"),
     );
-    await user.click(screen.getByLabelText("Talk Audio → Stage: off"));
+    await user.click(screen.getByLabelText("Sprechen Audio → Stage: aus"));
     await user.click(
-      screen.getByLabelText("Default Talk Audio → Stage: off"),
+      screen.getByLabelText("Vorauswahl Sprechen Audio → Stage: aus"),
     );
 
     expect(
-      screen.getByLabelText("Default Talk Audio → Stage: on"),
+      screen.getByLabelText("Vorauswahl Sprechen Audio → Stage: an"),
     ).toHaveClass("active");
     expect(
-      screen.getByLabelText("Default Talk Audio → FOH: off"),
+      screen.getByLabelText("Vorauswahl Sprechen Audio → FOH: aus"),
     ).toBeDisabled();
   });
 

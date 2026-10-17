@@ -25,10 +25,10 @@ export function AdminChannelsCard({
   refreshBootstrapData,
 }: AdminChannelsCardProps) {
   const priorityOptions = [
-    { value: 0, label: "Low" },
+    { value: 0, label: "Niedrig" },
     { value: 1, label: "Normal" },
-    { value: 2, label: "High" },
-    { value: 3, label: "Critical" },
+    { value: 2, label: "Hoch" },
+    { value: 3, label: "Kritisch" },
   ] as const;
 
   const [isOpen, setIsOpen] = useAdminCardOpenState();
@@ -114,7 +114,7 @@ export function AdminChannelsCard({
   return (
     <div className="admin-card">
       <AdminCardHeader
-        title="Broadcast-Kanäle"
+        title="Durchsage-Kanäle"
         isOpen={isOpen}
         onToggle={() => setIsOpen((v) => !v)}
       />
@@ -122,7 +122,7 @@ export function AdminChannelsCard({
         <div className="admin-card-body">
           <div className="admin-block">
             <div className="admin-block-header">
-              <h4>Broadcast channels ({appData.broadcastGroups.length})</h4>
+              <h4>Durchsage-Kanäle ({appData.broadcastGroups.length})</h4>
               {!groupEditId ? (
                 <button
                   type="button"
@@ -143,20 +143,20 @@ export function AdminChannelsCard({
 
             {showGroupCreateForm && !groupEditId ? (
               <div className="admin-edit-panel">
-                <div className="admin-edit-title">New broadcast channel</div>
+                <div className="admin-edit-title">Neuer Durchsage-Kanal</div>
                 <div className="admin-grid">
                   <input
                     value={groupCreateId}
                     onChange={(e) => setGroupCreateId(e.target.value)}
-                    placeholder="broadcast-channel-id"
+                    placeholder="kennung-des-kanals"
                   />
                   <input
                     value={groupCreateName}
                     onChange={(e) => setGroupCreateName(e.target.value)}
-                    placeholder="Broadcast channel name"
+                    placeholder="Name des Durchsage-Kanals"
                   />
                   <label>
-                    Priority
+                    Priorität
                     <select
                       value={groupCreatePriorityLevel}
                       onChange={(e) =>
@@ -179,7 +179,7 @@ export function AdminChannelsCard({
                       groupCreateRoomIds.length === 0
                     }
                   >
-                    Create channel
+                    Kanal anlegen
                   </button>
                   <button
                     type="button"
@@ -190,19 +190,19 @@ export function AdminChannelsCard({
                     disabled={adminBusy}
                     className="secondary"
                   >
-                    Cancel
+                    Abbrechen
                   </button>
                 </div>
                 <div className="admin-grid admin-grid-roles">
                   <PartyLineMultiSelect
-                    label="Included party lines"
+                    label="Enthaltene Party Lines"
                     selectedPartyLineIds={groupCreateRoomIds}
                     setState={setGroupCreateRoomIds}
                     keyPrefix="group-create-party-line"
                     partyLines={appData.rooms}
                   />
                   <RoleMultiSelect
-                    label="Allowed roles"
+                    label="Erlaubte Rollen"
                     selectedRoleIds={groupCreateAllowedRoleIds}
                     setState={setGroupCreateAllowedRoleIds}
                     keyPrefix="group-create-allowed-roles"
@@ -215,16 +215,16 @@ export function AdminChannelsCard({
             {groupEditId ? (
               <div className="admin-edit-panel">
                 <div className="admin-edit-title">
-                  Editing channel: {groupEditId}
+                  Kanal bearbeiten: {groupEditId}
                 </div>
                 <div className="admin-grid">
                   <input
                     value={groupEditName}
                     onChange={(e) => setGroupEditName(e.target.value)}
-                    placeholder="Channel name"
+                    placeholder="Name des Kanals"
                   />
                   <label>
-                    Priority
+                    Priorität
                     <select
                       value={groupEditPriorityLevel}
                       onChange={(e) =>
@@ -246,26 +246,26 @@ export function AdminChannelsCard({
                       groupEditRoomIds.length === 0
                     }
                   >
-                    Save changes
+                    Änderungen speichern
                   </button>
                   <button
                     onClick={resetGroupEditForm}
                     disabled={adminBusy}
                     className="secondary"
                   >
-                    Cancel
+                    Abbrechen
                   </button>
                 </div>
                 <div className="admin-grid admin-grid-roles">
                   <PartyLineMultiSelect
-                    label="Included party lines"
+                    label="Enthaltene Party Lines"
                     selectedPartyLineIds={groupEditRoomIds}
                     setState={setGroupEditRoomIds}
                     keyPrefix="group-edit-party-line"
                     partyLines={appData.rooms}
                   />
                   <RoleMultiSelect
-                    label="Allowed roles"
+                    label="Erlaubte Rollen"
                     selectedRoleIds={groupEditAllowedRoleIds}
                     setState={setGroupEditAllowedRoleIds}
                     keyPrefix="group-edit-allowed-roles"

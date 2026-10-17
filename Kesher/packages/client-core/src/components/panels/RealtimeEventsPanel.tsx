@@ -5,7 +5,7 @@ type RealtimeEventsPanelProps = {
 export function RealtimeEventsPanel({ events }: RealtimeEventsPanelProps) {
   return (
     <>
-      <h3>Realtime events</h3>
+      <h3>Live-Ereignisse</h3>
       <ul className="events">
         {events.map((e, i) => (
           <li key={`${e.at}-${i}`}>

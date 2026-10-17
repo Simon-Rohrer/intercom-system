@@ -3,6 +3,7 @@ import { createHoldButtonProps } from "../lib/holdButton";
 import type { InputChannelSelection } from "../app/settings";
 import { BrandLogo } from "./BrandLogo";
 import { LowPowerModeBadge } from "./LowPowerModeBadge";
+import { AppShell, type ShellUser } from "./shell/AppShell";
 
 type DirectReplyTarget = {
   userId: string;
@@ -40,6 +41,8 @@ type SimpleIntercomViewProps = {
   hasListenTarget: boolean;
   simplePptTargetLabel: string;
   doLogout: () => void;
+  /** Page frame with sidebar (like JMS Control); not passed for kiosk stations. */
+  shell?: { user: ShellUser };
 };
 
 export function SimpleIntercomView({
@@ -73,6 +76,7 @@ export function SimpleIntercomView({
   hasListenTarget,
   simplePptTargetLabel,
   doLogout,
+  shell,
 }: SimpleIntercomViewProps) {
   const [pressedButton, setPressedButton] = useState<"main" | "reply" | null>(
     null,
@@ -124,8 +128,17 @@ export function SimpleIntercomView({
     },
   });
 
-  return (
-    <div className="root app simple-shell">
+  const liveBadge = (
+    <span
+      className={`simple-live ${connectionState === "connected" ? "connected" : "disconnected"}`}
+    >
+      <span className="simple-live-dot" />
+      {connectionState === "connected" ? "Live" : "Offline"}
+    </span>
+  );
+
+  const simpleView = (
+    <div className={`root app simple-shell ${shell ? "simple-in-shell" : ""}`.trim()}>
       {connectionState !== "connected" && (
         <div className="connection-offline-banner">
           <span className="connection-offline-icon" />
@@ -136,19 +149,15 @@ export function SimpleIntercomView({
               : "Offline"}
         </div>
       )}
+      {shell ? null : (
       <header className="simple-runtime-header">
         <BrandLogo className="simple-brand-logo" />
         <span className="simple-header-sep" aria-hidden="true" />
         <div className="simple-header-copy">
-          <strong>Simple</strong>
+          <strong>Einfach</strong>
           <span>{simplePptTargetLabel || "Keine Party Line"}</span>
         </div>
-        <span
-          className={`simple-live ${connectionState === "connected" ? "connected" : "disconnected"}`}
-        >
-          <span className="simple-live-dot" />
-          {connectionState === "connected" ? "Live" : "Offline"}
-        </span>
+        {liveBadge}
         {lowPowerMode ? <LowPowerModeBadge /> : null}
         <button
           type="button"
@@ -165,13 +174,14 @@ export function SimpleIntercomView({
           <span>Abmelden</span>
         </button>
       </header>
+      )}
       <section className="simple-controls">
         <button
           className={`simple-ptt hold-button ${mainActive ? "active" : ""}`}
           disabled={!hasVoiceTarget || !hasInputDevice}
           {...mainPttButtonProps}
         >
-          <strong>Hold to talk</strong>
+          <strong>Gedrückt halten zum Sprechen</strong>
           <small>
             {hasInputDevice
               ? `Party Line: ${simplePptTargetLabel}`
@@ -183,7 +193,7 @@ export function SimpleIntercomView({
             runtimeIssues.length > 0 ? "has-error" : "is-ready"
           }`}
           role="status"
-          aria-label="Audio runtime status"
+          aria-label="Audio-Status"
           aria-live="polite"
         >
           <span className="simple-audio-status-dot" aria-hidden="true" />
@@ -215,7 +225,7 @@ export function SimpleIntercomView({
           disabled={!replyTarget}
           {...replyButtonProps}
         >
-          <strong>Reply to caller</strong>
+          <strong>Anrufer antworten</strong>
           <small>
             {replyTarget ? replyTarget.username : "Kein aktiver Anrufer"}
           </small>
@@ -323,5 +333,33 @@ export function SimpleIntercomView({
         </div>
       </section>
     </div>
+  );
+
+  if (!shell) return simpleView;
+  return (
+    <AppShell
+      user={shell.user}
+      items={[
+        {
+          id: "intercom",
+          label: "Intercom",
+          icon: "intercom",
+          active: true,
+          onSelect: () => undefined,
+        },
+      ]}
+      status={
+        <div className="k-station-status">
+          <div className="k-station-who">
+            <strong>{shell.user.role}</strong>
+            <span>{simplePptTargetLabel || "Keine Party Line"}</span>
+          </div>
+          {liveBadge}
+          {lowPowerMode ? <LowPowerModeBadge /> : null}
+        </div>
+      }
+    >
+      {simpleView}
+    </AppShell>
   );
 }

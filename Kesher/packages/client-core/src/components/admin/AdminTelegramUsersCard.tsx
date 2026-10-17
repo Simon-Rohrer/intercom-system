@@ -28,7 +28,7 @@ export function AdminTelegramUsersCard({
     run: runAction,
   } = useAdminAction({
     onSuccess: loadAllowlist,
-    defaultErrorMessage: "operation failed",
+    defaultErrorMessage: "Aktion fehlgeschlagen",
   });
 
   const [createTelegramUsername, setCreateTelegramUsername] = useState("");
@@ -63,7 +63,7 @@ export function AdminTelegramUsersCard({
     const kesherUsername = createKesherUsername.trim();
     if (!telegramUsername || !kesherUsername) return;
     if (containsWhitespace(telegramUsername) || containsWhitespace(kesherUsername)) {
-      setCreateValidationError("Usernames must not contain spaces.");
+      setCreateValidationError("Benutzernamen dürfen keine Leerzeichen enthalten.");
       return;
     }
     setCreateValidationError("");
@@ -94,15 +94,14 @@ export function AdminTelegramUsersCard({
         <div className="admin-card-body">
           <div className="admin-block">
             <p>
-              <strong>Access Control:</strong> Only Telegram users on this
-              allowlist can interact with the bot. When a user sends their
-              first message, their Telegram numeric ID is bound to their
-              username (Trust On First Use).
+              <strong>Zugang:</strong> Nur Telegram-Benutzer auf dieser Liste
+              können mit dem Bot schreiben. Bei der ersten Nachricht wird ihre
+              Telegram-ID fest mit dem Benutzernamen verknüpft.
             </p>
           </div>
           <div className="admin-block">
             <div className="admin-block-header">
-              <h4>Allowed Users</h4>
+              <h4>Erlaubte Benutzer</h4>
               <button
                 type="button"
                 className="secondary"
@@ -118,7 +117,7 @@ export function AdminTelegramUsersCard({
             {error ? <p className="admin-error">{error}</p> : null}
             {showCreateForm ? (
               <div className="admin-edit-panel">
-                <div className="admin-edit-title">Add new allowed user</div>
+                <div className="admin-edit-title">Neuen Benutzer erlauben</div>
                 <div className="admin-grid">
                   <input
                     value={createTelegramUsername}
@@ -126,7 +125,7 @@ export function AdminTelegramUsersCard({
                       setCreateTelegramUsername(stripWhitespace(e.target.value));
                       setCreateValidationError("");
                     }}
-                    placeholder="Telegram @username"
+                    placeholder="Telegram-@Benutzername"
                   />
                   <input
                     value={createKesherUsername}
@@ -134,7 +133,7 @@ export function AdminTelegramUsersCard({
                       setCreateKesherUsername(stripWhitespace(e.target.value));
                       setCreateValidationError("");
                     }}
-                    placeholder="Kesher username (e.g., Sarah)"
+                    placeholder="Name in Kesher (z. B. Sarah)"
                   />
                 </div>
                 {createValidationError ? (
@@ -151,7 +150,7 @@ export function AdminTelegramUsersCard({
                       containsWhitespace(createKesherUsername.trim())
                     }
                   >
-                    Add user
+                    Benutzer hinzufügen
                   </button>
                   <button
                     type="button"
@@ -162,7 +161,7 @@ export function AdminTelegramUsersCard({
                     disabled={busy}
                     className="secondary"
                   >
-                    Cancel
+                    Abbrechen
                   </button>
                 </div>
               </div>
@@ -171,7 +170,7 @@ export function AdminTelegramUsersCard({
               {entries.length === 0 ? (
                 <li>
                   <span className="admin-empty">
-                    No users configured. Add users to allow access.
+                    Noch keine Benutzer eingetragen. Füge Benutzer hinzu, um den Zugang zu erlauben.
                   </span>
                 </li>
               ) : (
@@ -188,7 +187,7 @@ export function AdminTelegramUsersCard({
                       </small>
                     </span>
                     <button onClick={() => handleDelete(entry.id)} disabled={busy}>
-                      Revoke
+                      Entziehen
                     </button>
                   </li>
                 ))

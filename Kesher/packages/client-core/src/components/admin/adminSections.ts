@@ -26,7 +26,7 @@ export const ADMIN_SECTIONS: AdminSectionInfo[] = [
   { id: "roles", group: "Setup", label: "Rollen", description: "Arbeitsplätze, ihre Standard-Party-Line und Voreinstellungen." },
   { id: "users", group: "Setup", label: "Benutzer", description: "Angemeldete und bekannte Benutzer verwalten." },
   { id: "rooms", group: "Setup", label: "Party Lines", description: "Wer auf welcher Leitung sprechen und hören darf. Feste Hörer können Listen nicht abwählen." },
-  { id: "channels", group: "Setup", label: "Kanäle", description: "Audio-Kanäle und Broadcast-Gruppen." },
+  { id: "channels", group: "Setup", label: "Kanäle", description: "Audio-Kanäle und Durchsage-Gruppen." },
   { id: "routing", group: "Setup", label: "Routing", description: "Übersicht, welche Rolle wohin sendet und woher sie hört." },
   { id: "companion", group: "Geräte", label: "Companion", description: "Companion-Anbindung und Seiten-Konfiguration." },
   { id: "streamdeck", group: "Geräte", label: "Stream Deck", description: "Stream-Deck-Profile der Rollen." },

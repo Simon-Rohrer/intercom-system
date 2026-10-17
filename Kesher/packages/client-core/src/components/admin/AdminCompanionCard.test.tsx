@@ -99,7 +99,7 @@ describe("AdminCompanionCard", () => {
     });
 
     await user.selectOptions(
-      screen.getByLabelText("Companion target role"),
+      screen.getByLabelText("Rolle für Companion"),
       "stage",
     );
     await user.click(screen.getByRole("button", { name: "An Companion senden" }));
@@ -111,6 +111,6 @@ describe("AdminCompanionCard", () => {
         "stage",
       );
     });
-    expect(screen.getByText("Published stage as version 1.")).toBeVisible();
+    expect(screen.getByText("stage als Version 1 gesendet.")).toBeVisible();
   });
 });

@@ -205,11 +205,56 @@ describe("LoginView", () => {
     expect(onAdminPinChange).toHaveBeenCalled();
     expect(onAdminLogin).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole("tab", { name: "Operator" }));
+    await user.click(screen.getByRole("tab", { name: "Bediener" }));
     expect(adminTab).toHaveAttribute("aria-selected", "false");
     expect(
       screen.queryByRole("tabpanel", { name: "Admin-Bereich" }),
     ).not.toBeInTheDocument();
   });
 
+  it("shows only the Raspberry station list for login=raspberry", async () => {
+    const user = userEvent.setup();
+    const onRaspberryRemoteJoin = vi.fn();
+    const ready = {
+      deviceId: "pi-1",
+      name: "Pi Bühne",
+      roleId: "op",
+      online: true,
+      intercomConnected: true,
+    };
+    render(
+      <LoginView
+        {...baseProps}
+        initialMode="raspberry"
+        raspberryRemoteStations={[
+          ready,
+          { deviceId: "pi-2", name: "Pi Foyer", roleId: "op", online: false },
+        ] as never}
+        onRaspberryRemoteJoin={onRaspberryRemoteJoin}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Raspberry fernsteuern" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Admin-PIN")).not.toBeInTheDocument();
+    expect(screen.getByText("Pi Bühne")).toBeVisible();
+    expect(screen.getByText("Pi Foyer")).toBeVisible();
+
+    const joinButtons = screen.getAllByRole("button", { name: "Steuern" });
+    expect(joinButtons[1]).toBeDisabled();
+    await user.click(joinButtons[0]);
+    expect(onRaspberryRemoteJoin).toHaveBeenCalledWith(ready);
+  });
+
+  it("keeps the operator, Raspberry and admin tabs for the normal login", () => {
+    render(<LoginView {...baseProps} />);
+    expect(screen.getByRole("tab", { name: "Bediener" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Raspberry" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Admin" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Intercom" })).toBeVisible();
+  });
 });

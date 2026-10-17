@@ -354,7 +354,7 @@ export function ChatSignalPanel({
                     {entry.source === "telegram" ? (
                       <span
                         className="chat-feed-source-icon"
-                        title="Message from Telegram"
+                        title="Nachricht aus Telegram"
                       >
                         Telegram
                       </span>
@@ -443,7 +443,7 @@ export function ChatSignalPanel({
           <label className="chat-target-control">
             <span>An</span>
             <select
-              aria-label="Chat destination"
+              aria-label="Chat-Empfänger"
               value={selectedTarget}
               onChange={(event) => setSelectedTarget(event.target.value)}
             >
