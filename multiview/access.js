@@ -1084,6 +1084,13 @@ function applyRestrictedChanges(current, submitted, user) {
     if (!outputs.has(output.id)) continue
     const wanted = (Array.isArray(submitted?.outputs) ? submitted.outputs : []).find((o) => o?.id === output.id)
     if (wanted && (wanted.layoutId === null || visible.has(wanted.layoutId))) output.layoutId = wanted.layoutId
+    if (wanted?.dayQr && typeof wanted.dayQr === 'object') {
+      output.dayQr = {
+        show: wanted.dayQr.show === true,
+        corner: ['tl', 'tr', 'bl', 'br'].includes(wanted.dayQr.corner) ? wanted.dayQr.corner : (output.dayQr?.corner || 'br'),
+        size: ['s', 'm', 'l'].includes(wanted.dayQr.size) ? wanted.dayQr.size : (output.dayQr?.size || 's'),
+      }
+    }
   }
   return next
 }

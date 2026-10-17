@@ -16,6 +16,7 @@ const { normalizeRaspberry, parsePiRequest, createPiRegistry } = require('./rasp
 const { createChurchTools } = require('./churchtools')
 const { createMessageLinks } = require('./message-links')
 const QRCode = require('qrcode')
+const { normalizeDayQr, normalizeOutputDayQr } = require('./day-qr')
 const { createSsoHandlers, createSocketGuard, proxyWebSocket, sameOriginRequest, machineRequest, nativeMachineRequest, withoutOwnCookies, safePath, verifySignedRequest, DEFAULT_ORIGINS } = require('./auth-http')
 const { viewConfig, filterMessage, stationLauncherConfig } = require('./auth-permissions')
 const { deviceAssertion, startSatelliteBridge } = require('./device-transport')
@@ -67,7 +68,7 @@ function defaultConfig() {
         })),
       },
     ],
-    outputs: [{ id: 'out1', name: 'Multiview 3', layoutId: 'quad' }],
+    outputs: [{ id: 'out1', name: 'Multiview 3', layoutId: 'quad', dayQr: { show: false, corner: 'br', size: 's' } }],
     chat: defaultChat(),
   }
 }
@@ -111,22 +112,12 @@ function normalizeConfig(c) {
     },
     sources: Array.isArray(c?.sources) ? c.sources : base.sources,
     layouts: Array.isArray(c?.layouts) ? c.layouts : base.layouts,
-    outputs: Array.isArray(c?.outputs) ? c.outputs : base.outputs,
+    outputs: normalizeOutputDayQr(Array.isArray(c?.outputs) ? c.outputs : base.outputs, c?.dayQr),
     screens: normalizeScreens(c?.screens),
     chat: normalizeChat(c?.chat),
     churchtools: normalizeChurchTools(c?.churchtools),
     access: normalizeAccess(c?.access),
-    dayQr: normalizeDayQr(c?.dayQr),
     raspberry: normalizeRaspberry(c?.raspberry),
-  }
-}
-
-/** Tages-QR-Code auf den Monitoren: an/aus, Ecke (tl, tr, bl, br) und Größe (s, m, l). */
-function normalizeDayQr(d) {
-  return {
-    show: d?.show !== false,
-    corner: ['tl', 'tr', 'bl', 'br'].includes(d?.corner) ? d.corner : 'br',
-    size: ['s', 'm', 'l'].includes(d?.size) ? d.size : 'm',
   }
 }
 
@@ -152,13 +143,24 @@ function normalizeChurchTools(c) {
 }
 
 function loadConfig() {
+  let stored
   try {
-    return normalizeConfig(JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')))
+    stored = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'))
   } catch (err) {
-    if (err.code !== 'ENOENT') console.error('Konfiguration konnte nicht gelesen werden:', err.message)
-    return normalizeConfig(defaultConfig()) // ergänzt fehlende Bereiche (ProPresenter, Chat, …)
+    if (err.code !== 'ENOENT') throw err // Beschädigte Daten niemals durch Standardwerte ersetzen.
+    return normalizeConfig(defaultConfig())
   }
+  // Einmalige Übernahme der bisherigen globalen Anzeige, ohne andere Daten zu ändern.
+  if (Object.hasOwn(stored, 'dayQr') || stored.outputs?.some((output) => !output.dayQr)) {
+    stored.outputs = normalizeOutputDayQr(stored.outputs || [], normalizeDayQr(stored.dayQr, { show: true, corner: 'br', size: 'm' }))
+    delete stored.dayQr
+    const tmp = `${CONFIG_FILE}.tmp`
+    fs.writeFileSync(tmp, JSON.stringify(stored, null, 2))
+    fs.renameSync(tmp, CONFIG_FILE)
+  }
+  return normalizeConfig(stored)
 }
+
 
 function saveConfig() {
   fs.mkdirSync(DATA_DIR, { recursive: true })
@@ -2146,12 +2148,14 @@ function gatewayInfo() {
 app.get('/api/display/day-code', (req, res) => {
   res.set('Cache-Control', 'no-store')
   const gateway = access.gateway()
-  if (!gateway.active || !config.dayQr?.show) return res.json({ show: false })
+  if (!gateway.active) return res.json({ show: false })
   const user = access.userOf(req)
   if (!user?.admin && !isMachine(req, 'day-code'))
     return res.status(403).json({ show: false, error: 'Nur für feste Geräte' })
+  const output = config.outputs.find((item) => item.id === req.query.output)
+  if (!output?.dayQr?.show) return res.json({ show: false })
   const code = access.dayCode()
-  res.json({ show: true, code: code.code, day: code.day, startUrl: gateway.startUrl, corner: config.dayQr.corner, size: config.dayQr.size })
+  res.json({ show: true, code: code.code, day: code.day, startUrl: gateway.startUrl, corner: output.dayQr.corner, size: output.dayQr.size })
 })
 
 app.get('/api/access/gateway', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json(gatewayInfo()))

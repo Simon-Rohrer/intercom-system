@@ -400,6 +400,18 @@ function renderOutputs() {
               <div class="btn-row">
                 <button class="btn primary" data-action="fullscreen">⛶ Vollbild</button>
                 <a class="btn" href="${esc(outputUrl(o))}" target="_blank" rel="noopener">Monitor-Ansicht ↗</a>
+                <div class="output-qr-controls">
+                  <label class="check"><input type="checkbox" data-output-dayqr="show"> QR-Code anzeigen</label>
+                  <div class="output-qr-options" hidden>
+                    <select data-output-dayqr="corner" aria-label="QR-Code-Position">
+                      <option value="br">unten rechts</option><option value="bl">unten links</option>
+                      <option value="tr">oben rechts</option><option value="tl">oben links</option>
+                    </select>
+                    <select data-output-dayqr="size" aria-label="QR-Code-Größe">
+                      <option value="s">klein</option><option value="m">mittel</option><option value="l">groß</option>
+                    </select>
+                  </div>
+                </div>
               </div>
               ${isAdmin() ? '<button class="btn small danger" data-action="delete-output">Entfernen</button>' : ''}
             </div>
@@ -433,11 +445,27 @@ function renderOutputs() {
       : `<option>${esc(config.layouts.find((l) => l.id === output.layoutId)?.name ?? '– kein Layout –')} · nur ansehen</option>`
     select.disabled = !editable
     card.querySelector('iframe').title = output.name
+    const qrControls = card.querySelector('.output-qr-controls')
+    if (qrControls) {
+      const qr = output.dayQr || { show: false, corner: 'br', size: 's' }
+      qrControls.querySelector('[data-output-dayqr="show"]').checked = qr.show
+      qrControls.querySelector('.output-qr-options').hidden = !qr.show
+      for (const key of ['corner', 'size']) qrControls.querySelector(`[data-output-dayqr="${key}"]`).value = qr[key]
+    }
   }
 }
 
 function onOutputField(e) {
   const el = e.target
+  const qrKey = el.dataset.outputDayqr
+  if (qrKey) {
+    if (e.type !== 'change' || !isAdmin() || !['show', 'corner', 'size'].includes(qrKey)) return
+    const output = config.outputs.find((o) => o.id === el.closest('.output-card').dataset.id)
+    output.dayQr = { show: false, corner: 'br', size: 's', ...output.dayQr, [qrKey]: qrKey === 'show' ? el.checked : el.value }
+    el.closest('.output-qr-controls').querySelector('.output-qr-options').hidden = !output.dayQr.show
+    changed(0)
+    return
+  }
   const key = el.dataset.o
   if (!key) return
   if ((e.type === 'input') !== (el.type === 'text')) return
@@ -471,6 +499,7 @@ $('#output-add').addEventListener('click', () => {
   config.outputs.push({
     id: uid('o'),
     name: `Multiview ${config.outputs.length + 1}`,
+    dayQr: { show: false, corner: 'br', size: 's' },
     layoutId: config.layouts[0]?.id ?? null,
   })
   renderAll()
@@ -3535,20 +3564,6 @@ function renderGateway() {
         <p class="muted">Neu um Mitternacht. Die Freigabe endet um 05:00 Uhr am nächsten Morgen; zwischen Mitternacht und 05:00 Uhr noch am selben Morgen.
           <b>${info.devicesToday}</b> ${info.devicesToday === 1 ? 'Gerät ist' : 'Geräte sind'} gerade freigeschaltet.</p>
         <button class="btn small" type="button" id="gateway-renew">Neuen Code erzeugen</button>
-        <div class="day-qr-monitor">
-          <label class="check"><input type="checkbox" data-dayqr="show" ${config?.dayQr?.show !== false ? 'checked' : ''}> Klein auf den Monitoren zeigen</label>
-          <select data-dayqr="corner" aria-label="Ecke" ${config?.dayQr?.show === false ? 'disabled' : ''}>
-            ${[['br', 'unten rechts'], ['bl', 'unten links'], ['tr', 'oben rechts'], ['tl', 'oben links']]
-              .map(([v, l]) => `<option value="${v}" ${(config?.dayQr?.corner || 'br') === v ? 'selected' : ''}>${l}</option>`)
-              .join('')}
-          </select>
-          <select data-dayqr="size" aria-label="Größe" ${config?.dayQr?.show === false ? 'disabled' : ''}>
-            ${[['s', 'klein'], ['m', 'mittel'], ['l', 'groß']]
-              .map(([v, l]) => `<option value="${v}" ${(config?.dayQr?.size || 'm') === v ? 'selected' : ''}>${l}</option>`)
-              .join('')}
-          </select>
-          <small class="muted">Immer der aktuelle Code – nur für den Admin und registrierte Stationen mit der Berechtigung „Tagescode anzeigen“.</small>
-        </div>
       </div>
     </div>
     <form id="gateway-form" class="gateway-form" autocomplete="off">
@@ -3599,7 +3614,7 @@ $('#access-gateway-card').addEventListener('change', async (e) => {
   renderGateway()
 })
 
-// Tages-QR-Code auf den Monitoren: normale Einstellung (config.dayQr)
+// Änderungen in der Geräteverwaltung
 $('#access-gateway-card').addEventListener('change', (e) => {
   if (e.target.closest('form')) gatewayDirty = true
   if (e.target.name === 'mode' && e.target.closest('#machine-form')) {
@@ -3614,11 +3629,7 @@ $('#access-gateway-card').addEventListener('change', (e) => {
     form.elements.roleId.value = selected?.dataset.roleId || ''
     return
   }
-  const key = e.target.dataset.dayqr
-  if (!key) return
-  config.dayQr = { show: true, corner: 'br', size: 'm', ...config.dayQr, [key]: key === 'show' ? e.target.checked : e.target.value }
-  changed(0)
-  renderGateway()
+
 })
 
 $('#access-gateway-card').addEventListener('input', (e) => {

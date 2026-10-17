@@ -68,9 +68,9 @@ const frames = new Map() // Kesher-Intercom: tile.id → { wrap, url }
 const ws = connect(
   (msg) => {
     if (msg.type === 'config') {
-      setTimeout(refreshDayQr, 300) // Schalter oder Ecke für den Tages-QR-Code geändert
       config = msg.config
       render()
+      refreshDayQr()
     } else if (msg.type === 'atem') {
       atem = msg
       updateOverlays()
@@ -573,11 +573,12 @@ keepAwake()
 
 
 // ---------------------------------------------------------------------------
-// Tages-QR-Code der Anmeldung klein in einer Ecke – immer der aktuelle (nicht in Vorschauen)
+// Tages-QR-Code der Anmeldung klein in einer Ecke – je Multiview, auch in Vorschau und Vollbild
 // ---------------------------------------------------------------------------
 
 let serverAddresses = []
 let dayQrKey = ''
+let dayQrRequest = 0
 const dayQr = document.createElement('figure')
 dayQr.className = 'day-qr'
 dayQr.hidden = true
@@ -593,10 +594,18 @@ function lanOrigin() {
 }
 
 async function refreshDayQr() {
-  if (embedded) return
-  const data = await fetch('/api/display/day-code', { cache: 'no-store' })
+  const request = ++dayQrRequest
+  const outputId = currentOutputId
+  const enabled = config?.outputs.find((output) => output.id === outputId)?.dayQr?.show
+  if (!outputId || !enabled) {
+    dayQr.hidden = true
+    dayQrKey = ''
+    return
+  }
+  const data = await fetch(`/api/display/day-code?output=${encodeURIComponent(outputId)}`, { cache: 'no-store' })
     .then((r) => r.json())
     .catch(() => null)
+  if (request !== dayQrRequest || outputId !== currentOutputId) return
   if (!data?.show) {
     dayQr.hidden = true
     dayQrKey = ''

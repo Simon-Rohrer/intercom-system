@@ -1276,9 +1276,6 @@ h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
 }
 
 /* Tages-QR-Code auf den Monitoren (Schalter in „Anmeldung für alle Dienste“) */
-.day-qr-monitor { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 14px; }
-.day-qr-monitor select { width: auto; }
-.day-qr-monitor small { flex-basis: 100%; }
 
 /* Anmeldung: Tagescode mit der Kamera scannen */
 .scan-btn { margin-top: 8px; gap: 8px; }
@@ -1304,7 +1301,6 @@ h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
 .day-code .qr-card { width: 100%; max-width: 320px; }
 .day-code-info { align-items: center; }
 .day-code-info .muted { max-width: 40ch; }
-.day-qr-monitor { justify-content: center; }
 
 /* ==================================================================
    iCloud-Stil: blaues Wellen-Wallpaper, Karten aus mattem Glas mit großem
@@ -1918,3 +1914,10 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 }
 .canvas-frame.portrait > .canvas { width: 1080px; height: 1920px; }
 .output-preview.portrait iframe { width: 1080px; height: 1920px; left: var(--preview-left, 0px); }
+
+/* QR-Anzeige gehört zum jeweiligen Multiview; dieselben Formular- und Check-Stile. */
+.output-foot > .btn-row { align-items: center; min-width: 0; }
+.output-qr-controls, .output-qr-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.output-qr-controls .check { min-height: 44px; }
+.output-qr-options[hidden] { display: none; }
+.output-qr-options select { width: auto; min-height: 44px; max-width: 100%; }
