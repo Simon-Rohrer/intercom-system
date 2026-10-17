@@ -104,7 +104,35 @@ export function pickNextEvent(todays, upcoming, filter, now = Date.now(), timeZo
   return currentOrNext(withAgenda.length ? withAgenda : candidates, now)
 }
 
+const DENSITIES = ['compact', 'normal', 'airy']
+const ACCENTS = ['#00d1ff', '#30d158', '#ffb020', '#ff5a4f', '#bf5af2', '#ffffff']
+
+/** Darstellung der Ablauf-Kachel (tile.agendaLook) mit Standardwerten */
+export function agendaOptions(look) {
+  const o = look || {}
+  const bool = (v, d) => (typeof v === 'boolean' ? v : d)
+  const size = Number(o.size)
+  return {
+    size: Number.isFinite(size) ? Math.min(3, Math.max(0.5, size)) : 1,
+    density: DENSITIES.includes(o.density) ? o.density : 'normal',
+    accent: ACCENTS.includes(o.accent) ? o.accent : ACCENTS[0],
+    header: bool(o.header, true), // Kopfzeile mit Event und Datum
+    time: bool(o.time, true), // Uhrzeit-Spalte
+    duration: bool(o.duration, true), // Dauer-Spalte
+    progress: bool(o.progress, true), // Fortschrittsbalken am laufenden Punkt
+    sections: bool(o.sections, true), // Abschnitts-Überschriften
+    before: bool(o.before, true), // Punkte vor Eventbeginn
+    hideDone: bool(o.hideDone, false), // erledigte Punkte ausblenden
+    openAll: bool(o.openAll, false), // Programmspalten immer aufgeklappt
+    columns: String(o.columns || ''), // nur diese Programmspalten (Komma), leer = alle
+  }
+}
+
+export const AGENDA_ACCENTS = ACCENTS
+
 export function createAgendaView(tile) {
+  const look = agendaOptions(tile.agendaLook)
+  const onlyColumns = look.columns.split(',').map((c) => c.trim().toLowerCase()).filter(Boolean)
   const options = {
     filter: tile.ctFilter || '',
     date: tile.ctDate || '', // leer = heute bzw. nächstes Event
@@ -114,7 +142,14 @@ export function createAgendaView(tile) {
     songInfo: tile.ctSongInfo !== false,
     ccli: tile.ctCcli !== false,
   }
-  const root = el('div', 'agenda')
+  const root = el('div', `agenda density-${look.density}`)
+  root.style.setProperty('--ag-scale', String(look.size))
+  root.style.setProperty('--k-accent', look.accent)
+  root.classList.toggle('no-header', !look.header)
+  root.classList.toggle('no-time', !look.time)
+  root.classList.toggle('no-dur', !look.duration)
+  root.classList.toggle('no-progress', !look.progress)
+  root.classList.toggle('hide-done', look.hideDone)
   const header = el('header', 'agenda-header')
   const titleBox = el('div', 'agenda-title')
   const label = el('strong', null, 'Ablauf')
@@ -138,7 +173,9 @@ export function createAgendaView(tile) {
 
   /** Was beim Aufklappen erscheint: Programmspalten und ausgeblendete Angaben */
   function details(item) {
-    const lines = (item.columns || []).map((c) => [c.group, c.note])
+    const lines = (item.columns || [])
+      .filter((c) => !onlyColumns.length || onlyColumns.includes(String(c.group).toLowerCase()))
+      .map((c) => [c.group, c.note])
     if (!options.responsible && item.responsible) lines.unshift(['Verantwortlich', item.responsible])
     if (!options.notes && item.note) lines.push(['Notiz', item.note])
     if (item.song) {
@@ -151,10 +188,13 @@ export function createAgendaView(tile) {
     return lines
   }
 
+  // openItems merkt die Abweichung vom Standard (zu bzw. bei „immer aufgeklappt“ offen)
+  const isOpen = (id) => look.openAll !== openItems.has(id)
+
   function toggle(row) {
-    const open = !openItems.has(row.item.id)
-    if (open) openItems.add(row.item.id)
-    else openItems.delete(row.item.id)
+    if (openItems.has(row.item.id)) openItems.delete(row.item.id)
+    else openItems.add(row.item.id)
+    const open = isOpen(row.item.id)
     row.li.classList.toggle('open', open)
     row.li.setAttribute('aria-expanded', String(open))
     pauseFollow()
@@ -229,6 +269,8 @@ export function createAgendaView(tile) {
     const list = el('ol', 'agenda-list')
     rows = []
     for (const item of event.agenda.items) {
+      if (item.type === 'header' && !look.sections) continue
+      if (item.beforeEvent && !look.before) continue
       const li = el('li', `agenda-item type-${item.type}`)
       if (item.beforeEvent) li.classList.add('before-event')
       if (item.type === 'header') {
@@ -263,7 +305,7 @@ export function createAgendaView(tile) {
         li.classList.add('has-sub')
         li.tabIndex = 0
         li.setAttribute('role', 'button')
-        const open = openItems.has(item.id)
+        const open = isOpen(item.id)
         li.classList.toggle('open', open)
         li.setAttribute('aria-expanded', String(open))
         li.addEventListener('click', () => toggle(row))
@@ -317,8 +359,14 @@ export function createAgendaView(tile) {
     const target = current || rows.find((r) => !r.li.classList.contains('done') && r.item.type !== 'header')
     if (!list || !target || (!force && Date.now() < manualUntil)) return
     // Den vorherigen Punkt noch sichtbar lassen
+    // (ausgeblendete erledigte Punkte überspringen)
     const index = rows.indexOf(target)
-    const anchor = rows[Math.max(0, index - 1)].li
+    let anchor = target.li
+    for (let i = index - 1; i >= 0; i--) {
+      if (rows[i].li.offsetParent === null) continue
+      anchor = rows[i].li
+      break
+    }
     const top = anchor.offsetTop - list.offsetTop
     if (force || Math.abs(list.scrollTop - top) > 2) list.scrollTo({ top, behavior: force ? 'auto' : 'smooth' })
   }

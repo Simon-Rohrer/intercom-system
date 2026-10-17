@@ -25,7 +25,7 @@
   background: var(--k-bg);
   color: var(--k-ink);
   font-family: var(--k-font-body);
-  font-size: clamp(10px, min(2.4cqw, 4.2cqh), 34px);
+  font-size: calc(clamp(10px, min(2.4cqw, 4.2cqh), 34px) * var(--ag-scale, 1));
   overflow: hidden;
   text-align: left;
 }
@@ -193,3 +193,21 @@
   background: var(--k-accent);
   transition: width 1s linear;
 }
+
+/* Darstellung (Kachel-Einstellungen „Darstellung“) */
+.agenda.no-header { grid-template-rows: minmax(0, 1fr); }
+.agenda.no-header .agenda-header { display: none; }
+.agenda.no-time .agenda-time,
+.agenda.no-dur .agenda-dur,
+.agenda.no-progress .agenda-progress { display: none; }
+.agenda.no-time .agenda-item { grid-template-columns: minmax(0, 1fr) auto; }
+.agenda.no-dur .agenda-item { grid-template-columns: 3.4em minmax(0, 1fr); }
+.agenda.no-time.no-dur .agenda-item,
+.agenda.no-time .agenda-item.type-header { grid-template-columns: minmax(0, 1fr); }
+.agenda.density-compact .agenda-item { padding-top: 0.2em; padding-bottom: 0.2em; gap: 0.1em 0.7em; }
+.agenda.density-compact .agenda-item.type-header { padding-top: 0.45em; }
+.agenda.density-compact .agenda-main { gap: 0; }
+.agenda.density-airy .agenda-item { padding-top: 0.8em; padding-bottom: 0.8em; }
+.agenda.density-airy .agenda-item.type-header { padding-top: 1.2em; }
+.agenda.density-airy .agenda-main { gap: 0.3em; }
+.agenda.hide-done .agenda-item.done:not(.current) { display: none; }

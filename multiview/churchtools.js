@@ -289,7 +289,7 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
     const result = new Map()
     for (const id of new Set(songIds)) {
       const cached = ccliCache.get(id)
-      if (cached && Date.now() - cached.at < (cached.ccli ? 6 * 60 : 15) * 60 * 1000) {
+      if (cached && Date.now() - cached.at < (cached.ccli ? 6 * 60 * 60 : 2 * 60) * 1000) {
         result.set(id, cached.ccli)
         continue
       }

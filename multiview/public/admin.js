@@ -1,7 +1,7 @@
 import { isPortrait, layoutSize, previewMetrics, connect, reloadWhenIdle, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
-import { createAgendaView } from './agenda.js'
+import { createAgendaView, agendaOptions, AGENDA_ACCENTS } from './agenda.js'
 import {
   createProPresenterView, createPlaylistView, createPreacherView, ppOptions, playlistOptions, preacherOptions,
 } from './propresenter.js'
@@ -1226,7 +1226,7 @@ function syncTileMedia(el, tile) {
     tile.kind === 'chat'
       ? JSON.stringify(['chat', tile.chatRole ?? '', chatOptions(tile.chat)])
       : tile.kind === 'churchtools'
-        ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctSongInfo, tile.ctCcli, tile.ctDate, tile.ctMode])
+        ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctSongInfo, tile.ctCcli, tile.ctDate, tile.ctMode, agendaOptions(tile.agendaLook)])
         : livePreview && source
         ? JSON.stringify([source.type, source.device, source.url, source.name])
         : ''
@@ -1767,6 +1767,40 @@ function chatSection(tile) {
       <p class="muted">Der Chat zeigt, was die Rolle auch in Kesher sieht: globale Nachrichten und die ihrer Party Lines. „Angemeldete Rolle“: Wer angemeldet ist, sieht seinen Chat – Monitore ohne Anmeldung zeigen alles.</p>`
 }
 
+/** Ablauf-Kachel: Schriftgröße, Abstände und was angezeigt wird. */
+function agendaLookSection(tile) {
+  const o = agendaOptions(tile.agendaLook)
+  const check = (key, label) =>
+    `<label class="check"><input type="checkbox" data-ag="${key}" ${o[key] ? 'checked' : ''}> ${label}</label>`
+  const accentNames = { '#00d1ff': 'Cyan', '#30d158': 'Grün', '#ffb020': 'Orange', '#ff5a4f': 'Rot', '#bf5af2': 'Lila', '#ffffff': 'Weiß' }
+  return `
+    <div class="meter-settings">
+      <h4>Darstellung</h4>
+      <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+        <input type="range" min="0.5" max="3" step="0.1" data-ag="size" value="${o.size}"></label>
+      <label class="field"><span>Zeilenabstand</span>
+        <select data-ag="density">
+          <option value="compact" ${o.density === 'compact' ? 'selected' : ''}>Kompakt (mehr Punkte sichtbar)</option>
+          <option value="normal" ${o.density === 'normal' ? 'selected' : ''}>Normal</option>
+          <option value="airy" ${o.density === 'airy' ? 'selected' : ''}>Luftig (besser lesbar)</option>
+        </select></label>
+      <label class="field"><span>Farbe für den laufenden Punkt</span>
+        <select data-ag="accent">
+          ${AGENDA_ACCENTS.map((c) => `<option value="${c}" ${o.accent === c ? 'selected' : ''}>${accentNames[c] || c}</option>`).join('')}
+        </select></label>
+      ${check('header', 'Kopfzeile (Event, Datum, Status)')}
+      ${check('time', 'Uhrzeiten')}
+      ${check('duration', 'Dauer')}
+      ${check('progress', 'Fortschrittsbalken beim laufenden Punkt')}
+      ${check('sections', 'Abschnitts-Überschriften')}
+      ${check('before', 'Punkte vor Beginn des Events')}
+      ${check('hideDone', 'Erledigte Punkte ausblenden')}
+      ${check('openAll', 'Programmspalten immer aufgeklappt (für Monitore ohne Bedienung)')}
+      <label class="field"><span>Nur diese Programmspalten (Komma getrennt, leer = alle)</span>
+        <input type="text" data-ag="columns" value="${esc(o.columns)}" placeholder="z. B. Technik, Programm"></label>
+    </div>`
+}
+
 /** Chat-Kachel: Schriftgröße und was angezeigt wird. */
 function chatLookSection(tile) {
   const o = chatOptions(tile.chat)
@@ -1872,6 +1906,7 @@ function tileInspector(tile, layout) {
       <label class="check"><input type="checkbox" data-t="ctNotes" ${tile.ctNotes === true ? 'checked' : ''}> Notizen anzeigen</label>
       <label class="check"><input type="checkbox" data-t="ctSongInfo" ${tile.ctSongInfo !== false ? 'checked' : ''}> Tonart und Arrangement bei Songs</label>
       <label class="check"><input type="checkbox" data-t="ctCcli" ${tile.ctCcli !== false ? 'checked' : ''}> CCLI-Nummer bei Songs</label>
+      ${agendaLookSection(tile)}
       <p class="muted">Zeigt den Ablauf eines Events aus ChurchTools. <b>Heute</b>: das laufende, sonst das nächste Event von heute. <b>Nächstes Event</b>: das laufende, sonst das nächste – auch an späteren Tagen (bis 6 Wochen voraus). <b>Festes Datum</b>: nur dieser Tag. Events ohne Ablauf erscheinen mit „Kein Ablauf hinterlegt“. Ein Klick auf einen Punkt klappt die Programmspalten auf. Die CCLI-Nummer braucht im ChurchTools-Benutzer Leserecht auf Songs. Verbindung unter <a href="#/einstellungen/churchtools">Einstellungen</a>.</p>`
         : ''
     }
@@ -1919,6 +1954,19 @@ function onInspectorField(e) {
       if (out) out.textContent = `${Math.round(o.size * 100)} %`
     }
     tile.stage = o
+    renderCanvas()
+    changed()
+    return
+  }
+
+  if (el.dataset.ag) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const key = el.dataset.ag
+    const value = el.type === 'checkbox' ? el.checked : el.type === 'range' ? Number(el.value) : el.value
+    tile.agendaLook = { ...agendaOptions(tile.agendaLook), [key]: value }
+    const out = el.closest('label').querySelector('output')
+    if (out) out.textContent = `${Math.round(value * 100)} %`
     renderCanvas()
     changed()
     return
