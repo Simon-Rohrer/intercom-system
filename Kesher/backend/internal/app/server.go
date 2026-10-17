@@ -4409,6 +4409,28 @@ func (s *Server) handleRaspberryPiRemoteStations(w http.ResponseWriter, r *http.
 	s.writeJSON(w, http.StatusOK, response)
 }
 
+// forwardToRolePrimary sends a control of a secondary (mirror) session to the
+// device that really uses the role. Returns false when there is no such device –
+// then the secondary session keeps working on its own as before.
+func (s *Server) forwardToRolePrimary(ctx context.Context, session Session, command CompanionCommand) bool {
+	token, username, ok := s.hub.PrimaryTokenForRole(session.RoleID, session.Token)
+	if !ok {
+		return false
+	}
+	normalized, err := s.normalizeCompanionRelayCommand(ctx, session.RoleID, username, command)
+	if err != nil {
+		s.logger.Warn("mirror command rejected", "role", session.RoleID, "command", command.Command, "error", err)
+		return true
+	}
+	if strings.TrimSpace(normalized.CommandID) == "" {
+		normalized.CommandID = uuid.NewString()
+	}
+	if !s.hub.SendToToken(token, WSOutbound{Type: "companion_command", Data: normalized}) {
+		s.logger.Warn("mirror command not delivered", "role", session.RoleID, "command", command.Command)
+	}
+	return true
+}
+
 func (s *Server) handleRaspberryPiRemoteCommand(w http.ResponseWriter, r *http.Request) {
 	if !s.requireServiceCapability(w, r, "pi-manage") {
 		return
@@ -4789,6 +4811,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request, session
 		AckEnabled:      s.isAckEnabled(),
 		AppVersion:      GetVersionInfo(),
 		CentralRoles:    s.cfg.JMSAuthSecret != "",
+		Secondary:       session.Secondary,
 	})
 }
 
@@ -6816,6 +6839,15 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			raw, _ := json.Marshal(in.Data)
 			var e RoomMatrixEvent
 			_ = json.Unmarshal(raw, &e)
+			// Spiegel (Kesher-Kachel in JMS Control): Kanalwahl an das Gerät weitergeben,
+			// das die Rolle wirklich nutzt – die Kachel zeigt dessen Zustand.
+			if session.Secondary && s.forwardToRolePrimary(r.Context(), session, CompanionCommand{
+				Command:       "set_room_matrix",
+				ListenRoomIDs: e.ListenRoomIDs,
+				TalkRoomIDs:   e.TalkRoomIDs,
+			}) {
+				continue
+			}
 			prevListen := s.hub.ListenRoomsForToken(session.Token)
 			allowedListen := s.filterAllowedRoomsForRole(r.Context(), session.RoleID, e.ListenRoomIDs, false)
 			allowedListen = s.mergeForcedListenRooms(r.Context(), session.RoleID, allowedListen)
@@ -6893,6 +6925,21 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			_ = json.Unmarshal(raw, &e)
 			if e.Scope == "global" {
 				continue
+			}
+			// Spiegel: Sprechtaste und Always on schaltet das Gerät mit dem Headset
+			if session.Secondary {
+				forward := CompanionCommand{}
+				switch e.Body {
+				case "ptt_start", "ptt_stop":
+					forward = CompanionCommand{Command: "ptt", Scope: e.Scope, TargetID: e.TargetID, State: e.Body}
+				case "always_on":
+					forward = CompanionCommand{Command: "set_voice_mode", Mode: "always_on"}
+				case "always_off":
+					forward = CompanionCommand{Command: "set_voice_mode", Mode: "ptt"}
+				}
+				if forward.Command != "" && s.forwardToRolePrimary(r.Context(), session, forward) {
+					continue
+				}
 			}
 			if !s.isInboundAllowed(r.Context(), session, e) {
 				continue
@@ -7243,14 +7290,19 @@ func (s *Server) staticHandler() http.Handler {
 			return
 		}
 		if r.URL.Path == "/" {
+			disableResponseCaching(w)
 			http.ServeFile(w, r, s.cfg.StaticDir+"/index.html")
 			return
 		}
 		requestedPath := filepath.Join(s.cfg.StaticDir, filepath.Clean(r.URL.Path))
 		if info, err := os.Stat(requestedPath); err == nil && !info.IsDir() {
+			if r.URL.Path == "/sw.js" || r.URL.Path == "/manifest.webmanifest" || strings.HasSuffix(r.URL.Path, ".html") {
+				disableResponseCaching(w)
+			}
 			fileServer.ServeHTTP(w, r)
 			return
 		}
+		disableResponseCaching(w)
 		http.ServeFile(w, r, s.cfg.StaticDir+"/index.html")
 	})
 }
@@ -7267,14 +7319,19 @@ func (s *Server) embeddedStaticHandler() http.Handler {
 			return
 		}
 		if r.URL.Path == "/" {
+			disableResponseCaching(w)
 			http.ServeFileFS(w, r, assets, "index.html")
 			return
 		}
 		requestedPath := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
 		if info, err := fs.Stat(assets, requestedPath); err == nil && !info.IsDir() {
+			if r.URL.Path == "/sw.js" || r.URL.Path == "/manifest.webmanifest" || strings.HasSuffix(r.URL.Path, ".html") {
+				disableResponseCaching(w)
+			}
 			fileServer.ServeHTTP(w, r)
 			return
 		}
+		disableResponseCaching(w)
 		http.ServeFileFS(w, r, assets, "index.html")
 	})
 }

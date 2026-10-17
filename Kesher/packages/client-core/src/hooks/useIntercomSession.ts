@@ -3398,10 +3398,21 @@ export function useIntercomSession({
   // ── Presence sync → local state ──
   useEffect(() => {
     if (!appData) return;
-    const selfPresence = presence.find(
-      (entry) => entry.userId === appData.self.id,
-    );
+    // Spiegel (Kesher-Kachel in JMS Control): den Zustand des Geräts zeigen, das die Rolle
+    // wirklich nutzt (z. B. Laptop mit Headset) – Änderungen leitet der Server dorthin weiter.
+    const mirrored = appData.secondary
+      ? presence.find(
+          (entry) =>
+            entry.roleId === appData.self.roleId && entry.userId !== appData.self.id,
+        )
+      : undefined;
+    const selfPresence =
+      mirrored ??
+      presence.find((entry) => entry.userId === appData.self.id);
     if (!selfPresence) return;
+    // Eine Spiegel-Sitzung stellt nie ihre gespeicherte Kanalwahl wieder her – sonst würde
+    // sie beim Öffnen die Kanäle des echten Geräts umstellen
+    if (appData.secondary) pendingInitialRoomRestoreRef.current = false;
     if (pendingInitialRoomRestoreRef.current) {
       const matchesListen = sameStringSet(
         listenRoomIdsRef.current,

@@ -279,3 +279,12 @@
 /* Nicht an der neuesten Nachricht hängen: selbst scrollen (Touch-Monitor), ohne Balken */
 .kchat.no-follow .kchat-feed { overflow-y: auto; scrollbar-width: none; overscroll-behavior: contain; }
 .kchat.no-follow .kchat-feed::-webkit-scrollbar { display: none; }
+
+/* Beim Eintreffen einer wichtigen Meldung kurz heranzoomen; nach 15 s wird sie normal (chat.js) */
+.kchat-msg.alert-pop { animation: kchat-alert-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.25); }
+@keyframes kchat-alert-pop {
+  0% { transform: scale(0.92); opacity: 0.4; }
+  60% { transform: scale(1.03); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.kchat-msg { transition: background-color 0.6s ease, border-color 0.6s ease; }

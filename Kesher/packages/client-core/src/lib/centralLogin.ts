@@ -1,4 +1,4 @@
-import { getGlobalApiBaseUrl } from "../api";
+import { getGlobalApiBaseUrl, isUnauthorizedError } from "../api";
 import { tokenStorageKey } from "../app/settings";
 import type { LoginSuccess } from "../types";
 
@@ -111,6 +111,13 @@ export async function centralSessionLogin(): Promise<LoginSuccess> {
 
 export function centralLoginUrl(next = "/"): string {
   return `${BASE}/login?next=${encodeURIComponent(next)}`;
+}
+
+/** An expired gateway session requires login, not an offline screen or retries. */
+export function redirectToCentralLoginOnUnauthorized(error: unknown): boolean {
+  if (!centralLoginAvailable() || !isUnauthorizedError(error)) return false;
+  window.location.replace(centralLoginUrl(window.location.pathname + window.location.search));
+  return true;
 }
 
 /**

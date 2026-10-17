@@ -563,8 +563,10 @@ export function normalizeStreamDeckSettings(data: unknown): StreamDeckSettings {
 }
 
 export async function getPublicBootstrap(): Promise<PublicBootstrap> {
-  const res = await fetch(apiUrl("/api/public-bootstrap"));
-  if (!res.ok) throw new Error("Öffentliche Startdaten konnten nicht geladen werden");
+  const res = await fetch(apiUrl("/api/public-bootstrap"), { cache: "no-store" });
+  if (!res.ok) {
+    throw new ApiError(res.status, "", "Öffentliche Startdaten konnten nicht geladen werden");
+  }
   const raw = (await res.json()) as unknown;
   return normalizePublicBootstrap(raw);
 }

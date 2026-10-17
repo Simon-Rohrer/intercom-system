@@ -157,6 +157,28 @@
 	}
 }
 
+# Der bereinigende Service Worker muss auch nach Ablauf der Anmeldung erreichbar
+# bleiben, damit ein alter Offline-Cache die Anmeldung nicht festhalten kann.
+# Nur diese öffentliche Skriptdatei ist ausgenommen; App, API und WebSockets
+# behalten unverändert die zentrale Anmeldung und deren Rechteprüfung.
+(kesher_web) {
+	@kesher_worker {
+		path /sw.js
+		method GET HEAD
+	}
+	handle @kesher_worker {
+		reverse_proxy 127.0.0.1:8080 {
+			import jms_clean
+		}
+	}
+	handle {
+		import jms_auth kesher
+		reverse_proxy 127.0.0.1:8080 {
+			import jms_clean
+		}
+	}
+}
+
 # Fremde Oberflächen (Companion) merken An- und Abmeldung in anderen Tabs nicht selbst: Ihre
 # Seitenaufrufe holt der Multiview vom Dienst und hängt einen kleinen Wächter ein, der dann neu
 # lädt (multiview/public/watch-login.js). Nach „import jms_auth“ einbinden – das rewrite steht in
@@ -231,10 +253,7 @@ https://:8090, https://:8443, https://:8000, https://:3000, https://:61208, http
 
 https://192.168.0.21:8443 {
 	import lan_port
-	import jms_auth kesher
-	reverse_proxy 127.0.0.1:8080 {
-		import jms_clean
-	}
+	import kesher_web
 }
 
 # Multiview (Container mit HOST=127.0.0.1)
@@ -301,10 +320,7 @@ https://192.168.0.21:8250 {
 
 https://intercom.internal, https://kesher.internal, https://intercom.jms.de, https://kesher.jms.de, https://intercom.local, https://kesher.local {
 	import jms_tls
-	import jms_auth kesher
-	reverse_proxy 127.0.0.1:8080 {
-		import jms_clean
-	}
+	import kesher_web
 }
 
 https://jmscontrol.internal, https://multiview.internal, https://multiview.jms.de, https://jmscontrol.local {
@@ -382,8 +398,5 @@ https://setup.internal {
 # Aus der früheren Installation (Heimnetz-Adresse), unverändert übernommen
 https://192.168.178.185 {
 	import jms_tls
-	import jms_auth kesher
-	reverse_proxy 127.0.0.1:8080 {
-		import jms_clean
-	}
+	import kesher_web
 }

@@ -40,6 +40,7 @@ const chatViews = new Set() // Chat-Kacheln
 const composers = new Set() // Eingabefelder der Chat-Kacheln (angemeldet)
 // Angemeldeter Nutzer (falls diese Seite angemeldet geöffnet ist): Chat und Intercom gehen mit ihm mit
 let viewer = null
+let viewerReady = false
 // Ohne eigene Anmeldung (Kiosk am HDMI-Ausgang): wer gerade für diesen Multiview angemeldet ist
 let stationUser = null
 let currentOutputId = null
@@ -49,12 +50,15 @@ fetch('/api/me', { cache: 'no-store' })
     viewer = me?.user && !me.user.open ? me.user : null
     if (!viewer) return
     for (const view of chatViews) view.update(chatFor(chat, view.roleId()))
+  })
+  .catch(() => {})
+  .finally(() => {
+    viewerReady = true
     if (config) {
       renderedKey = '' // Kesher-Kacheln mit „angemeldeter Nutzer“ jetzt anmelden
       render()
     }
   })
-  .catch(() => {})
 let chat = { state: 'connecting', messages: [], stationName: '' }
 let bootId = null
 const agendaViews = new Set() // ChurchTools-Kacheln
@@ -123,7 +127,7 @@ function render() {
 
   // Nur neu aufbauen, wenn sich für diesen Ausgang wirklich etwas geändert hat,
   // sonst würden die Videos bei jeder Änderung an anderen Layouts kurz flackern.
-  const key = JSON.stringify([output?.id ?? outputRef, layout, config.sources, config.chat?.url])
+  const key = JSON.stringify([output ?? outputRef, layout, config.sources, config.chat])
   if (key === renderedKey) return updateOverlays()
   renderedKey = key
 
@@ -208,15 +212,7 @@ function buildTile(tile, layout, usedStreams) {
   } else if (tile.kind === 'kesher') {
     // Die Kesher-Seite selbst liegt in der Ebene #frames (syncFrames) über dieser Kachel
     media.classList.add('chat')
-    media.append(
-      placeholder(
-        embedded
-          ? 'Kesher-Intercom\nnur auf dem Monitor bedienbar'
-          : tile.kesherRoleId === '@user' && !kesherPerson()
-            ? 'Kesher-Intercom\nniemand für diesen Multiview angemeldet'
-            : 'Kesher-Intercom\nwird geladen …',
-      ),
-    )
+    media.append(placeholder('Kesher-Intercom\nwird geladen …'))
   } else if (tile.kind === 'churchtools') {
     const view = createAgendaView(tile)
     view.update(churchtools)
@@ -316,7 +312,7 @@ const hasViewerKesher = () => {
 
 /** Ohne eigene Anmeldung regelmäßig nachsehen, wer für diesen Multiview angemeldet ist. */
 async function refreshStationUser() {
-  if (embedded || viewer || !currentOutputId || !hasViewerKesher()) return
+  if (viewer || !currentOutputId || !hasViewerKesher()) return
   const data = await fetch(`/api/output/${encodeURIComponent(currentOutputId)}/user`, { cache: 'no-store' })
     .then((r) => r.json())
     .catch(() => null)
@@ -343,11 +339,10 @@ function kesherUrl(tile) {
     // Kesher erlaubt keine Leerzeichen im Namen – geschütztes Leerzeichen sieht gleich aus
     params.set('username', username.replace(/\s+/g, '\u00a0'))
     params.set('roleId', roleId)
-    // Mit der Rolle des angemeldeten Nutzers nie übernehmen: sein eigenes Kesher (Handy, Laptop,
-    // Station) soll dadurch nicht rausfliegen.
-    if (tile.kesherTakeover !== false && !asViewer) params.set('autoTakeover', '1')
-    // Als Zweitgerät: belegt die Rolle in Kesher nicht, das eigene Kesher-Gerät geht trotzdem
-    if (asViewer) params.set('secondary', '1')
+    // Immer als Spiegel (Zweitgerät): Die Kachel belegt die Rolle in Kesher nie. Ist die Rolle auf
+    // einem echten Gerät angemeldet (z. B. Laptop mit Headset), zeigt die Kachel dessen Kanäle und
+    // Sprechtasten, und was man hier umstellt, schaltet Kesher dort.
+    params.set('secondary', '1')
   }
   if (tile.kesherAudioIn) params.set('audioInputMatch', tile.kesherAudioIn)
   if (tile.kesherAudioOut) params.set('audioOutputMatch', tile.kesherAudioOut)
@@ -358,14 +353,16 @@ function kesherUrl(tile) {
  * Kesher-Fenster passend zum Layout anlegen, verschieben oder entfernen.
  * Ein Fenster bleibt bestehen, solange sich seine Adresse nicht ändert – so reißt
  * die Intercom-Verbindung nicht ab, wenn im Editor etwas anderes geändert wird.
- * In der Editor-Vorschau nie, sonst wäre die Rolle doppelt angemeldet.
+ * Eingebettete Ansichten verwenden dieselben Fenster als Zweitgerät; beim
+ * Wechsel ins Vollbild bleibt die bestehende Intercom-Verbindung erhalten.
  */
 function syncFrames(layout) {
-  // „Angemeldeter Nutzer“ ohne Person: keine Kesher-Anmeldeseite, die Kachel zeigt den Hinweis
+  // Erst die eigene Identität auflösen, damit der erste iframe-Aufruf schon die
+  // richtige Zweitgeräte-Anmeldung nutzt. Ohne Person zeigt Kesher seine Anmeldung.
   const wanted =
-    embedded || !layout
+    !layout || !viewerReady
       ? []
-      : layout.tiles.filter((t) => t.kind === 'kesher' && (t.kesherRoleId !== '@user' || kesherPerson()))
+      : layout.tiles.filter((t) => t.kind === 'kesher')
   refreshStationUser()
   const keep = new Set()
   for (const tile of wanted) {
@@ -379,6 +376,7 @@ function syncFrames(layout) {
       const wrap = document.createElement('div')
       wrap.className = 'frame-tile'
       const iframe = document.createElement('iframe')
+      iframe.title = 'Kesher-Intercom'
       iframe.allow = 'microphone; camera; autoplay; speaker-selection; fullscreen'
       iframe.src = url
       wrap.append(iframe)

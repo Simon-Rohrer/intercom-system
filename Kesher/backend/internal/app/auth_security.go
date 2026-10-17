@@ -192,7 +192,7 @@ func allowedWebSocketOrigin(r *http.Request) bool {
 		}
 	}
 	switch origin {
-	case "https://intercom.jms.de", "https://kesher.jms.de", "https://intercom.local", "https://kesher.local", "https://192.168.0.21:8443", "https://192.168.178.185":
+	case "https://intercom.internal", "https://kesher.internal", "https://intercom.jms.de", "https://kesher.jms.de", "https://intercom.local", "https://kesher.local", "https://192.168.0.21:8443", "https://192.168.178.185":
 		return true
 	}
 	return false

@@ -756,3 +756,26 @@ body.booting .rm-main { opacity: 0; }
 
   .rm-toast { left: calc(50% + 138px); bottom: 28px; }
 }
+
+/* Wichtige Meldung: beim Eintreffen kurz heranzoomen, nach 15 s normal (remote.js) */
+.rm-bubble { transition: background-color 0.6s ease, color 0.6s ease, box-shadow 0.6s ease; }
+.rm-bubble.alert-pop { animation: rm-alert-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.25); }
+@keyframes rm-alert-pop {
+  0% { transform: scale(0.9); opacity: 0.4; }
+  60% { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+/* Eigene Beamer-Meldung zurückziehen */
+.rm-request-withdraw {
+  margin-top: 10px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 69, 58, 0.16);
+  color: #ff6b61;
+  font-weight: 650;
+  font-size: 14px;
+}
+.rm-request-withdraw:active { background: rgba(255, 69, 58, 0.28); }
+.rm-request-withdraw:disabled { opacity: 0.5; }

@@ -143,7 +143,8 @@ test('SSO pull is bound to browser verifier, exact target origin and one use', (
 
 test('SSO refuses wildcard-like names, alternate ports and invalid issuer state', () => {
   const fixture = ssoFixture()
-  for (const origin of ['https://evil.local', 'https://evil.jms.de', 'https://intercom.local:9999', 'https://192.168.0.21:9999']) {
+  for (const origin of ['https://evil.local', 'https://evil.jms.de', 'https://intercom.local:9999', 'https://192.168.0.21:9999',
+    'https://evil.internal', 'https://sub.intercom.internal', 'https://intercom.internal:9999', 'https://setup.internal']) {
     const result = response()
     fixture.handlers.start(request(origin), result)
     assert.equal(result.statusCode, 400)
@@ -159,6 +160,32 @@ test('SSO refuses wildcard-like names, alternate ports and invalid issuer state'
   fixture.handlers.issue(follow(started.location), result)
   assert.equal(result.statusCode, 400)
 })
+
+for (const host of ['intercom', 'kesher', 'jmscontrol', 'multiview', 'technik', 'dashboard', 'companion', 'glances', 'portainer', 'dns', 'router']) {
+  test(`SSO push and pull preserve exact .internal origin for ${host}`, () => {
+    const origin = `https://${host}.internal`
+    const fixture = ssoFixture()
+    const pushed = response()
+    fixture.handlers.push(request(origin, { next: '/room' }), pushed)
+    const started = response()
+    fixture.handlers.start(follow(pushed.location), started)
+    assert.equal(new URL(started.location).origin, origin)
+    const issued = response()
+    fixture.handlers.issue(follow(started.location), issued)
+    const accepted = response()
+    fixture.handlers.accept(follow(issued.location, started.cookies[0].split(';')[0]), accepted)
+    assert.equal(accepted.location, `${origin}/room`)
+    const pull = response()
+    fixture.handlers.start(request(origin, { next: '/room' }), pull)
+    const pullIssued = response()
+    fixture.handlers.issue(follow(pull.location), pullIssued)
+    assert.equal(new URL(pullIssued.location).origin, origin)
+    const pullAccepted = response()
+    fixture.handlers.accept(follow(pullIssued.location, pull.cookies[0].split(';')[0]), pullAccepted)
+    assert.equal(pullAccepted.location, '/room')
+    assert.equal(fixture.redeemed.length, 2)
+  })
+}
 
 test('SSO push gets verifier from central before issuing a target login ticket', () => {
   const fixture = ssoFixture()

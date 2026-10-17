@@ -3,6 +3,8 @@
 
 /** Ältere Nachrichten bleiben stehen, werden aber abgedunkelt. */
 const RECENT_MS = 5 * 60 * 1000
+// Beamer-/Bühnen-Meldungen sind nur so lange rot hervorgehoben, danach wie jede andere Nachricht
+export const ALERT_MS = 15 * 1000
 const FLASH_MS = 4000
 
 const views = new Set()
@@ -56,6 +58,8 @@ export function createChatView(options) {
   const firstSeen = new Map()
   let lastKey = ''
   let feedEl = null
+  let lastChat = null
+  let alertTimer = null
 
   // An der neuesten Nachricht hängen: immer ganz nach unten – auch wenn die Kachel erst später
   // ihre Größe bekommt, die Schrift nachlädt oder die Kachel größer/kleiner gezogen wird.
@@ -76,6 +80,8 @@ export function createChatView(options) {
     el: root,
     clock,
     update(chat) {
+      lastChat = chat
+      clearTimeout(alertTimer)
       station.textContent = chat.stationName || ''
       const connected = chat.state === 'connected'
       live.classList.toggle('connected', connected)
@@ -94,6 +100,7 @@ export function createChatView(options) {
         return
       }
       const list = el('ol', 'kchat-feed')
+      let nextAlertEnd = Infinity
       feed.forEach((m, i) => {
         const isNewest = i === feed.length - 1
         const isOld = now - (firstSeen.get(m.key) ?? now) > RECENT_MS && !isNewest
@@ -103,7 +110,13 @@ export function createChatView(options) {
         if (isNewest && m.key !== lastKey) li.classList.add('arrive')
         if (isOld) li.classList.add('is-old')
         if (needsAck) li.classList.add('needs-ack')
-        if (m.source === 'multiview-alert') li.classList.add('is-alert')
+        // Rot nur in den ersten 15 s; beim Eintreffen eine kleine Zoom-Animation
+        const alertAge = now - (firstSeen.get(m.key) ?? now)
+        if (m.source === 'multiview-alert' && alertAge < ALERT_MS) {
+          li.classList.add('is-alert')
+          if (alertAge < 1500) li.classList.add('alert-pop')
+          nextAlertEnd = Math.min(nextAlertEnd, ALERT_MS - alertAge)
+        }
         const meta = el('div', 'kchat-meta')
         meta.append(el('strong', null, m.from))
         if (m.fromRole && m.fromRole !== m.from) meta.append(el('span', 'kchat-role', m.fromRole))
@@ -111,13 +124,15 @@ export function createChatView(options) {
         if (m.source === 'telegram') meta.append(el('span', 'kchat-target is-telegram', 'Telegram'))
         else if (m.source === 'companion') meta.append(el('span', 'kchat-target', 'Stream Deck'))
         else if (m.source === 'multiview') meta.append(el('span', 'kchat-target', 'JMS Control'))
-        else if (m.source === 'multiview-alert') meta.append(el('span', 'kchat-target is-alert', 'Wichtig'))
+        else if (m.source === 'multiview-alert') meta.append(el('span', `kchat-target${alertAge < ALERT_MS ? ' is-alert' : ''}`, 'Wichtig'))
         if (needsAck) meta.append(el('span', 'kchat-ack', 'Bestätigung erwartet'))
         meta.append(el('time', null, shortTime(m.timestamp)))
         li.append(meta, el('p', 'kchat-text', m.body))
         list.append(li)
       })
       lastKey = feed[feed.length - 1].key
+      // Sobald die nächste Meldung ihre 15 s hinter sich hat, neu zeichnen (dann ohne Rot)
+      if (nextAlertEnd !== Infinity) alertTimer = setTimeout(() => lastChat && view.update(lastChat), nextAlertEnd + 50)
       // Ohne „hängen“: Scroll-Position behalten, damit man in Ruhe zurücklesen kann
       const keep = !o.follow && feedEl ? feedEl.scrollTop : null
       body.replaceChildren(list)

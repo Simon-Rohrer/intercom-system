@@ -680,7 +680,9 @@ function messageTemplates(list) {
 
 const FREE_MESSAGE_NAME = 'Multiview-Meldung' // eigene Meldung für freien Text, legt der Server bei Bedarf an
 const FREE_MESSAGE_TOKEN = 'Text'
-let announceRequests = [] // { id, uuid, name, text, from, at, status: wartet|angezeigt|beendet|ersetzt, seenInactive }
+let announceRequests = [] // { id, uuid, name, text, from, by, at, status: wartet|angezeigt|beendet|ersetzt|zurückgezogen, seenInactive }
+// Wer eine Meldung geschickt hat (Name|Rolle) – nur der (oder der Admin) darf sie zurückziehen
+const senderKey = (user) => (user && !user.open ? `${user.name}|${user.roleId}` : '')
 
 function updateAnnounceRequests(list) {
   const active = new Set(list.filter((m) => m.is_active).map((m) => m.id?.uuid))
@@ -696,7 +698,7 @@ function updateAnnounceRequests(list) {
 }
 
 const publicRequests = () =>
-  announceRequests.map(({ id, name, text, from, at, status, shownAt, link }) => ({ id, name, text, from, at, status, shownAt, link }))
+  announceRequests.map(({ id, name, text, from, by, at, status, shownAt, link }) => ({ id, name, text, from, by, at, status, shownAt, link }))
 
 /** Text mit eingesetzten Platzhaltern, wie ihn ProPresenter anzeigen wird. */
 /**
@@ -757,7 +759,7 @@ async function putMessage(message) {
  * der Vorlage, bei freiem Text im Aussehen einer normalen Laufschrift.
  * { uuid, fields: { Name: Wert } } für eine Vorlage, { text } für freien Text.
  */
-async function prepareAnnouncement({ uuid, fields, text }, from) {
+async function prepareAnnouncement({ uuid, fields, text }, from, by = '') {
   if (!ppBase()) throw Object.assign(new Error('ProPresenter nicht eingerichtet'), { status: 503 })
   const list = (await ppGet('/v1/messages')) ?? []
   const free = !uuid
@@ -799,6 +801,7 @@ async function prepareAnnouncement({ uuid, fields, text }, from) {
     name: template ? String(template.id?.name ?? '').trim() : 'Eigene Meldung',
     text: rendered,
     from,
+    by,
     at: Date.now(),
     status: 'wartet',
     seenInactive: !inbox.is_active,
@@ -909,8 +912,36 @@ function lanAddresses() {
     .map((a) => a.address)
 }
 
-// Ändert sich bei jedem Start; Monitor-Seiten laden dann den neuen Stand.
-const BOOT_ID = `${Date.now()}`
+// Ändert sich bei jedem Start UND sobald sich eine Datei der Oberfläche (public/) ändert –
+// Monitore, Editor, Handy und Prediger laden dann von selbst den neuen Stand.
+const START_ID = `${Date.now()}`
+let BOOT_ID = START_ID
+function assetsVersion() {
+  const hash = require('crypto').createHash('sha1').update(START_ID)
+  const walk = (dir) => {
+    for (const name of fs.readdirSync(dir).sort()) {
+      const file = path.join(dir, name)
+      const stat = fs.statSync(file)
+      if (stat.isDirectory()) walk(file)
+      else hash.update(`${path.relative(__dirname, file)}:${stat.size}:${stat.mtimeMs}`)
+    }
+  }
+  try {
+    walk(path.join(__dirname, 'public'))
+  } catch {
+    // Ordner gerade nicht lesbar – beim nächsten Mal
+  }
+  return hash.digest('hex').slice(0, 16)
+}
+BOOT_ID = assetsVersion()
+// Neue Dateien (z. B. per docker cp eingespielt) erkennen: alle 10 s vergleichen und dann Bescheid geben
+setInterval(() => {
+  const next = assetsVersion()
+  if (next === BOOT_ID) return
+  BOOT_ID = next
+  console.log('Oberfläche geändert – offene Seiten laden neu')
+  broadcast(serverInfo())
+}, 10_000).unref()
 
 function serverInfo() {
   return {
@@ -2304,6 +2335,7 @@ app.post('/api/propresenter/announce', requireUser, async (req, res) => {
     request = await prepareAnnouncement(
       { uuid: req.body?.uuid ? String(req.body.uuid) : '', fields: req.body?.fields || {}, text: req.body?.text },
       from,
+      senderKey(user),
     )
   } catch (err) {
     return res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
@@ -2316,6 +2348,41 @@ app.post('/api/propresenter/announce', requireUser, async (req, res) => {
   )
   res.json({ ok: true, request: publicRequests().find((r) => r.id === request.id), notified })
 })
+// Beamer-Meldung zurückziehen (Handy): nur die eigene, nur solange sie wartet oder läuft – einmal.
+// Der Text in der „Multiview-Meldung“ wird geleert (falls dort noch genau diese Meldung steht);
+// läuft sie schon auf dem Beamer, bekommt der Bediener im Chat Bescheid, sie auszublenden.
+app.post('/api/propresenter/announce/:id/withdraw', requireUser, requireMutation, async (req, res) => {
+  const user = req.user
+  const request = announceRequests.find((r) => r.id === req.params.id)
+  if (!request) return res.status(404).json({ ok: false, error: 'Diese Meldung gibt es nicht mehr' })
+  if (!user.admin && (!request.by || request.by !== senderKey(user)))
+    return res.status(403).json({ ok: false, error: 'Nur die eigene Meldung lässt sich zurückziehen' })
+  if (request.status !== 'wartet' && request.status !== 'angezeigt')
+    return res.status(409).json({ ok: false, error: 'Diese Meldung ist schon vorbei' })
+  const wasShown = request.status === 'angezeigt'
+  try {
+    const list = (await ppGet('/v1/messages')) ?? []
+    const inbox = list.find((m) => m.id?.uuid === request.uuid)
+    const token = inbox?.tokens?.find((t) => t.name === FREE_MESSAGE_TOKEN)
+    // Nur leeren, wenn dort noch genau diese Meldung steht (nicht schon eine neuere)
+    if (inbox && token && String(token.text?.text ?? '') === request.text)
+      await putMessage({ ...inbox, tokens: inbox.tokens.map((t) => (t === token ? { ...t, text: { ...t.text, text: '' } } : t)) })
+  } catch (err) {
+    return res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
+  }
+  request.status = 'zurückgezogen'
+  stageMessagesAt = 0
+  requestStagePoll()
+  console.log(`ProPresenter: Beamer-Meldung zurückgezogen „${request.text}“ (${user.name || req.ip})`)
+  await notifyChat(
+    user,
+    wasShown
+      ? `Beamer-Meldung zurückgezogen: „${request.text}“ – läuft noch, bitte „${FREE_MESSAGE_NAME}“ in ProPresenter ausblenden`
+      : `Beamer-Meldung zurückgezogen: „${request.text}“`,
+  )
+  res.json({ ok: true })
+})
+
 // ---------------------------------------------------------------------------
 // Nachrichten-Links (message-links.js): Ordner & Co. schicken ohne Anmeldung eine Meldung auf
 // den Beamer (vorbereitet, angezeigt vom ProPresenter-Bediener) oder das Stage Display.

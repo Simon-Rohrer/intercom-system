@@ -54,6 +54,20 @@ export function watchLogin(currentKey, { onChange = () => location.reload(), url
   setInterval(check, 5000)
 }
 
+/**
+ * Neuen Stand laden – aber nicht mitten im Tippen: Ist gerade ein Eingabefeld aktiv,
+ * wird neu geladen, sobald es verlassen wird.
+ */
+export function reloadWhenIdle() {
+  const typing = () => {
+    const a = document.activeElement
+    return Boolean(a && (a.matches?.('input, textarea, select') || a.isContentEditable))
+  }
+  if (!typing()) return location.reload()
+  const later = () => setTimeout(() => (typing() ? null : location.reload()), 300)
+  document.addEventListener('focusout', later)
+}
+
 /** WebSocket mit automatischem Neuverbinden. */
 export function connect(onMessage, onStatus) {
   let ws

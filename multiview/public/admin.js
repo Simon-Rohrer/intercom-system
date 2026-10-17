@@ -1,4 +1,4 @@
-import { connect, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
+import { connect, reloadWhenIdle, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
 import { createAgendaView } from './agenda.js'
@@ -159,7 +159,7 @@ function onMessage(msg) {
     lastLevels = msg
   } else if (msg.type === 'server') {
     // Nach einem Update des Servers neu laden, sonst läuft hier noch der alte Stand
-    if (msg.bootId && server?.bootId && msg.bootId !== server.bootId && !saveTimer) return location.reload()
+    if (msg.bootId && server?.bootId && msg.bootId !== server.bootId && !saveTimer) return reloadWhenIdle()
     server = msg
     renderStreams()
     renderSources()
@@ -385,7 +385,7 @@ function renderOutputs() {
         .map(
           (o) => `<article class="card output-card" data-id="${esc(o.id)}">
           <div class="output-preview">
-            <iframe src="${esc(outputUrl(o, true))}" allow="camera; fullscreen; autoplay" title="${esc(o.name)}"></iframe>
+            <iframe src="${esc(outputUrl(o, true))}" allow="microphone; camera; fullscreen; autoplay; speaker-selection" title="${esc(o.name)}"></iframe>
           </div>
           <div class="output-body">
             <div class="output-title">
@@ -1240,7 +1240,7 @@ function describeTile(tile) {
         : tile.kesherRoleId
           ? chat.roles?.find((r) => r.id === tile.kesherRoleId)?.name || tile.kesherRoleId
           : 'ohne Rolle'
-    return { title: 'Kesher-Intercom', sub: `${role} · nur auf dem Monitor bedienbar` }
+    return { title: 'Kesher-Intercom', sub: `${role} · in Vorschau und Vollbild bedienbar` }
   }
   if (tile.kind === 'churchtools') {
     const day = tile.ctDate
@@ -1758,13 +1758,13 @@ function kesherSection(tile) {
           <option value="chat" ${view === 'chat' ? 'selected' : ''}>Nur Chat (ohne Mikrofon)</option>
         </select>
       </label>
-      <label class="check"><input type="checkbox" data-t="kesherTakeover" ${tile.kesherTakeover !== false ? 'checked' : ''}> Rolle übernehmen, wenn sie schon angemeldet ist <span class="muted">(nicht bei „angemeldeter Nutzer“ – dessen eigenes Kesher bleibt angemeldet)</span></label>
+      <p class="muted small">Die Kachel <b>spiegelt</b> die Rolle nur und belegt sie nie: Melde dich mit derselben Rolle an deinem Gerät mit Headset an (Laptop, Handy) – die Kachel zeigt dann dessen Kanäle, und was du hier umstellst oder drückst, schaltet Kesher dort.</p>
       <label class="check"><input type="checkbox" data-t="kesherHideControls" ${tile.kesherHideControls ? 'checked' : ''}> Sprechtasten ausblenden (Hold to talk, Reply, Always on)</label>
       <p class="muted">Die Kanäle passen sich immer der Kachelgröße an. Ohne Sprechtasten spricht man über Stream Deck oder Tastatur – oder in Kesher unter Einstellungen „Direct PTT Mode“ einschalten, dann ist jede Kanal-Taste eine Sprechtaste.</p>
       <label class="field"><span>Mikrofon (Name enthält, leer = Standard)</span><input type="text" data-t="kesherAudioIn" value="${esc(tile.kesherAudioIn)}" placeholder="z. B. USB"></label>
       <label class="field"><span>Lautsprecher (Name enthält, leer = Standard)</span><input type="text" data-t="kesherAudioOut" value="${esc(tile.kesherAudioOut)}" placeholder="z. B. HDMI"></label>
       <label class="field"><span>Kesher-Adresse (leer = automatisch)</span><input type="text" data-t="kesherUrl" value="${esc(tile.kesherUrl)}" placeholder="automatisch"></label>
-      <p class="muted">Zeigt Kesher direkt auf dem Monitor, mit Sprechtasten, Kanälen und Chat. Bedienen per Maus oder Touch am Monitor. In der Vorschau hier im Editor ist es nur ein Platzhalter, damit die Rolle nicht zweimal angemeldet wird. Für das Mikrofon muss der Monitor die Seite über <code>127.0.0.1</code> oder <code>https</code> öffnen.</p>`
+      <p class="muted">Zeigt Kesher mit Sprechtasten, Kanälen und Chat in der Multiview-Vorschau, im Vollbild und in der Monitor-Ansicht. Vorschauen melden sich als Zweitgerät an und übernehmen keine laufende Station. Im Layout-Editor bleibt die Kachel zum Anordnen als Platzhalter dargestellt. Für das Mikrofon muss die Seite über <code>127.0.0.1</code> oder <code>https</code> geöffnet und der Mikrofonzugriff im Browser erlaubt sein.</p>`
 }
 
 function tileInspector(tile, layout) {

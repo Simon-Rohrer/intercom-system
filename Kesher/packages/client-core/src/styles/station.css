@@ -1459,6 +1459,22 @@ body.panel-resizing-row {
 .root.station-shell.station-embed .station-live-role {
   font-size: clamp(12px, 3.6vh, 18px);
 }
+.root.station-shell.station-embed .station-live-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  gap: 7px;
+  padding: 4px 9px 4px 8px;
+}
+.root.station-shell.station-embed .station-live-dot {
+  flex: none;
+}
+.station-role-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .root.station-shell.station-embed .station-top-actions {
   margin-left: auto;
 }

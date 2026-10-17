@@ -75,6 +75,7 @@ import {
   centralLoginUrl,
   centralLogout,
   fetchCentralIdentity,
+  redirectToCentralLoginOnUnauthorized,
   resolveStoredTokenRestore,
   storeSessionToken,
   storedSessionIdentityKey,
@@ -1405,6 +1406,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       const data = await getPublicBootstrap();
       setPublicData(data);
     } catch (error) {
+      if (redirectToCentralLoginOnUnauthorized(error)) return;
       setPublicData(null);
       setPublicBootstrapError(
         error instanceof Error
@@ -1434,7 +1436,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         if (!cancelled) {
           setPublicData(data);
         }
-      } catch {
+      } catch (error) {
+        if (!cancelled && redirectToCentralLoginOnUnauthorized(error)) return;
         // Keep the last usable login configuration during a short outage.
       }
     };

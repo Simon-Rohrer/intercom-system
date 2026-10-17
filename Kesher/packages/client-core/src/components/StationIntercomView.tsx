@@ -2764,11 +2764,15 @@ export function StationIntercomView({
   const liveBadge = (
     <span
       className={`station-live-name ${liveConnected ? "connected" : "disconnected"}`}
+      title={embedMode ? `${stationRoleLabel || "Admin"} · ${liveConnected ? "Verbunden" : "Offline"}` : undefined}
     >
       <span
         className={`station-live-dot ${liveConnected ? "connected" : "disconnected"}`}
+        aria-hidden="true"
       />
-      {liveConnected ? "Live" : "Offline"}
+      {embedMode ? (
+        <span className="station-role-name">{stationRoleLabel || "Admin"}</span>
+      ) : liveConnected ? "Live" : "Offline"}
     </span>
   );
   const micStats = !lowPowerMode ? (

@@ -4,7 +4,8 @@
 #   Admin: Companion, Portainer und alles über den Server (Auslastung, Container) und die Raspberry Pis
 # Alle Dateien aus diesem Ordner nach /opt/homelab/config/homepage/ kopieren, Homepage
 # lädt sie ohne Neustart. Links gehen auf die IP-Adressen (die Namen kennt der DNS im
-# LAN nicht, siehe BETRIEB.md), die zentrale Anmeldung fragt beim ersten Aufruf nach
+# LAN nicht, siehe BETRIEB.md). Nur die DNS-Verwaltung nutzt ihren bestehenden .local-Zugang.
+# Die zentrale Anmeldung fragt beim ersten Aufruf nach
 # Code, Name und Rolle. Die Status-Punkte kommen über den Docker-Proxy (docker.yaml).
 
 # ----------------------------------------------------------------------------- Start

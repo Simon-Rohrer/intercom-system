@@ -14,7 +14,7 @@ const { createAccess } = require('../access')
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 
-test('real HTTP server enforces device, role, CSRF, SSO and websocket revocation', { timeout: 30_000 }, async () => {
+for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`real HTTP server enforces device, role, CSRF, SSO and websocket revocation on ${serviceHost}`, { timeout: 30_000 }, async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jms-http-auth-'))
   const roles = [{ id: 'lighting', name: 'Licht' }, { id: 'video', name: 'Regie' }, { id: 'chat-monitor', name: 'Monitor' }]
   const mock = http.createServer((request, response) => {
@@ -60,7 +60,7 @@ test('real HTTP server enforces device, role, CSRF, SSO and websocket revocation
     let logs = ''
     child.stdout.on('data', (chunk) => { logs += chunk })
     child.stderr.on('data', (chunk) => { logs += chunk })
-    async function request(route, { method = 'GET', body, jar = {}, host = 'jmscontrol.local', origin = `https://${host}`, extra = {} } = {}) {
+    async function request(route, { method = 'GET', body, jar = {}, host = serviceHost, origin = `https://${host}`, extra = {} } = {}) {
       const response = await new Promise((resolve, reject) => {
         const outgoing = http.request(`http://127.0.0.1:${port}${route}`, { method, headers: {
           Host: host, Origin: origin, 'X-Forwarded-Proto': 'https', 'X-Forwarded-For': '203.0.113.90',
@@ -136,7 +136,7 @@ test('real HTTP server enforces device, role, CSRF, SSO and websocket revocation
     for (let step = 0; step < 5 && next?.startsWith('https://'); step++) {
       const target = new URL(next)
       if (!target.pathname.startsWith('/.jms-auth/sso/')) break
-      const jar = target.host === 'jmscontrol.local' ? userJar : centralJar
+      const jar = target.host === serviceHost ? userJar : centralJar
       const result = await request(target.pathname + target.search, { host: target.host, jar })
       assert.equal(result.status, 302)
       next = result.headers.get('location')
@@ -144,7 +144,7 @@ test('real HTTP server enforces device, role, CSRF, SSO and websocket revocation
     assert.equal((await request('/api/me', { host: '192.168.0.21:8090', jar: centralJar })).data.user.sessionId, me.data.user.sessionId)
     assert.equal((await request('/.jms-auth/sso/start', { host: 'unregistered.local', jar: {} })).status, 400)
     const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
-      headers: { Host: 'jmscontrol.local', Origin: 'https://jmscontrol.local', 'X-Forwarded-Proto': 'https', 'X-Forwarded-For': '203.0.113.90', Cookie: Object.entries(userJar).map(([key, value]) => `${key}=${value}`).join('; ') },
+      headers: { Host: serviceHost, Origin: `https://${serviceHost}`, 'X-Forwarded-Proto': 'https', 'X-Forwarded-For': '203.0.113.90', Cookie: Object.entries(userJar).map(([key, value]) => `${key}=${value}`).join('; ') },
     })
     activeSockets.push(socket)
     await once(socket, 'open')
@@ -155,7 +155,7 @@ test('real HTTP server enforces device, role, CSRF, SSO and websocket revocation
     assert.equal((await request('/api/me', { jar: userJar })).data.user, null)
     assert.equal((await request('/api/config', { jar: userJar })).status, 401)
     const deviceSocket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
-      headers: { Host: 'jmscontrol.local', Origin: 'https://jmscontrol.local', 'X-Forwarded-Proto': 'https',
+      headers: { Host: serviceHost, Origin: `https://${serviceHost}`, 'X-Forwarded-Proto': 'https',
         'X-Forwarded-For': '203.0.113.90', ...machineHeaders(display) },
     })
     activeSockets.push(deviceSocket)

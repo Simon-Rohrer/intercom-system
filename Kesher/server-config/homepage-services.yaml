@@ -7,46 +7,46 @@
 
 - Technik:
     - Intercom:
-        href: https://192.168.0.21:8443
+        href: https://intercom.internal
         description: Kesher – sprechen, hören, Chat
         icon: mdi-headset
         target: _self
     - Multiview:
-        href: https://192.168.0.21:8090
+        href: https://jmscontrol.internal
         description: Bildschirme, Layouts und Monitore
         icon: mdi-monitor-dashboard
         target: _self
     - Fernbedienung:
-        href: https://192.168.0.21:8090/remote.html
+        href: https://jmscontrol.internal/remote.html
         description: ProPresenter, Bühnennachrichten und Stage Display, Chat
         icon: mdi-remote
         target: _self
 
 - Admin:
     - Companion:
-        href: https://192.168.0.21:8000
+        href: https://companion.internal
         description: Stream-Deck-Tasten (nur Admin)
         icon: mdi-gesture-tap-button
         target: _self
     - Portainer:
-        href: https://192.168.0.21:9443
+        href: https://portainer.internal
         description: Container verwalten (nur Admin, eigenes Passwort)
         icon: mdi-docker
         target: _self
     - Glances:
-        href: https://192.168.0.21:61208
+        href: https://glances.internal
         description: Auslastung und Temperaturen (nur Admin)
         icon: mdi-chart-line
         target: _self
 
 - Konto:
     - Abmelden:
-        href: https://192.168.0.21:3000/.jms-auth/logout
+        href: https://technik.internal/.jms-auth/logout
         description: Auf allen Diensten abmelden
         icon: mdi-logout
         target: _self
     - Konto wechseln:
-        href: https://192.168.0.21:3000/.jms-auth/login?wechseln=1
+        href: https://technik.internal/.jms-auth/login?wechseln=1
         description: Andere Rolle oder als Admin anmelden
         icon: mdi-account-switch
         target: _self

@@ -1,12 +1,45 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { centralIdentityKey, centralSessionLogin, fetchCentralIdentity, resolveStoredTokenRestore } from "./centralLogin";
+import { centralIdentityKey, centralSessionLogin, fetchCentralIdentity, redirectToCentralLoginOnUnauthorized, resolveStoredTokenRestore } from "./centralLogin";
+import { ApiError, getGlobalApiBaseUrl } from "../api";
 import { resolveAutoLoginConfiguration } from "./autoLogin";
 
-vi.mock("../api", () => ({ getGlobalApiBaseUrl: () => "" }));
+vi.mock("../api", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../api")>(),
+  getGlobalApiBaseUrl: vi.fn(() => ""),
+}));
 
 const identity = { name: "Tim", roleId: "lighting", admin: false, sessionId: "session-one", version: "version-one", expiresAt: Date.now() + 60_000 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.mocked(getGlobalApiBaseUrl).mockReturnValue("");
+});
+
+describe("expired gateway login", () => {
+  it("redirects a 401 to login on the current origin and preserves the page query", () => {
+    const replace = vi.fn();
+    vi.stubGlobal("window", { location: { pathname: "/login", search: "?login=raspberry", replace } });
+    expect(redirectToCentralLoginOnUnauthorized(new ApiError(401, "", "start data failed"))).toBe(true);
+    expect(replace).toHaveBeenCalledWith("/.jms-auth/login?next=%2Flogin%3Flogin%3Draspberry");
+  });
+
+  it("does not turn outages or denied permissions into login loops", () => {
+    const replace = vi.fn();
+    vi.stubGlobal("window", { location: { pathname: "/", search: "", replace } });
+    for (const error of [new Error("offline"), new ApiError(403, "", "forbidden"), new ApiError(503, "", "unavailable")]) {
+      expect(redirectToCentralLoginOnUnauthorized(error)).toBe(false);
+    }
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("keeps configured desktop servers on their existing authentication flow", () => {
+    vi.mocked(getGlobalApiBaseUrl).mockReturnValue("https://intercom.internal");
+    const replace = vi.fn();
+    vi.stubGlobal("window", { location: { pathname: "/", search: "", replace } });
+    expect(redirectToCentralLoginOnUnauthorized(new ApiError(401, "", "unauthorized"))).toBe(false);
+    expect(replace).not.toHaveBeenCalled();
+  });
+});
 
 describe("central session binding", () => {
   it("distinguishes repeated logins with the same display identity", () => {

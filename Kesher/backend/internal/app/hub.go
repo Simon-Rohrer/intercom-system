@@ -1286,6 +1286,27 @@ func (h *Hub) LatestTokenForUsername(username string) (string, bool) {
 	return selectedToken, true
 }
 
+// PrimaryTokenForRole returns the newest non-secondary client of a role (the
+// device that really uses it, e.g. a laptop with headset), excluding one token.
+// Secondary sessions (the Kesher tile in JMS Control) forward their controls to it.
+func (h *Hub) PrimaryTokenForRole(roleID, excludeToken string) (string, string, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	var selectedToken, selectedUser string
+	var selectedAt time.Time
+	for token, c := range h.clients {
+		if token == excludeToken || c.session.Secondary || c.session.RoleID != roleID {
+			continue
+		}
+		if selectedToken == "" || c.connectedAt.After(selectedAt) {
+			selectedToken = token
+			selectedUser = c.user.Username
+			selectedAt = c.connectedAt
+		}
+	}
+	return selectedToken, selectedUser, selectedToken != ""
+}
+
 func (h *Hub) LatestTokenForUsernameRole(username, roleID string) (string, bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()

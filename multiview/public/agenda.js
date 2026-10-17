@@ -1,7 +1,7 @@
 // ChurchTools-Ablauf als Kachel, der laufende Punkt ist hervorgehoben. Drei Arten:
 // „Heute“ (Events von heute), „Nächstes Event“ (das laufende, sonst das nächste,
-// auch an späteren Tagen) und ein festes Datum. Events ohne Ablauf erscheinen mit
-// „Kein Ablauf hinterlegt“. Die Daten kommen vom Multiview-Server.
+// auch an späteren Tagen) und ein festes Datum. Vorhandene Abläufe werden bevorzugt,
+// sonntags hat der Morgen Vorrang. Die Daten kommen vom Multiview-Server.
 
 const views = new Set()
 
@@ -32,35 +32,72 @@ function fmtDuration(seconds) {
   return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')} h` : `${m}′`
 }
 
-/** Passt das Event zum Filter der Kachel (Name oder Kalender enthält)? */
+/** Passt das Event zum ausdrücklich gesetzten Filter der Kachel? */
 function matchesFilter(event, filter) {
   const f = String(filter || '').trim().toLowerCase()
-  return !f || event.name.toLowerCase().includes(f) || (event.calendar || '').toLowerCase().includes(f)
+  return !f || String(event.name || '').toLowerCase().includes(f) || String(event.calendar || '').toLowerCase().includes(f)
+}
+
+function matchingEvents(events, filter) {
+  return (events || [])
+    .filter((e) => !e.isCanceled && matchesFilter(e, filter) && Number.isFinite(Date.parse(e.startDate)))
+    .sort((a, b) => Date.parse(a.startDate) - Date.parse(b.startDate))
+}
+
+function hasAgenda(event) {
+  return event.agenda?.items?.some((item) => item.type !== 'header') === true
+}
+
+const eventDateFormatters = new Map()
+function eventLocalTime(iso, timeZone) {
+  if (!eventDateFormatters.has(timeZone)) {
+    eventDateFormatters.set(timeZone, new Intl.DateTimeFormat('en-CA', {
+      timeZone, year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short', hour: '2-digit', hourCycle: 'h23',
+    }))
+  }
+  const parts = Object.fromEntries(eventDateFormatters.get(timeZone).formatToParts(new Date(iso)).map((p) => [p.type, p.value]))
+  return { day: `${parts.year}-${parts.month}-${parts.day}`, sundayMorning: parts.weekday === 'Sun' && Number(parts.hour) < 12 }
+}
+
+function sundayMornings(events, timeZone, day) {
+  return events.filter((event) => {
+    const local = eventLocalTime(event.startDate, timeZone)
+    return local.sundayMorning && (!day || local.day === day)
+  })
+}
+
+function currentOrNext(events, now) {
+  return events.find((e) => Date.parse(e.startDate) <= now && now < Date.parse(e.endDate)) ||
+    events.find((e) => Date.parse(e.startDate) > now) || null
 }
 
 /**
- * Welches Event die Kachel zeigt: passend zum Filter (Name oder Kalender),
- * das laufende, sonst das nächste, sonst das letzte des Tages.
+ * Heute/festes Datum: Sonntags bleibt der Morgen bevorzugt, auch nach Eventende.
+ * Innerhalb dieser Auswahl haben vorhandene Abläufe Vorrang vor leeren Events.
+ * Ohne Ablauf bleibt das Event samt verständlicher Fehlermeldung sichtbar.
  */
-export function pickEvent(events, filter, now = Date.now()) {
-  const list = (events || []).filter((e) => matchesFilter(e, filter))
-  return (
-    list.find((e) => Date.parse(e.startDate) <= now && now < Date.parse(e.endDate)) ||
-    list.find((e) => Date.parse(e.startDate) > now) ||
-    list[list.length - 1] ||
-    null
-  )
+export function pickEvent(events, filter, now = Date.now(), timeZone = 'Europe/Berlin') {
+  const list = matchingEvents(events, filter)
+  const morning = sundayMornings(list, timeZone)
+  const candidates = morning.length ? morning : list
+  const withAgenda = candidates.filter(hasAgenda)
+  const preferred = withAgenda.length ? withAgenda : candidates
+  return currentOrNext(preferred, now) || preferred[preferred.length - 1] || null
 }
 
-/** Für „Nächstes Event“: das laufende, sonst das nächste – heute oder an einem späteren Tag. */
-export function pickNextEvent(todays, upcoming, filter, now = Date.now()) {
-  const list = (todays || []).filter((e) => matchesFilter(e, filter))
-  return (
-    list.find((e) => Date.parse(e.startDate) <= now && now < Date.parse(e.endDate)) ||
-    list.find((e) => Date.parse(e.startDate) > now) ||
-    (upcoming || []).find((e) => matchesFilter(e, filter)) ||
-    null
-  )
+/**
+ * Nächstes Event: verfügbare Abläufe des laufenden/nächsten Events bevorzugen.
+ * Nur am Sonntag bleibt ein heutiges Morgenevent vor anderen Events stehen;
+ * unter der Woche verdrängt der nächste Sonntag kein heutiges Event mit Ablauf.
+ */
+export function pickNextEvent(todays, upcoming, filter, now = Date.now(), timeZone = 'Europe/Berlin') {
+  const today = matchingEvents(todays, filter)
+  const morning = sundayMornings(today, timeZone, eventLocalTime(now, timeZone).day)
+  if (morning.length) return pickEvent(morning, filter, now, timeZone)
+  const candidates = matchingEvents([...today, ...(upcoming || [])], filter)
+    .filter((e) => Date.parse(e.startDate) > now || now < Date.parse(e.endDate))
+  const withAgenda = candidates.filter(hasAgenda)
+  return currentOrNext(withAgenda.length ? withAgenda : candidates, now)
 }
 
 export function createAgendaView(tile) {
@@ -111,7 +148,9 @@ export function createAgendaView(tile) {
     const ct = data
     const events = ct?.days?.[options.date || ct?.date]
     if (!events) return null
-    return options.next ? pickNextEvent(events, ct.upcoming, options.filter) : pickEvent(events, options.filter)
+    return options.next
+      ? pickNextEvent(events, ct.upcoming, options.filter, Date.now(), ct.timeZone)
+      : pickEvent(events, options.filter, Date.now(), ct.timeZone)
   }
 
   function render() {
@@ -146,7 +185,11 @@ export function createAgendaView(tile) {
     eventName.textContent = event.name
     when.textContent = `${fmtDate(event.startDate, tz)} · ${fmtTime(event.startDate, tz)}`
     if (!event.agenda) return message(event.agendaError || 'Kein Ablauf hinterlegt')
-    if (!event.agenda.items.length) return message('Der Ablauf ist leer')
+    // ChurchTools can return a single blank placeholder instead of an empty list.
+    const hasContent = event.agenda.items.some((item) =>
+      String(item.title || '').trim() || item.duration > 0 || String(item.responsible || '').trim() ||
+      String(item.note || '').trim() || String(item.song?.title || '').trim())
+    if (!hasContent) return message('Der Ablauf ist leer')
 
     const list = el('ol', 'agenda-list')
     rows = []

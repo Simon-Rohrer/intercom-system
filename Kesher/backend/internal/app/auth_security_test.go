@@ -125,6 +125,39 @@ func TestWebSocketOriginsAreRestricted(t *testing.T) {
 	}
 }
 
+// The authenticated WebSocket proxy forwards the public Origin with the
+// loopback upstream Host. Test that deployed path, not just matching hosts.
+func TestWebSocketOriginsBehindCentralProxy(t *testing.T) {
+	for _, origin := range []string{
+		"https://intercom.internal", "https://kesher.internal", "https://192.168.0.21:8443",
+		"https://intercom.local", "https://kesher.local",
+	} {
+		t.Run(origin, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/ws", nil)
+			req.Header.Set("Origin", origin)
+			req.Header.Set("X-JMS-Gateway", "central")
+			req.Header.Set("Sec-Fetch-Site", "same-origin")
+			if !allowedWebSocketOrigin(req) {
+				t.Fatalf("legitimate proxied origin rejected: %s", origin)
+			}
+		})
+	}
+	for _, origin := range []string{
+		"https://intercom.internal.attacker.example", "https://kesher.internal.attacker.example",
+		"http://intercom.internal", "https://intercom.internal:9443", "https://kesher.internal/path",
+		"https://attacker.example@kesher.internal", "https://kesher.internal?query=1", "null", "",
+	} {
+		t.Run("reject "+origin, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/ws", nil)
+			req.Header.Set("Origin", origin)
+			req.Header.Set("X-JMS-Gateway", "central")
+			if allowedWebSocketOrigin(req) {
+				t.Fatalf("unexpected proxied origin accepted: %s", origin)
+			}
+		})
+	}
+}
+
 func TestAdminPINChangeRevokesCentralAndLocalAdmins(t *testing.T) {
 	s := newCompanionTestServer(t)
 	state := configureCentralTestServer(t, s, true)

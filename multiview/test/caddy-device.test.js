@@ -6,6 +6,24 @@ const path = require('node:path')
 const source = [path.resolve(__dirname, '../../Caddyfile'), path.resolve(__dirname, '../../Kesher/server-config/Caddyfile.jms')].find((filename) => fs.existsSync(filename))
 const config = fs.readFileSync(source, 'utf8')
 
+test('Every internal SSO origin has a protected HTTPS vhost; setup is separate', () => {
+  const { DEFAULT_ORIGINS } = require('../auth-http')
+  const mappings = { intercom: 'kesher', kesher: 'kesher', jmscontrol: null, multiview: null,
+    technik: 'dashboard', dashboard: 'dashboard', companion: 'companion', glances: 'glances',
+    portainer: 'portainer', dns: 'dns', router: 'router' }
+  const blocks = config.match(/^https:\/\/[^\n]+ \{\n[\s\S]*?^\}/gm)
+  for (const [host, service] of Object.entries(mappings)) {
+    const origin = `https://${host}.internal`
+    assert.ok(DEFAULT_ORIGINS.includes(origin), origin)
+    const matches = blocks.filter((block) => block.split('\n')[0].split(/, | \{/).includes(origin))
+    assert.equal(matches.length, 1, origin)
+    assert.ok(matches[0].includes('import jms_tls'), origin)
+    assert.ok(matches[0].includes(service ? `import jms_auth ${service}` : 'import jms_node'), origin)
+  }
+  assert.ok(!DEFAULT_ORIGINS.includes('https://setup.internal'))
+  assert.match(config, /https:\/\/setup\.internal \{\s+import jms_tls\s+root \* \/srv\/homelab-setup\s+file_server/)
+})
+
 test('Caddy sanitizes untrusted authentication headers before forward auth copies verified headers', () => {
   assert.match(config, /order request_header before forward_auth/)
   assert.match(config, /request_header -X-JMS-Device-Assertion/)
