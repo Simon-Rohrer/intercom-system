@@ -17,7 +17,7 @@ const REVOKED_RETRY_MS = 60 * 1000 // Rolle wurde übernommen: nicht sofort zur�
 // darum Rollen und Linien regelmäßig neu holen
 const BOOTSTRAP_REFRESH_MS = 30 * 1000
 
-function createKesherChat({ getConfig, getHeaders = () => ({}), onUpdate, onFlash, onPresence = () => {}, log = console.log }) {
+function createKesherChat({ getConfig, getHeaders = () => ({}), onUpdate, onFlash, onPresence = () => {}, onAudioDevices = () => {}, log = console.log }) {
   let ws = null
   let token = null
   let session = null // { url, username, roleId }
@@ -29,6 +29,7 @@ function createKesherChat({ getConfig, getHeaders = () => ({}), onUpdate, onFlas
   let retryTimer = null
   let stopped = false
   let presence = [] // wer gerade in Kesher verbunden ist: [{ roleId, username }]
+  let audioDevices = {} // je Benutzername: { inputs: [Namen], outputs: [Namen] }
 
   const settings = () => {
     const c = getConfig() || {}
@@ -61,8 +62,26 @@ function createKesherChat({ getConfig, getHeaders = () => ({}), onUpdate, onFlas
     onUpdate(snapshot())
   }
 
+  /**
+   * Kopfhörer und Mikrofone je verbundenem Gerät (z. B. Raspberry Pi), wie der Browser dort sie meldet.
+   * Nur die Gerätelisten zählen – Pegel und Auswahl ändern sich laufend und lösen nichts aus.
+   */
+  function setAudioDevices(list) {
+    const labels = (devices) => [...new Set((devices ?? []).map((d) => String(d?.label ?? '').trim()).filter(Boolean))].sort()
+    const next = Object.fromEntries(
+      list
+        .filter((p) => p?.username && p?.audioState)
+        .map((p) => [String(p.username), { inputs: labels(p.audioState.inputDevices), outputs: labels(p.audioState.outputDevices) }])
+        .sort(([a], [b]) => a.localeCompare(b)),
+    )
+    if (JSON.stringify(next) === JSON.stringify(audioDevices)) return
+    audioDevices = next
+    onAudioDevices()
+  }
+
   /** Kesher meldet bei jeder Änderung die ganze Liste der verbundenen Geräte. */
   function setPresence(list) {
+    setAudioDevices(list)
     const next = list
       .map((p) => ({ roleId: String(p?.roleId ?? ''), username: String(p?.username ?? '') }))
       .sort((a, b) => a.roleId.localeCompare(b.roleId) || a.username.localeCompare(b.username))
@@ -413,6 +432,7 @@ function createKesherChat({ getConfig, getHeaders = () => ({}), onUpdate, onFlas
   return {
     start: connect, reconfigure, refresh, stop, snapshot, verifyAdminPin, sendText, activeRoleIds, raspberryPis,
     presence: () => presence,
+    audioDevices: () => audioDevices,
   }
 }
 
