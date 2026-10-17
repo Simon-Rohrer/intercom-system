@@ -22,7 +22,7 @@ function shortTime(ts) {
 }
 
 /** Darstellung der Chat-Kachel (im Layout-Editor einstellbar). */
-export const CHAT_DEFAULTS = { size: 1, newest: true, header: true, meta: true, dimOld: true, count: 30, follow: true }
+export const CHAT_DEFAULTS = { size: 1, newest: true, header: true, meta: true, dimOld: true, count: 30, follow: true, newestTop: false }
 
 export function chatOptions(options) {
   const o = { ...CHAT_DEFAULTS, ...options }
@@ -40,6 +40,7 @@ export function createChatView(options) {
   root.classList.toggle('no-newest', !o.newest)
   root.classList.toggle('no-dim', !o.dimOld)
   root.classList.toggle('no-follow', !o.follow)
+  root.classList.toggle('newest-top', o.newestTop)
   const header = el('header', 'kchat-header')
   const logo = el('img', 'kchat-logo')
   logo.src = 'jms-logo.svg'
@@ -66,6 +67,11 @@ export function createChatView(options) {
   // ihre Größe bekommt, die Schrift nachlädt oder die Kachel größer/kleiner gezogen wird.
   const stick = () => {
     if (!o.follow || !feedEl) return
+    // Neueste oben: einfach ganz nach oben
+    if (o.newestTop) {
+      feedEl.scrollTop = 0
+      return
+    }
     const newest = feedEl.lastElementChild
     // Passt die neueste Nachricht nicht ganz hinein (riesige Schrift, kleine Kachel): ihren Anfang zeigen
     feedEl.scrollTop =
@@ -90,8 +96,9 @@ export function createChatView(options) {
       liveText.textContent = connected ? 'Live' : chat.state === 'offline' ? 'Offline' : 'Verbinde …'
       live.title = connected ? '' : chat.error || ''
 
-      // Neueste unten, wie in Kesher
-      const feed = (chat.messages || []).slice(0, o.count).reverse()
+      // Neueste unten wie in Kesher – oder (Einstellung) neueste oben
+      const feed = o.newestTop ? (chat.messages || []).slice(0, o.count) : (chat.messages || []).slice(0, o.count).reverse()
+      const newestIndex = o.newestTop ? 0 : feed.length - 1
       const now = Date.now()
       for (const m of feed) if (!firstSeen.has(m.key)) firstSeen.set(m.key, m.receivedAt || now)
 
@@ -103,7 +110,7 @@ export function createChatView(options) {
       const list = el('ol', 'kchat-feed')
       let nextAlertEnd = Infinity
       feed.forEach((m, i) => {
-        const isNewest = i === feed.length - 1
+        const isNewest = i === newestIndex
         const isOld = now - (firstSeen.get(m.key) ?? now) > RECENT_MS && !isNewest
         const needsAck = m.ackRequired && !m.acked
         const li = el('li', `kchat-msg scope-${m.scope}`)
@@ -131,7 +138,7 @@ export function createChatView(options) {
         li.append(meta, el('p', 'kchat-text', m.body))
         list.append(li)
       })
-      lastKey = feed[feed.length - 1].key
+      lastKey = feed[newestIndex].key
       // Sobald die nächste Meldung ihre 15 s hinter sich hat, neu zeichnen (dann ohne Rot)
       if (nextAlertEnd !== Infinity) alertTimer = setTimeout(() => lastChat && view.update(lastChat), nextAlertEnd + 50)
       // Ohne „hängen“: Scroll-Position behalten, damit man in Ruhe zurücklesen kann

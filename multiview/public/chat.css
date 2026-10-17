@@ -112,6 +112,8 @@
 }
 /* Nachrichten unten sammeln, wenn es nur wenige sind */
 .kchat-feed > :first-child { margin-top: auto; }
+/* Neueste oben: Liste beginnt oben, ältere rutschen nach unten aus der Kachel */
+.kchat.newest-top .kchat-feed > :first-child { margin-top: 0; }
 
 .kchat-msg {
   display: grid;

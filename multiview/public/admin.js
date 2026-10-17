@@ -1897,6 +1897,11 @@ function chatLookSection(tile) {
         <input type="range" min="0.5" max="2.5" step="0.1" data-chat="size" value="${o.size}"></label>
       <label class="field"><span>Nachrichten <output>${o.count}</output></span>
         <input type="range" min="1" max="60" step="1" data-chat="count" value="${o.count}"></label>
+      <label class="field"><span>Reihenfolge</span>
+        <select data-chat="newestTop">
+          <option value="" ${o.newestTop ? '' : 'selected'}>Neueste Nachricht unten (wie in Kesher)</option>
+          <option value="1" ${o.newestTop ? 'selected' : ''}>Neueste Nachricht oben</option>
+        </select></label>
       ${check('follow', 'An neuester Nachricht hängen (immer die neueste zeigen)')}
       ${check('newest', 'Neueste Nachricht groß hervorheben')}
       ${check('meta', 'Absender, Ziel und Uhrzeit zeigen')}
@@ -2082,7 +2087,7 @@ function onInspectorField(e) {
     const tile = layout.tiles.find((t) => t.id === selectedTileId)
     if (!tile) return
     const key = el.dataset.chat
-    const value = el.type === 'checkbox' ? el.checked : Number(el.value)
+    const value = el.type === 'checkbox' ? el.checked : key === 'newestTop' ? el.value === '1' : Number(el.value)
     tile.chat = { ...chatOptions(tile.chat), [key]: value }
     const out = el.closest('label').querySelector('output')
     if (out) out.textContent = key === 'size' ? `${Math.round(value * 100)} %` : String(value)
