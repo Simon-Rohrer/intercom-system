@@ -39,6 +39,25 @@ export function storedSessionIdentityKey(): string {
   return sessionStorage.getItem(sessionIdentityStorageKey) ?? "";
 }
 
+/**
+ * What happens to the Kesher token stored in this tab once the central login
+ * is known: kept only for the same central identity, and never when the tab
+ * was opened to remote-control a Raspberry Pi (?login=raspberry) – the
+ * station selection must show up instead of the own intercom session.
+ */
+export function resolveStoredTokenRestore(options: {
+  storedToken: string | null;
+  storedIdentityKey: string;
+  identity: CentralIdentity | null;
+  raspberryRemoteLogin: boolean;
+}): "none" | "keep" | "discard" {
+  if (!options.storedToken) return "none";
+  if (options.raspberryRemoteLogin) return "discard";
+  return options.storedIdentityKey === centralIdentityKey(options.identity)
+    ? "keep"
+    : "discard";
+}
+
 export function centralLoginAvailable(): boolean {
   return getGlobalApiBaseUrl() === "" && typeof window !== "undefined";
 }
@@ -91,11 +110,14 @@ export function centralLoginUrl(next = "/"): string {
   return `${BASE}/login?next=${encodeURIComponent(next)}`;
 }
 
-/** Signs out centrally (name + role on all services) and opens the login page. */
-export async function centralLogout(next = "/"): Promise<void> {
+/**
+ * Signs out centrally (name + role on all services) and opens the login page.
+ * The server only accepts POST for signing out (no GET link to /logout).
+ */
+export async function centralLogout(): Promise<void> {
   await fetch(`${BASE}/api/logout`, {
     method: "POST",
     credentials: "same-origin",
   }).catch(() => undefined);
-  window.location.assign(centralLoginUrl(next));
+  window.location.assign(`${BASE}/login`);
 }

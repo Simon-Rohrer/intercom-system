@@ -20,10 +20,10 @@ export function AdminRoomsCard({
   refreshBootstrapData,
 }: AdminRoomsCardProps) {
   const priorityOptions = [
-    { value: 0, label: "Low" },
+    { value: 0, label: "Niedrig" },
     { value: 1, label: "Normal" },
-    { value: 2, label: "High" },
-    { value: 3, label: "Critical" },
+    { value: 2, label: "Hoch" },
+    { value: 3, label: "Kritisch" },
   ] as const;
 
   const [isOpen, setIsOpen] = useAdminCardOpenState();
@@ -158,16 +158,16 @@ export function AdminRoomsCard({
             {showRoomCreateForm && !roomEditId ? (
               <div className="admin-edit-panel admin-room-form">
                 <div className="admin-room-form-header">
-                  <div className="admin-edit-title">New party line</div>
+                  <div className="admin-edit-title">Neue Party Line</div>
                   <p className="admin-room-form-subtitle">
-                    Set basic details and define who can send, receive, or must
-                    listen.
+                    Name und Priorität festlegen und bestimmen, wer sprechen, hören
+                    oder immer mithören muss.
                   </p>
                 </div>
                 <div className="admin-room-form-layout">
                   <div className="admin-room-form-main">
                     <div className="admin-room-form-section-title">
-                      Basic settings
+                      Grundeinstellungen
                     </div>
                     <div className="admin-room-fields">
                       <input
@@ -178,10 +178,10 @@ export function AdminRoomsCard({
                       <input
                         value={roomCreateName}
                         onChange={(e) => setRoomCreateName(e.target.value)}
-                        placeholder="Party line name"
+                        placeholder="Name der Party Line"
                       />
                       <label className="admin-room-field">
-                        Priority
+                        Priorität
                         <select
                           value={roomCreatePriorityLevel}
                           onChange={(e) =>
@@ -199,7 +199,7 @@ export function AdminRoomsCard({
                   </div>
 
                   <div className="admin-room-form-side">
-                    <div className="admin-room-form-section-title">Actions</div>
+                    <div className="admin-room-form-section-title">Aktionen</div>
                     <div className="admin-room-action-buttons">
                       <button
                         onClick={createRoomConfig}
@@ -209,7 +209,7 @@ export function AdminRoomsCard({
                           !roomCreateName.trim()
                         }
                       >
-                        Create party line
+                        Party Line anlegen
                       </button>
                       <button
                         type="button"
@@ -220,31 +220,31 @@ export function AdminRoomsCard({
                         disabled={adminBusy}
                         className="secondary"
                       >
-                        Cancel
+                        Abbrechen
                       </button>
                     </div>
                   </div>
                 </div>
 
                 <div className="admin-room-form-roles">
-                  <div className="admin-room-form-section-title">Role access</div>
+                  <div className="admin-room-form-section-title">Rechte der Rollen</div>
                   <div className="admin-room-role-grid">
                     <RoleMultiSelect
-                      label="Allowed senders"
+                      label="Dürfen sprechen"
                       selectedRoleIds={roomCreateSenderRoleIds}
                       setState={setRoomCreateSenderRoleIds}
                       keyPrefix="room-create-sender"
                       roles={appData.roles}
                     />
                     <RoleMultiSelect
-                      label="Allowed receivers"
+                      label="Dürfen hören"
                       selectedRoleIds={roomCreateReceiverRoleIds}
                       setState={setRoomCreateReceiverRoleIds}
                       keyPrefix="room-create-receiver"
                       roles={appData.roles}
                     />
                     <RoleMultiSelect
-                      label="Forced listeners"
+                      label="Hören immer mit"
                       selectedRoleIds={roomCreateForcedListenRoleIds}
                       setState={setRoomCreateForcedListenRoleIds}
                       keyPrefix="room-create-forced-listen"
@@ -259,26 +259,25 @@ export function AdminRoomsCard({
               <div className="admin-edit-panel admin-room-form">
                 <div className="admin-room-form-header">
                   <div className="admin-edit-title">
-                    Editing party line: {roomEditId}
+                    Party Line bearbeiten: {roomEditId}
                   </div>
                   <p className="admin-room-form-subtitle">
-                    Update routing permissions and keep this party line easy to
-                    scan.
+                    Rechte anpassen und die Party Line übersichtlich halten.
                   </p>
                 </div>
                 <div className="admin-room-form-layout">
                   <div className="admin-room-form-main">
                     <div className="admin-room-form-section-title">
-                      Basic settings
+                      Grundeinstellungen
                     </div>
                     <div className="admin-room-fields admin-room-fields-edit">
                       <input
                         value={roomEditName}
                         onChange={(e) => setRoomEditName(e.target.value)}
-                        placeholder="Party line name"
+                        placeholder="Name der Party Line"
                       />
                       <label className="admin-room-field">
-                        Priority
+                        Priorität
                         <select
                           value={roomEditPriorityLevel}
                           onChange={(e) =>
@@ -296,44 +295,44 @@ export function AdminRoomsCard({
                   </div>
 
                   <div className="admin-room-form-side">
-                    <div className="admin-room-form-section-title">Actions</div>
+                    <div className="admin-room-form-section-title">Aktionen</div>
                     <div className="admin-room-action-buttons">
                       <button
                         onClick={saveRoomEdit}
                         disabled={adminBusy || !roomEditName.trim()}
                       >
-                        Save changes
+                        Änderungen speichern
                       </button>
                       <button
                         onClick={resetRoomEditForm}
                         disabled={adminBusy}
                         className="secondary"
                       >
-                        Cancel
+                        Abbrechen
                       </button>
                     </div>
                   </div>
                 </div>
 
                 <div className="admin-room-form-roles">
-                  <div className="admin-room-form-section-title">Role access</div>
+                  <div className="admin-room-form-section-title">Rechte der Rollen</div>
                   <div className="admin-room-role-grid">
                     <RoleMultiSelect
-                      label="Allowed senders"
+                      label="Dürfen sprechen"
                       selectedRoleIds={roomEditSenderRoleIds}
                       setState={setRoomEditSenderRoleIds}
                       keyPrefix="room-edit-sender"
                       roles={appData.roles}
                     />
                     <RoleMultiSelect
-                      label="Allowed receivers"
+                      label="Dürfen hören"
                       selectedRoleIds={roomEditReceiverRoleIds}
                       setState={setRoomEditReceiverRoleIds}
                       keyPrefix="room-edit-receiver"
                       roles={appData.roles}
                     />
                     <RoleMultiSelect
-                      label="Forced listeners"
+                      label="Hören immer mit"
                       selectedRoleIds={roomEditForcedListenRoleIds}
                       setState={setRoomEditForcedListenRoleIds}
                       keyPrefix="room-edit-forced-listen"

@@ -72,8 +72,8 @@ describe("AdminRoomsCard", () => {
     await user.click(screen.getByRole("button", { name: "Einblenden" }));
     await user.click(screen.getByRole("button", { name: "+ Neue Party Line" }));
     await user.type(screen.getByPlaceholderText("party-line-id"), "new-room");
-    await user.type(screen.getByPlaceholderText("Party line name"), "New Room");
-    await user.click(screen.getByRole("button", { name: "Create party line" }));
+    await user.type(screen.getByPlaceholderText("Name der Party Line"), "New Room");
+    await user.click(screen.getByRole("button", { name: "Party Line anlegen" }));
 
     await waitFor(() => {
       expect(createRoom).toHaveBeenCalledWith(
@@ -108,7 +108,7 @@ describe("AdminRoomsCard", () => {
     const roomNameInput = screen.getByDisplayValue("Party Line 1");
     await user.clear(roomNameInput);
     await user.type(roomNameInput, "Main Stage");
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(screen.getByRole("button", { name: "Änderungen speichern" }));
 
     await waitFor(() => {
       expect(updateRoom).toHaveBeenCalledWith(

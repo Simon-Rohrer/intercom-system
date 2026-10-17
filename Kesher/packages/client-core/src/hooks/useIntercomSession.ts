@@ -985,7 +985,7 @@ export function useIntercomSession({
     (label: string) => {
       if (!showDebug) return;
       setEvents((old) =>
-        [{ label, at: new Date().toLocaleTimeString() }, ...old].slice(0, 200),
+        [{ label, at: new Date().toLocaleTimeString("de-DE") }, ...old].slice(0, 200),
       );
     },
     [showDebug],
@@ -1478,7 +1478,7 @@ export function useIntercomSession({
       setChannelAudioFeedStatus(
         feed.id,
         "error",
-        "No send permission for this party line.",
+        "Keine Sprechberechtigung für diese Party Line.",
       );
       return;
     }
@@ -1494,7 +1494,7 @@ export function useIntercomSession({
     if (!track) {
       for (const captureTrack of captureStream.getTracks()) captureTrack.stop();
       if (processed.audioContext) void processed.audioContext.close();
-      throw new Error("Selected feed input produced no audio track.");
+      throw new Error("Der gewählte Eingang liefert kein Audiosignal.");
     }
     track.enabled = true;
     const sender = pc.addTrack(track, processed.stream);
@@ -1523,7 +1523,7 @@ export function useIntercomSession({
         setChannelAudioFeedStatus(
           feed.id,
           "error",
-          error instanceof Error ? error.message : "Failed to start audio feed.",
+          error instanceof Error ? error.message : "Audio-Einspeisung konnte nicht gestartet werden.",
         );
       }
     }
@@ -1578,7 +1578,7 @@ export function useIntercomSession({
         ? ad?.rooms.find((r) => r.id === targetID)?.name || targetID
         : scopeValue === "broadcast"
           ? ad?.broadcastGroups.find((g) => g.id === targetID)?.name || targetID
-          : `Direct · ${fromUsername}`;
+          : `Direkt · ${fromUsername}`;
     if (body === "ptt_start" || body === "always_on") {
       activeVoiceRoutesRef.current.set(routeKey, {
         senderUserID,
@@ -1604,7 +1604,7 @@ export function useIntercomSession({
   function triggerIncomingAttention(event: RoutedEvent) {
     const ad = appDataRef.current;
     if (!ad) return;
-    let title = "Incoming signal";
+    let title = "Eingehendes Signal";
     let detail = event.fromUser.username;
     if (event.scope === "room") {
       const roomName =
@@ -1612,11 +1612,11 @@ export function useIntercomSession({
         event.targetId;
       title =
         event.signal === "call"
-          ? "Incoming group call"
-          : "Incoming group signal";
+          ? "Eingehender Gruppenruf"
+          : "Eingehendes Gruppensignal";
       detail = `${event.fromUser.username} · ${roomName}`;
     } else if (event.scope === "direct") {
-      title = "Incoming direct signal";
+      title = "Eingehendes Direktsignal";
       detail = event.signal
         ? `${event.fromUser.username} · ${event.signal}`
         : event.fromUser.username;
@@ -2342,7 +2342,7 @@ export function useIntercomSession({
           ...entry,
           acked: true,
           ackedBy: appDataRef.current?.self.username || entry.ackedBy,
-          ackedAt: new Date().toLocaleTimeString(),
+          ackedAt: new Date().toLocaleTimeString("de-DE"),
         };
       }),
     );
@@ -2550,7 +2550,7 @@ export function useIntercomSession({
             await audio.play();
           })().catch((err) => {
             setAudioError(
-              `Remote audio playback blocked: ${err instanceof Error ? err.message : "unknown error"}`,
+              `Audiowiedergabe blockiert: ${err instanceof Error ? err.message : "unbekannter Fehler"}`,
             );
           });
           pushDebugEvent("system · webrtc · remote audio track attached");
@@ -2735,7 +2735,7 @@ export function useIntercomSession({
               return;
             }
             if (desiredState === "ptt_start" && !hasLocalTransmitTrack()) {
-              ackRejected("no microphone available");
+              ackRejected("kein Mikrofon verfügbar");
               return;
             }
             if (nextScope === "room") {
@@ -2857,7 +2857,7 @@ export function useIntercomSession({
                 ackFailed(
                   error instanceof Error
                     ? error.message
-                    : "output device change failed",
+                    : "Lautsprecher konnte nicht gewechselt werden",
                 );
               });
             return;
@@ -2916,7 +2916,7 @@ export function useIntercomSession({
                 ackFailed(
                   error instanceof Error
                     ? error.message
-                    : "microphone monitor failed",
+                    : "Mithören des Mikrofons fehlgeschlagen",
                 );
               });
             return;
@@ -2987,7 +2987,7 @@ export function useIntercomSession({
               pushDebugEvent("system · webrtc · native engine failed, falling back");
             })().catch((err) => {
               setAudioError(
-                `Native audio engine failed: ${err instanceof Error ? err.message : "unknown error"}`,
+                `Native Audio-Engine fehlgeschlagen: ${err instanceof Error ? err.message : "unbekannter Fehler"}`,
               );
             });
             return;
@@ -3040,7 +3040,7 @@ export function useIntercomSession({
           })().catch((err) => {
             if (hasLocalTransmitTrack()) {
               setAudioError(
-                `WebRTC renegotiation failed: ${err instanceof Error ? err.message : "unknown error"}`,
+                `WebRTC-Neuverhandlung fehlgeschlagen: ${err instanceof Error ? err.message : "unbekannter Fehler"}`,
               );
             } else {
               setAudioError("");
@@ -3108,7 +3108,7 @@ export function useIntercomSession({
             const chatTargetId = msg.data.targetId;
             const roomLabel =
               chatScope === "global"
-                ? "Global Chat"
+                ? "Globaler Chat"
                 : chatScope === "room"
                 ? ad?.rooms.find((room) => room.id === chatTargetId)?.name ||
                   chatTargetId
@@ -3116,13 +3116,13 @@ export function useIntercomSession({
                   ? ad?.broadcastGroups.find(
                       (group) => group.id === chatTargetId,
                     )?.name || chatTargetId
-                  : "Direct";
+                  : "Direkt";
             const nextEntry = {
               from: msg.data.fromUser.username,
               fromUserId: msg.data.fromUser.id,
               fromRoleId: msg.data.fromUser.roleId,
               body: chatBody,
-              at: new Date(msg.data.timestamp).toLocaleTimeString(),
+              at: new Date(msg.data.timestamp).toLocaleTimeString("de-DE"),
               timestamp: msg.data.timestamp,
               room: roomLabel,
               self: msg.data.fromUser.id === ad?.self.id,
@@ -3134,7 +3134,7 @@ export function useIntercomSession({
               acked: !!msg.data.acked,
               ackedBy: msg.data.ackedBy?.username,
               ackedAt: msg.data.ackedAt
-                ? new Date(msg.data.ackedAt).toLocaleTimeString()
+                ? new Date(msg.data.ackedAt).toLocaleTimeString("de-DE")
                 : undefined,
               source: msg.data.source,
             };
@@ -3183,7 +3183,7 @@ export function useIntercomSession({
                 ...entry,
                 acked: true,
                 ackedBy: msg.data.ackedBy.username,
-                ackedAt: new Date(msg.data.ackedAt).toLocaleTimeString(),
+                ackedAt: new Date(msg.data.ackedAt).toLocaleTimeString("de-DE"),
               };
             }),
           );
@@ -3203,7 +3203,7 @@ export function useIntercomSession({
             [
               {
                 label: `${msg.type} · ${msg.data.fromUser.username} · ${msg.data.scope}/${msg.data.targetId} · ${body}`,
-                at: new Date(msg.data.timestamp).toLocaleTimeString(),
+                at: new Date(msg.data.timestamp).toLocaleTimeString("de-DE"),
               },
               ...old,
             ].slice(0, 200),
@@ -3338,10 +3338,10 @@ export function useIntercomSession({
       if (typeof MediaMetadata === "function") {
         mediaSession.metadata = new MediaMetadata({
           title: incomingAudioActive
-            ? "Live audio active"
-            : "Intercom ready",
-          artist: appData?.self.username || "Operator",
-          album: "Kesher Live Production Intercom",
+            ? "Live-Audio aktiv"
+            : "Intercom bereit",
+          artist: appData?.self.username || "Bediener",
+          album: "JMS Intercom",
         });
       }
       mediaSession.playbackState = playbackState;

@@ -51,11 +51,11 @@ export function UserCompanionCard({
       const result = await publishUserCompanionProfile(token);
       setPublished(result);
       setMessage(
-        `Published ${result.roleId} as version ${result.profileVersion}`
+        `${result.roleId} als Version ${result.profileVersion} gesendet`
       );
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to publish profile"
+        err instanceof Error ? err.message : "Profil konnte nicht gesendet werden"
       );
     } finally {
       setPublishing(false);
@@ -78,7 +78,7 @@ export function UserCompanionCard({
             gap: "0.5rem",
           }}
         >
-          <span>Companion Profile Publishing</span>
+          <span>Companion-Profil senden</span>
           <DisclosureChevronIcon isOpen={isOpen} />
         </h3>
       </div>
@@ -89,11 +89,11 @@ export function UserCompanionCard({
 
           <div style={{ marginBottom: "1rem" }}>
             <p>
-              <strong>Your Role:</strong> {roleId}
+              <strong>Deine Rolle:</strong> {roleId}
             </p>
             <p>
-              Click the button below to publish your Companion profile to the
-              Streamdeck.
+              Mit dem Knopf unten sendest du dein Companion-Profil an das
+              Stream Deck.
             </p>
           </div>
 
@@ -111,18 +111,18 @@ export function UserCompanionCard({
               marginBottom: "1rem",
             }}
           >
-            {publishing ? "Publishing..." : "Publish My Profile"}
+            {publishing ? "Sende …" : "Mein Profil senden"}
           </button>
 
           {published && (
             <div style={{ marginTop: "1rem" }}>
-              <h4>Publication Details:</h4>
+              <h4>Gesendet:</h4>
               <ul style={{ lineHeight: "1.8" }}>
                 <li>
-                  <strong>Role ID:</strong> {published.roleId}
+                  <strong>Rollen-Kennung:</strong> {published.roleId}
                 </li>
                 <li>
-                  <strong>Username:</strong> {published.username}
+                  <strong>Benutzername:</strong> {published.username}
                 </li>
                 <li>
                   <strong>Version:</strong> {published.profileVersion}
@@ -132,8 +132,8 @@ export function UserCompanionCard({
                 </li>
                 {published.profileUpdatedAt && (
                   <li>
-                    <strong>Updated:</strong>{" "}
-                    {new Date(published.profileUpdatedAt).toLocaleString()}
+                    <strong>Aktualisiert:</strong>{" "}
+                    {new Date(published.profileUpdatedAt).toLocaleString("de-DE")}
                   </li>
                 )}
               </ul>

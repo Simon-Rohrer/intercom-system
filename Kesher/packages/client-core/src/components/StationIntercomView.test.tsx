@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import { useState, type ComponentProps } from "react";
 import {
   fireEvent,
   render,
@@ -166,7 +166,7 @@ describe("StationIntercomView", () => {
     );
 
     const meter = screen.getByRole("meter", {
-      name: "Party Line 1 input level",
+      name: "Party Line 1 Pegel",
     });
     expect(meter).toHaveAttribute("aria-valuenow", "72");
     expect(meter.querySelectorAll(".station-channel-meter-segment.active")).toHaveLength(
@@ -184,7 +184,7 @@ describe("StationIntercomView", () => {
     );
 
     const meter = screen.getByRole("meter", {
-      name: "Party Line 1 input level",
+      name: "Party Line 1 Pegel",
     });
     expect(meter).toHaveAttribute("aria-valuenow", "50");
     expect(
@@ -196,10 +196,10 @@ describe("StationIntercomView", () => {
     render(<StationIntercomView {...baseProps} />);
 
     expect(
-      screen.queryByRole("button", { name: "Add channel to favorites" }),
+      screen.queryByRole("button", { name: "Party Line zu Favoriten hinzufügen" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Remove channel from favorites" }),
+      screen.queryByRole("button", { name: "Party Line aus Favoriten entfernen" }),
     ).not.toBeInTheDocument();
   });
 
@@ -213,7 +213,7 @@ describe("StationIntercomView", () => {
     );
 
     expect(
-      screen.getByRole("meter", { name: "Party Line 1 input level" }),
+      screen.getByRole("meter", { name: "Party Line 1 Pegel" }),
     ).toHaveAttribute("aria-valuenow", "42");
   });
 
@@ -240,12 +240,12 @@ describe("StationIntercomView", () => {
   it("shows the low-power indicator only when the mode is active", () => {
     const { rerender } = render(<StationIntercomView {...baseProps} />);
     expect(
-      screen.queryByRole("status", { name: "Low power mode active" }),
+      screen.queryByRole("status", { name: "Stromsparmodus aktiv" }),
     ).not.toBeInTheDocument();
 
     rerender(<StationIntercomView {...baseProps} lowPowerMode />);
     expect(
-      screen.getByRole("status", { name: "Low power mode active" }),
+      screen.getByRole("status", { name: "Stromsparmodus aktiv" }),
     ).toBeVisible();
   });
 
@@ -255,7 +255,7 @@ describe("StationIntercomView", () => {
 
     render(<StationIntercomView {...baseProps} setAlwaysOn={setAlwaysOn} />);
 
-    const alwaysOnSwitch = screen.getByRole("switch", { name: "Always on" });
+    const alwaysOnSwitch = screen.getByRole("switch", { name: "Dauerhaft an" });
     expect(alwaysOnSwitch).toHaveAttribute("aria-checked", "false");
 
     await user.click(alwaysOnSwitch);
@@ -276,7 +276,7 @@ describe("StationIntercomView", () => {
       />,
     );
 
-    const alwaysOnSwitch = screen.getByRole("switch", { name: "Always on" });
+    const alwaysOnSwitch = screen.getByRole("switch", { name: "Dauerhaft an" });
     expect(alwaysOnSwitch).toHaveAttribute("aria-checked", "true");
 
     await user.click(alwaysOnSwitch);
@@ -298,8 +298,8 @@ describe("StationIntercomView", () => {
       (button) => button.textContent ?? "",
     );
 
-    expect(buttonTexts[0]).toContain("Hold to talk");
-    expect(buttonTexts[1]).toContain("Reply to caller");
+    expect(buttonTexts[0]).toContain("Gedrückt halten zum Sprechen");
+    expect(buttonTexts[1]).toContain("Anrufer antworten");
   });
 
   it("renders reply before hold to talk by default", () => {
@@ -313,8 +313,8 @@ describe("StationIntercomView", () => {
       (button) => button.textContent ?? "",
     );
 
-    expect(buttonTexts[0]).toContain("Reply to caller");
-    expect(buttonTexts[1]).toContain("Hold to talk");
+    expect(buttonTexts[0]).toContain("Anrufer antworten");
+    expect(buttonTexts[1]).toContain("Gedrückt halten zum Sprechen");
   });
 
   it("renders the action controls inside the top header", () => {
@@ -347,7 +347,7 @@ describe("StationIntercomView", () => {
 
     await user.click(screen.getByRole("button", { name: "Bedienung" }));
     await user.click(
-      screen.getByRole("checkbox", { name: "Swap PTT and reply buttons" }),
+      screen.getByRole("checkbox", { name: "Sprechen und Antworten tauschen" }),
     );
 
     expect(onSwapPttAndReplyButtonsChange).toHaveBeenCalledWith(true);
@@ -392,7 +392,7 @@ describe("StationIntercomView", () => {
     );
 
     const openButton = screen.getByRole("button", {
-      name: "Open chat in a separate window",
+      name: "Chat in eigenem Fenster öffnen",
     });
     await user.click(openButton);
 
@@ -404,17 +404,17 @@ describe("StationIntercomView", () => {
     expect(popupWindow.focus).toHaveBeenCalledTimes(1);
     expect(popupDocument.body.textContent).toContain("Live chat content");
     expect(
-      screen.getByRole("button", { name: "Focus chat window" }),
+      screen.getByRole("button", { name: "Chat-Fenster nach vorne holen" }),
     ).toBeVisible();
 
     await user.click(
-      screen.getByRole("button", { name: "Focus chat window" }),
+      screen.getByRole("button", { name: "Chat-Fenster nach vorne holen" }),
     );
     expect(openSpy).toHaveBeenCalledTimes(1);
     expect(popupWindow.focus).toHaveBeenCalledTimes(2);
 
     const closeButton = popupDocument.body.querySelector(
-      'button[aria-label="Close chat window"]',
+      'button[aria-label="Chat-Fenster schließen"]',
     ) as HTMLButtonElement;
     closeButton.click();
     expect(popupWindow.close).toHaveBeenCalledTimes(1);
@@ -432,7 +432,7 @@ describe("StationIntercomView", () => {
       />,
     );
 
-    const holdButton = screen.getByRole("button", { name: "Hold to talk" });
+    const holdButton = screen.getByRole("button", { name: "Gedrückt halten zum Sprechen" });
     let capturedPointerId: number | null = null;
 
     Object.defineProperties(holdButton, {
@@ -485,7 +485,7 @@ describe("StationIntercomView", () => {
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
 
     await user.selectOptions(
-      screen.getByLabelText("Stream Deck function"),
+      screen.getByLabelText("Funktion der Taste"),
       "reply_to_caller",
     );
 
@@ -511,7 +511,7 @@ describe("StationIntercomView", () => {
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
 
     await user.selectOptions(
-      screen.getByLabelText("Stream Deck function"),
+      screen.getByLabelText("Funktion der Taste"),
       "select_listen_room",
     );
 
@@ -578,7 +578,7 @@ describe("StationIntercomView", () => {
 
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
     await user.click(screen.getByRole("button", { name: "Kopieren" }));
-    await user.click(screen.getByRole("button", { name: "Deck key 2" }));
+    await user.click(screen.getByRole("button", { name: "Taste 2" }));
     await user.click(screen.getByRole("button", { name: "Einfügen" }));
 
     const calls = onStreamDeckSettingsChange.mock.calls;
@@ -601,7 +601,7 @@ describe("StationIntercomView", () => {
 
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
     await user.selectOptions(
-      screen.getByLabelText("Stream Deck function"),
+      screen.getByLabelText("Funktion der Taste"),
       "reply_to_caller",
     );
 
@@ -655,8 +655,8 @@ describe("StationIntercomView", () => {
 
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
 
-    const keyOne = screen.getByRole("button", { name: "Deck key 1" });
-    const keyTwo = screen.getByRole("button", { name: "Deck key 2" });
+    const keyOne = screen.getByRole("button", { name: "Taste 1" });
+    const keyTwo = screen.getByRole("button", { name: "Taste 2" });
 
     fireEvent.dragStart(keyOne, {
       dataTransfer: {
@@ -969,7 +969,7 @@ describe("StationIntercomView", () => {
     );
 
     expect(
-      screen.queryByRole("grid", { name: "Stream Deck 5x3 grid" }),
+      screen.queryByRole("grid", { name: "Stream-Deck-Tasten" }),
     ).not.toBeInTheDocument();
     expect(container.querySelector("#settings-streamdeck")).toBeNull();
     expect(container.querySelector("#settings-audio")).toBeNull();
@@ -980,7 +980,7 @@ describe("StationIntercomView", () => {
     await user.click(screen.getByRole("button", { name: /Stream Deck/ }));
 
     expect(
-      screen.getByRole("grid", { name: "Stream Deck 5x3 grid" }),
+      screen.getByRole("grid", { name: "Stream-Deck-Tasten" }),
     ).toBeInTheDocument();
     expect(container.querySelector("#settings-streamdeck")).not.toBeNull();
     expect(container.querySelector("#settings-layout")).toBeNull();
@@ -988,7 +988,7 @@ describe("StationIntercomView", () => {
     await user.click(screen.getByRole("button", { name: "Layout" }));
 
     expect(
-      screen.queryByRole("grid", { name: "Stream Deck 5x3 grid" }),
+      screen.queryByRole("grid", { name: "Stream-Deck-Tasten" }),
     ).not.toBeInTheDocument();
     expect(container.querySelector("#settings-streamdeck")).toBeNull();
   });
@@ -1026,7 +1026,7 @@ describe("StationIntercomView", () => {
     await user.click(screen.getByRole("button", { name: "Testmodus aus" }));
 
     const key = screen.getByRole("button", {
-      name: "Deck key 1",
+      name: "Taste 1",
     });
 
     fireEvent.pointerDown(key);
@@ -1060,9 +1060,9 @@ describe("StationIntercomView", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /Ton & Mikrofon/ }));
-    await user.click(screen.getByRole("checkbox", { name: "Noise gate" }));
+    await user.click(screen.getByRole("checkbox", { name: "Rauschsperre" }));
     fireEvent.change(
-      screen.getByRole("slider", { name: "Microphone gate threshold" }),
+      screen.getByRole("slider", { name: "Schwelle der Rauschsperre" }),
       { target: { value: "-40" } },
     );
 
@@ -1084,12 +1084,12 @@ describe("StationIntercomView", () => {
 
     await user.click(screen.getByRole("button", { name: /Ton & Mikrofon/ }));
 
-    expect(screen.getByText("Low power mode keeps metering off.")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Audio test paused" })).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "Noise gate" })).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "Noise gate" })).not.toBeChecked();
+    expect(screen.getByText("Im Stromsparmodus ist die Pegelanzeige aus.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Tontest pausiert" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Rauschsperre" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Rauschsperre" })).not.toBeChecked();
     expect(
-      screen.getByRole("slider", { name: "Microphone gate threshold" }),
+      screen.getByRole("slider", { name: "Schwelle der Rauschsperre" }),
     ).toBeDisabled();
   });
 
@@ -1112,11 +1112,11 @@ describe("StationIntercomView", () => {
     await user.click(screen.getByRole("button", { name: /Ton & Mikrofon/ }));
 
     expect(screen.getByText("-42.0 dBFS")).toBeVisible();
-    const testButton = screen.getByRole("button", { name: "Test microphone" });
+    const testButton = screen.getByRole("button", { name: "Mikrofon testen" });
     expect(testButton).toBeEnabled();
     await user.click(testButton);
     expect(onToggleLocalMonitor).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("checkbox", { name: "Noise gate" })).toBeEnabled();
+    expect(screen.getByRole("checkbox", { name: "Rauschsperre" })).toBeEnabled();
   });
 
   it("selects a physical USB interface input", async () => {
@@ -1134,7 +1134,7 @@ describe("StationIntercomView", () => {
 
     await user.click(screen.getByRole("button", { name: /Ton & Mikrofon/ }));
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "Interface input" }),
+      screen.getByRole("combobox", { name: "Eingang am Interface" }),
       "2",
     );
 
@@ -1180,18 +1180,18 @@ describe("StationIntercomView", () => {
 
     await user.click(screen.getByRole("button", { name: /Ton & Mikrofon/ }));
 
-    expect(screen.getByRole("button", { name: /My audio/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /Mein Ton/ })).toBeVisible();
     await user.click(
-      screen.getByRole("button", { name: /Channel audio feeds/ }),
+      screen.getByRole("button", { name: /Audio-Zuspielungen/ }),
     );
-    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(screen.getByRole("button", { name: "Bearbeiten" }));
     const dialog = screen.getByRole("dialog", { name: "Feed bearbeiten" });
-    await user.click(within(dialog).getByRole("checkbox", { name: "Send" }));
+    await user.click(within(dialog).getByRole("checkbox", { name: "Senden" }));
     await user.selectOptions(
-      within(dialog).getByRole("combobox", { name: "Interface input" }),
+      within(dialog).getByRole("combobox", { name: "Eingang am Interface" }),
       "2",
     );
-    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    await user.click(within(dialog).getByRole("button", { name: "Speichern" }));
 
     await waitFor(() => {
       expect(onUpdateChannelAudioFeed).toHaveBeenCalledWith("feed-1", {
@@ -1224,7 +1224,7 @@ describe("StationIntercomView", () => {
 
     await user.click(screen.getByRole("button", { name: /Ton & Mikrofon/ }));
     await user.click(
-      screen.getByRole("button", { name: /Channel audio feeds/ }),
+      screen.getByRole("button", { name: /Audio-Zuspielungen/ }),
     );
     await user.click(
       screen.getByRole("button", { name: "Neuer Feed" }),
@@ -1234,16 +1234,16 @@ describe("StationIntercomView", () => {
       within(dialog).queryByLabelText(/Talk channel name/i),
     ).not.toBeInTheDocument();
     const canSendGroup = within(dialog).getByRole("group", {
-      name: "Can send",
+      name: "Darf senden",
     });
     const ownSenderRole = within(canSendGroup).getByRole("checkbox", {
       name: "Operator",
     });
     expect(ownSenderRole).toBeChecked();
     expect(ownSenderRole).toBeDisabled();
-    await user.type(within(dialog).getByLabelText(/Feed name/), "Music feed");
+    await user.type(within(dialog).getByLabelText(/Name der Zuspielung/), "Music feed");
     expect(within(dialog).getByText("Music feed")).toBeVisible();
-    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    await user.click(within(dialog).getByRole("button", { name: "Speichern" }));
 
     await waitFor(() => {
       expect(onCreateChannelAudioFeedRoom).toHaveBeenCalledWith({
@@ -1262,6 +1262,74 @@ describe("StationIntercomView", () => {
         gain: 1,
         enabled: true,
       });
+    });
+  });
+  describe("in the sidebar frame (like JMS Control)", () => {
+    const shell = {
+      user: {
+        name: "Tim FOH",
+        role: "Operator",
+        onSwitchAccount: vi.fn(),
+        onLogout: vi.fn(),
+      },
+    };
+
+    function FramedStation(props: Partial<ComponentProps<typeof StationIntercomView>>) {
+      const [open, setOpen] = useState(false);
+      return (
+        <StationIntercomView
+          {...baseProps}
+          isUserSettingsOpen={open}
+          setIsUserSettingsOpen={setOpen}
+          shell={shell}
+          {...props}
+        />
+      );
+    }
+
+    it("shows Intercom and Einstellungen in the sidebar and the settings as a page", async () => {
+      const user = userEvent.setup();
+      render(<FramedStation />);
+
+      expect(screen.getByRole("navigation", { name: "Bereiche" })).toBeVisible();
+      // the old header buttons are gone: logout only in the user card
+      expect(screen.getAllByRole("button", { name: "Abmelden" })).toHaveLength(1);
+      expect(screen.getByText("Tim FOH")).toBeVisible();
+      // talk controls and Live status stay visible
+      expect(
+        screen.getByRole("button", { name: "Gedrückt halten zum Sprechen" }),
+      ).toBeVisible();
+      expect(document.querySelector(".k-topbar .station-live-name")).not.toBeNull();
+
+      await user.click(screen.getByRole("button", { name: "Einstellungen" }));
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Einstellungen" }),
+      ).toBeVisible();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      const subnav = screen.getByRole("navigation", {
+        name: "Bereiche der Einstellungen",
+      });
+      await user.click(within(subnav).getByRole("button", { name: "Bedienung" }));
+      expect(
+        screen.getByRole("checkbox", { name: "Sprechen und Antworten tauschen" }),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Intercom" }));
+      expect(
+        screen.queryByRole("heading", { level: 1, name: "Einstellungen" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("keeps the bare view for the Raspberry remote session", () => {
+      render(
+        <FramedStation
+          remoteControl={{ stationName: "Pi Bühne", roleName: "Ton", onLeave: vi.fn() }}
+        />,
+      );
+      expect(
+        screen.queryByRole("navigation", { name: "Bereiche" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Remote verlassen" })).toBeVisible();
     });
   });
 });

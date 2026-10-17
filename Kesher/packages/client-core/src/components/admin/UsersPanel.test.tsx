@@ -112,10 +112,10 @@ describe("UsersPanel", () => {
       />,
     );
 
-    const input = await screen.findByLabelText("Usernames");
+    const input = await screen.findByLabelText("Benutzernamen");
     await user.clear(input);
     await user.type(input, "Max, ANNA");
-    await user.click(screen.getByRole("button", { name: "Save birthday list" }));
+    await user.click(screen.getByRole("button", { name: "Geburtstagsliste speichern" }));
 
     await waitFor(() => {
       expect(updateAdminBirthdayUsersToday).toHaveBeenCalledWith(
@@ -124,6 +124,6 @@ describe("UsersPanel", () => {
         ["Max", "ANNA"],
       );
     });
-    expect(screen.getByText("Birthday list saved.")).toBeVisible();
+    expect(screen.getByText("Geburtstagsliste gespeichert.")).toBeVisible();
   });
 });

@@ -105,7 +105,7 @@ describe("ChatSignalPanel", () => {
     );
 
     const destination = screen.getByRole("combobox", {
-      name: "Chat destination",
+      name: "Chat-Empfänger",
     });
     expect(destination).toHaveValue("global:global");
     expect(destination).not.toHaveClass("chat-target-global");
@@ -700,6 +700,6 @@ describe("ChatSignalPanel", () => {
       />,
     );
 
-    expect(screen.getByTitle("Message from Telegram")).toBeVisible();
+    expect(screen.getByTitle("Nachricht aus Telegram")).toBeVisible();
   });
 });

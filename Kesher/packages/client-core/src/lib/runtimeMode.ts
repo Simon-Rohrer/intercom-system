@@ -36,3 +36,20 @@ export function resolveHideTalkControls(search: string): boolean {
 export function resolveRaspberryRemoteLogin(search: string): boolean {
   return new URLSearchParams(search).get("login") === "raspberry";
 }
+
+/**
+ * Fixed devices and embedded windows keep the bare full-screen station view
+ * without the sidebar: Raspberry Pi kiosks (lowPower, autoLogin from the Pi
+ * launcher, viewMode) and JMS Control tiles (embed, controls=0).
+ */
+export function resolveBareMode(search: string): boolean {
+  const params = new URLSearchParams(search);
+  const autoLogin = params.get("autoLogin");
+  return (
+    resolveLowPowerMode(search) ||
+    resolveEmbedMode(search) ||
+    params.has("viewMode") ||
+    autoLogin === "1" ||
+    autoLogin === "true"
+  );
+}

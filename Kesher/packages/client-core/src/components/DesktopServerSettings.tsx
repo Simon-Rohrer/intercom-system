@@ -22,9 +22,9 @@ export function DesktopServerSettings() {
   return (
     <div className="desktop-server-settings">
       <fieldset>
-        <legend>Server URL (Desktop Only)</legend>
+        <legend>Server-Adresse (nur Desktop-App)</legend>
         <div className="field-group">
-          <label htmlFor="server-url">Server Address:</label>
+          <label htmlFor="server-url">Server-Adresse:</label>
           <input
             id="server-url"
             type="text"
@@ -37,8 +37,8 @@ export function DesktopServerSettings() {
           />
         </div>
         <div className="button-group">
-          <button onClick={handleSave}>Save</button>
-          <button onClick={() => setInput(baseUrl)}>Reset</button>
+          <button onClick={handleSave}>Speichern</button>
+          <button onClick={() => setInput(baseUrl)}>Zurücksetzen</button>
         </div>
         {saved && <p className="success-message">Settings saved.</p>}
       </fieldset>

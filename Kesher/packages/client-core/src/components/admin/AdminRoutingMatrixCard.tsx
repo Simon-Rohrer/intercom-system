@@ -172,7 +172,7 @@ export function AdminRoutingMatrixCard({
       await refreshBootstrapData();
     } catch (error) {
       setAdminError(
-        error instanceof Error ? error.message : "failed to save matrix",
+        error instanceof Error ? error.message : "Matrix konnte nicht gespeichert werden",
       );
     } finally {
       setAdminBusy(false);
@@ -195,17 +195,17 @@ export function AdminRoutingMatrixCard({
           {adminError ? <p className="admin-error">{adminError}</p> : null}
 
           <p className="routing-matrix-hint">
-            Click <strong>T</strong>&thinsp;(Talk), <strong>D</strong>
-            &thinsp;(Default Talk), <strong>L</strong>&thinsp;(Listen), or{" "}
-            <strong>F</strong>&thinsp;(Forced listen). Each role can have only
-            one Default Talk party line.
+            Klicke auf <strong>S</strong>&thinsp;(Sprechen), <strong>V</strong>
+            &thinsp;(Vorauswahl Sprechen), <strong>H</strong>&thinsp;(Hören) oder{" "}
+            <strong>P</strong>&thinsp;(Pflicht-Hören). Jede Rolle kann nur eine
+            Party Line als Vorauswahl zum Sprechen haben.
           </p>
 
           <div className="routing-matrix-wrapper">
             <table className="routing-matrix" role="grid">
               <thead>
                 <tr>
-                  <th className="routing-matrix-corner">Role ╲ Party Line</th>
+                  <th className="routing-matrix-corner">Rolle ╲ Party Line</th>
                   {appData.rooms.map((room) => (
                     <th key={room.id} className="routing-matrix-col-header">
                       {room.name}
@@ -238,10 +238,10 @@ export function AdminRoutingMatrixCard({
                             className={`routing-matrix-toggle routing-matrix-talk${cell.talk ? " active" : ""}`}
                             onClick={() => toggleCell(role.id, room.id, "talk")}
                             disabled={adminBusy}
-                            aria-label={`Talk ${role.name} → ${room.name}: ${cell.talk ? "on" : "off"}`}
-                            title={`Talk: ${cell.talk ? "ON" : "off"}`}
+                            aria-label={`Sprechen ${role.name} → ${room.name}: ${cell.talk ? "an" : "aus"}`}
+                            title={`Sprechen: ${cell.talk ? "AN" : "aus"}`}
                           >
-                            T
+                            S
                           </button>
                           <button
                             type="button"
@@ -250,16 +250,16 @@ export function AdminRoutingMatrixCard({
                               toggleCell(role.id, room.id, "defaultTalk")
                             }
                             disabled={adminBusy || defaultTalkUnavailable}
-                            aria-label={`Default Talk ${role.name} → ${room.name}: ${cell.defaultTalk ? "on" : "off"}`}
+                            aria-label={`Vorauswahl Sprechen ${role.name} → ${room.name}: ${cell.defaultTalk ? "an" : "aus"}`}
                             title={
                               !cell.talk
-                                ? "Enable Talk first"
+                                ? "Zuerst Sprechen aktivieren"
                                 : roleHasDefaultTalk && !cell.defaultTalk
-                                  ? "This role already has a Default Talk party line"
-                                  : `Default Talk: ${cell.defaultTalk ? "ON" : "off"}`
+                                  ? "Diese Rolle hat bereits eine Party Line als Vorauswahl"
+                                  : `Vorauswahl Sprechen: ${cell.defaultTalk ? "AN" : "aus"}`
                             }
                           >
-                            D
+                            V
                           </button>
                           <button
                             type="button"
@@ -268,10 +268,10 @@ export function AdminRoutingMatrixCard({
                               toggleCell(role.id, room.id, "listen")
                             }
                             disabled={adminBusy}
-                            aria-label={`Listen ${role.name} → ${room.name}: ${cell.listen ? "on" : "off"}`}
-                            title={`Listen: ${cell.listen ? "ON" : "off"}`}
+                            aria-label={`Hören ${role.name} → ${room.name}: ${cell.listen ? "an" : "aus"}`}
+                            title={`Hören: ${cell.listen ? "AN" : "aus"}`}
                           >
-                            L
+                            H
                           </button>
                           <button
                             type="button"
@@ -280,14 +280,14 @@ export function AdminRoutingMatrixCard({
                               toggleCell(role.id, room.id, "forced")
                             }
                             disabled={adminBusy || !cell.listen}
-                            aria-label={`Forced listen ${role.name} → ${room.name}: ${cell.forced ? "on" : "off"}`}
+                            aria-label={`Pflicht-Hören ${role.name} → ${room.name}: ${cell.forced ? "an" : "aus"}`}
                             title={
                               cell.listen
-                                ? `Forced listen: ${cell.forced ? "ON" : "off"}`
-                                : "Enable Listen first"
+                                ? `Pflicht-Hören: ${cell.forced ? "AN" : "aus"}`
+                                : "Zuerst Hören aktivieren"
                             }
                           >
-                            F
+                            P
                           </button>
                         </td>
                       );
@@ -301,19 +301,19 @@ export function AdminRoutingMatrixCard({
           <div className="routing-matrix-legend">
             <span className="routing-matrix-legend-item">
               <span className="routing-matrix-swatch routing-matrix-swatch-talk" />{" "}
-              Talk
+              Sprechen
             </span>
             <span className="routing-matrix-legend-item">
               <span className="routing-matrix-swatch routing-matrix-swatch-default-talk" />{" "}
-              Default Talk
+              Vorauswahl Sprechen
             </span>
             <span className="routing-matrix-legend-item">
               <span className="routing-matrix-swatch routing-matrix-swatch-listen" />{" "}
-              Listen
+              Hören
             </span>
             <span className="routing-matrix-legend-item">
               <span className="routing-matrix-swatch routing-matrix-swatch-forced" />{" "}
-              Forced listen
+              Pflicht-Hören
             </span>
           </div>
 
@@ -324,14 +324,14 @@ export function AdminRoutingMatrixCard({
                 disabled={adminBusy}
                 className="primary"
               >
-                {adminBusy ? "Saving…" : "Save changes"}
+                {adminBusy ? "Wird gespeichert …" : "Änderungen speichern"}
               </button>
               <button
                 onClick={resetMatrix}
                 disabled={adminBusy}
                 className="secondary"
               >
-                Discard
+                Verwerfen
               </button>
             </div>
           ) : null}

@@ -39,7 +39,7 @@ export function AudioPanel({
 }: AudioPanelProps) {
   return (
     <>
-      <h3>Microphone</h3>
+      <h3>Mikrofon</h3>
       <div className="mic-dropdown" ref={micMenuRef}>
         <button
           type="button"
@@ -63,9 +63,9 @@ export function AudioPanel({
                   setSelectedInputDeviceId(d.deviceId);
                   setIsMicMenuOpen(false);
                 }}
-                title={d.label || `Mic ${d.deviceId.slice(0, 6)}`}
+                title={d.label || `Mikrofon ${d.deviceId.slice(0, 6)}`}
               >
-                {d.label || `Mic ${d.deviceId.slice(0, 6)}`}
+                {d.label || `Mikrofon ${d.deviceId.slice(0, 6)}`}
               </button>
             ))}
           </div>
@@ -74,8 +74,8 @@ export function AudioPanel({
       <div className="meter">
         <div className="meter-bar" style={{ width: `${inputLevel}%` }} />
       </div>
-      <small>Input level</small>
-      <h3 style={{ marginTop: "1rem" }}>Speaker output</h3>
+      <small>Eingangspegel</small>
+      <h3 style={{ marginTop: "1rem" }}>Lautsprecher</h3>
       <div className="mic-dropdown" ref={outputMenuRef}>
         <button
           type="button"
@@ -97,9 +97,9 @@ export function AudioPanel({
                 setSelectedOutputDeviceId("");
                 setIsOutputMenuOpen(false);
               }}
-              title="System default"
+              title="Standard des Systems"
             >
-              System default
+              Standard des Systems
             </button>
             {outputDevices.map((d) => (
               <button
@@ -110,9 +110,9 @@ export function AudioPanel({
                   setSelectedOutputDeviceId(d.deviceId);
                   setIsOutputMenuOpen(false);
                 }}
-                title={d.label || `Output ${d.deviceId.slice(0, 6)}`}
+                title={d.label || `Ausgang ${d.deviceId.slice(0, 6)}`}
               >
-                {d.label || `Output ${d.deviceId.slice(0, 6)}`}
+                {d.label || `Ausgang ${d.deviceId.slice(0, 6)}`}
               </button>
             ))}
           </div>
@@ -120,8 +120,8 @@ export function AudioPanel({
       </div>
       {!outputSelectionSupported ? (
         <small>
-          Explicit speaker selection is not supported by this browser; using
-          system default output.
+          Dieser Browser kann den Lautsprecher nicht wählen; es wird der
+          Standard des Systems genutzt.
         </small>
       ) : null}
     </>

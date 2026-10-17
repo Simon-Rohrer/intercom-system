@@ -118,7 +118,7 @@ export function useRemoteAudio({
       return true;
     } catch (err) {
       onAudioError(
-        `Failed to switch speaker output: ${err instanceof Error ? err.message : "unknown error"}`,
+        `Lautsprecher-Ausgabe konnte nicht gewechselt werden: ${err instanceof Error ? err.message : "unbekannter Fehler"}`,
       );
       return false;
     }
@@ -144,7 +144,7 @@ export function useRemoteAudio({
         }
       })().catch((err) => {
         onAudioError(
-          `Failed to resume remote audio: ${err instanceof Error ? err.message : "unknown error"}`,
+          `Audiowiedergabe konnte nicht fortgesetzt werden: ${err instanceof Error ? err.message : "unbekannter Fehler"}`,
         );
       });
     }
@@ -291,7 +291,7 @@ export function useRemoteAudio({
     );
     if (successfulPlays === 0 && firstError) {
       onAudioError(
-        `Remote audio playback blocked: ${firstError instanceof Error ? firstError.message : "unknown error"}`,
+        `Audiowiedergabe blockiert: ${firstError instanceof Error ? firstError.message : "unbekannter Fehler"}`,
       );
     }
   }

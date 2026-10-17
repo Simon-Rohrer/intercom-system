@@ -122,7 +122,7 @@ export function KeyboardShortcutsSettings({
             onClick={() => setIsOpen((v) => !v)}
             aria-expanded={isOpen}
           >
-            Keyboard shortcuts
+            Tastenkürzel
             <ShortcutChevronIcon className={`chev ${isOpen ? "open" : ""}`} />
           </button>
         </div>
@@ -131,8 +131,8 @@ export function KeyboardShortcutsSettings({
             <table className="shortcuts-table">
               <thead>
                 <tr>
-                  <th>Action</th>
-                  <th>Key</th>
+                  <th>Aktion</th>
+                  <th>Taste</th>
                   <th></th>
                 </tr>
               </thead>
@@ -147,13 +147,13 @@ export function KeyboardShortcutsSettings({
                       <td>
                         {meta.label}
                         <small className="shortcut-type-hint">
-                          {meta.type === "hold" ? "(hold)" : "(toggle)"}
+                          {meta.type === "hold" ? "(gedrückt halten)" : "(umschalten)"}
                         </small>
                       </td>
                       <td>
                         {isRecording ? (
                           <span className="shortcut-recording">
-                            Press a key… (Esc to cancel)
+                            Taste drücken … (Esc bricht ab)
                           </span>
                         ) : (
                           <kbd className="shortcut-key">
@@ -169,7 +169,7 @@ export function KeyboardShortcutsSettings({
                               className="shortcut-btn"
                               onClick={() => startRecording(action)}
                             >
-                              Set
+                              Festlegen
                             </button>
                             {binding ? (
                               <button
@@ -177,7 +177,7 @@ export function KeyboardShortcutsSettings({
                                 className="shortcut-btn shortcut-btn-clear"
                                 onClick={() => clearBinding(action)}
                               >
-                                Clear
+                                Leeren
                               </button>
                             ) : null}
                           </>
@@ -189,7 +189,7 @@ export function KeyboardShortcutsSettings({
               </tbody>
             </table>
             <small className="shortcuts-hint">
-              Shortcuts are disabled while typing in text fields.
+              Während du in ein Textfeld tippst, sind die Tastenkürzel aus.
             </small>
           </div>
         ) : null}

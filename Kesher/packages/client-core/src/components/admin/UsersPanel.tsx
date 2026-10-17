@@ -44,7 +44,7 @@ export function UsersPanel({
       );
     } catch (err) {
       setLoadError(
-        err instanceof Error ? err.message : "Failed to load users",
+        err instanceof Error ? err.message : "Benutzer konnten nicht geladen werden",
       );
     }
   }, [token, adminPin]);
@@ -60,7 +60,7 @@ export function UsersPanel({
       setBirthdayUsersInput((data.usernames ?? []).join(", "));
     } catch (err) {
       setBirthdayError(
-        err instanceof Error ? err.message : "Failed to load birthday users",
+        err instanceof Error ? err.message : "Geburtstagsliste konnte nicht geladen werden",
       );
     }
   }, [adminPin, token]);
@@ -94,11 +94,11 @@ export function UsersPanel({
     )
       .then((saved) => {
         setBirthdayUsersInput((saved.usernames ?? []).join(", "));
-        setBirthdayMessage("Birthday list saved.");
+        setBirthdayMessage("Geburtstagsliste gespeichert.");
       })
       .catch((err: unknown) => {
         setBirthdayError(
-          err instanceof Error ? err.message : "Failed to save birthday users",
+          err instanceof Error ? err.message : "Geburtstagsliste konnte nicht gespeichert werden",
         );
       })
       .finally(() => {
@@ -110,13 +110,13 @@ export function UsersPanel({
     <>
       <div className="admin-block">
         <div className="admin-block-header">
-          <h4>Birthday Users (Today)</h4>
+          <h4>Geburtstage (heute)</h4>
         </div>
         <p className="admin-block-subtitle">
-          Enter usernames separated by commas or new lines. Matching is case-insensitive.
+          Benutzernamen mit Komma oder Zeilenumbruch trennen. Groß- und Kleinschreibung ist egal.
         </p>
         <label className="admin-pin-field" htmlFor="birthday-users-today">
-          <span>Usernames</span>
+          <span>Benutzernamen</span>
           <textarea
             id="birthday-users-today"
             rows={3}
@@ -128,7 +128,7 @@ export function UsersPanel({
         </label>
         <div className="admin-form-actions">
           <button type="button" onClick={handleSaveBirthdayUsers} disabled={birthdayBusy}>
-            {birthdayBusy ? "Saving..." : "Save birthday list"}
+            {birthdayBusy ? "Speichere …" : "Geburtstagsliste speichern"}
           </button>
         </div>
         {birthdayMessage ? <p>{birthdayMessage}</p> : null}
@@ -141,7 +141,7 @@ export function UsersPanel({
         {loadError ? <p className="admin-error">{loadError}</p> : null}
         {adminError ? <p className="admin-error">{adminError}</p> : null}
         {users === null && !loadError ? (
-          <p>Loading...</p>
+          <p>Lädt …</p>
         ) : (
           <ul className="admin-list">
             {users?.map((u) => (
@@ -159,7 +159,7 @@ export function UsersPanel({
                 <button
                   className="secondary danger"
                   disabled={u.online || adminBusy}
-                  title={u.online ? "Cannot delete an active user" : `Delete ${u.username}`}
+                  title={u.online ? "Angemeldete Benutzer können nicht gelöscht werden" : `${u.username} löschen`}
                   onClick={() => handleDelete(u)}
                 >
                   Löschen

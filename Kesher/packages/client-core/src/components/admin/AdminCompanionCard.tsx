@@ -58,7 +58,7 @@ export function AdminCompanionCard({
       const next = await getCompanionAdminSummary(token, adminPin);
       setSummary(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "failed to load companion config");
+      setError(err instanceof Error ? err.message : "Companion-Einstellungen konnten nicht geladen werden");
     } finally {
       setLoading(false);
     }
@@ -110,11 +110,11 @@ export function AdminCompanionCard({
     return [
       `Host: ${locationHost}`,
       `Port: ${locationPort}`,
-      `Use TLS: ${useTls ? "yes" : "no"}`,
-      `Companion shared secret: ${summary?.sharedSecret || ""}`,
-      `Role ID: ${effectiveRoleId || "<leave empty for auto>"}`,
-      `Discovery URL: ${discoveryUrl}`,
-      `Profile URL: ${profileUrl}`,
+      `TLS verwenden: ${useTls ? "ja" : "nein"}`,
+      `Gemeinsames Geheimnis: ${summary?.sharedSecret || ""}`,
+      `Rollen-ID: ${effectiveRoleId || "<leer lassen für automatisch>"}`,
+      `Discovery-Adresse: ${discoveryUrl}`,
+      `Profil-Adresse: ${profileUrl}`,
     ].join("\n");
   }, [discoveryUrl, effectiveRoleId, locationHost, locationPort, profileUrl, summary?.sharedSecret, useTls]);
 
@@ -127,10 +127,10 @@ export function AdminCompanionCard({
       const published = await publishCompanionProfile(token, adminPin, selectedRoleId);
       await refreshSummary();
       setMessage(
-        `Published ${published.roleId} as version ${published.profileVersion}.`,
+        `${published.roleId} als Version ${published.profileVersion} gesendet.`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "failed to publish companion profile");
+      setError(err instanceof Error ? err.message : "Companion-Profil konnte nicht gesendet werden");
     } finally {
       setPublishing(false);
     }
@@ -144,7 +144,7 @@ export function AdminCompanionCard({
         setCopiedField((current) => (current === label ? "" : current));
       }, 1500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "copy to clipboard failed");
+      setError(err instanceof Error ? err.message : "Kopieren in die Zwischenablage fehlgeschlagen");
     }
   }
 
@@ -166,7 +166,7 @@ export function AdminCompanionCard({
             </p>
             <div className="admin-grid">
               <select
-                aria-label="Companion target role"
+                aria-label="Rolle für Companion"
                 value={selectedRoleId}
                 onChange={(event) => setSelectedRoleId(event.target.value)}
                 disabled={publishing || loading}
@@ -228,14 +228,14 @@ export function AdminCompanionCard({
                 <span>Rollen-ID</span>
                 <input
                   readOnly
-                  value={effectiveRoleId || "auto (leave empty in Companion)"}
+                  value={effectiveRoleId || "automatisch (in Companion leer lassen)"}
                 />
               </label>
               <label>
                 <span>Modus</span>
                 <input
                   readOnly
-                  value={minimalModeAvailable ? "auto-target" : "explicit role"}
+                  value={minimalModeAvailable ? "automatisch" : "feste Rolle"}
                 />
               </label>
             </div>
@@ -278,7 +278,7 @@ export function AdminCompanionCard({
                     <li key={role.id}>
                       <strong>{role.name}</strong> ({role.id})
                       {profile
-                        ? ` · v${profile.profileVersion} · ${profile.profileStatus}${profile.profileUpdatedAt ? ` · ${new Date(profile.profileUpdatedAt).toLocaleString()}` : ""}`
+                        ? ` · v${profile.profileVersion} · ${profile.profileStatus}${profile.profileUpdatedAt ? ` · ${new Date(profile.profileUpdatedAt).toLocaleString("de-DE")}` : ""}`
                         : " · unpublished"}
                     </li>
                   );

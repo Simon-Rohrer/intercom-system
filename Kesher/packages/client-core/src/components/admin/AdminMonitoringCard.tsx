@@ -65,7 +65,7 @@ export function AdminMonitoringCard({
         setError(
           pollError instanceof Error
             ? pollError.message
-            : "failed to load realtime stats",
+            : "Live-Werte konnten nicht geladen werden",
         );
       } finally {
         inFlight = false;
@@ -143,8 +143,8 @@ export function AdminMonitoringCard({
     ["Neuverhandlungen", stats ? String(stats.media.renegotiations) : dash],
     ["Neuverhandlung Ø / max", pair(stats?.media.renegotiationAvgMs, stats?.media.renegotiationMaxMs, " ms")],
     ["Cache Party-Line-Rechte", stats ? formatHitRate(stats.storePolicyCache.roomPolicyHits, stats.storePolicyCache.roomPolicyMisses) : dash],
-    ["Cache Broadcast erlaubt", stats ? formatHitRate(stats.storePolicyCache.broadcastAllowedHits, stats.storePolicyCache.broadcastAllowedMisses) : dash],
-    ["Cache Broadcast-Party-Line", stats ? formatHitRate(stats.storePolicyCache.broadcastRoomHits, stats.storePolicyCache.broadcastRoomMisses) : dash],
+    ["Cache Durchsage erlaubt", stats ? formatHitRate(stats.storePolicyCache.broadcastAllowedHits, stats.storePolicyCache.broadcastAllowedMisses) : dash],
+    ["Cache Durchsage-Party-Line", stats ? formatHitRate(stats.storePolicyCache.broadcastRoomHits, stats.storePolicyCache.broadcastRoomMisses) : dash],
     ["Cache Pflicht-Hören", stats ? formatHitRate(stats.storePolicyCache.forcedListenHits, stats.storePolicyCache.forcedListenMisses) : dash],
     [
       "Verworfene Nachrichtentypen",
@@ -178,7 +178,7 @@ export function AdminMonitoringCard({
               : loading
                 ? "Lade …"
                 : `Live · alle 2 s · Stand ${
-                    stats ? new Date(stats.timestampUnixMs).toLocaleTimeString() : dash
+                    stats ? new Date(stats.timestampUnixMs).toLocaleTimeString("de-DE") : dash
                   }`}
           </p>
 

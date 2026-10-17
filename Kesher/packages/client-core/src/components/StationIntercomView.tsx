@@ -38,6 +38,7 @@ import { LowPowerModeBadge } from "./LowPowerModeBadge";
 import { PanelResizer, useStoredSize } from "./PanelResizer";
 import { RaspberryPiStationsPanel } from "./RaspberryPiStationsPanel";
 import { ChatPopoutSection } from "./panels/ChatPopoutSection";
+import { AppShell, type ShellUser } from "./shell/AppShell";
 
 const DB_MIN = -60;
 const OUTPUT_DB_MAX = 6; // +6 dB ~ gain 2.0
@@ -108,17 +109,17 @@ function normalizeImportedStreamDeckSettings(input: unknown): StreamDeckSettings
   const raw = (input ?? {}) as Record<string, unknown>;
   const pagesRaw = Array.isArray(raw.pages) ? raw.pages : null;
   if (!pagesRaw || pagesRaw.length === 0) {
-    throw new Error("Import failed: settings.pages must be a non-empty array.");
+    throw new Error("Import fehlgeschlagen: Die Datei enthält keine Seiten.");
   }
   const gridColumns = Number(raw.gridColumns);
   const gridRows = Number(raw.gridRows);
   if (gridColumns !== 5 || gridRows !== 3) {
-    throw new Error("Import failed: only 5x3 Stream Deck layouts are supported.");
+    throw new Error("Import fehlgeschlagen: Nur Stream-Deck-Belegungen mit 5×3 Tasten werden unterstützt.");
   }
 
   const selectedPage = Number(raw.selectedPage);
   if (!Number.isInteger(selectedPage) || selectedPage < 0) {
-    throw new Error("Import failed: selectedPage must be a non-negative integer.");
+    throw new Error("Import fehlgeschlagen: Die gewählte Seite ist ungültig.");
   }
 
   const actionTypes = new Set<StreamDeckActionType>([
@@ -149,14 +150,14 @@ function normalizeImportedStreamDeckSettings(input: unknown): StreamDeckSettings
     const page = Number(pageRaw.page);
     const buttonsRaw = Array.isArray(pageRaw.buttons) ? pageRaw.buttons : null;
     if (!Number.isInteger(page) || page < 0 || !buttonsRaw || buttonsRaw.length !== 15) {
-      throw new Error("Import failed: each page must have a valid page id and exactly 15 buttons.");
+      throw new Error("Import fehlgeschlagen: Jede Seite braucht eine gültige Nummer und genau 15 Tasten.");
     }
     const seenIndices = new Set<number>();
     const buttons = buttonsRaw.map((buttonEntry) => {
       const buttonRaw = (buttonEntry ?? {}) as Record<string, unknown>;
       const index = Number(buttonRaw.index);
       if (!Number.isInteger(index) || index < 0 || index >= 15 || seenIndices.has(index)) {
-        throw new Error("Import failed: button indices must be unique integers from 0 to 14.");
+        throw new Error("Import fehlgeschlagen: Die Tasten müssen eindeutig von 0 bis 14 nummeriert sein.");
       }
       seenIndices.add(index);
 
@@ -171,7 +172,7 @@ function normalizeImportedStreamDeckSettings(input: unknown): StreamDeckSettings
 
       const type = actionRaw.type;
       if (typeof type !== "string" || !actionTypes.has(type as StreamDeckActionType)) {
-        throw new Error("Import failed: unsupported button action type.");
+        throw new Error("Import fehlgeschlagen: Unbekannte Tastenfunktion.");
       }
 
       return {
@@ -218,7 +219,7 @@ function normalizeImportedStreamDeckSettings(input: unknown): StreamDeckSettings
   });
 
   if (!normalizedPages.some((entry) => entry.page === selectedPage)) {
-    throw new Error("Import failed: selectedPage does not exist in pages.");
+    throw new Error("Import fehlgeschlagen: Die gewählte Seite gibt es nicht.");
   }
 
   return {
@@ -238,7 +239,7 @@ function parseStreamDeckImportDocument(text: string): StreamDeckSettings {
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error("Import failed: invalid JSON.");
+    throw new Error("Import fehlgeschlagen: Die Datei ist kein gültiges JSON.");
   }
 
   const doc = (parsed ?? {}) as StreamDeckImportDocument;
@@ -246,13 +247,13 @@ function parseStreamDeckImportDocument(text: string): StreamDeckSettings {
     const format = doc.meta?.format;
     const schemaVersion = doc.meta?.schemaVersion;
     if (format && format !== STREAM_DECK_IMPORT_FORMAT) {
-      throw new Error(`Import failed: expected format ${STREAM_DECK_IMPORT_FORMAT}.`);
+      throw new Error(`Import fehlgeschlagen: Erwartet wird das Format ${STREAM_DECK_IMPORT_FORMAT}.`);
     }
     if (
       typeof schemaVersion === "number" &&
       schemaVersion !== STREAM_DECK_IMPORT_SCHEMA_VERSION
     ) {
-      throw new Error("Import failed: unsupported schemaVersion.");
+      throw new Error("Import fehlgeschlagen: Diese Dateiversion wird nicht unterstützt.");
     }
     return normalizeImportedStreamDeckSettings(doc.settings);
   }
@@ -369,7 +370,7 @@ function streamDeckActionLabel(actionType: StreamDeckActionType | undefined) {
     case "raspberry_status":
       return "Raspberry-Pi-Status";
     case "broadcast_ptt":
-      return "Broadcast sprechen";
+      return "Durchsage sprechen";
     case "page_up":
       return "Seite hoch";
     case "page_down":
@@ -386,7 +387,7 @@ function streamDeckActionLabel(actionType: StreamDeckActionType | undefined) {
     case undefined:
       return "Leer";
     default:
-      return "Configured";
+      return "Belegt";
   }
 }
 
@@ -873,6 +874,111 @@ function LockIcon({ className }: { className?: string }) {
   );
 }
 
+/**
+ * Station settings: a modal "Station-Setup" (kiosk) or, inside the sidebar
+ * frame, the normal page "Einstellungen" with its sub-navigation as pills.
+ */
+function StationSettingsFrame({
+  asPage,
+  lowPowerMode,
+  activePage,
+  onSelectPage,
+  onClose,
+  children,
+}: {
+  asPage: boolean;
+  lowPowerMode: boolean;
+  activePage: SettingsPageId;
+  onSelectPage: (page: SettingsPageId) => void;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  if (asPage) {
+    return (
+      <section
+        className="k-page station-settings-page"
+        aria-labelledby="user-settings-title"
+      >
+        <div className="k-page-head">
+          <div>
+            <h1 id="user-settings-title">Einstellungen</h1>
+            <p className="k-lead">
+              Ansicht, Bedienung, Ton und Stream Deck für diese Station.
+            </p>
+          </div>
+        </div>
+        <nav className="k-subnav" aria-label="Bereiche der Einstellungen">
+          {SETTINGS_NAV_ITEMS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`k-subnav-pill ${activePage === item.id ? "active" : ""}`.trim()}
+              aria-current={activePage === item.id ? "page" : undefined}
+              aria-controls={`settings-${item.id}`}
+              onClick={() => onSelectPage(item.id)}
+            >
+              <SettingsIcon name={item.icon} />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="station-modal-body">{children}</div>
+      </section>
+    );
+  }
+  return (
+    <div
+      className={`station-modal-backdrop ${
+        lowPowerMode ? "station-modal-backdrop-low-power" : ""
+      }`.trim()}
+      onClick={onClose}
+    >
+      <section
+        className="station-modal panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="user-settings-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="station-modal-header">
+          <div className="station-modal-title">
+            <span>Einstellungen</span>
+            <h3 id="user-settings-title">Station-Setup</h3>
+          </div>
+          <button
+            className="station-modal-close"
+            onClick={onClose}
+            aria-label="Einstellungen schließen"
+          >
+            <CloseIcon />
+          </button>
+        </header>
+        <div className="station-settings-shell">
+          <nav
+            className="station-settings-nav"
+            aria-label="Bereiche der Einstellungen"
+          >
+            {SETTINGS_NAV_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={activePage === item.id ? "active" : ""}
+                aria-current={activePage === item.id ? "page" : undefined}
+                aria-controls={`settings-${item.id}`}
+                onClick={() => onSelectPage(item.id)}
+              >
+                <SettingsIcon name={item.icon} />
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </nav>
+          <div className="station-modal-body">{children}</div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function StationMicMeter({ levelPercent }: { levelPercent: number }) {
   const segments = 16;
   const active = Math.round((Math.max(0, Math.min(100, levelPercent)) / 100) * segments);
@@ -1127,6 +1233,11 @@ type StationIntercomViewProps = {
     roleName: string;
     onLeave: () => void;
   };
+  /**
+   * Page frame with sidebar (like JMS Control). Not passed for kiosk
+   * stations; ignored for the Raspberry remote session and embedded tiles.
+   */
+  shell?: { user: ShellUser };
 };
 
 export function StationIntercomView({
@@ -1247,6 +1358,7 @@ export function StationIntercomView({
   lastCompanionCommand,
   onStreamDeckTestButtonEvent,
   remoteControl,
+  shell,
 }: StationIntercomViewProps) {
   const [isMicMenuOpen, setIsMicMenuOpen] = useState(false);
   const [isOutputMenuOpen, setIsOutputMenuOpen] = useState(false);
@@ -1330,10 +1442,10 @@ export function StationIntercomView({
       : "all";
   const allInputsLabel =
     inputChannelCount === 1
-      ? "Input 1"
+      ? "Eingang 1"
       : inputChannelCount === 2
-        ? "Input 1 + Input 2"
-        : `All ${inputChannelCount} inputs`;
+        ? "Eingang 1 + Eingang 2"
+        : `Alle ${inputChannelCount} Eingänge`;
   const channelAudioFeedStatusById = useMemo(
     () =>
       new Map(channelAudioFeedStatuses.map((entry) => [entry.id, entry])),
@@ -1370,21 +1482,21 @@ export function StationIntercomView({
 
   const feedAllInputsLabel = (count: number): string =>
     count === 1
-      ? "Input 1"
+      ? "Eingang 1"
       : count === 2
-        ? "Input 1 + Input 2"
-        : `All ${count} inputs`;
+        ? "Eingang 1 + Eingang 2"
+        : `Alle ${count} Eingänge`;
 
   const feedDeviceLabel = (deviceId: string): string => {
-    if (!deviceId) return "System default";
+    if (!deviceId) return "Standard des Systems";
     return (
       inputDevices.find((entry) => entry.deviceId === deviceId)?.label ||
-      `Input ${deviceId.slice(0, 6)}`
+      `Eingang ${deviceId.slice(0, 6)}`
     );
   };
 
   const feedRoomLabel = (roomId: string): string => {
-    if (!roomId) return "New talk channel";
+    if (!roomId) return "Neuer Sprechkanal";
     return appData.rooms.find((room) => room.id === roomId)?.name || roomId;
   };
 
@@ -1448,18 +1560,18 @@ export function StationIntercomView({
     if (!channelAudioFeedEditor) return;
     const name = channelAudioFeedEditor.name.trim();
     if (!name) {
-      setChannelAudioFeedSaveError("Feed name is required.");
+      setChannelAudioFeedSaveError("Bitte gib dem Feed einen Namen.");
       return;
     }
     const senderRoleIds = Array.from(
       new Set([appData.self.roleId, ...channelAudioFeedEditor.senderRoleIds]),
     ).filter(Boolean);
     if (senderRoleIds.length === 0) {
-      setChannelAudioFeedSaveError("At least one sender role is required.");
+      setChannelAudioFeedSaveError("Mindestens eine Rolle muss senden dürfen.");
       return;
     }
     if (channelAudioFeedEditor.receiverRoleIds.length === 0) {
-      setChannelAudioFeedSaveError("At least one listener role is required.");
+      setChannelAudioFeedSaveError("Mindestens eine Rolle muss hören dürfen.");
       return;
     }
     const payload: ChannelAudioFeedRoomForm = {
@@ -1503,7 +1615,7 @@ export function StationIntercomView({
       setChannelAudioFeedEditor(null);
     } catch (error) {
       setChannelAudioFeedSaveError(
-        error instanceof Error ? error.message : "Feed save failed.",
+        error instanceof Error ? error.message : "Feed konnte nicht gespeichert werden.",
       );
     } finally {
       setChannelAudioFeedSaveBusy(false);
@@ -1574,7 +1686,7 @@ export function StationIntercomView({
     );
     groups.push({
       tabId: "favorites",
-      label: "Favorites",
+      label: "Favoriten",
       count: favorites.length,
       users: favorites,
     });
@@ -1588,7 +1700,7 @@ export function StationIntercomView({
       roleGroups.get(p.roleId)!.push(p);
     }
     for (const [roleId, users] of roleGroups) {
-      const roleLabel = roleNameById.get(roleId) || roleId || "Unknown";
+      const roleLabel = roleNameById.get(roleId) || roleId || "Unbekannt";
       groups.push({
         tabId: roleId,
         label: roleLabel,
@@ -1600,7 +1712,7 @@ export function StationIntercomView({
     // All tab
     groups.push({
       tabId: "all",
-      label: "All",
+      label: "Alle",
       count: allDirectOnlineTargets.length,
       users: allDirectOnlineTargets,
     });
@@ -1775,12 +1887,12 @@ export function StationIntercomView({
         }
       : null;
   const companionPublishUsername =
-    appData.self.username.trim() || "Default profile";
+    appData.self.username.trim() || "Standardprofil";
   const companionPublishRoleName =
     roleNameById.get(appData.self.roleId) ||
     appData.roles.find((role) => role.id === appData.self.roleId)?.name ||
     appData.self.roleId ||
-    "Unassigned role";
+    "Ohne Rolle";
   const companionPublishPresetPath =
     `Kesher / ${companionPublishRoleName} / ${companionPublishUsername}`;
 
@@ -1872,10 +1984,10 @@ export function StationIntercomView({
           const isOnline = ["intercom_connected", "waiting_for_intercom", "launcher_online"].includes(pi.effectiveStatus);
           previewState = isOnline ? "PI_ONLINE" : "PI_OFFLINE";
           labels.primary = pi.name || pi.deviceId;
-          labels.subtitle = isOnline ? "Connected" : "Disconnected";
+          labels.subtitle = isOnline ? "Verbunden" : "Getrennt";
         } else {
           labels.primary = piId;
-          labels.subtitle = raspberryPis.length === 0 ? "Loading..." : "Not found";
+          labels.subtitle = raspberryPis.length === 0 ? "Lädt …" : "Nicht gefunden";
         }
       }
 
@@ -2509,10 +2621,10 @@ export function StationIntercomView({
       className={`station-ptt hold-button ${pttPressed ? "active" : ""} ${
         isSendingOnTalkRooms && talkTargetNames.length > 0 ? "live" : ""
       }`}
-      aria-label="Hold to talk"
+      aria-label="Gedrückt halten zum Sprechen"
       {...mainPttButtonProps}
     >
-      <strong>Hold to talk</strong>
+      <strong>Gedrückt halten zum Sprechen</strong>
       <small>
         {talkTargetNames.length > 0
           ? `Sendet auf: ${talkTargetNames.join(", ")}`
@@ -2531,7 +2643,7 @@ export function StationIntercomView({
       disabled={!replyTargetUserId}
       {...replyButtonProps}
     >
-      <strong>Reply to caller</strong>
+      <strong>Anrufer antworten</strong>
       <small>
         {replyTarget
           ? replyTarget.username
@@ -2591,7 +2703,7 @@ export function StationIntercomView({
           <span className="station-direct-avatar" aria-hidden="true">
             {p.username.slice(0, 2).toUpperCase()}
           </span>
-          <small>Direct</small>
+          <small>Direkt</small>
           <strong>{p.username}</strong>
           <em>{roleNameById.get(p.roleId) || p.roleId || "Unbekannte Rolle"}</em>
         </button>
@@ -2630,7 +2742,7 @@ export function StationIntercomView({
             onClick={() => sendScopedSignal("direct", p.userId, "call")}
             title="Person rufen"
           >
-            Call
+            Rufen
           </button>
         </div>
       </article>
@@ -2643,17 +2755,36 @@ export function StationIntercomView({
     roleNameById.get(appData.self.roleId) ||
     appData.self.roleId;
   const stationLiveLabel = remoteControl
-    ? `Raspberry Remote: ${remoteControl.stationName}`
+    ? `Raspberry fernsteuern: ${remoteControl.stationName}`
     : appData.self.username;
   const micLevelPercent = lowPowerMode ? 0 : meterDbFsToPercent(inputLevelDbFs);
+  // Sidebar frame like JMS Control – never for the Raspberry remote session or embedded tiles
+  const inShell = Boolean(shell) && !remoteControl && !embedMode;
+  const liveConnected = connectionState === "connected";
+  const liveBadge = (
+    <span
+      className={`station-live-name ${liveConnected ? "connected" : "disconnected"}`}
+    >
+      <span
+        className={`station-live-dot ${liveConnected ? "connected" : "disconnected"}`}
+      />
+      {liveConnected ? "Live" : "Offline"}
+    </span>
+  );
+  const micStats = !lowPowerMode ? (
+    <div className="station-top-stats">
+      <span className="station-top-stat-label">Mikrofon</span>
+      <StationMicMeter levelPercent={micLevelPercent} />
+    </div>
+  ) : null;
 
-  return (
+  const stationView = (
     <div
       className={`root app station-shell ${
         lowPowerMode && isUserSettingsOpen ? "settings-open-low-power" : ""
       } ${remoteControl ? "station-shell-remote" : ""} ${
         embedMode ? "station-embed" : ""
-      }`.trim()}
+      } ${inShell ? "station-in-shell" : ""}`.trim()}
     >
       {connectionState !== "connected" && (
         <div className="connection-offline-banner">
@@ -2666,6 +2797,7 @@ export function StationIntercomView({
         </div>
       )}
       <div className="station-header">
+        {inShell ? null : (
         <div
           className={`station-topbar ${lowPowerMode ? "has-low-power" : ""}`.trim()}
         >
@@ -2676,25 +2808,9 @@ export function StationIntercomView({
               <div className="station-live-role">{stationRoleLabel}</div>
               <div className="station-live-label">{stationLiveLabel}</div>
             </div>
-            <span
-              className={`station-live-name ${
-                connectionState === "connected" ? "connected" : "disconnected"
-              }`}
-            >
-              <span
-                className={`station-live-dot ${
-                  connectionState === "connected" ? "connected" : "disconnected"
-                }`}
-              />
-              {connectionState === "connected" ? "Live" : "Offline"}
-            </span>
+            {liveBadge}
           </div>
-          {!lowPowerMode ? (
-            <div className="station-top-stats">
-              <span className="station-top-stat-label">Mic</span>
-              <StationMicMeter levelPercent={micLevelPercent} />
-            </div>
-          ) : null}
+          {micStats}
           {lowPowerMode ? (
             <LowPowerModeBadge className="station-low-power-badge" />
           ) : null}
@@ -2723,6 +2839,7 @@ export function StationIntercomView({
             </button>
           </div>
         </div>
+        )}
 
         {hideTalkControls ? null : (
         <section
@@ -2739,7 +2856,7 @@ export function StationIntercomView({
             onClick={() => setAlwaysOn(voiceMode !== "always_on")}
           >
             <span className="station-always-on-indicator" aria-hidden="true" />
-            <span className="station-always-on-text">Always on</span>
+            <span className="station-always-on-text">Dauerhaft an</span>
           </button>
         </section>
         )}
@@ -2747,6 +2864,7 @@ export function StationIntercomView({
 
       <div
         className="station-content-grid"
+        hidden={inShell && isUserSettingsOpen}
         ref={contentGridRef}
         style={
           sideWidth
@@ -2762,7 +2880,7 @@ export function StationIntercomView({
               hint={
                 enableDirectPpt
                   ? "Gedrückt halten = auf der Leitung sprechen"
-                  : "Tippen = Talk vormerken · Hold to talk oder Always on = senden"
+                  : "Tippen = zum Sprechen vormerken · gedrückt halten oder „Dauerhaft an“ = senden"
               }
               count={`${visibleRooms.length} ${
                 visibleRooms.length === 1 ? "Leitung" : "Leitungen"
@@ -2880,7 +2998,7 @@ export function StationIntercomView({
                         <span
                           className="station-channel-meter"
                           role="meter"
-                          aria-label={`${room.name} input level`}
+                          aria-label={`${room.name} Pegel`}
                           aria-valuemin={0}
                           aria-valuemax={100}
                           aria-valuenow={Math.round(roomLevel * 100)}
@@ -2932,7 +3050,7 @@ export function StationIntercomView({
                           : "Deine Rolle darf auf dieser Party Line nicht sprechen"
                       }
                     >
-                      <small>{canTalk ? "Talk" : "Talk · nur hören"}</small>
+                      <small>{canTalk ? "Sprechen" : "Nur hören"}</small>
                       <strong>{renderBreakableChannelName(room.name)}</strong>
                       {listenerCount > 0 ? (
                         <span
@@ -2991,7 +3109,7 @@ export function StationIntercomView({
                         ) : (
                           <span className="station-listen-led" aria-hidden="true" />
                         )}
-                        Listen
+                        Hören
                       </button>
                       <button
                         className={`call ${canTalk ? "" : "disabled"}`}
@@ -3005,7 +3123,7 @@ export function StationIntercomView({
                             : "Deine Rolle darf auf dieser Party Line nicht rufen"
                         }
                       >
-                        Call
+                        Rufen
                       </button>
                     </div>
                   </article>
@@ -3031,7 +3149,7 @@ export function StationIntercomView({
                 <div
                   className="station-direct-tabs"
                   role="tablist"
-                  aria-label="Direct communication tabs"
+                  aria-label="Direkt-Gruppen"
                 >
                   {directGroups.map((group) => (
                     <button
@@ -3072,7 +3190,7 @@ export function StationIntercomView({
             <section className="station-block station-broadcast-section">
               <StationSectionHeader
                 tone="broadcast"
-                title="Broadcast"
+                title="Durchsage"
                 hint="Gedrückt halten = an alle in der Gruppe sprechen"
                 count={`${broadcastGroups.length} ${
                   broadcastGroups.length === 1 ? "Gruppe" : "Gruppen"
@@ -3136,12 +3254,12 @@ export function StationIntercomView({
                         title={
                           canSend
                             ? ""
-                            : "Deine Rolle darf in diese Broadcast-Gruppe nicht senden"
+                            : "Deine Rolle darf in dieser Durchsage-Gruppe nicht sprechen"
                         }
                       >
                         <small>
                           <StationSectionIcon tone="broadcast" />
-                          Broadcast
+                          Durchsage
                         </small>
                         <strong>{group.name}</strong>
                       </button>
@@ -3222,54 +3340,13 @@ export function StationIntercomView({
         <section className="panel">{realtimeDebugBlock}</section>
       ) : null}
       {isUserSettingsOpen ? (
-        <div
-          className={`station-modal-backdrop ${
-            lowPowerMode ? "station-modal-backdrop-low-power" : ""
-          }`.trim()}
-          onClick={() => setIsUserSettingsOpen(false)}
+        <StationSettingsFrame
+          asPage={inShell}
+          lowPowerMode={lowPowerMode}
+          activePage={activeSettingsPage}
+          onSelectPage={openSettingsPage}
+          onClose={() => setIsUserSettingsOpen(false)}
         >
-          <section
-            className="station-modal panel"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="user-settings-title"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <header className="station-modal-header">
-              <div className="station-modal-title">
-                <span>Einstellungen</span>
-                <h3 id="user-settings-title">Station-Setup</h3>
-              </div>
-              <button
-                className="station-modal-close"
-                onClick={() => setIsUserSettingsOpen(false)}
-                aria-label="Close user settings"
-              >
-                <CloseIcon />
-              </button>
-            </header>
-            <div className="station-settings-shell">
-              <nav
-                className="station-settings-nav"
-                aria-label="User settings sections"
-              >
-                {SETTINGS_NAV_ITEMS.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={activeSettingsPage === item.id ? "active" : ""}
-                    aria-current={
-                      activeSettingsPage === item.id ? "page" : undefined
-                    }
-                    aria-controls={`settings-${item.id}`}
-                    onClick={() => openSettingsPage(item.id)}
-                  >
-                    <SettingsIcon name={item.icon} />
-                    <span>{item.label}</span>
-                  </button>
-                ))}
-              </nav>
-              <div className="station-modal-body">
                 {activeSettingsPage === "layout" ? (
                 <section
                   id="settings-layout"
@@ -3277,25 +3354,25 @@ export function StationIntercomView({
                 >
                   <SettingsSectionHeader
                     icon="layout"
-                    eyebrow="View"
+                    eyebrow="Ansicht"
                     title="Layout"
                   />
                   <div className="station-settings-grid">
                     <SettingsToggle
-                      label="Show only favorites"
-                      description="Focuses pinned party lines and direct users."
+                      label="Nur Favoriten zeigen"
+                      description="Zeigt nur angeheftete Party Lines und Personen."
                       checked={showPinnedOnly}
                       onChange={onShowPinnedOnlyChange}
                     />
                     <SettingsToggle
-                      label="Show direct communication as tabs"
-                      description="Groups direct users by favorites and roles."
+                      label="Direkt-Personen in Reitern zeigen"
+                      description="Ordnet Personen nach Favoriten und Rollen."
                       checked={enableDirectTabs}
                       onChange={onEnableDirectTabsChange}
                     />
                     <SettingsToggle
-                      label="Show volume controls"
-                      description="Shows per-channel and direct-user gain controls."
+                      label="Lautstärkeregler zeigen"
+                      description="Zeigt Regler für jede Party Line und jede Person."
                       checked={showVolumeControls}
                       onChange={onShowVolumeControlsChange}
                     />
@@ -3310,19 +3387,19 @@ export function StationIntercomView({
                 >
                   <SettingsSectionHeader
                     icon="controls"
-                    eyebrow="Operation"
-                    title="Interaction"
+                    eyebrow="Bedienung"
+                    title="Sprechen & Antworten"
                   />
                   <div className="station-settings-grid">
                     <SettingsToggle
-                      label="Direct PTT Mode (press channel to talk)"
-                      description="Turns channel cards into hold-to-talk targets."
+                      label="Direkt sprechen (Party Line gedrückt halten)"
+                      description="Jede Party-Line-Taste wird zur Sprechtaste."
                       checked={enableDirectPpt}
                       onChange={onEnableDirectPptChange}
                     />
                     <SettingsToggle
-                      label="Swap PTT and reply buttons"
-                      description="Changes the fixed control order on this device."
+                      label="Sprechen und Antworten tauschen"
+                      description="Tauscht die Reihenfolge der beiden Knöpfe auf diesem Gerät."
                       checked={swapPttAndReplyButtons}
                       onChange={onSwapPttAndReplyButtonsChange}
                     />
@@ -3337,22 +3414,22 @@ export function StationIntercomView({
                 >
                   <SettingsSectionHeader
                     icon="system"
-                    eyebrow="Device"
+                    eyebrow="Gerät"
                     title="System"
                   />
                   <div className="station-settings-grid">
                     <SettingsToggle
-                      label="Background audio assist"
-                      description="Keeps audio recovery helpers active."
+                      label="Ton im Hintergrund wiederherstellen"
+                      description="Hilft, den Ton nach Unterbrechungen wieder zu starten."
                       checked={enableBackgroundAudioRecovery}
                       onChange={onEnableBackgroundAudioRecoveryChange}
                     />
                     <SettingsToggle
-                      label="Keep device awake while connected"
+                      label="Gerät wach halten, solange verbunden"
                       description={
                         wakeLockSupported
-                          ? "Prevents the display from sleeping."
-                          : "Wake lock is unavailable in this browser."
+                          ? "Der Bildschirm geht nicht in den Ruhezustand."
+                          : "In diesem Browser nicht möglich."
                       }
                       checked={keepScreenAwake}
                       disabled={!wakeLockSupported}
@@ -3361,27 +3438,27 @@ export function StationIntercomView({
                   </div>
                   <div className="station-settings-status-grid">
                     <SettingsStatusCard
-                      label="Media controls"
-                      value={mediaSessionSupported ? "Supported" : "Not supported"}
+                      label="Mediensteuerung"
+                      value={mediaSessionSupported ? "Unterstützt" : "Nicht unterstützt"}
                     />
                     <SettingsStatusCard
-                      label="Wake lock"
+                      label="Wach halten"
                       value={
                         wakeLockSupported
                           ? wakeLockActive
-                            ? "Active"
-                            : "Available"
-                          : "Not supported"
+                            ? "Aktiv"
+                            : "Verfügbar"
+                          : "Nicht unterstützt"
                       }
                     />
                     <SettingsStatusCard
-                      label="Install mode"
-                      value={isStandaloneDisplayMode ? "Installed app" : "Browser tab"}
+                      label="Ausführung"
+                      value={isStandaloneDisplayMode ? "Installierte App" : "Browser-Tab"}
                     />
                   </div>
                   <small className="station-settings-meta">
-                    For best mobile reliability, keep background audio assist
-                    enabled and install the app to your home screen.
+                    Am Handy läuft es am zuverlässigsten, wenn „Ton im Hintergrund
+                    wiederherstellen“ an ist und die App auf dem Home-Bildschirm liegt.
                   </small>
                 </section>
                 ) : null}
@@ -3393,8 +3470,8 @@ export function StationIntercomView({
                 >
                   <SettingsSectionHeader
                     icon="keyboard"
-                    eyebrow="Keyboard"
-                    title="Shortcuts"
+                    eyebrow="Tastatur"
+                    title="Tastenkürzel"
                   />
                   <KeyboardShortcutsSettings
                     shortcuts={keyboardShortcuts}
@@ -3411,7 +3488,7 @@ export function StationIntercomView({
                 >
                   <SettingsSectionHeader
                     icon="hardware"
-                    eyebrow="Hardware"
+                    eyebrow="Geräte"
                     title="Stream Deck"
                   />
                 <div className="streamdeck-panel">
@@ -3564,7 +3641,7 @@ export function StationIntercomView({
                           {lastCompanionCommand ? (
                             <small>
                               Companion {lastCompanionCommand.status} ·{" "}
-                              {new Date(lastCompanionCommand.at).toLocaleTimeString()}
+                              {new Date(lastCompanionCommand.at).toLocaleTimeString("de-DE")}
                             </small>
                           ) : null}
                         </div>
@@ -3704,7 +3781,7 @@ export function StationIntercomView({
                                 {streamDeckCurrentButtons.length} belegt
                               </small>
                             </div>
-                            <div className="streamdeck-grid" role="grid" aria-label="Stream Deck 5x3 grid">
+                            <div className="streamdeck-grid" role="grid" aria-label="Stream-Deck-Tasten">
                               {streamDeckCurrentButtons.map((button) => {
                                 const previewImage =
                                   streamDeckPreviewImageByIndex.get(button.index) || "";
@@ -3718,7 +3795,7 @@ export function StationIntercomView({
                                   <button
                                     type="button"
                                     key={`streamdeck-button-${button.index}`}
-                                    aria-label={`Deck key ${button.index + 1}`}
+                                    aria-label={`Taste ${button.index + 1}`}
                                     className={`streamdeck-button ${
                                       streamDeckSelectedButton?.index === button.index
                                         ? "active"
@@ -3877,7 +3954,7 @@ export function StationIntercomView({
                         <label className="streamdeck-control">
                           <span>Funktion</span>
                           <select
-                            aria-label="Stream Deck function"
+                            aria-label="Funktion der Taste"
                             value={streamDeckSelectedButton?.action?.type || "none"}
                             onChange={(event) =>
                               setStreamDeckActionType(
@@ -3901,8 +3978,8 @@ export function StationIntercomView({
                               <option value="incoming_call_indicator">Anzeige eingehende Rufe</option>
                               <option value="raspberry_status">Raspberry-Pi-Status</option>
                             </optgroup>
-                            <optgroup label="Broadcast">
-                              <option value="broadcast_ptt">Broadcast sprechen</option>
+                            <optgroup label="Durchsage">
+                              <option value="broadcast_ptt">Durchsage sprechen</option>
                             </optgroup>
                             <optgroup label="Navigation">
                               <option value="page_up">Seite hoch</option>
@@ -3927,7 +4004,7 @@ export function StationIntercomView({
                           <label className="streamdeck-control">
                             <span>Kanal</span>
                             <select
-                              aria-label="Stream Deck channel target"
+                              aria-label="Party Line der Taste"
                               value={streamDeckSelectedButton.action.roomId || ""}
                               onChange={(event) =>
                                 updateStreamDeckSelectedButton((button) => ({
@@ -3952,7 +4029,7 @@ export function StationIntercomView({
                           <label className="streamdeck-control">
                             <span>Raspberry Pi</span>
                             <select
-                              aria-label="Stream Deck Raspberry PI target"
+                              aria-label="Raspberry Pi der Taste"
                               value={streamDeckSelectedButton.action.raspberryPiId || ""}
                               onChange={(event) =>
                                 updateStreamDeckSelectedButton((button) => ({
@@ -3981,7 +4058,7 @@ export function StationIntercomView({
                           <label className="streamdeck-control">
                             <span>Person</span>
                             <select
-                              aria-label="Stream Deck direct user target"
+                              aria-label="Person der Taste"
                               value={streamDeckSelectedButton.action.userId || ""}
                               onChange={(event) =>
                                 updateStreamDeckSelectedButton((button) => ({
@@ -4006,7 +4083,7 @@ export function StationIntercomView({
                           <label className="streamdeck-control">
                             <span>Rolle</span>
                             <select
-                              aria-label="Stream Deck direct role target"
+                              aria-label="Rolle der Taste"
                               value={streamDeckSelectedButton.action.roleId || ""}
                               onChange={(event) =>
                                 updateStreamDeckSelectedButton((button) => ({
@@ -4040,7 +4117,7 @@ export function StationIntercomView({
                           <label className="streamdeck-control">
                             <span>Broadcast-Gruppe</span>
                             <select
-                              aria-label="Stream Deck broadcast target"
+                              aria-label="Durchsage-Gruppe der Taste"
                               value={streamDeckSelectedButton.action.broadcastGroupId || ""}
                               onChange={(event) =>
                                 updateStreamDeckSelectedButton((button) => ({
@@ -4065,7 +4142,7 @@ export function StationIntercomView({
                           <label className="streamdeck-control">
                             <span>Schritt</span>
                             <select
-                              aria-label="Stream Deck volume delta"
+                              aria-label="Lautstärke-Schritt der Taste"
                               value={String(
                                 streamDeckSelectedButton.action.volumeDelta || 1,
                               )}
@@ -4092,7 +4169,7 @@ export function StationIntercomView({
                             <label className="streamdeck-control">
                               <span>Nachricht *</span>
                               <textarea
-                                aria-label="Stream Deck chat message"
+                                aria-label="Chat-Nachricht der Taste"
                                 rows={2}
                                 maxLength={STREAM_DECK_CHAT_MESSAGE_MAX_LENGTH}
                                 placeholder="z. B. Bitte leiser"
@@ -4118,7 +4195,7 @@ export function StationIntercomView({
                             <label className="streamdeck-control">
                               <span>Senden an</span>
                               <select
-                                aria-label="Stream Deck chat target"
+                                aria-label="Chat-Ziel der Taste"
                                 value={streamDeckSelectedButton.action.roomId || ""}
                                 onChange={(event) =>
                                   updateStreamDeckSelectedButton((button) => ({
@@ -4150,7 +4227,7 @@ export function StationIntercomView({
                           <label className="streamdeck-control">
                             <span>Zielseite</span>
                             <select
-                              aria-label="Stream Deck jump target page"
+                              aria-label="Zielseite der Taste"
                               value={String(
                                 streamDeckSelectedButton.action.targetPage ?? 0,
                               )}
@@ -4284,8 +4361,8 @@ export function StationIntercomView({
                 >
                   <SettingsSectionHeader
                     icon="audio"
-                    eyebrow="Audio"
-                    title="Sound"
+                    eyebrow="Ton"
+                    title="Ton & Mikrofon"
                   />
                 <div className={`audio-box ${isAudioOpen ? "" : "collapsed"}`}>
                   <div className="audio-box-header">
@@ -4295,7 +4372,7 @@ export function StationIntercomView({
                       onClick={() => setIsAudioOpen((v) => !v)}
                       aria-expanded={isAudioOpen}
                     >
-                      Sound settings
+                      Ton-Einstellungen
                       <ChevronIcon className={`chev ${isAudioOpen ? "open" : ""}`} />
                     </button>
                   </div>
@@ -4312,7 +4389,7 @@ export function StationIntercomView({
                           }
                           aria-expanded={isPersonalAudioOpen}
                         >
-                          My audio
+                          Mein Ton
                           <ChevronIcon
                             className={`chev ${isPersonalAudioOpen ? "open" : ""}`}
                           />
@@ -4322,8 +4399,8 @@ export function StationIntercomView({
                             <div className="audio-device-card audio-device-card-input">
                               <div className="audio-card-head">
                                 <div>
-                                  <span>Input</span>
-                                  <h4>Microphone</h4>
+                                  <span>Eingang</span>
+                                  <h4>Mikrofon</h4>
                                 </div>
                                 <span
                                   className={`audio-status-pill ${
@@ -4335,17 +4412,17 @@ export function StationIntercomView({
                                   }`}
                                 >
                                   {audioControlsLowPowerMode
-                                    ? "Meter paused"
+                                    ? "Anzeige pausiert"
                                     : inputClipping
-                                      ? "Clipping"
-                                      : "Ready"}
+                                      ? "Übersteuert"
+                                      : "Bereit"}
                                 </span>
                               </div>
 
                               <div className="audio-control-grid">
                                 <div className="audio-control audio-control-device">
                                   <span className="audio-control-label">
-                                    Device
+                                    Gerät
                                   </span>
                                   <div className="mic-dropdown" ref={micMenuRef}>
                                     <button
@@ -4377,11 +4454,11 @@ export function StationIntercomView({
                                             }}
                                             title={
                                               d.label ||
-                                              `Mic ${d.deviceId.slice(0, 6)}`
+                                              `Mikrofon ${d.deviceId.slice(0, 6)}`
                                             }
                                           >
                                             {d.label ||
-                                              `Mic ${d.deviceId.slice(0, 6)}`}
+                                              `Mikrofon ${d.deviceId.slice(0, 6)}`}
                                           </button>
                                         ))}
                                       </div>
@@ -4390,9 +4467,9 @@ export function StationIntercomView({
                                 </div>
 
                                 <label className="input-channel-control audio-control">
-                                  <span>Interface input</span>
+                                  <span>Eingang am Interface</span>
                                   <select
-                                    aria-label="Interface input"
+                                    aria-label="Eingang am Interface"
                                     value={selectedInputChannelValue}
                                     onChange={(event) =>
                                       onSelectedInputChannelChange(
@@ -4411,15 +4488,14 @@ export function StationIntercomView({
                                               key={`input-channel-${index + 1}`}
                                               value={index + 1}
                                             >
-                                              Input {index + 1}
+                                              Eingang {index + 1}
                                             </option>
                                           ),
                                         )
                                       : null}
                                   </select>
                                   <small>
-                                    Choose the physical input on the selected USB
-                                    interface.
+                                    Wähle den Eingang am gewählten USB-Interface.
                                   </small>
                                 </label>
                               </div>
@@ -4431,11 +4507,11 @@ export function StationIntercomView({
                                     aria-live="polite"
                                   >
                                     <div className="input-level-head">
-                                      <small>Input level</small>
-                                      <strong>paused</strong>
+                                      <small>Eingangspegel</small>
+                                      <strong>pausiert</strong>
                                     </div>
                                     <small className="input-level-status is-ok">
-                                      Low power mode keeps metering off.
+                                      Im Stromsparmodus ist die Pegelanzeige aus.
                                     </small>
                                   </div>
                                 ) : (
@@ -4444,7 +4520,7 @@ export function StationIntercomView({
                                     aria-live="polite"
                                   >
                                     <div className="input-level-head">
-                                      <small>Input level</small>
+                                      <small>Eingangspegel</small>
                                       <strong>
                                         {formatDbFs(inputLevelDbFs)}
                                       </strong>
@@ -4461,8 +4537,8 @@ export function StationIntercomView({
                                       className={`input-level-status ${inputClipping ? "is-clipping" : "is-ok"}`}
                                     >
                                       {inputClipping
-                                        ? "audio clipping"
-                                        : "audio level ok"}
+                                        ? "Ton übersteuert"
+                                        : "Pegel in Ordnung"}
                                     </small>
                                   </div>
                                 )}
@@ -4471,7 +4547,7 @@ export function StationIntercomView({
                               <div className="audio-utility-grid">
                                 <div className="local-monitor-control audio-test-card">
                                   <small className="local-monitor-hint">
-                                    Use headphones before starting the test.
+                                    Setz vor dem Test Kopfhörer auf.
                                   </small>
                                   <button
                                     type="button"
@@ -4480,22 +4556,22 @@ export function StationIntercomView({
                                     onClick={onToggleLocalMonitor}
                                   >
                                     {audioControlsLowPowerMode
-                                      ? "Audio test paused"
+                                      ? "Tontest pausiert"
                                       : isLocalMonitorActive
-                                        ? "Stop audio test"
-                                        : "Test microphone"}
+                                        ? "Tontest beenden"
+                                        : "Mikrofon testen"}
                                   </button>
                                   {isLocalMonitorActive ? (
                                     <small className="local-monitor-status">
-                                      You are hearing yourself - adjust headset
-                                      and check gain.
+                                      Du hörst dich jetzt selbst – Headset
+                                      richten und Verstärkung prüfen.
                                     </small>
                                   ) : null}
                                 </div>
 
                                 <div className="station-gain-control input-gain-control audio-slider-card">
                                   <label htmlFor="input-gain">
-                                    <span>Input gain</span>
+                                    <span>Verstärkung</span>
                                     <strong>
                                       {gainToDbLabel(inputGain, INPUT_DB_MAX)}
                                     </strong>
@@ -4521,7 +4597,7 @@ export function StationIntercomView({
                                         ),
                                       )
                                     }
-                                    aria-label="Input gain"
+                                    aria-label="Verstärkung"
                                   />
                                 </div>
                               </div>
@@ -4530,13 +4606,13 @@ export function StationIntercomView({
                             <div className="audio-device-card audio-device-card-output">
                               <div className="audio-card-head">
                                 <div>
-                                  <span>Output</span>
-                                  <h4>Speaker</h4>
+                                  <span>Ausgang</span>
+                                  <h4>Lautsprecher</h4>
                                 </div>
                               </div>
                               <div className="audio-control audio-control-device">
                                 <span className="audio-control-label">
-                                  Device
+                                  Gerät
                                 </span>
                                 <div className="mic-dropdown" ref={outputMenuRef}>
                                   <button
@@ -4564,9 +4640,9 @@ export function StationIntercomView({
                                           setSelectedOutputDeviceId("");
                                           setIsOutputMenuOpen(false);
                                         }}
-                                        title="System default"
+                                        title="Standard des Systems"
                                       >
-                                        System default
+                                        Standard des Systems
                                       </button>
                                       {outputDevices.map((d) => (
                                         <button
@@ -4581,11 +4657,11 @@ export function StationIntercomView({
                                           }}
                                           title={
                                             d.label ||
-                                            `Output ${d.deviceId.slice(0, 6)}`
+                                            `Ausgang ${d.deviceId.slice(0, 6)}`
                                           }
                                         >
                                           {d.label ||
-                                            `Output ${d.deviceId.slice(0, 6)}`}
+                                            `Ausgang ${d.deviceId.slice(0, 6)}`}
                                         </button>
                                       ))}
                                     </div>
@@ -4593,8 +4669,8 @@ export function StationIntercomView({
                                 </div>
                                 {!outputSelectionSupported ? (
                                   <small>
-                                    Explicit speaker selection is not supported
-                                    by this browser; using system default output.
+                                    Dieser Browser kann den Lautsprecher nicht
+                                    wählen; es wird der Standard des Systems genutzt.
                                   </small>
                                 ) : null}
                               </div>
@@ -4611,13 +4687,13 @@ export function StationIntercomView({
                             >
                               <div className="audio-gate-header">
                                 <div>
-                                  <span>Processor</span>
-                                  <h4>Noise gate</h4>
+                                  <span>Bearbeitung</span>
+                                  <h4>Rauschsperre</h4>
                                 </div>
                                 <label className="audio-gate-switch">
                                   <input
                                     type="checkbox"
-                                    aria-label="Noise gate"
+                                    aria-label="Rauschsperre"
                                     checked={
                                       audioControlsLowPowerMode
                                         ? false
@@ -4637,17 +4713,17 @@ export function StationIntercomView({
                                 </label>
                               </div>
                               <p className="audio-gate-copy">
-                                Cuts low-level background noise before mic gain.
+                                Blendet leise Hintergrundgeräusche vor der Verstärkung aus.
                               </p>
                               <div className="audio-gate-readout">
-                                <span>Threshold</span>
+                                <span>Schwelle</span>
                                 <strong>
                                   {formatGateThresholdDb(audioGateThresholdDb)}
                                 </strong>
                               </div>
                               <div className="station-gain-control input-gain-control audio-gate-slider">
                                 <label htmlFor="input-gate-threshold">
-                                  <span>Gate threshold</span>
+                                  <span>Schwelle der Rauschsperre</span>
                                   <strong>
                                     {formatGateThresholdDb(
                                       audioGateThresholdDb,
@@ -4674,19 +4750,19 @@ export function StationIntercomView({
                                       Number(event.currentTarget.value),
                                     )
                                   }
-                                  aria-label="Microphone gate threshold"
+                                  aria-label="Schwelle der Rauschsperre"
                                 />
                               </div>
                               <div className="audio-gate-scale" aria-hidden="true">
-                                <span>Open</span>
-                                <span>Tight</span>
+                                <span>Offen</span>
+                                <span>Streng</span>
                               </div>
                               <small className="audio-gate-status">
                                 {audioControlsLowPowerMode
-                                  ? "Low power mode keeps gate off."
+                                  ? "Im Stromsparmodus ist die Rauschsperre aus."
                                   : audioGateEnabled
-                                    ? "Gate active"
-                                    : "Gate bypassed"}
+                                    ? "Rauschsperre aktiv"
+                                    : "Rauschsperre aus"}
                               </small>
                             </div>
                           </div>
@@ -4704,7 +4780,7 @@ export function StationIntercomView({
                           }
                           aria-expanded={isChannelAudioFeedsOpen}
                         >
-                          Channel audio feeds
+                          Audio-Zuspielungen
                           <ChevronIcon
                             className={`chev ${isChannelAudioFeedsOpen ? "open" : ""}`}
                           />
@@ -4713,10 +4789,10 @@ export function StationIntercomView({
                           <div className="audio-subsection-body channel-audio-feed-section">
                             <div className="channel-audio-feed-toolbar">
                               <div>
-                                <strong>Channel audio feeds</strong>
+                                <strong>Audio-Zuspielungen</strong>
                                 <small>
-                                  Only feeds created by your current role are
-                                  shown here.
+                                  Hier stehen nur Zuspielungen deiner aktuellen
+                                  Rolle.
                                 </small>
                               </div>
                               <button
@@ -4729,7 +4805,7 @@ export function StationIntercomView({
                             </div>
                             {channelAudioFeeds.length === 0 ? (
                               <p className="station-empty">
-                                No audio feeds created for this role yet.
+                                Für diese Rolle gibt es noch keine Zuspielungen.
                               </p>
                             ) : (
                               <div className="channel-audio-feed-list">
@@ -4742,7 +4818,7 @@ export function StationIntercomView({
                                   const inputLabel =
                                     inputValue === "all"
                                       ? feedAllInputsLabel(inputCount)
-                                      : `Input ${inputValue}`;
+                                      : `Eingang ${inputValue}`;
                                   const status =
                                     channelAudioFeedStatusById.get(feed.id);
                                   return (
@@ -4752,7 +4828,7 @@ export function StationIntercomView({
                                     >
                                       <div className="channel-audio-feed-summary-main">
                                         <strong>
-                                          {feed.name || "Untitled feed"}
+                                          {feed.name || "Feed ohne Namen"}
                                         </strong>
                                         <small>
                                           {feedRoomLabel(feed.roomId)}
@@ -4770,13 +4846,13 @@ export function StationIntercomView({
                                           {status?.state === "live"
                                             ? "Live"
                                             : status?.state === "starting"
-                                              ? "Starting"
+                                              ? "Startet"
                                               : status?.state === "error"
                                                 ? status.message ||
-                                                  "Feed error"
+                                                  "Fehler"
                                                 : feed.enabled
-                                                  ? "Ready"
-                                                  : "Paused"}
+                                                  ? "Bereit"
+                                                  : "Pausiert"}
                                         </span>
                                       </div>
 
@@ -4788,7 +4864,7 @@ export function StationIntercomView({
                                             openChannelAudioFeedEditor(feed)
                                           }
                                         >
-                                          Edit
+                                          Bearbeiten
                                         </button>
                                         <button
                                           type="button"
@@ -4797,7 +4873,7 @@ export function StationIntercomView({
                                             onRemoveChannelAudioFeed(feed.id)
                                           }
                                         >
-                                          Remove
+                                          Entfernen
                                         </button>
                                       </div>
                                     </article>
@@ -4838,8 +4914,9 @@ export function StationIntercomView({
                                           : "Feed bearbeiten"}
                                       </h4>
                                       <p>
-                                        Configure the feed input and the role
-                                        permissions for its talk channel.
+                                        Lege den Eingang fest und welche Rollen
+                                        auf dem zugehörigen Sprechkanal senden
+                                        und hören dürfen.
                                       </p>
                                     </div>
                                     <button
@@ -4849,7 +4926,7 @@ export function StationIntercomView({
                                         setChannelAudioFeedEditor(null)
                                       }
                                       disabled={channelAudioFeedSaveBusy}
-                                      aria-label="Close feed editor"
+                                      aria-label="Fenster schließen"
                                     >
                                       <CloseIcon />
                                     </button>
@@ -4857,7 +4934,7 @@ export function StationIntercomView({
 
                                   <div className="channel-audio-feed-editor-fields">
                                     <label className="streamdeck-control channel-audio-feed-name-control">
-                                      <span>Feed name *</span>
+                                      <span>Name der Zuspielung *</span>
                                       <input
                                         type="text"
                                         value={channelAudioFeedEditor.name}
@@ -4866,7 +4943,7 @@ export function StationIntercomView({
                                             name: event.currentTarget.value,
                                           })
                                         }
-                                        placeholder="Music feed"
+                                        placeholder="z. B. Musik"
                                         aria-invalid={
                                           channelAudioFeedSaveError !== "" &&
                                           channelAudioFeedEditor.name.trim() === ""
@@ -4875,19 +4952,19 @@ export function StationIntercomView({
                                     </label>
 
                                     <div className="channel-audio-feed-derived-room">
-                                      <span>Talk channel</span>
+                                      <span>Sprechkanal</span>
                                       <strong>
                                         {channelAudioFeedEditor.name.trim() ||
-                                          "Same as feed name"}
+                                          "Wie der Name der Zuspielung"}
                                       </strong>
                                       <small>
-                                        The talk channel is named automatically
-                                        from the feed name.
+                                        Der Sprechkanal bekommt automatisch den
+                                        Namen der Zuspielung.
                                       </small>
                                     </div>
 
                                     <label className="streamdeck-control">
-                                      <span>Input device</span>
+                                      <span>Eingangsgerät</span>
                                       <select
                                         value={
                                           channelAudioFeedEditor.inputDeviceId
@@ -4900,23 +4977,23 @@ export function StationIntercomView({
                                           })
                                         }
                                       >
-                                        <option value="">System default</option>
+                                        <option value="">Standard des Systems</option>
                                         {inputDevices.map((device) => (
                                           <option
                                             key={device.deviceId}
                                             value={device.deviceId}
                                           >
                                             {device.label ||
-                                              `Input ${device.deviceId.slice(0, 6)}`}
+                                              `Eingang ${device.deviceId.slice(0, 6)}`}
                                           </option>
                                         ))}
                                       </select>
                                     </label>
 
                                     <label className="streamdeck-control">
-                                      <span>Interface input</span>
+                                      <span>Eingang am Interface</span>
                                       <select
-                                        aria-label="Interface input"
+                                        aria-label="Eingang am Interface"
                                         value={channelAudioFeedEditorInputValue}
                                         onChange={(event) =>
                                           updateChannelAudioFeedEditor({
@@ -4946,7 +5023,7 @@ export function StationIntercomView({
                                                   key={`feed-editor-input-${channelIndex + 1}`}
                                                   value={channelIndex + 1}
                                                 >
-                                                  Input {channelIndex + 1}
+                                                  Eingang {channelIndex + 1}
                                                 </option>
                                               ),
                                             )
@@ -4955,7 +5032,7 @@ export function StationIntercomView({
                                     </label>
 
                                     <label className="streamdeck-control">
-                                      <span>Priority</span>
+                                      <span>Priorität</span>
                                       <select
                                         value={
                                           channelAudioFeedEditor.priorityLevel
@@ -4968,10 +5045,10 @@ export function StationIntercomView({
                                           })
                                         }
                                       >
-                                        <option value={0}>Low</option>
+                                        <option value={0}>Niedrig</option>
                                         <option value={1}>Normal</option>
-                                        <option value={2}>High</option>
-                                        <option value={3}>Critical</option>
+                                        <option value={2}>Hoch</option>
+                                        <option value={3}>Kritisch</option>
                                       </select>
                                     </label>
 
@@ -4986,7 +5063,7 @@ export function StationIntercomView({
                                           })
                                         }
                                       />
-                                      <span>Send</span>
+                                      <span>Senden</span>
                                     </label>
                                   </div>
 
@@ -5020,16 +5097,16 @@ export function StationIntercomView({
                                           ),
                                         })
                                       }
-                                      aria-label="Feed gain"
+                                      aria-label="Verstärkung der Zuspielung"
                                     />
                                   </div>
 
                                   <div className="channel-audio-room-role-grid">
                                     {(
                                       [
-                                        ["senderRoleIds", "Can send"],
-                                        ["receiverRoleIds", "Can listen"],
-                                        ["forcedListenRoleIds", "Forced listen"],
+                                        ["senderRoleIds", "Darf senden"],
+                                        ["receiverRoleIds", "Darf hören"],
+                                        ["forcedListenRoleIds", "Hört immer"],
                                       ] as const
                                     ).map(([key, label]) => (
                                       <fieldset
@@ -5051,7 +5128,7 @@ export function StationIntercomView({
                                               }`}
                                               title={
                                                 isRequiredSenderRole
-                                                  ? "Your role must be allowed to send this feed."
+                                                  ? "Deine Rolle muss diese Zuspielung senden dürfen."
                                                   : undefined
                                               }
                                             >
@@ -5094,7 +5171,7 @@ export function StationIntercomView({
                                       }
                                       disabled={channelAudioFeedSaveBusy}
                                     >
-                                      Cancel
+                                      Abbrechen
                                     </button>
                                     <button
                                       type="submit"
@@ -5102,8 +5179,8 @@ export function StationIntercomView({
                                       disabled={channelAudioFeedSaveBusy}
                                     >
                                       {channelAudioFeedSaveBusy
-                                        ? "Saving..."
-                                        : "Save"}
+                                        ? "Speichere …"
+                                        : "Speichern"}
                                     </button>
                                   </footer>
                                 </form>
@@ -5124,8 +5201,8 @@ export function StationIntercomView({
                 >
                   <SettingsSectionHeader
                     icon="info"
-                    eyebrow="Build"
-                    title="App Version"
+                    eyebrow="Programm"
+                    title="App-Version"
                   />
                   <div className="station-settings-version-grid">
                     <SettingsStatusCard
@@ -5133,7 +5210,7 @@ export function StationIntercomView({
                       value={appData.appVersion.version}
                     />
                     <SettingsStatusCard
-                      label="Built"
+                      label="Erstellt"
                       value={appData.appVersion.buildTimestamp}
                     />
                   </div>
@@ -5141,13 +5218,46 @@ export function StationIntercomView({
                 ) : null}
 
               <p className="station-modal-hint">
-                Preferences apply only to you on this device.
+                Diese Einstellungen gelten nur für dich auf diesem Gerät.
               </p>
-            </div>
-            </div>
-          </section>
-        </div>
+        </StationSettingsFrame>
       ) : null}
     </div>
+  );
+
+  if (!inShell || !shell) return stationView;
+  return (
+    <AppShell
+      user={shell.user}
+      fit={!isUserSettingsOpen}
+      items={[
+        {
+          id: "intercom",
+          label: "Intercom",
+          icon: "intercom",
+          active: !isUserSettingsOpen,
+          onSelect: () => setIsUserSettingsOpen(false),
+        },
+        {
+          id: "settings",
+          label: "Einstellungen",
+          icon: "settings",
+          active: isUserSettingsOpen,
+          onSelect: () => setIsUserSettingsOpen(true),
+        },
+      ]}
+      status={
+        <div className="k-station-status">
+          <div className="k-station-who">
+            <strong>{stationRoleLabel}</strong>
+            <span>{stationLiveLabel}</span>
+          </div>
+          {liveBadge}
+          {micStats}
+        </div>
+      }
+    >
+      {stationView}
+    </AppShell>
   );
 }
