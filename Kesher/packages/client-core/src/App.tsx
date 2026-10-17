@@ -3128,10 +3128,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         onLogin={() => void handleOperatorLogin()}
         adminPin={adminPinInput}
         initialMode={
-          authMode === "admin"
-            ? "admin"
-            : raspberryRemoteLogin
-              ? "raspberry"
+          // „Raspberry fernsteuern“ vom Dashboard zeigt nur die Stationen – auch für den Admin
+          raspberryRemoteLogin
+            ? "raspberry"
+            : authMode === "admin"
+              ? "admin"
               : "operator"
         }
         onAdminPinChange={setAdminPinInput}
