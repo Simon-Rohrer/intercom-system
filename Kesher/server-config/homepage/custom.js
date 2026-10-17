@@ -51,6 +51,32 @@
     root.setProperty('--jms-accent', wp.accent)
   } catch {}
 
+  // Kopf wie bei macOS: „Guten Tag, Name“ mit Datum und Uhrzeit; Suche auf Deutsch
+  const head = document.createElement('header')
+  head.className = 'jms-head'
+  head.innerHTML = '<h1></h1><p></p>'
+  const firstName = me && me.user && !me.user.open ? String(me.user.name || '').trim().split(/\s+/)[0] : ''
+  const tick = () => {
+    const now = new Date()
+    const h = now.getHours()
+    const greet = h < 5 ? 'Gute Nacht' : h < 11 ? 'Guten Morgen' : h < 18 ? 'Guten Tag' : 'Guten Abend'
+    head.querySelector('h1').textContent = firstName ? `${greet}, ${firstName}` : greet
+    head.querySelector('p').textContent =
+      now.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }) +
+      ' · ' +
+      now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+  }
+  tick()
+  setInterval(tick, 15000)
+  const placeHead = () => {
+    const top = document.getElementById('information-widgets')
+    if (top && head.nextElementSibling !== top) top.before(head)
+    const input = document.querySelector('.information-widget-search input')
+    if (input && input.placeholder !== 'Suchen') input.placeholder = 'Suchen'
+  }
+  new MutationObserver(placeHead).observe(document.body, { childList: true, subtree: true })
+  placeHead()
+
   // Konto-Leiste unten links wie in allen anderen Diensten (JMS Control, Intercom, Companion …):
   // wer angemeldet ist, Konto wechseln, Abmelden – kommt aus dem Multiview (/.jms-auth/jms-bar.js)
   if (me && me.user && !me.user.open) {
