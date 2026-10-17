@@ -4,6 +4,10 @@
 // sonntags hat der Morgen Vorrang. Die Daten kommen vom Multiview-Server.
 
 const views = new Set()
+// Aufgeklappte Punkte (ChurchTools-IDs), bleiben beim Neuzeichnen offen
+const openItems = new Set()
+// Nach Klick oder eigenem Scrollen so lange nicht automatisch mitscrollen
+const MANUAL_MS = 30 * 1000
 
 function el(tag, className, text) {
   const node = document.createElement(tag)
@@ -107,6 +111,8 @@ export function createAgendaView(tile) {
     next: !tile.ctDate && tile.ctMode === 'next',
     responsible: tile.ctResponsible !== false,
     notes: tile.ctNotes === true,
+    songInfo: tile.ctSongInfo !== false,
+    ccli: tile.ctCcli !== false,
   }
   const root = el('div', 'agenda')
   const header = el('header', 'agenda-header')
@@ -124,6 +130,35 @@ export function createAgendaView(tile) {
   let rows = [] // { li, item, bar }
   let live = false // nur beim heutigen Tag: laufenden Punkt markieren
   let shownId = null // gezeigtes Event, um beim Weiterrücken neu zu zeichnen
+  let manualUntil = 0 // bis dahin kein automatisches Mitscrollen
+
+  function pauseFollow() {
+    manualUntil = Date.now() + MANUAL_MS
+  }
+
+  /** Was beim Aufklappen erscheint: Programmspalten und ausgeblendete Angaben */
+  function details(item) {
+    const lines = (item.columns || []).map((c) => [c.group, c.note])
+    if (!options.responsible && item.responsible) lines.unshift(['Verantwortlich', item.responsible])
+    if (!options.notes && item.note) lines.push(['Notiz', item.note])
+    if (item.song) {
+      if (!options.songInfo) {
+        const facts = [item.song.key && `Tonart ${item.song.key}`, item.song.arrangement].filter(Boolean)
+        if (facts.length) lines.push(['Song', facts.join(' · ')])
+      }
+      if (!options.ccli && item.song.ccli) lines.push(['CCLI', item.song.ccli])
+    }
+    return lines
+  }
+
+  function toggle(row) {
+    const open = !openItems.has(row.item.id)
+    if (open) openItems.add(row.item.id)
+    else openItems.delete(row.item.id)
+    row.li.classList.toggle('open', open)
+    row.li.setAttribute('aria-expanded', String(open))
+    pauseFollow()
+  }
 
   function message(text) {
     rows = []
@@ -206,19 +241,48 @@ export function createAgendaView(tile) {
       const title = el('div', 'agenda-item-title')
       title.append(el('span', null, item.title))
       if (item.song) {
-        const facts = [item.song.key && `Tonart ${item.song.key}`, item.song.arrangement].filter(Boolean)
+        const facts = options.songInfo ? [item.song.key && `Tonart ${item.song.key}`, item.song.arrangement].filter(Boolean) : []
         if (facts.length) title.append(el('span', 'agenda-song', facts.join(' · ')))
+        if (options.ccli && item.song.ccli) title.append(el('span', 'agenda-ccli', `CCLI ${item.song.ccli}`))
       }
       main.append(title)
       if (options.responsible && item.responsible) main.append(el('div', 'agenda-resp', item.responsible))
       if (options.notes && item.note) main.append(el('div', 'agenda-note', item.note))
+      const lines = details(item)
+      if (lines.length) {
+        const sub = el('dl', 'agenda-sub')
+        for (const line of lines) sub.append(el('dt', null, line[0]), el('dd', null, line[1]))
+        main.append(sub)
+      }
       const bar = el('span', 'agenda-progress')
       li.append(el('span', 'agenda-time', fmtTime(item.start, tz)), main, el('span', 'agenda-dur', fmtDuration(item.duration)), bar)
       list.append(li)
-      rows.push({ li, item, bar })
+      const row = { li, item, bar }
+      rows.push(row)
+      if (lines.length) {
+        li.classList.add('has-sub')
+        li.tabIndex = 0
+        li.setAttribute('role', 'button')
+        const open = openItems.has(item.id)
+        li.classList.toggle('open', open)
+        li.setAttribute('aria-expanded', String(open))
+        li.addEventListener('click', () => toggle(row))
+        li.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return
+          e.preventDefault()
+          toggle(row)
+        })
+      }
     }
+    // Eigenes Scrollen (Rad, Wischen) hält das Mitscrollen kurz an
+    list.addEventListener('wheel', pauseFollow, { passive: true })
+    list.addEventListener('touchstart', pauseFollow, { passive: true })
+    const keepScroll = body.querySelector('.agenda-list')?.scrollTop
     body.replaceChildren(list)
-    tick(true)
+    if (keepScroll != null && Date.now() < manualUntil) {
+      list.scrollTop = keepScroll
+      tick()
+    } else tick(true)
   }
 
   /** Laufenden Punkt markieren, erledigte abdunkeln, mitscrollen. */
@@ -251,7 +315,7 @@ export function createAgendaView(tile) {
     }
     const list = rows[0].li.parentElement
     const target = current || rows.find((r) => !r.li.classList.contains('done') && r.item.type !== 'header')
-    if (!list || !target) return
+    if (!list || !target || (!force && Date.now() < manualUntil)) return
     // Den vorherigen Punkt noch sichtbar lassen
     const index = rows.indexOf(target)
     const anchor = rows[Math.max(0, index - 1)].li

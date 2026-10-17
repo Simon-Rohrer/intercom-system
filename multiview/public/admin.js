@@ -1197,7 +1197,7 @@ function syncTileMedia(el, tile) {
     tile.kind === 'chat'
       ? JSON.stringify(['chat', tile.chatRole ?? '', chatOptions(tile.chat)])
       : tile.kind === 'churchtools'
-        ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctDate, tile.ctMode])
+        ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctSongInfo, tile.ctCcli, tile.ctDate, tile.ctMode])
         : livePreview && source
         ? JSON.stringify([source.type, source.device, source.url, source.name])
         : ''
@@ -1841,7 +1841,9 @@ function tileInspector(tile, layout) {
       <label class="field"><span>Event (Name oder Kalender enthält, leer = laufendes/nächstes)</span><input type="text" data-t="ctFilter" value="${esc(tile.ctFilter)}" placeholder="z. B. Gottesdienst"></label>
       <label class="check"><input type="checkbox" data-t="ctResponsible" ${tile.ctResponsible !== false ? 'checked' : ''}> Verantwortliche anzeigen</label>
       <label class="check"><input type="checkbox" data-t="ctNotes" ${tile.ctNotes === true ? 'checked' : ''}> Notizen anzeigen</label>
-      <p class="muted">Zeigt den Ablauf eines Events aus ChurchTools. <b>Heute</b>: das laufende, sonst das nächste Event von heute. <b>Nächstes Event</b>: das laufende, sonst das nächste – auch an späteren Tagen (bis 6 Wochen voraus). <b>Festes Datum</b>: nur dieser Tag. Events ohne Ablauf erscheinen mit „Kein Ablauf hinterlegt“. Verbindung unter <a href="#/einstellungen/churchtools">Einstellungen</a>.</p>`
+      <label class="check"><input type="checkbox" data-t="ctSongInfo" ${tile.ctSongInfo !== false ? 'checked' : ''}> Tonart und Arrangement bei Songs</label>
+      <label class="check"><input type="checkbox" data-t="ctCcli" ${tile.ctCcli !== false ? 'checked' : ''}> CCLI-Nummer bei Songs</label>
+      <p class="muted">Zeigt den Ablauf eines Events aus ChurchTools. <b>Heute</b>: das laufende, sonst das nächste Event von heute. <b>Nächstes Event</b>: das laufende, sonst das nächste – auch an späteren Tagen (bis 6 Wochen voraus). <b>Festes Datum</b>: nur dieser Tag. Events ohne Ablauf erscheinen mit „Kein Ablauf hinterlegt“. Ein Klick auf einen Punkt klappt die Programmspalten auf. Die CCLI-Nummer braucht im ChurchTools-Benutzer Leserecht auf Songs. Verbindung unter <a href="#/einstellungen/churchtools">Einstellungen</a>.</p>`
         : ''
     }
     ${kind === 'chat' ? chatSection(tile) : ''}
@@ -2014,6 +2016,8 @@ function onInspectorField(e) {
     key === 'showMeter' ||
     key === 'ctResponsible' ||
     key === 'ctNotes' ||
+    key === 'ctSongInfo' ||
+    key === 'ctCcli' ||
     key === 'kesherTakeover' ||
     key === 'kesherHideControls' ||
     key === 'chatInput'
