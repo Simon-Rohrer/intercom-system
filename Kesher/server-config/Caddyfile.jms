@@ -299,7 +299,7 @@ https://192.168.0.21:8250 {
 # Namens-Adressen (bisher schon vorhanden, Ziele jetzt über 127.0.0.1)
 # ---------------------------------------------------------------------------
 
-https://intercom.jms.de, https://kesher.jms.de, https://intercom.local, https://kesher.local {
+https://intercom.internal, https://kesher.internal, https://intercom.jms.de, https://kesher.jms.de, https://intercom.local, https://kesher.local {
 	import jms_tls
 	import jms_auth kesher
 	reverse_proxy 127.0.0.1:8080 {
@@ -307,14 +307,14 @@ https://intercom.jms.de, https://kesher.jms.de, https://intercom.local, https://
 	}
 }
 
-https://multiview.jms.de, https://jmscontrol.local {
+https://jmscontrol.internal, https://multiview.internal, https://multiview.jms.de, https://jmscontrol.local {
 	import jms_tls
 	reverse_proxy 127.0.0.1:8090 {
 		import jms_node
 	}
 }
 
-https://dashboard.jms.de, https://dashboard.local, https://technik.local {
+https://technik.internal, https://dashboard.internal, https://dashboard.jms.de, https://dashboard.local, https://technik.local {
 	import jms_tls
 	import jms_auth dashboard
 	import dashboard_no_cache
@@ -323,7 +323,7 @@ https://dashboard.jms.de, https://dashboard.local, https://technik.local {
 	}
 }
 
-https://companion.jms.de, https://companion.local {
+https://companion.internal, https://companion.jms.de, https://companion.local {
 	import jms_tls
 	import jms_auth companion
 	import jms_watch companion
@@ -332,7 +332,7 @@ https://companion.jms.de, https://companion.local {
 	}
 }
 
-https://glances.jms.de, https://glances.local {
+https://glances.internal, https://glances.jms.de, https://glances.local {
 	import jms_tls
 	import jms_auth glances
 	import jms_watch glances
@@ -341,7 +341,7 @@ https://glances.jms.de, https://glances.local {
 	}
 }
 
-https://portainer.jms.de, https://portainer.local {
+https://portainer.internal, https://portainer.jms.de, https://portainer.local {
 	import jms_tls
 	import jms_auth portainer
 	import jms_watch portainer
@@ -353,7 +353,7 @@ https://portainer.jms.de, https://portainer.local {
 	}
 }
 
-https://dns.jms.de, https://dns.local {
+https://dns.internal, https://dns.jms.de, https://dns.local {
 	import jms_tls
 	import jms_auth dns
 	import jms_watch dns
@@ -362,13 +362,19 @@ https://dns.jms.de, https://dns.local {
 	}
 }
 
-https://router.jms.de, https://router.local {
+https://router.internal, https://router.jms.de, https://router.local {
 	import jms_tls
 	import jms_auth router
 	import jms_router
 }
 
-http://setup.local {
+http://setup.internal, http://setup.local {
+	root * /srv/homelab-setup
+	file_server
+}
+
+https://setup.internal {
+	import jms_tls
 	root * /srv/homelab-setup
 	file_server
 }
