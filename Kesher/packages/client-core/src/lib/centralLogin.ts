@@ -87,6 +87,20 @@ export async function centralAdminLogin(): Promise<LoginSuccess> {
   return (await res.json()) as LoginSuccess;
 }
 
+/**
+ * The JMS dashboard under the same kind of address this page was opened with
+ * (IP → :3000, .local → technik.local, jms.de → dashboard.jms.de) – for the
+ * "back to dashboard" button.
+ */
+export function dashboardUrl(
+  loc: Pick<Location, "hostname"> = window.location,
+): string {
+  const host = loc.hostname;
+  if (/\.jms\.de$/i.test(host)) return "https://dashboard.jms.de/";
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return `https://${host}:3000/`;
+  return "https://technik.local/";
+}
+
 export function centralLoginUrl(next = "/"): string {
   return `${BASE}/login?next=${encodeURIComponent(next)}`;
 }
