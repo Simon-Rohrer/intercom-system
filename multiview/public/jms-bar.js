@@ -11,6 +11,7 @@
   function dashboardUrl() {
     var h = location.hostname
     if (/\.jms\.de$/.test(h)) return 'https://dashboard.jms.de/'
+    if (/\.internal$/.test(h)) return 'https://technik.internal/'
     if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return 'https://' + h + ':3000/'
     return 'https://technik.local/'
   }

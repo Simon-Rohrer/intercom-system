@@ -2,6 +2,7 @@
 // Die Adresse passt sich daran an, wie JMS Control gerade aufgerufen wurde:
 //   …local  → Namen im lokalen Netz (technik.local, intercom.local …)
 //   …jms.de → die jms.de-Namen, wo es sie gibt
+//   …internal → dieselben Namen mit .internal (auch über Tailscale)
 //   IP      → dieselbe IP mit dem Port des Dienstes (z. B. https://192.168.0.21:3000)
 
 export const SERVICE_GROUPS = [
@@ -38,6 +39,8 @@ const isIp = (h) => /^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h === 'localhost'
 export function serviceUrl(service, hostname = location.hostname) {
   const path = service.path || '/'
   if (hostname.endsWith('.jms.de') && service.jms) return `https://${service.jms}${path}`
+  // …internal: dieselben Namen wie .local (geht auch über Tailscale, siehe Caddyfile)
+  if (hostname.endsWith('.internal')) return `https://${service.host.replace(/\.local$/, '.internal')}${path}`
   if (isIp(hostname) && service.port) return `https://${hostname}:${service.port}${path}`
   return `https://${service.host}${path}`
 }
