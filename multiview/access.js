@@ -1,22 +1,15 @@
 'use strict'
 
-// Benutzer und Rechte – angelehnt an Kesher: Man meldet sich mit Namen und einer Kesher-Rolle
-// an (ohne Passwort). Was eine Rolle darf, steht in config.access.roles. Nur der Admin hat eine
-// PIN – entweder dieselbe wie im Kesher-Admin (wird dann bei Kesher geprüft, hier nicht
-// gespeichert) oder eine eigene. Solange keine Admin-PIN eingerichtet ist, ist der Zugang offen
-// (alle dürfen alles), damit beim Einschalten niemand ausgesperrt wird.
-//
-// Geheimes (PIN-Hash, Sitzungen) liegt in data/access-secret.json, nicht in config.json –
-// die Konfiguration ist für die Monitor-Seiten ohne Anmeldung lesbar.
-
 const fs = require('fs')
-const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
+const net = require('net')
 
 const COOKIE = 'mv_session'
 const DEVICE_COOKIE = 'jms_device'
-const SESSION_DAYS = 30
+const SECURITY_FORMAT = 3
+const MACHINE_SERVICES = new Set(['multiview', 'kesher', 'dashboard'])
+const MACHINE_CAPABILITIES = new Set(['display', 'day-code', 'pi-config', 'heartbeat', 'control', 'pi-manage', 'companion', 'satellite', 'chat-monitor', 'image-stream'])
 const QR_TTL_MS = 10 * 60 * 1000
 // Ticket für den Abgleich der Anmeldung zwischen den Adressen (nur für eine Weiterleitung)
 const SSO_TTL_MS = 60 * 1000
@@ -26,6 +19,9 @@ const TIME_ZONE = 'Europe/Berlin'
 const GRACE_UNTIL_HOUR = 5
 const CODE_MAX_FAILS = 8
 const CODE_FAIL_WINDOW_MS = 15 * 60 * 1000
+const PIN_MAX_FAILS = 8
+const PIN_FAIL_WINDOW_MS = 15 * 60 * 1000
+const MAX_FAIL_ENTRIES = 2048
 // Eine Rolle gilt als belegt, solange eine Seite von ihr offen ist (WebSocket) oder sie so
 // kurz zuvor noch etwas abgefragt hat
 const ACTIVE_MS = 2 * 60 * 1000
@@ -40,17 +36,21 @@ function hashPin(pin, salt = crypto.randomBytes(16).toString('hex')) {
   return { salt, hash: crypto.scryptSync(String(pin), salt, 32).toString('hex') }
 }
 
-function pinMatches(pin, stored) {
-  if (!stored?.salt || !stored?.hash) return false
-  const { hash } = hashPin(pin, stored.salt)
-  return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(stored.hash, 'hex'))
-}
-
 function parseCookies(header) {
-  const out = {}
+  const out = Object.create(null)
   for (const part of String(header || '').split(';')) {
-    const i = part.indexOf('=')
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim())
+    const separator = part.indexOf('=')
+    if (separator <= 0) continue
+    const name = part.slice(0, separator).trim()
+    if (Object.hasOwn(out, name)) {
+      out[name] = null
+      continue
+    }
+    try {
+      out[name] = decodeURIComponent(part.slice(separator + 1).trim())
+    } catch {
+      out[name] = null
+    }
   }
   return out
 }
@@ -65,7 +65,10 @@ function normalizeRole(r) {
   const ids = (list) => (Array.isArray(list) ? list.filter((id) => typeof id === 'string') : [])
   const outputs = ids(r?.outputs)
   const edit = Array.isArray(r?.edit) ? ids(r.edit).filter((id) => outputs.includes(id)) : [...outputs]
-  return { outputs, edit, editLayouts: r?.editLayouts !== false }
+  return {
+    outputs, edit, editLayouts: Boolean(r && typeof r === 'object' && r.editLayouts !== false),
+    controlSlides: r?.controlSlides === true,
+  }
 }
 
 function normalizeAccess(a) {
@@ -110,6 +113,23 @@ function previousDay(day) {
   return d.toISOString().slice(0, 10)
 }
 
+function nextMorning(now = Date.now()) {
+  const local = localTime(now)
+  const date = new Date(`${local.day}T12:00:00Z`)
+  if (local.hour >= GRACE_UNTIL_HOUR) date.setUTCDate(date.getUTCDate() + 1)
+  const target = Date.parse(`${date.toISOString().slice(0, 10)}T05:00:00Z`)
+  let instant = target
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+      timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(instant)).map((part) => [part.type, part.value]))
+    const represented = Date.parse(`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}Z`)
+    instant += target - represented
+  }
+  return instant
+}
+
 /** „192.168.0.50“, „192.168.0.0/24“ oder eine IPv6-Adresse; sonst null. */
 function parseNetwork(entry) {
   const text = String(entry ?? '').trim()
@@ -120,7 +140,7 @@ function parseNetwork(entry) {
     if (octets.some((o) => o > 255) || bits > 32) return null
     return { text, v4: ipv4ToInt(octets), bits }
   }
-  if (/^[0-9a-f:]+$/i.test(text) && text.includes(':')) return { text, v6: text.toLowerCase() }
+  if (net.isIP(text) === 6) return { text, v6: text.toLowerCase() }
   return null
 }
 
@@ -131,6 +151,7 @@ function ipv4ToInt(octets) {
 /** Gehört die Adresse zu einem der Netze? (IPv4 auch in der Schreibweise ::ffff:1.2.3.4) */
 function ipInNetworks(ip, networks) {
   const addr = String(ip ?? '').replace(/^::ffff:/i, '')
+  if (!net.isIP(addr)) return false
   const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(addr)
   return networks.some((n) => {
     if (n.v6) return !v4 && addr.toLowerCase() === n.v6
@@ -142,26 +163,10 @@ function ipInNetworks(ip, networks) {
 
 const isLoopback = (ip) => /^(127\.|::1$|::ffff:127\.)/.test(String(ip ?? ''))
 
-/**
- * Eine eigene Adresse des Servers? Der Multiview läuft mit network_mode host, sieht also alle
- * Netzwerkkarten. Was der Server selbst über Caddy anfragt (Companion → https://192.168.0.21:8443),
- * kommt mit seiner LAN-Adresse an, nicht als Loopback.
- */
-function isOwnAddress(ip) {
-  const addr = String(ip ?? '').replace(/^::ffff:/i, '').replace(/%.*$/, '').toLowerCase()
-  if (!addr) return false
-  return Object.values(os.networkInterfaces()).some((list) => (list ?? []).some((i) => i.address.toLowerCase() === addr))
-}
-
 function normalizeGateway(g) {
-  const exempt = (Array.isArray(g?.exempt) ? g.exempt : [])
-    // login: nur ohne Tagescode, Name und Rolle braucht es trotzdem (Arbeitsrechner statt Station)
-    .map((e) => ({ network: String(e?.network ?? e ?? '').trim(), label: String(e?.label ?? '').trim().slice(0, 60), login: Boolean(e?.login) }))
-    .filter((e) => parseNetwork(e.network))
   const startUrl = String(g?.startUrl ?? '').trim()
   return {
     enabled: Boolean(g?.enabled),
-    exempt,
     startUrl: /^https?:\/\/[^\s"'<>]+$/i.test(startUrl) ? startUrl.replace(/\/+$/, '') : '',
   }
 }
@@ -174,146 +179,473 @@ function createAccess({
   isLive = () => false,
   onRevoke = () => {},
   kesherActiveRoles = async () => [],
+  getRoles = () => [],
   ipOf = () => '',
-  // MAC-Adresse zur Geräteadresse (oder null): erkennt ein Gerät auch unter seiner anderen Adresse
-  macOf = () => null,
-  // Anmeldungen haben sich geändert (für die Liste beim Admin)
   onChange = () => {},
+  allowBootstrap = false,
 }) {
   const file = path.join(dataDir, 'access-secret.json')
-  // { adminPin: { salt, hash } | { kesher: true }, sessions: { sha256(token): session },
-  //   gateway: { enabled, exempt: [{ network, label, login }], startUrl }, dayCode: { day, code, gen, prevGen },
-  //   devices: { sha256(token): { gen, created, ip } } }
-  let secret = read()
-  const qrTokens = new Map() // sha256(token) -> { session, expires }
-  const codeFails = new Map() // IP -> { count, since }
+  const qrTokens = new Map()
+  const ssoTickets = new Map()
+  const roleLocks = new Map()
+  const pinPending = new Set()
+  let pinInFlight = 0
+  let pinTokens = 8
+  let pinRefilledAt = Date.now()
+  let adminRevision = 0
   let writeTimer = null
+  let bootstrapping = false
+  let secret = read()
+
+  const fail = (status, message) => Object.assign(new Error(message), { status })
+  const enabled = () => Boolean(secret.adminPin)
+  const pinSource = () => (!secret.adminPin ? null : secret.adminPin.kesher ? 'kesher' : 'own')
+  const gatewayActive = () => enabled() && secret.gateway.enabled
 
   function read() {
+    let loaded
     try {
-      const s = JSON.parse(fs.readFileSync(file, 'utf8'))
+      loaded = JSON.parse(fs.readFileSync(file, 'utf8'))
+    } catch (error) {
+      if (!allowBootstrap || error.code !== 'ENOENT')
+        throw new Error('Sicherheitsdaten fehlen oder sind nicht lesbar – Zugang bleibt gesperrt', { cause: error })
+      bootstrapping = true
       return {
-        adminPin: s.adminPin ?? null,
-        sessions: s.sessions ?? {},
-        gateway: normalizeGateway(s.gateway),
-        dayCode: s.dayCode ?? null,
-        devices: s.devices ?? {},
+        securityFormat: SECURITY_FORMAT, version: randomToken(), adminPin: null,
+        sessions: {}, gateway: normalizeGateway(null), dayCode: null, devices: {}, machines: {}, pinFails: {}, codeFails: {},
       }
-    } catch {
-      return { adminPin: null, sessions: {}, gateway: normalizeGateway(null), dayCode: null, devices: {} }
+    }
+    const pin = loaded?.adminPin
+    if (!loaded || typeof loaded !== 'object' || Array.isArray(loaded) ||
+      !(pin?.kesher === true || (/^[0-9a-f]{32}$/i.test(pin?.salt ?? '') && /^[0-9a-f]{64}$/i.test(pin?.hash ?? ''))))
+      throw new Error('Sicherheitsdaten enthalten keine gültige Admin-PIN – Zugang bleibt gesperrt')
+    const modern = loaded.securityFormat === SECURITY_FORMAT && typeof loaded.version === 'string' && loaded.version.length >= 16
+    if (!modern) log('Zugang: Sicherheitsformat aktualisiert – bestehende Sitzungen und Gerätefreigaben verworfen')
+    const record = (value) => value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+    return {
+      securityFormat: SECURITY_FORMAT,
+      version: modern ? loaded.version : randomToken(),
+      adminPin: pin,
+      sessions: modern ? record(loaded.sessions) : {},
+      gateway: normalizeGateway(loaded.gateway),
+      dayCode: loaded.dayCode && /^\d{4}-\d{2}-\d{2}$/.test(loaded.dayCode.day) &&
+        /^\d{6}$/.test(loaded.dayCode.code) && typeof loaded.dayCode.gen === 'string' ? loaded.dayCode : null,
+      devices: modern ? record(loaded.devices) : {},
+      machines: modern ? record(loaded.machines) : {},
+      pinFails: record(loaded.pinFails),
+      codeFails: record(loaded.codeFails),
     }
   }
 
   function write() {
     clearTimeout(writeTimer)
     writeTimer = null
-    const tmp = `${file}.tmp`
-    fs.writeFileSync(tmp, JSON.stringify(secret, null, 2), { mode: 0o600 })
-    fs.renameSync(tmp, file)
+    const temporary = file + '.tmp'
+    fs.writeFileSync(temporary, JSON.stringify(secret, null, 2), { mode: 0o600 })
+    fs.chmodSync(temporary, 0o600)
+    fs.renameSync(temporary, file)
     onChange()
   }
 
-  /** "Zuletzt gesehen" nicht bei jeder Anfrage auf die Platte schreiben. */
   function writeSoon() {
-    writeTimer ??= setTimeout(write, 30_000)
+    if (writeTimer) return
+    writeTimer = setTimeout(write, 30_000)
+    writeTimer.unref?.()
   }
 
-  const enabled = () => Boolean(secret.adminPin)
-  const pinSource = () => (!secret.adminPin ? null : secret.adminPin.kesher ? 'kesher' : 'own')
+  function normalizedFingerprint(value) {
+    if (typeof value !== 'string') return ''
+    const fingerprint = value.replace(/:/g, '').toLowerCase()
+    return /^[a-f0-9]{64}$/.test(fingerprint) ? fingerprint : ''
+  }
 
-  /** Stimmt die Admin-PIN? Bei der Kesher-PIN fragt der Server Kesher. */
-  async function checkPin(pin) {
-    if (secret.adminPin?.kesher) return verifyKesherPin(pin)
-    return pinMatches(pin, secret.adminPin)
+  function publicMachine(machine) {
+    const { id, name, mode, version, fingerprint, services, capabilities, roleId, raspberryClientId, deviceId, expiresAt, revokedAt, createdAt } = machine
+    return { id, name, mode, version, fingerprint, services: [...services], capabilities: [...capabilities], roleId,
+      raspberryClientId, deviceId, expiresAt, revokedAt, createdAt }
+  }
+
+  function validMachine(machine, now = Date.now()) {
+    return Boolean(machine && typeof machine.id === 'string' && /^[a-f0-9]{24}$/.test(machine.id) &&
+      typeof machine.name === 'string' && ['station', 'code-bypass'].includes(machine.mode) &&
+      typeof machine.version === 'string' && /^[A-Za-z0-9_-]{32}$/.test(machine.version) &&
+      Number.isSafeInteger(machine.expiresAt) && machine.expiresAt > now && machine.revokedAt === null &&
+      Array.isArray(machine.services) && machine.services.every((service) => MACHINE_SERVICES.has(service)) &&
+      Array.isArray(machine.capabilities) && machine.capabilities.every((capability) => MACHINE_CAPABILITIES.has(capability)) &&
+      (machine.mode !== 'code-bypass' || machine.capabilities.length === 0) &&
+      (!machine.fingerprint || normalizedFingerprint(machine.fingerprint) === machine.fingerprint) &&
+      /^[a-f0-9]{64}$/.test(machine.keyHash || '') && machine.roleId !== ADMIN)
+  }
+
+  function machineStatus(id, version) {
+    const machine = typeof id === 'string' && Object.hasOwn(secret.machines, id) ? secret.machines[id] : null
+    if (!validMachine(machine) || (version !== undefined && machine.version !== version)) return { active: false, id: String(id || '') }
+    return { active: true, ...publicMachine(machine) }
+  }
+
+  function machineByFingerprint(value) {
+    const fingerprint = normalizedFingerprint(value)
+    if (!fingerprint) return null
+    const matches = Object.values(secret.machines).filter((machine) => machine?.fingerprint === fingerprint)
+    return matches.length === 1 && validMachine(matches[0]) ? publicMachine(matches[0]) : null
+  }
+
+  function credentialHeader(req, name) {
+    const value = req?.headers?.[name]
+    if (value === undefined) return ''
+    if (typeof value !== 'string' || value.length > 512 || value.includes(',') || /[\s\u0000-\u001f\u007f]/.test(value)) return null
+    const raw = req.rawHeaders || []
+    let count = 0
+    for (let index = 0; index < raw.length; index += 2) if (String(raw[index]).toLowerCase() === name) count++
+    return count > 1 ? null : value
+  }
+
+  function machineOf(req) {
+    const fingerprintHeader = credentialHeader(req, 'x-jms-device-fingerprint')
+    const proxyHeader = credentialHeader(req, 'x-jms-device-proxy')
+    const keyHeader = credentialHeader(req, 'x-jms-device-key')
+    if ([fingerprintHeader, proxyHeader, keyHeader].includes(null) || (!fingerprintHeader && !keyHeader)) return null
+    const loopback = isLoopback(req?.socket?.remoteAddress)
+    const proxySecret = process.env.JMS_DEVICE_PROXY_SECRET || ''
+    const verifiedProxy = loopback && proxySecret.length >= 32 && Boolean(proxyHeader) &&
+      crypto.timingSafeEqual(Buffer.from(sha256(proxyHeader), 'hex'), Buffer.from(sha256(proxySecret), 'hex'))
+    if (proxyHeader && !verifiedProxy) return null
+    let certificateMachine = null
+    let keyMachine = null
+    if (fingerprintHeader) {
+      if (!verifiedProxy) return null
+      certificateMachine = machineByFingerprint(fingerprintHeader)
+      if (!certificateMachine) return null
+    }
+    if (keyHeader) {
+      const forwarded = ['x-forwarded-for', 'x-forwarded-proto', 'forwarded'].some((header) => req?.headers?.[header] !== undefined)
+      const secureTransport = req?.socket?.encrypted === true || (verifiedProxy && req.headers['x-forwarded-proto'] === 'https') || (loopback && !forwarded)
+      if (!secureTransport || !/^[A-Za-z0-9_-]{43}$/.test(keyHeader)) return null
+      const hashed = Buffer.from(sha256(keyHeader), 'hex')
+      const matches = Object.values(secret.machines).filter((machine) => validMachine(machine) &&
+        crypto.timingSafeEqual(hashed, Buffer.from(machine.keyHash, 'hex')))
+      if (matches.length !== 1) return null
+      keyMachine = publicMachine(matches[0])
+    }
+    if (certificateMachine && keyMachine && certificateMachine.id !== keyMachine.id) return null
+    return certificateMachine || keyMachine
+  }
+
+  function listMachines() {
+    return Object.values(secret.machines).filter((machine) => machine && Array.isArray(machine.services) && Array.isArray(machine.capabilities))
+      .map((machine) => ({ ...publicMachine(machine), active: validMachine(machine) }))
+      .sort((left, right) => left.name.localeCompare(right.name))
+  }
+
+  function machineInput(input, previous = null) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw fail(400, 'Ungültige Gerätedaten')
+    const given = { ...previous, ...input }
+    const name = typeof given.name === 'string' ? given.name.trim() : ''
+    if (!name || name.length > 80 || /[\u0000-\u001f\u007f]/.test(name)) throw fail(400, 'Bitte einen gültigen Gerätenamen eingeben')
+    const mode = given.mode ?? 'station'
+    if (!['station', 'code-bypass'].includes(mode)) throw fail(400, 'Ungültige Gerätebetriebsart')
+    const validateList = (value, allowed) => {
+      if (!Array.isArray(value) || value.length > allowed.size || value.some((entry) => !allowed.has(entry)) || new Set(value).size !== value.length)
+        throw fail(400, 'Ungültige Geräteberechtigungen')
+      return [...value]
+    }
+    const services = validateList(given.services ?? [], MACHINE_SERVICES)
+    const capabilities = validateList(given.capabilities ?? [], MACHINE_CAPABILITIES)
+    if (mode === 'code-bypass' && capabilities.length) throw fail(400, 'Codefreigaben dürfen keine Stationsrechte erhalten')
+    const fingerprint = given.fingerprint ? normalizedFingerprint(given.fingerprint) : ''
+    if (given.fingerprint && !fingerprint) throw fail(400, 'Ungültiger Zertifikatsfingerprint')
+    if (fingerprint && Object.values(secret.machines).some((machine) =>
+      (machine?.id !== previous?.id && machine?.fingerprint === fingerprint) || machine?.fingerprintHistory?.includes(fingerprint)))
+      throw fail(409, 'Dieses Zertifikat ist bereits einem Gerät zugeordnet')
+    const expiresAt = given.expiresAt ?? Date.now() + 365 * 24 * 60 * 60 * 1000
+    if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()) throw fail(400, 'Das Geräteablaufdatum muss in der Zukunft liegen')
+    const identifier = (value) => {
+      if (value === undefined || value === null || value === '') return ''
+      if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(value)) throw fail(400, 'Ungültige Gerätezuordnung')
+      return value
+    }
+    const roleId = identifier(given.roleId)
+    if (roleId === ADMIN) throw fail(400, 'Geräte dürfen keine Adminrolle erhalten')
+    return { name, mode, services, capabilities, fingerprint, expiresAt, roleId,
+      raspberryClientId: identifier(given.raspberryClientId), deviceId: identifier(given.deviceId) }
+  }
+
+  function createMachine(input) {
+    if (Object.keys(secret.machines).length >= 1024) throw fail(409, 'Maximale Anzahl registrierter Geräte erreicht')
+    const normalized = machineInput(input)
+    const key = crypto.randomBytes(32).toString('base64url')
+    const id = crypto.randomBytes(12).toString('hex')
+    const machine = { ...normalized, id, version: randomToken(), keyHash: sha256(key),
+      fingerprintHistory: normalized.fingerprint ? [normalized.fingerprint] : [], createdAt: Date.now(), revokedAt: null }
+    secret.machines[id] = machine
+    write()
+    return { machine: publicMachine(machine), key }
+  }
+
+  function rotateMachine(id, input = {}) {
+    const previous = typeof id === 'string' && Object.hasOwn(secret.machines, id) ? secret.machines[id] : null
+    if (!previous) throw fail(404, 'Gerät nicht gefunden')
+    const normalized = machineInput({ ...input, fingerprint: Object.hasOwn(input, 'fingerprint') ? input.fingerprint : '' }, previous)
+    if (normalized.fingerprint && normalized.fingerprint === previous.fingerprint)
+      throw fail(400, 'Beim Erneuern muss ein neues Gerätezertifikat verwendet werden')
+    const key = crypto.randomBytes(32).toString('base64url')
+    const machine = { ...normalized, id, version: randomToken(), keyHash: sha256(key),
+      fingerprintHistory: [...new Set([...(previous.fingerprintHistory || []), previous.fingerprint, normalized.fingerprint].filter(Boolean))],
+      createdAt: previous.createdAt, revokedAt: null }
+    secret.machines[id] = machine
+    endSessions(Object.values(secret.sessions).filter((session) => session.machine?.id === id), 'Gerätenachweis erneuert')
+    write()
+    return { machine: publicMachine(machine), key }
+  }
+
+  function revokeMachine(id) {
+    const machine = typeof id === 'string' && Object.hasOwn(secret.machines, id) ? secret.machines[id] : null
+    if (!machine) throw fail(404, 'Gerät nicht gefunden')
+    machine.revokedAt = Date.now()
+    endSessions(Object.values(secret.sessions).filter((session) => session.machine?.id === id), 'Gerät widerrufen')
+    write()
+    return publicMachine(machine)
+  }
+
+  function machineBinding(req) {
+    const machine = machineOf(req)
+    return machine ? { id: machine.id, version: machine.version } : null
+  }
+
+  function matchesMachine(req, binding) {
+    if (!binding) return true
+    const machine = machineOf(req)
+    return Boolean(machine && machine.id === binding.id && machine.version === binding.version)
+  }
+
+  function roleStatus(roleId) {
+    if (typeof roleId !== 'string' || !roleId || roleId === ADMIN) return false
+    const roles = getRoles()
+    if (roles == null) return null
+    if (Array.isArray(roles)) return roles.some((role) => (typeof role === 'string' ? role : role?.id) === roleId)
+    return Boolean(roles && typeof roles === 'object' && Object.hasOwn(roles, roleId))
+  }
+
+  const validRole = (roleId) => roleStatus(roleId) === true
+
+  function trimFailures(collection, windowMs) {
+    const now = Date.now()
+    for (const [key, entry] of Object.entries(collection))
+      if (!entry || !Number.isFinite(entry.since) || now - entry.since >= windowMs || !Number.isInteger(entry.count)) delete collection[key]
+    const ordered = Object.entries(collection).sort((left, right) => left[1].since - right[1].since)
+    for (const [key] of ordered.slice(0, Math.max(0, ordered.length - MAX_FAIL_ENTRIES))) delete collection[key]
+  }
+
+  function attemptKey(req) {
+    return sha256(String(ipOf(req) || req?.ip || req?.socket?.remoteAddress || 'unknown').replace(/^::ffff:/i, '').slice(0, 160))
+  }
+
+  async function checkPin(pin, req, verifier = null) {
+    trimFailures(secret.pinFails, PIN_FAIL_WINDOW_MS)
+    const key = attemptKey(req)
+    if ((secret.pinFails[key]?.count ?? 0) >= PIN_MAX_FAILS)
+      throw fail(429, 'Zu viele falsche PIN-Versuche – bitte in 15 Minuten noch einmal')
+    const now = Date.now()
+    pinTokens = Math.min(8, pinTokens + Math.max(0, now - pinRefilledAt) / 1000)
+    pinRefilledAt = now
+    if (pinPending.has(key) || pinInFlight >= 4 || pinTokens < 1)
+      throw fail(429, 'PIN-Prüfung ausgelastet – bitte kurz warten')
+    pinTokens--
+    pinPending.add(key)
+    pinInFlight++
+    const entry = secret.pinFails[key] ?? { count: 0, since: now }
+    entry.count++
+    secret.pinFails[key] = entry
+    write()
+    try {
+      const value = String(pin ?? '')
+      let matches = false
+      if (/^\d{4,12}$/.test(value)) {
+        if (verifier || secret.adminPin?.kesher) {
+          let timeoutTimer
+          const timeout = new Promise((resolve) => {
+            timeoutTimer = setTimeout(() => resolve(false), 6000)
+            timeoutTimer.unref?.()
+          })
+          try {
+            matches = Boolean(await Promise.race([(verifier ?? verifyKesherPin)(value, req), timeout]))
+          } finally {
+            clearTimeout(timeoutTimer)
+          }
+        } else if (secret.adminPin) {
+          const calculated = await new Promise((resolve, reject) =>
+            crypto.scrypt(value, secret.adminPin.salt, 32, (error, derived) => error ? reject(error) : resolve(derived)))
+          matches = crypto.timingSafeEqual(calculated, Buffer.from(secret.adminPin.hash, 'hex'))
+        }
+      }
+      if (matches) {
+        delete secret.pinFails[key]
+        write()
+      }
+      return matches
+    } finally {
+      pinPending.delete(key)
+      pinInFlight--
+    }
+  }
+
+  function rawSessionById(id) {
+    return Object.values(secret.sessions).find((session) => session?.id === id) ?? null
+  }
+
+  function generationValid(generation, now = Date.now()) {
+    const current = secret.dayCode
+    if (!current || !generation) return false
+    const local = localTime(now)
+    if (current.day === local.day)
+      return generation === current.gen || (generation === current.prevGen && local.hour < GRACE_UNTIL_HOUR)
+    return current.day === previousDay(local.day) && generation === current.gen && local.hour < GRACE_UNTIL_HOUR
+  }
+
+  function validGrant(grant, now = Date.now()) {
+    return Boolean(grant && Number.isFinite(grant.expiresAt) && grant.expiresAt > now && generationValid(grant.gen, now))
+  }
+
+  function validSession(session, now = Date.now(), seen = new Set(), preserveUnknownRoles = false) {
+    if (!session || seen.has(session.id) || session.securityFormat !== SECURITY_FORMAT ||
+      session.version !== secret.version || !Number.isFinite(session.expiresAt) || session.expiresAt <= now ||
+      (session.device && !validGrant(session.device, now)) ||
+      (session.machine && !machineStatus(session.machine.id, session.machine.version).active)) return false
+    if (!session.admin) {
+      const role = roleStatus(session.roleId)
+      if (role === false || (role === null && !preserveUnknownRoles)) return false
+    }
+    if (session.originSessionId) {
+      seen.add(session.id)
+      return validSession(rawSessionById(session.originSessionId), now, seen, preserveUnknownRoles)
+    }
+    return true
+  }
+
+  function endSessions(list, why) {
+    const ids = new Set(list.map((session) => session.id))
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const session of Object.values(secret.sessions))
+        if (session.originSessionId && ids.has(session.originSessionId) && !ids.has(session.id)) {
+          ids.add(session.id)
+          changed = true
+        }
+    }
+    if (!ids.size) return
+    for (const [key, session] of Object.entries(secret.sessions)) if (ids.has(session.id)) delete secret.sessions[key]
+    for (const [key, ticket] of qrTokens) if (ids.has(ticket.id)) qrTokens.delete(key)
+    for (const [key, ticket] of ssoTickets) if (ids.has(ticket.id)) ssoTickets.delete(key)
+    write()
+    onRevoke([...ids], why)
   }
 
   function prune() {
-    const cutoff = Date.now() - SESSION_DAYS * 86400_000
-    for (const [key, s] of Object.entries(secret.sessions)) if ((s.seen ?? s.created) < cutoff) delete secret.sessions[key]
-    for (const [key, t] of qrTokens) if (t.expires < Date.now()) qrTokens.delete(key)
+    const now = Date.now()
+    endSessions(Object.values(secret.sessions).filter((session) => !validSession(session, now, new Set(), true)), 'abgelaufen')
+    for (const [key, ticket] of qrTokens) if (ticket.expires <= now) qrTokens.delete(key)
+    for (const [key, ticket] of ssoTickets) if (ticket.expires <= now) ssoTickets.delete(key)
+    let removedDevice = false
+    for (const [key, device] of Object.entries(secret.devices)) if (!validGrant(device, now)) {
+      delete secret.devices[key]
+      removedDevice = true
+    }
+    if (removedDevice) write()
   }
 
-  /** group: Anmeldungen derselben Person (Rechner + per QR-Code angemeldetes Handy). */
-  function newSession({ name, roleId, admin, group }, ip = '') {
-    prune()
+  function lookupSession(req) {
+    const token = parseCookies(req?.headers?.cookie)[COOKIE]
+    const session = token ? secret.sessions[sha256(token)] : null
+    if (session && !validSession(session)) {
+      if (!validSession(session, Date.now(), new Set(), true)) endSessions([session], 'abgelaufen')
+      return null
+    }
+    return session && matchesMachine(req, session.machine) ? session : null
+  }
+
+  function sessionOf(req) {
+    const session = lookupSession(req)
+    if (!session) return null
+    const ip = ipOf(req)
+    if (ip && session.ip !== ip) {
+      session.ip = ip
+      writeSoon()
+    }
+    if (Date.now() - (session.seen ?? 0) > 60_000) {
+      session.seen = Date.now()
+      writeSoon()
+    }
+    return session
+  }
+
+  function deviceGrant(req) {
+    const token = parseCookies(req?.headers?.cookie)[DEVICE_COOKIE]
+    const grant = token ? secret.devices[sha256(token)] : null
+    return validGrant(grant) ? { gen: grant.gen, expiresAt: grant.expiresAt } : null
+  }
+
+  function userOf(req) {
+    if (bootstrapping && !enabled()) return { admin: true, open: true, name: '', roleId: ADMIN }
+    const session = sessionOf(req)
+    if (!session) return null
+    if (!session.admin && gatewayActive() && !machineOf(req) && !deviceGrant(req)) return null
+    return {
+      admin: session.admin, open: false, name: session.name, roleId: session.roleId,
+      sessionId: session.id, group: session.group ?? session.id, expiresAt: session.expiresAt, version: session.version,
+    }
+  }
+
+  function sessionIdOf(req) {
+    return userOf(req)?.sessionId ?? null
+  }
+
+  function sessionStatusById(id) {
+    const session = rawSessionById(id)
+    if (!validSession(session)) {
+      if (session && !validSession(session, Date.now(), new Set(), true)) endSessions([session], 'abgelaufen')
+      return { active: false, sessionId: String(id ?? '') }
+    }
+    return {
+      active: true, sessionId: session.id, admin: session.admin, roleId: session.roleId,
+      name: session.name, expiresAt: session.expiresAt, version: session.version,
+    }
+  }
+
+  function secureSuffix(req) {
+    return req?.secure || req?.get?.('x-forwarded-proto') === 'https' ? '; Secure' : ''
+  }
+
+  function cookieFor(token, req) {
+    const session = secret.sessions[sha256(token)]
+    const maxAge = Math.max(0, Math.ceil(((session?.expiresAt ?? Date.now()) - Date.now()) / 1000))
+    return COOKIE + '=' + encodeURIComponent(token) + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + maxAge + secureSuffix(req)
+  }
+
+  function newSession({ name, roleId, admin, group, originSessionId, expiresAt, device, machine }, ip = '') {
+    const now = Date.now()
     const token = randomToken()
-    const id = crypto.randomBytes(6).toString('hex')
+    const id = crypto.randomBytes(12).toString('hex')
     secret.sessions[sha256(token)] = {
-      id,
-      group: group || id,
-      name,
-      roleId: admin ? ADMIN : roleId,
-      admin: Boolean(admin),
-      created: Date.now(),
-      seen: Date.now(),
-      ip: ip || undefined,
+      securityFormat: SECURITY_FORMAT, version: secret.version, id, group: group || id,
+      name, roleId: admin ? ADMIN : roleId, admin: Boolean(admin), created: now, seen: now,
+      expiresAt: Math.min(nextMorning(now), expiresAt ?? Infinity, device?.expiresAt ?? Infinity,
+        machine ? machineStatus(machine.id, machine.version).expiresAt ?? now : Infinity),
+      ip: ip || undefined, originSessionId: originSessionId || undefined, device: device || null, machine: machine || null,
     }
     write()
     return token
   }
 
-  function lookupSession(req) {
-    const token = parseCookies(req.headers.cookie)[COOKIE]
-    return (token && secret.sessions[sha256(token)]) || null
-  }
+  const isActive = (session) => validSession(session) && (isLive(session.id) || Date.now() - (session.seen ?? 0) < ACTIVE_MS)
 
-  function deleteSessions(list) {
-    const ids = new Set(list.map((s) => s.id))
-    for (const [key, s] of Object.entries(secret.sessions)) if (ids.has(s.id)) delete secret.sessions[key]
-  }
-
-  function cookieFor(token, req) {
-    const secure = req.secure || req.get('x-forwarded-proto') === 'https' ? '; Secure' : ''
-    return `${COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}${secure}`
-  }
-
-  /** Sitzung zur Anfrage (oder null). */
-  function sessionOf(req) {
-    const s = lookupSession(req)
-    if (!s) return null
-    // Adresse des Geräts merken (für „Angemeldet“ beim Admin) – ändert sich z. B. beim WLAN-Wechsel
-    const ip = ipOf(req)
-    if (ip && s.ip !== ip) {
-      s.ip = ip
-      writeSoon()
-    }
-    if (Date.now() - (s.seen ?? 0) > 60_000) {
-      s.seen = Date.now()
-      writeSoon()
-    }
-    return s
-  }
-
-  /**
-   * Wer fragt an: { admin, roleId, name, open }.
-   * open = Zugang noch nicht eingeschaltet → alle sind Admin.
-   */
-  function userOf(req) {
-    if (!enabled()) return { admin: true, open: true, name: '', roleId: ADMIN }
-    const s = sessionOf(req)
-    return s ? { admin: s.admin, open: false, name: s.name, roleId: s.roleId, sessionId: s.id, group: s.group ?? s.id } : null
-  }
-
-  /** Sitzungs-ID zur Anfrage (für die WebSocket-Verbindungen), ohne "zuletzt gesehen" zu ändern. */
-  function sessionIdOf(req) {
-    return lookupSession(req)?.id || null
-  }
-
-  const isActive = (s) => isLive(s.id) || Date.now() - (s.seen ?? 0) < ACTIVE_MS
-
-  /** Wer hat die Rolle gerade (andere Personen als group)? */
-  function holdersOf(roleId, group = null) {
-    return Object.values(secret.sessions).filter((s) => s.roleId === roleId && !s.admin && (s.group ?? s.id) !== group)
-  }
-
-  /** Belegte Rollen für die Anmeldeseite: { roleId: Name } */
   function occupiedRoles() {
-    const out = {}
-    for (const s of Object.values(secret.sessions)) if (!s.admin && isActive(s)) out[s.roleId] = s.name
-    return out
+    prune()
+    const occupied = {}
+    for (const session of Object.values(secret.sessions)) if (!session.admin && isActive(session)) occupied[session.roleId] = session.name
+    return occupied
   }
 
-  /** Rollen in Kesher – ist Kesher nicht erreichbar, hält das die Anmeldung nicht auf. */
   async function rolesInKesher() {
     try {
       return new Set(await kesherActiveRoles())
@@ -322,378 +654,334 @@ function createAccess({
     }
   }
 
-  /**
-   * Belegte Rollen für die Anmeldeseite, auch die direkt in Kesher angemeldeten (feste Stationen
-   * ohne zentrale Anmeldung). Die eigene Rolle dieses Browsers nicht – die hält ja er selbst.
-   */
   async function occupiedForLogin(req) {
-    const out = occupiedRoles()
+    const occupied = occupiedRoles()
     const ownRole = sessionOf(req)?.roleId
-    for (const roleId of await rolesInKesher()) if (!out[roleId] && roleId !== ownRole) out[roleId] = KESHER_HOLDER
-    return out
+    for (const roleId of await rolesInKesher()) if (!occupied[roleId] && roleId !== ownRole) occupied[roleId] = KESHER_HOLDER
+    return occupied
   }
 
-  function endSessions(list, why) {
-    if (!list.length) return
-    const ids = list.map((s) => s.id)
-    for (const [key, s] of Object.entries(secret.sessions)) if (ids.includes(s.id)) delete secret.sessions[key]
-    write()
-    onRevoke(ids, why)
+  async function lockRole(roleId, work) {
+    const previous = roleLocks.get(roleId) ?? Promise.resolve()
+    let release
+    const pending = new Promise((resolve) => { release = resolve })
+    roleLocks.set(roleId, pending)
+    await previous
+    try {
+      return await work()
+    } finally {
+      release()
+      if (roleLocks.get(roleId) === pending) roleLocks.delete(roleId)
+    }
   }
 
-  async function login({ name, roleId, pin }, req, res, { pinChecked = false } = {}) {
+  async function login({ name, roleId, pin }, req, res) {
     const cleanName = String(name || '').trim().slice(0, 60)
-    if (!cleanName) throw Object.assign(new Error('Bitte einen Namen eingeben'), { status: 400 })
+    if (!cleanName) throw fail(400, 'Bitte einen Namen eingeben')
     const admin = roleId === ADMIN
+    const authenticatedVersion = secret.version
+    const authenticatedRevision = adminRevision
     if (admin) {
-      if (!enabled()) throw Object.assign(new Error('Es ist noch keine Admin-PIN festgelegt'), { status: 400 })
-      if (!pinChecked && !(await checkPin(pin))) throw Object.assign(new Error('PIN falsch'), { status: 403 })
-    } else if (!roleId) throw Object.assign(new Error('Bitte eine Rolle wählen'), { status: 400 })
-
-    // Eine Rolle nur einmal. Wegnehmen kann man sie nicht – der andere meldet sich ab, oder der
-    // Admin beendet die Anmeldung (Benutzer & Rechte → Angemeldete Geräte). Die bisherige
-    // Anmeldung dieses Browsers zählt nicht – sie wird durch die neue ersetzt, unter allen
-    // Adressen (gleiche ID, siehe Abgleich unten).
-    const own = parseCookies(req.headers.cookie)[COOKIE]
-    const ownSession = own ? secret.sessions[sha256(own)] : null
-    const mine = ownSession ? [ownSession] : []
-    const ownRole = ownSession?.roleId ?? null
-    if (!admin) {
-      const holders = holdersOf(roleId).filter((s) => !mine.includes(s))
-      const active = holders.filter(isActive)
-      if (active.length) {
-        const who = active.sort((a, b) => b.seen - a.seen)[0]
-        throw Object.assign(new Error(`Die Rolle ist schon angemeldet – von ${who.name}. Bitte eine andere Rolle wählen.`), {
-          status: 409,
-          holder: { name: who.name, seen: who.seen },
-        })
-      }
-      // Hier hat sie niemand – vielleicht aber ein Gerät direkt in Kesher (ohne zentrale Anmeldung).
-      // Hatte dieser Browser die Rolle schon, ist das seine eigene Kesher-Seite.
-      const inKesher = !active.length && ownRole !== roleId && (await rolesInKesher()).has(roleId)
-      if (inKesher)
-        throw Object.assign(new Error('Die Rolle ist schon angemeldet – direkt in Kesher. Bitte eine andere Rolle wählen.'), {
-          status: 409,
-          holder: { name: KESHER_HOLDER, kesher: true },
-        })
-      // Alte, nicht mehr aktive Anmeldungen derselben Rolle aufräumen
-      endSessions(holders, 'abgelaufen')
-    }
-    deleteSessions(mine)
-    const token = newSession({ name: cleanName, roleId, admin }, ipOf(req))
-    res.setHeader('Set-Cookie', cookieFor(token, req))
-    log(`Zugang: ${cleanName} angemeldet als ${admin ? 'Admin' : roleId}`)
-  }
-
-  /** Abmelden – unter allen Adressen, an die diese Anmeldung weitergegeben wurde (gleiche ID). */
-  function logout(req, res) {
-    const token = parseCookies(req.headers.cookie)[COOKIE]
-    const own = token && secret.sessions[sha256(token)]
-    if (token) delete secret.sessions[sha256(token)]
-    if (own) deleteSessions([own])
-    write()
-    res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`)
-    // Die Anmeldung gilt unter allen Adressen: offene Seiten (JMS Control, Fernbedienung …) sofort abmelden
-    if (own) onRevoke([own.id], 'abgemeldet')
-  }
-
-  /**
-   * Admin-PIN einrichten, ändern oder entfernen.
-   * source 'kesher': dieselbe PIN wie im Kesher-Admin (wird bei Kesher geprüft, nicht gespeichert).
-   * source 'own': eigene PIN (4–12 Ziffern). off: Zugang wieder öffnen.
-   */
-  async function setAdminPin({ pin, currentPin, source, off }, user) {
-    if (enabled() && !(await checkPin(currentPin)))
-      throw Object.assign(new Error('Bisherige PIN falsch'), { status: 403 })
-    const value = String(pin ?? '').trim()
-    if (off) {
-      secret.adminPin = null
-      secret.sessions = {}
-      // Ohne Admin-PIN gibt es keine Rollen-Anmeldung – also auch keine für die anderen Dienste
-      secret.gateway.enabled = false
-      log('Zugang: Anmeldung ausgeschaltet – Zugang ist offen')
-    } else if (source === 'kesher') {
-      if (!(await verifyKesherPin(value))) throw Object.assign(new Error('Das ist nicht die Admin-PIN von Kesher'), { status: 403 })
-      secret.adminPin = { kesher: true }
-      log('Zugang: Admin-PIN = Kesher-Admin-PIN – Anmeldung ist eingeschaltet')
+      if (!enabled()) throw fail(400, 'Es ist noch keine Admin-PIN festgelegt')
+      if (!(await checkPin(pin, req))) throw fail(403, 'PIN falsch')
+      if (authenticatedVersion !== secret.version || authenticatedRevision !== adminRevision)
+        throw fail(401, 'Admin-PIN wurde geändert – bitte erneut anmelden')
     } else {
-      if (!/^\d{4,12}$/.test(value)) throw Object.assign(new Error('Die PIN braucht 4 bis 12 Ziffern'), { status: 400 })
-      secret.adminPin = hashPin(value)
-      log(`Zugang: eigene Admin-PIN ${user?.open ? 'festgelegt – Anmeldung ist eingeschaltet' : 'geändert'}`)
+      if (roleStatus(roleId) === null) throw fail(503, 'Rollen werden geladen – bitte kurz warten')
+      if (!validRole(roleId)) throw fail(400, 'Bitte eine gültige Rolle wählen')
+      if (gatewayActive() && !machineOf(req) && !deviceGrant(req)) throw fail(403, 'Bitte zuerst den Tagescode eingeben')
     }
-    write()
+    return lockRole(roleId, async () => {
+      if (admin && (authenticatedVersion !== secret.version || authenticatedRevision !== adminRevision))
+        throw fail(401, 'Admin-PIN wurde geändert – bitte erneut anmelden')
+      prune()
+      const ownSession = sessionOf(req)
+      const ownGroup = ownSession?.group ?? ownSession?.id
+      if (!admin) {
+        const inKesher = ownSession?.roleId !== roleId && (await rolesInKesher()).has(roleId)
+        if (roleStatus(roleId) === null) throw fail(503, 'Rollen werden geladen – bitte kurz warten')
+        if (!validRole(roleId) || (gatewayActive() && !machineOf(req) && !deviceGrant(req)))
+          throw fail(403, 'Die Rolle oder Gerätefreigabe ist nicht mehr gültig')
+        const holders = Object.values(secret.sessions).filter((session) =>
+          !session.admin && session.roleId === roleId && (session.group ?? session.id) !== ownGroup)
+        const active = holders.filter(isActive)
+        if (active.length) {
+          const holder = active.sort((left, right) => right.seen - left.seen)[0]
+          throw Object.assign(fail(409, 'Die Rolle ist schon angemeldet – von ' + holder.name + '. Bitte eine andere Rolle wählen.'),
+            { holder: { name: holder.name, seen: holder.seen } })
+        }
+        if (inKesher)
+          throw Object.assign(fail(409, 'Die Rolle ist schon angemeldet – direkt in Kesher. Bitte eine andere Rolle wählen.'),
+            { holder: { name: KESHER_HOLDER, kesher: true } })
+        endSessions(holders, 'abgelaufen')
+      }
+      if (ownSession)
+        endSessions(Object.values(secret.sessions).filter((session) => (session.group ?? session.id) === ownGroup), 'neu angemeldet')
+      const device = admin ? null : deviceGrant(req)
+      const token = newSession({ name: cleanName, roleId, admin, device, machine: machineBinding(req) }, ipOf(req))
+      res.setHeader('Set-Cookie', cookieFor(token, req))
+      log('Zugang: ' + cleanName + ' angemeldet als ' + (admin ? 'Admin' : roleId))
+    })
   }
 
-  /** Einmal-Link fürs Handy: meldet das Handy als derselbe Nutzer an. */
-  function createQrToken(user) {
+  function logout(req, res) {
+    const own = lookupSession(req)
+    if (own) endSessions(Object.values(secret.sessions).filter((session) => (session.group ?? session.id) === (own.group ?? own.id)), 'abgemeldet')
+    res.setHeader('Set-Cookie', COOKIE + '=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' + secureSuffix(req))
+  }
+
+  async function setAdminPin({ pin, currentPin, source, off }, user, req) {
+    if (off) throw fail(400, 'Die zentrale Anmeldung kann nicht ohne Admin-PIN betrieben werden')
+    const authenticatedVersion = secret.version
+    const authenticatedRevision = adminRevision
+    if (enabled() && (!user?.admin || !(await checkPin(currentPin, req))))
+      throw fail(403, 'Bisherige PIN falsch')
+    if (!enabled() && !bootstrapping) throw fail(503, 'Sicherheitsdaten sind nicht eingerichtet')
+    const value = String(pin ?? '').trim()
+    let nextPin
+    if (source === 'kesher') {
+      if (!(await checkPin(value, req, verifyKesherPin))) throw fail(403, 'Das ist nicht die Admin-PIN von Kesher')
+      nextPin = { kesher: true }
+    } else {
+      if (!/^\d{4,12}$/.test(value)) throw fail(400, 'Die PIN braucht 4 bis 12 Ziffern')
+      nextPin = hashPin(value)
+    }
+    if (authenticatedVersion !== secret.version || authenticatedRevision !== adminRevision)
+      throw fail(401, 'Admin-PIN wurde geändert – bitte erneut anmelden')
+    const oldSessions = Object.values(secret.sessions)
+    secret.adminPin = nextPin
+    secret.version = randomToken()
+    bootstrapping = false
+    qrTokens.clear()
+    ssoTickets.clear()
+    endSessions(oldSessions, 'Admin-PIN geändert')
+    write()
+    log('Zugang: Admin-PIN aktualisiert – bestehende Sitzungen widerrufen')
+  }
+
+  function createQrToken(user, req) {
     prune()
+    const session = rawSessionById(user?.sessionId)
+    if (!validSession(session) || session.version !== user?.version || lookupSession(req)?.id !== session.id)
+      throw fail(401, 'Bitte erneut anmelden')
+    const grant = deviceGrant(req)
+    if (!session.admin && gatewayActive() && !grant && !machineOf(req))
+      throw fail(403, 'Bitte zuerst den Tagescode eingeben')
     const token = randomToken()
-    qrTokens.set(sha256(token), {
-      user: { name: user.name || 'Handy', roleId: user.roleId, admin: user.admin, group: user.group },
-      expires: Date.now() + QR_TTL_MS,
-    })
-    return { token, expiresInMs: QR_TTL_MS }
+    const expires = Math.min(Date.now() + QR_TTL_MS, session.expiresAt, grant?.expiresAt ?? Infinity)
+    qrTokens.set(sha256(token), { id: session.id, version: session.version, device: grant, machine: session.machine, expires })
+    return { token, expiresInMs: expires - Date.now() }
+  }
+
+  function approveDevice(ip, req, res, grant) {
+    if (!validGrant(grant)) throw fail(403, 'Die Gerätefreigabe ist nicht mehr gültig')
+    const token = randomToken()
+    secret.devices[sha256(token)] = { gen: grant.gen, expiresAt: grant.expiresAt, created: Date.now(), ip: String(ip ?? '') }
+    write()
+    const maxAge = Math.max(0, Math.ceil((grant.expiresAt - Date.now()) / 1000))
+    res.append('Set-Cookie', DEVICE_COOKIE + '=' + encodeURIComponent(token) + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + maxAge + secureSuffix(req))
   }
 
   function redeemQrToken(token, req, res) {
     const key = sha256(String(token || ''))
     const entry = qrTokens.get(key)
     qrTokens.delete(key)
-    if (!entry || entry.expires < Date.now()) return false
-    if (!enabled()) return true // offen: keine Anmeldung nötig
-    const session = newSession(entry.user, ipOf(req))
-    res.setHeader('Set-Cookie', cookieFor(session, req))
-    log(`Zugang: ${entry.user.name} per QR-Code am Handy angemeldet`)
+    if (!entry || entry.expires <= Date.now()) return false
+    const sourceSession = rawSessionById(entry.id)
+    if (!validSession(sourceSession) || sourceSession.version !== entry.version || (entry.device && !validGrant(entry.device))) return false
+    if (!matchesMachine(req, entry.machine)) return false
+    if (!sourceSession.admin && gatewayActive() && !entry.device && !machineOf(req) && !deviceGrant(req)) return false
+    const own = lookupSession(req)
+    if (own && own.id !== sourceSession.id && own.group !== sourceSession.group) endSessions([own], 'neu angemeldet')
+    const sessionToken = newSession({
+      name: sourceSession.name, roleId: sourceSession.roleId, admin: sourceSession.admin, group: sourceSession.group,
+      originSessionId: sourceSession.id, expiresAt: sourceSession.expiresAt, device: entry.device, machine: entry.machine,
+    }, ipOf(req))
+    res.append('Set-Cookie', cookieFor(sessionToken, req))
+    if (entry.device) approveDevice(ipOf(req), req, res, entry.device)
     return true
   }
 
-  /**
-   * Abgleich zwischen den Adressen: Ein Browser hat pro Name ein eigenes Cookie (192.168.0.21,
-   * intercom.local, jmscontrol.local …). Die Seiten holen sich die Anmeldung per Weiterleitung
-   * von der zentralen Adresse ab bzw. bringen sie dorthin – mit einem kurzen Einmal-Ticket.
-   * Die Anmeldung bekommt dort ein weiteres Cookie, bleibt aber dieselbe (gleiche ID): Abmelden
-   * unter einer Adresse beendet sie unter allen.
-   */
-  const ssoTickets = new Map() // sha256(ticket) -> { id, device, expires }
+  function validAudience(origin) {
+    try {
+      const parsed = new URL(origin)
+      return parsed.protocol === 'https:' && parsed.origin === origin && !parsed.username && !parsed.password
+    } catch {
+      return false
+    }
+  }
 
-  function createSsoTicket(ip, req) {
-    const s = sessionOf(req)
-    if (!s) return null
-    for (const [key, t] of ssoTickets) if (t.expires < Date.now()) ssoTickets.delete(key)
+  function createSsoTicket(ip, req, { audienceOrigin, codeChallenge } = {}) {
+    const user = userOf(req)
+    if (!user) return null
+    if (!validAudience(audienceOrigin) || !/^[A-Za-z0-9_-]{43}$/.test(codeChallenge ?? ''))
+      throw fail(400, 'Ungültiger SSO-Ziel- oder Browsernachweis')
+    prune()
+    const session = rawSessionById(user.sessionId)
+    const device = deviceGrant(req)
+    if (!session || (!session.admin && gatewayActive() && !machineOf(req) && !device)) return null
     const ticket = randomToken()
-    const device = deviceStatus(ip, req)
-    ssoTickets.set(sha256(ticket), { id: s.id, device: device.required && device.approved, expires: Date.now() + SSO_TTL_MS })
+    ssoTickets.set(sha256(ticket), {
+      id: session.id, version: session.version, device, machine: session.machine, audienceOrigin, codeChallenge,
+      expires: Math.min(Date.now() + SSO_TTL_MS, session.expiresAt, device?.expiresAt ?? Infinity),
+    })
     return ticket
   }
 
-  function redeemSsoTicket(ticket, ip, req, res) {
+  function redeemSsoTicket(ticket, ip, req, res, { audienceOrigin, codeVerifier } = {}) {
     const key = sha256(String(ticket || ''))
     const entry = ssoTickets.get(key)
+    if (!entry || entry.expires <= Date.now()) {
+      ssoTickets.delete(key)
+      return false
+    }
+    if (entry.audienceOrigin !== audienceOrigin || !/^[A-Za-z0-9._~-]{43,128}$/.test(codeVerifier ?? '')) return false
+    const challenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url')
+    if (!crypto.timingSafeEqual(Buffer.from(challenge), Buffer.from(entry.codeChallenge))) return false
     ssoTickets.delete(key)
-    if (!entry || entry.expires < Date.now()) return false
-    const s = Object.values(secret.sessions).find((x) => x.id === entry.id)
-    if (!s) return false
-    // eigene, andere Anmeldung dieses Browsers unter dieser Adresse ersetzen
-    const own = parseCookies(req.headers.cookie)[COOKIE]
-    const ownSession = own ? secret.sessions[sha256(own)] : null
-    if (ownSession && ownSession.id !== s.id) deleteSessions([ownSession])
+    const session = rawSessionById(entry.id)
+    if (!validSession(session) || session.version !== entry.version || (entry.device && !validGrant(entry.device))) return false
+    if (!matchesMachine(req, entry.machine)) return false
+    if (!session.admin && gatewayActive() && !entry.device && !machineOf(req) && !deviceGrant(req)) return false
+    const ownSession = lookupSession(req)
+    if (ownSession && ownSession.id !== session.id && ownSession.group !== session.group) endSessions([ownSession], 'neu angemeldet')
     const token = randomToken()
-    secret.sessions[sha256(token)] = s
+    secret.sessions[sha256(token)] = session
     write()
     res.append('Set-Cookie', cookieFor(token, req))
-    // Tagescode gilt dann auch hier
-    if (entry.device) {
-      const device = deviceStatus(ip, req)
-      if (device.required && !device.approved) approveDevice(ip, req, res)
-    }
+    if (entry.device) approveDevice(ip, req, res, entry.device)
     return true
   }
 
-  /** Angemeldete Geräte – jede Anmeldung einmal, auch wenn sie unter mehreren Adressen gilt. */
   function sessions() {
-    const byId = new Map()
-    for (const s of Object.values(secret.sessions)) if (!byId.has(s.id) || byId.get(s.id).seen < s.seen) byId.set(s.id, s)
-    return [...byId.values()]
-      .map(({ id, name, roleId, admin, created, seen, ip }) => ({ id, name, roleId, admin, created, seen, ip: ip || null, live: isLive(id) }))
-      .sort((a, b) => b.seen - a.seen)
+    prune()
+    const unique = new Map()
+    for (const session of Object.values(secret.sessions))
+      if (!unique.has(session.id) || unique.get(session.id).seen < session.seen) unique.set(session.id, session)
+    return [...unique.values()]
+      .map(({ id, name, roleId, admin, created, seen, ip, expiresAt }) =>
+        ({ id, name, roleId, admin, created, seen, expiresAt, ip: ip || null, live: isLive(id) }))
+      .sort((left, right) => right.seen - left.seen)
   }
 
   function endSession(id) {
-    endSessions(Object.values(secret.sessions).filter((s) => s.id === id), 'vom Admin abgemeldet')
+    const session = rawSessionById(id)
+    if (session) endSessions(Object.values(secret.sessions).filter((entry) => (entry.group ?? entry.id) === (session.group ?? session.id)), 'vom Admin abgemeldet')
   }
 
-  // --- Zentrale Anmeldung für alle Dienste: Einstellungen ---------------------
-
-  /** Eingeschaltet zählt nur mit Admin-PIN – ohne sie gibt es keine Rollen-Anmeldung. */
-  const gatewayActive = () => enabled() && secret.gateway.enabled
+  function revokeAdmins(reason = 'Admin-PIN geändert') {
+    adminRevision++
+    endSessions(Object.values(secret.sessions).filter((session) => session.admin), reason)
+  }
 
   function gateway() {
     return { ...secret.gateway, active: gatewayActive() }
   }
 
   function setGateway(next) {
-    // Nur mitgeschickte Werte ändern
-    const given = Object.fromEntries(Object.entries(next ?? {}).filter(([, v]) => v !== undefined))
+    const given = Object.fromEntries(Object.entries(next ?? {}).filter(([, value]) => value !== undefined))
     const normalized = normalizeGateway({ ...secret.gateway, ...given })
-    if (normalized.enabled && !enabled())
-      throw Object.assign(new Error('Erst die Admin-PIN einrichten – ohne sie gibt es keine Anmeldung'), { status: 400 })
-    const invalid = (Array.isArray(next?.exempt) ? next.exempt : []).filter((e) => !parseNetwork(e?.network ?? e))
-    if (invalid.length)
-      throw Object.assign(new Error(`Keine gültige Adresse: ${invalid.map((e) => e?.network ?? e).join(', ')}`), { status: 400 })
-    if (normalized.enabled !== secret.gateway.enabled)
-      log(`Zugang: Anmeldung für alle Dienste ${normalized.enabled ? 'eingeschaltet' : 'ausgeschaltet'}`)
+    if (normalized.enabled && !enabled()) throw fail(400, 'Erst die Admin-PIN einrichten – ohne sie gibt es keine Anmeldung')
+    if (next?.exempt !== undefined && (!Array.isArray(next.exempt) || next.exempt.length))
+      throw fail(400, 'IP-Ausnahmen sind nicht mehr zulässig – bitte einen Gerätenachweis registrieren')
     secret.gateway = normalized
     write()
     return gateway()
   }
 
-  // --- Tagescode -------------------------------------------------------------
-
   const newCode = () => String(crypto.randomInt(0, 1_000_000)).padStart(6, '0')
 
-  /** Der Code von heute; um Mitternacht entsteht beim ersten Abruf ein neuer. */
   function dayCode(now = Date.now()) {
     const { day } = localTime(now)
     const current = secret.dayCode
     if (current?.day !== day) {
-      // Der Code von gestern gilt für schon freigeschaltete Geräte noch bis zum Morgen
       const prevGen = current?.day === previousDay(day) ? current.gen : null
-      secret.dayCode = { day, code: newCode(), gen: crypto.randomBytes(6).toString('hex'), prevGen }
-      pruneDevices()
+      secret.dayCode = { day, code: newCode(), gen: crypto.randomBytes(12).toString('hex'), prevGen }
       write()
+      prune()
     }
     return secret.dayCode
   }
 
-  /** Neuer Code sofort (z. B. wenn er in falsche Hände geraten ist): alle Freischaltungen enden. */
   function renewDayCode() {
-    const { day } = localTime()
-    secret.dayCode = { day, code: newCode(), gen: crypto.randomBytes(6).toString('hex'), prevGen: null }
-    pruneDevices()
+    secret.dayCode = { day: localTime().day, code: newCode(), gen: crypto.randomBytes(12).toString('hex'), prevGen: null }
     write()
-    log('Zugang: neuer Tagescode erzeugt – alle Geräte müssen ihn neu eingeben')
+    prune()
     return secret.dayCode
-  }
-
-  function genValid(gen, now = Date.now()) {
-    const code = dayCode(now)
-    if (gen === code.gen) return true
-    return Boolean(code.prevGen) && gen === code.prevGen && localTime(now).hour < GRACE_UNTIL_HOUR
-  }
-
-  function pruneDevices() {
-    const keep = new Set([secret.dayCode?.gen, secret.dayCode?.prevGen].filter(Boolean))
-    for (const [key, d] of Object.entries(secret.devices)) if (!keep.has(d.gen)) delete secret.devices[key]
-  }
-
-  /**
-   * Ist dieses Gerät heute schon mit dem Code freigeschaltet? Am Cookie – oder an der MAC-Adresse,
-   * denn das Cookie gilt nur für den Namen, unter dem der Code eingegeben wurde (192.168.0.21 und
-   * intercom.local sind für den Browser zwei verschiedene Seiten).
-   */
-  function isAdminSession(req) {
-    const u = userOf(req)
-    return Boolean(u?.admin && !u.open)
-  }
-
-  function deviceApproved(req, ip) {
-    const token = parseCookies(req.headers.cookie)[DEVICE_COOKIE]
-    const device = token && secret.devices[sha256(token)]
-    if (device && genValid(device.gen)) return true
-    const mac = macOf(ip)
-    // Ältere Freischaltungen ohne gespeicherte MAC: über ihre Adresse nachschlagen
-    return Boolean(mac) && Object.values(secret.devices).some((d) => genValid(d.gen) && (d.mac || macOf(d.ip)) === mac)
   }
 
   function devicesToday() {
-    return Object.values(secret.devices).filter((d) => genValid(d.gen)).length
+    prune()
+    return Object.values(secret.devices).filter((device) => validGrant(device)).length
   }
 
-  /**
-   * Code prüfen und das Gerät freischalten. Nach zu vielen Fehlversuchen von einer Adresse
-   * ist eine Viertelstunde Pause – sechs Ziffern ließen sich sonst durchprobieren.
-   */
   function redeemDayCode(code, ip, req, res) {
-    const now = Date.now()
-    const fails = codeFails.get(ip)
-    if (fails && now - fails.since > CODE_FAIL_WINDOW_MS) codeFails.delete(ip)
-    if ((codeFails.get(ip)?.count ?? 0) >= CODE_MAX_FAILS)
-      throw Object.assign(new Error('Zu viele falsche Versuche – bitte in 15 Minuten noch einmal'), { status: 429 })
-    const current = dayCode(now)
-    const given = String(code ?? '').replace(/\D/g, '')
-    const ok = given.length === 6 && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(current.code))
-    if (!ok) {
-      const entry = codeFails.get(ip) ?? { count: 0, since: now }
+    trimFailures(secret.codeFails, CODE_FAIL_WINDOW_MS)
+    const key = sha256(String(ip ?? '').replace(/^::ffff:/i, '').slice(0, 160))
+    if ((secret.codeFails[key]?.count ?? 0) >= CODE_MAX_FAILS)
+      throw fail(429, 'Zu viele falsche Versuche – bitte in 15 Minuten noch einmal')
+    const current = dayCode()
+    const given = String(code ?? '').trim()
+    const matches = /^\d{6}$/.test(given) && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(current.code))
+    if (!matches) {
+      const entry = secret.codeFails[key] ?? { count: 0, since: Date.now() }
       entry.count++
-      codeFails.set(ip, entry)
-      throw Object.assign(new Error('Der Code stimmt nicht – es gilt immer nur der Code von heute'), { status: 403 })
+      secret.codeFails[key] = entry
+      write()
+      throw fail(403, 'Der Code stimmt nicht – es gilt immer nur der Code von heute')
     }
-    codeFails.delete(ip)
-    approveDevice(ip, req, res)
-    log(`Zugang: Gerät ${ip} mit dem Tagescode freigeschaltet`)
+    delete secret.codeFails[key]
+    approveDevice(ip, req, res, { gen: current.gen, expiresAt: nextMorning() })
+    log('Zugang: Gerät ' + ip + ' mit dem Tagescode freigeschaltet')
   }
 
-  /** Gerät für heute freischalten (Tagescode eingegeben oder Anmelde-QR eines angemeldeten Nutzers gescannt). */
-  function approveDevice(ip, req, res) {
-    const token = randomToken()
-    secret.devices[sha256(token)] = { gen: dayCode(Date.now()).gen, created: Date.now(), ip: String(ip ?? ''), mac: macOf(ip) || undefined }
-    write()
-    // Bis zum übernächsten Morgen reicht – danach braucht es ohnehin den neuen Code
-    const secure = req.secure || req.get('x-forwarded-proto') === 'https' ? '; Secure' : ''
-    res.append('Set-Cookie', `${DEVICE_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${2 * 86400}${secure}`)
-  }
-
-  // --- Prüfung für Caddy (forward_auth) ---------------------------------------
-
-  /**
-   * Darf diese Anfrage an den Dienst durch?
-   * allow: ja (user = wer, falls angemeldet). code: erst den Tagescode eingeben.
-   * login: erst Name + Rolle. forbidden: angemeldet, aber nicht Admin.
-   */
-  const exemptNetworks = (filter = () => true) => secret.gateway.exempt.filter(filter).map((e) => parseNetwork(e.network))
-  /** Feste Geräte aus der Liste (und der Server selbst) brauchen keinen Tagescode. */
-  const exemptIp = (ip) => isLoopback(ip) || isOwnAddress(ip) || ipInNetworks(ip, exemptNetworks()) || exemptByMac(ip)
-  /** … und die ohne „Nur ohne Code“ (Stationen, Kiosk) auch keine Anmeldung bei Intercom und Dashboard. */
-  const openIp = (ip) =>
-    isLoopback(ip) || isOwnAddress(ip) || ipInNetworks(ip, exemptNetworks((e) => !e.login)) || exemptByMac(ip, (e) => !e.login)
-
-  /**
-   * Ein fest eingetragenes Gerät unter einer anderen Adresse, meist per IPv6 über die .local-Namen:
-   * gleiche MAC-Adresse wie eine einzeln eingetragene Adresse (Netze ohne einzelnes Gerät nicht).
-   */
-  function exemptByMac(ip, filter = () => true) {
-    const mac = macOf(ip)
-    if (!mac) return false
-    return secret.gateway.exempt.some((e) => filter(e) && !e.network.includes('/') && macOf(e.network) === mac)
-  }
-
-  /** Muss dieses Gerät den Tagescode eingeben, und hat es das schon? */
   function deviceStatus(ip, req) {
-    // Der Admin hat sich mit der PIN ausgewiesen – er braucht den Tagescode nicht noch einmal
-    // (sonst fragt jeder weitere Dienst/Name, bei dem er noch kein Gerätecookie hat, wieder danach)
-    const required = gatewayActive() && !exemptIp(ip) && !isAdminSession(req)
-    return { required, approved: !required || deviceApproved(req, ip) }
+    const session = lookupSession(req)
+    const machine = machineOf(req)
+    const required = gatewayActive() && !machine && !session?.admin
+    const grant = deviceGrant(req)
+    return {
+      required, approved: !required || Boolean(grant),
+      generation: grant?.gen ?? null, expiresAt: grant?.expiresAt ?? (session?.admin ? session.expiresAt : machine?.expiresAt ?? null),
+    }
   }
 
-  /**
-   * Darf diese Anfrage an die Schnittstellen des Multiview selbst (Zustand, Chat, Companion-Befehle,
-   * ProPresenter)? Angemeldete Nutzer, feste Geräte ohne Anmeldung und der Server selbst (Kiosk, Companion).
-   * Ohne eingeschaltete Anmeldung jeder.
-   */
   function trusted(ip, req) {
-    return Boolean(userOf(req)) || openIp(ip)
+    const machine = machineOf(req)
+    return Boolean(userOf(req)) || Boolean(machine?.mode === 'station' && machine.services.includes('multiview'))
   }
 
   function check({ service, ip }, req) {
     if (!gatewayActive()) return { action: 'allow', user: null }
     const level = SERVICE_LEVELS[service] ?? 'admin'
-    const exempt = exemptIp(ip)
     const user = userOf(req)
-    // Feste Geräte (Stationen, Raspberry Pis, Desktop-App) können keinen Code eingeben
-    if (openIp(ip) && level === 'user') return { action: 'allow', user }
-    if (!exempt && !user?.admin && !deviceApproved(req, ip)) return { action: 'code', user }
+    const machine = machineOf(req)
+    if (!user && machine?.mode === 'station' && level === 'user' && machine.services.includes(service)) return { action: 'allow', user }
+    if (!machine && !user?.admin && !deviceGrant(req)) return { action: 'code', user }
     if (!user) return { action: 'login', user: null }
     if (level === 'admin' && !user.admin) return { action: 'forbidden', user }
     return { action: 'allow', user }
   }
 
-  /**
-   * Kurzes, signiertes Ticket für einen anderen Dienst auf dem Server (Kesher), der den Nutzer
-   * selbst anmelden soll. Kesher prüft es mit demselben Geheimnis (JMS_AUTH_SECRET).
-   */
   function createTicket(user, audience, key) {
-    if (!key) throw Object.assign(new Error('JMS_AUTH_SECRET ist nicht eingerichtet'), { status: 503 })
-    const payload = Buffer.from(
-      JSON.stringify({ name: user.name, roleId: user.roleId, admin: Boolean(user.admin), aud: audience, exp: Date.now() + 60_000 }),
-    ).toString('base64url')
+    if (!key) throw fail(503, 'JMS_AUTH_SECRET ist nicht eingerichtet')
+    const session = rawSessionById(user?.sessionId)
+    if (!validSession(session) || session.version !== user?.version) throw fail(401, 'Bitte erneut anmelden')
+    const payload = Buffer.from(JSON.stringify({
+      name: session.name, roleId: session.roleId, admin: session.admin, aud: audience,
+      sid: session.id, exp: Math.min(Date.now() + 60_000, session.expiresAt),
+      sessionExpiresAt: session.expiresAt, ver: session.version, version: session.version, jti: randomToken(),
+    })).toString('base64url')
     const signature = crypto.createHmac('sha256', key).update(payload).digest('base64url')
-    return `${payload}.${signature}`
+    return payload + '.' + signature
   }
 
   return {
-    enabled, pinSource, userOf, sessionIdOf, occupiedRoles, occupiedForLogin, login, createSsoTicket, redeemSsoTicket, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession,
-    gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, approveDevice, check, trusted, createTicket,
-    flush: write,
+    enabled, pinSource, userOf, sessionOf, sessionIdOf, sessionStatusById, occupiedRoles, occupiedForLogin,
+    login, createSsoTicket, redeemSsoTicket, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession, revokeAdmins,
+    gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, check, trusted, createTicket,
+    listMachines, createMachine, rotateMachine, revokeMachine, machineOf, machineStatus, machineByFingerprint,
+    prune, sweep: prune, flush: write,
   }
 }
 
@@ -704,7 +992,8 @@ function createAccess({
 function roleRights(config, user) {
   if (!user) return null
   if (user.admin) return { admin: true }
-  return { admin: false, ...normalizeRole(config.access?.roles?.[user.roleId]) }
+  const roles = config.access?.roles ?? {}
+  return { admin: false, ...normalizeRole(Object.hasOwn(roles, user.roleId) ? roles[user.roleId] : null) }
 }
 
 /** Multiviews, die der Nutzer sehen darf. */

@@ -35,7 +35,7 @@ RUN set -eu; \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
-COPY server.js kesher-chat.js kesher-roles.js churchtools.js access.js neighbors.js raspberry-pis.js legacy.js legacy-runtime.js ./
+COPY server.js auth-http.js auth-permissions.js device-transport.js kesher-chat.js kesher-roles.js churchtools.js access.js neighbors.js raspberry-pis.js legacy.js legacy-runtime.js ./
 COPY public ./public
 COPY seed ./seed
 COPY wallpapers/*.jpg ./wallpapers/
@@ -48,7 +48,7 @@ VOLUME /data
 USER node
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:${PORT}/api/state >/dev/null || exit 1
+  CMD curl -fsS http://127.0.0.1:${PORT}/api/healthz >/dev/null || exit 1
 
 # Beim ersten Start die mitgebrachten Einstellungen übernehmen
 CMD ["sh", "-c", "[ -f /data/config.json ] || cp /app/seed/config.json /data/config.json; exec node server.js"]

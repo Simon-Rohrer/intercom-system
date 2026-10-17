@@ -2332,7 +2332,7 @@ function piSettings() {
   config.raspberry ??= {}
   const r = config.raspberry
   r.managed ??= false
-  r.allowInsecureTls ??= true
+  r.allowInsecureTls = false
   r.clients ??= []
   return r
 }
@@ -2357,7 +2357,7 @@ function piProblems(pi, all) {
   const problems = []
   if (!pi.name) problems.push('Name fehlt')
   if (!pi.roleId) problems.push('Rolle fehlt')
-  if (!pi.macAddresses?.length && !pi.ipAddress) problems.push('MAC-Adresse oder IP fehlt')
+  if (!piDeviceId(pi)) problems.push('Geräte-ID fehlt')
   const bad = (pi.macAddresses ?? []).filter((m) => !isMac(m))
   if (bad.length) problems.push(`keine gültige MAC: ${bad.join(', ')}`)
   if (pi.ipAddress && !isIp(pi.ipAddress)) problems.push('IP-Adresse ungültig')
@@ -2398,7 +2398,6 @@ function renderRaspberry() {
     const input = $(`#pi-${key}`)
     if (document.activeElement !== input) input.value = r[key] ?? ''
   }
-  $('#pi-allowInsecureTls').checked = r.allowInsecureTls !== false
   $('#pi-config-line').textContent = `"config_url": "${location.origin}/api/raspberry-pis/config"`
 
   const list = $('#pi-list')
@@ -2432,9 +2431,9 @@ function renderRaspberry() {
               <label class="field"><span>Ansicht</span><select data-p="view">${Object.entries(PI_VIEWS)
                 .map(([value, label]) => `<option value="${value}" ${value === (pi.view || 'standard') ? 'selected' : ''}>${esc(label)}</option>`)
                 .join('')}</select></label>
-              <label class="field"><span>MAC-Adressen <small>(LAN und WLAN, mit Komma)</small></span>
+              <label class="field"><span>MAC-Adressen <small>(nur zur Diagnose)</small></span>
                 <input type="text" data-p="macAddresses" value="${esc((pi.macAddresses ?? []).join(', '))}" placeholder="b8:27:eb:12:34:56" spellcheck="false"></label>
-              <label class="field"><span>Feste IP <small>(nur ohne MAC nötig)</small></span>
+              <label class="field"><span>IP-Adresse <small>(nur zur Diagnose)</small></span>
                 <input type="text" data-p="ipAddress" value="${esc(pi.ipAddress)}" placeholder="192.168.0.157" spellcheck="false"></label>
               <label class="field"><span>Geräte-ID</span>
                 <input type="text" data-p="deviceId" value="${esc(pi.deviceId)}" placeholder="${esc(piDeviceId({ name: pi.name }) || 'kamera-1-pi')}" spellcheck="false"></label>
@@ -2514,11 +2513,6 @@ for (const key of ['serverUrl', 'browserBinary', 'audioWaitSeconds', 'displaySet
     changed(0)
   })
 }
-$('#pi-allowInsecureTls').addEventListener('change', (e) => {
-  piSettings().allowInsecureTls = e.target.checked
-  changed(0)
-})
-
 $('#pi-add').addEventListener('click', () => {
   piSettings().clients.push({ id: uid('pi'), name: '', roleId: '', macAddresses: [], ipAddress: '', view: 'standard', lowPowerMode: false })
   renderRaspberry()
@@ -3064,7 +3058,7 @@ function renderAccess() {
       <div class="btn-row" style="grid-column:1/-1"><button class="btn primary" type="submit">${
         enabled ? 'Übernehmen' : source === 'kesher' ? 'Mit Kesher-PIN einschalten' : 'PIN festlegen und einschalten'
       }</button>
-        ${enabled ? '<button class="btn danger" type="button" id="pin-remove">Anmeldung ausschalten</button>' : ''}</div>
+        </div>
     </form>
     <p class="muted" style="font-size:12.5px;margin-top:10px">${
       source === 'kesher'
@@ -3080,7 +3074,7 @@ function renderAccess() {
     $('#access-roles').innerHTML = !roles.length
       ? `<p class="muted">Keine Rollen – ist Kesher verbunden? (Einstellungen → Kesher-Chat)</p>`
       : `<div class="table-wrap"><table class="table role-table">
-          <thead><tr><th>Rolle</th><th>Hört in Kesher (Chat)</th><th>Multiviews <span class="muted" style="font-weight:500">– antippen: aus → sehen → bearbeiten</span></th><th>Neue Layouts anlegen</th></tr></thead>
+          <thead><tr><th>Rolle</th><th>Hört in Kesher (Chat)</th><th>Multiviews <span class="muted" style="font-weight:500">– antippen: aus → sehen → bearbeiten</span></th><th>Neue Layouts anlegen</th><th>Folien steuern</th></tr></thead>
           <tbody>${roles
             .map((r) => {
               const rights = roleRights(config, { roleId: r.id })
@@ -3104,6 +3098,7 @@ function renderAccess() {
                     .join('') || '<span class="muted">Noch keine Multiviews</span>'
                 }</div></td>
                 <td><label class="switch"><input type="checkbox" data-role-edit ${rights.editLayouts ? 'checked' : ''}><span class="switch-track"></span><span class="muted">einrichten</span></label></td>
+                <td><label class="switch"><input type="checkbox" data-role-slides ${rights.controlSlides ? 'checked' : ''}><span class="switch-track"></span><span class="muted">ProPresenter</span></label></td>
               </tr>`
             })
             .join('')}</tbody></table></div>
@@ -3154,9 +3149,11 @@ $('#page-zugang').addEventListener('change', (e) => {
   const row = e.target.closest('tr[data-role]')
   if (!row) return
   const roleId = row.dataset.role
-  const current = config.access.roles[roleId] ?? { outputs: [], editLayouts: true }
+  const current = config.access.roles[roleId] ?? { outputs: [], editLayouts: false, controlSlides: false }
   if ('roleEdit' in e.target.dataset) {
     current.editLayouts = e.target.checked
+  } else if ('roleSlides' in e.target.dataset) {
+    current.controlSlides = e.target.checked
   } else return
   config.access.roles[roleId] = current
   accessKey = JSON.stringify([kesherRoles(), config.outputs.map((o) => [o.id, o.name]), config.access.roles])
@@ -3285,19 +3282,6 @@ $('#page-zugang').addEventListener('click', async (e) => {
     return renderAccess()
   }
   if (e.target.closest('#roles-suggest')) return suggestRights()
-  if (e.target.closest('#pin-remove')) {
-    const pin = $('#pin-form [name="currentPin"]').value
-    if (!pin) return ($('#pin-error').textContent = 'Zum Ausschalten die bisherige PIN eingeben.')
-    if (!confirm('Anmeldung ausschalten? Danach kann wieder jeder im Netzwerk alles ändern.')) return
-    const res = await fetch('/api/access/pin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ off: true, currentPin: pin }),
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok || !data.ok) return ($('#pin-error').textContent = data.error || `Fehler (HTTP ${res.status})`)
-    location.reload()
-  }
 })
 
 // Einstellungen > Angemeldete Geräte
@@ -3344,10 +3328,20 @@ async function loadSessions() {
 // --- Anmeldung für alle Dienste: Tagescode und feste Geräte -------------------
 
 let gatewayInfo = null
-const removeIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>'
+let gatewayBusy = false
+let gatewayDirty = false
+const machineServiceLabels = { multiview: 'JMS Control', kesher: 'Intercom (Kesher)', dashboard: 'Dashboard' }
+const machineCapabilityLabels = { display: 'Anzeige', 'day-code': 'Tagescode anzeigen', 'pi-config': 'Eigene Pi-Konfiguration',
+  heartbeat: 'Stationsstatus melden', control: 'Technik steuern', 'pi-manage': 'Pis verwalten', companion: 'Companion-Anbindung',
+  satellite: 'Stream-Deck-Satellite', 'chat-monitor': 'Chat-Monitor', 'image-stream': 'Bildstream' }
+
+function machineExpiryValue(expiresAt = Date.now() + 365 * 24 * 60 * 60 * 1000) {
+  const expiry = new Date(expiresAt)
+  return new Date(expiry.getTime() - expiry.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
+}
 
 async function loadGateway() {
-  if (!isAdmin() || page !== 'zugang') return
+  if (!isAdmin() || page !== 'zugang' || gatewayBusy) return
   try {
     const res = await fetch('/api/access/gateway', { cache: 'no-store' })
     gatewayInfo = res.ok ? await res.json() : null
@@ -3362,16 +3356,54 @@ setInterval(() => document.visibilityState === 'visible' && loadGateway(), 60_00
 /** Adresse im QR-Code: öffnet die Startseite (Dashboard) und übernimmt dabei den Code. */
 const gatewayCodeUrl = (info) => `${info.startUrl || publicOrigin(server)}/.jms-auth/code?c=${info.code}`
 
-function exemptRow(entry = { network: '', label: '', login: false }) {
-  return `<div class="exempt-row">
-    <input type="text" name="network" value="${esc(entry.network)}" placeholder="192.168.0.50" aria-label="Adresse oder Bereich" inputmode="decimal">
-    <input type="text" name="label" value="${esc(entry.label)}" placeholder="z. B. Station Licht" aria-label="Bezeichnung">
-    <select name="login" aria-label="Anmeldung">
-      <option value="" ${entry.login ? '' : 'selected'}>Ohne Anmeldung</option>
-      <option value="1" ${entry.login ? 'selected' : ''}>Nur ohne Code</option>
-    </select>
-    <button class="icon-btn" type="button" data-exempt-remove aria-label="Entfernen" title="Entfernen">${removeIcon}</button>
+function machineRow(machine) {
+  const status = machine.revokedAt ? 'Widerrufen' : machine.active ? 'Aktiv' : 'Abgelaufen'
+  const role = kesherRoles().find((entry) => entry.id === machine.roleId)?.name || machine.roleId || 'Keine feste Rolle'
+  return `<div class="pi-item">
+    <div class="pi-item-head"><h4>${esc(machine.name)}</h4><span class="pill ${machine.active ? 'ok' : 'bad'}">${status}</span>
+      <span class="pi-spacer"></span>${machine.active ? `<button class="btn small danger" type="button" data-machine-revoke="${esc(machine.id)}">Widerrufen</button>` : ''}</div>
+    <div class="pi-grid">
+      <div class="field"><span>Betriebsart</span><small>${machine.mode === 'station' ? 'Technikstation' : 'Nur ohne Tagescode – Rollenlogin bleibt nötig'}</small></div>
+      <div class="field"><span>Dienste / Rolle</span><small>${esc((machine.services || []).map((service) => machineServiceLabels[service] || service).join(', ') || 'Keine Stationsdienste')} · ${esc(role)}</small></div>
+      <div class="field"><span>Gültig bis</span><small>${esc(new Date(machine.expiresAt).toLocaleString('de-DE'))}</small></div>
+    </div>
+    <details class="disclosure inner"><summary>Berechtigungen und Zertifikat</summary>
+      <p class="muted">${esc((machine.capabilities || []).map((capability) => machineCapabilityLabels[capability] || capability).join(', ') || 'Keine Stationsrechte')}</p>
+      <p class="muted">Pi-Zuordnung: ${esc(machine.raspberryClientId || 'Keine')} · Geräte-ID: ${esc(machine.deviceId || 'Keine')}</p>
+      <label class="field"><span>SHA-256-Fingerprint</span><input readonly value="${esc(machine.fingerprint || 'Nur serverseitiger Dienstschlüssel')}" aria-label="Zertifikatsfingerprint von ${esc(machine.name)}"></label>
+      ${machine.fingerprint && !machine.revokedAt ? `<form class="gateway-form" data-machine-rotate="${esc(machine.id)}" autocomplete="off">
+        <label class="field"><span>Neuer SHA-256-Fingerprint *</span><input name="fingerprint" required maxlength="95" spellcheck="false" autocapitalize="off" placeholder="64 Hex-Zeichen oder durch Doppelpunkte getrennt"></label>
+        <label class="field"><span>Neues Ablaufdatum *</span><input name="expiresAt" type="datetime-local" required value="${machineExpiryValue()}"></label>
+        <small class="muted">Zuerst ein neues Zertifikat ausstellen. Der alte Gerätenachweis und gebundene Anmeldungen werden sofort ungültig.</small>
+        <div class="btn-row"><button class="btn small" type="submit">Zertifikat ersetzen</button></div><p class="form-error" role="alert"></p>
+      </form>` : ''}
+    </details>
   </div>`
+}
+
+function machineCreateForm() {
+  return `<details class="disclosure inner"><summary>Gerät mit Zertifikat registrieren</summary>
+    <form id="machine-form" class="gateway-form" autocomplete="off">
+      <div class="pi-grid">
+        <label class="field"><span>Gerätename *</span><input name="name" required maxlength="80" placeholder="z. B. Regie-Tablet"></label>
+        <label class="field"><span>Betriebsart *</span><select name="mode"><option value="code-bypass">Nur ohne Tagescode</option><option value="station">Technikstation</option></select></label>
+        <label class="field"><span>Gültig bis *</span><input name="expiresAt" type="datetime-local" required value="${machineExpiryValue()}"></label>
+      </div>
+      <label class="field"><span>SHA-256-Fingerprint des ausgestellten Gerätezertifikats *</span><input name="fingerprint" required maxlength="95" spellcheck="false" autocapitalize="off" placeholder="64 Hex-Zeichen oder durch Doppelpunkte getrennt">
+        <small class="muted">Das Zertifikat muss von der Geräte-CA ausgestellt und mit privatem Schlüssel auf dem Gerät installiert sein. Ein Fingerprint allein erteilt keinem fremden Zertifikat Zugriff. IP und MAC spielen für die Anmeldung keine Rolle.</small></label>
+      <details class="disclosure inner"><summary>Stationsdienste und Berechtigungen</summary>
+        <p class="muted">Nur für Technikstationen. So wenig Rechte wie nötig freigeben; Admin-Dienste verlangen weiterhin eine persönliche Admin-Anmeldung.</p>
+        <div class="pi-grid" data-station-fields>
+          <div class="field"><span>Dienste</span>${Object.entries(machineServiceLabels).map(([value, label]) => `<label class="check"><input type="checkbox" name="services" value="${value}" disabled>${label}</label>`).join('')}</div>
+          <div class="field"><span>Berechtigungen</span>${Object.entries(machineCapabilityLabels).map(([value, label]) => `<label class="check"><input type="checkbox" name="capabilities" value="${value}" disabled>${label}</label>`).join('')}</div>
+          <label class="field"><span>Feste Intercom-Rolle</span><select name="roleId" disabled><option value="">Keine</option>${kesherRoles().filter((role) => role.id !== 'admin').map((role) => `<option value="${esc(role.id)}">${esc(role.name)}</option>`).join('')}</select></label>
+          <label class="field"><span>Vorhandener Raspberry Pi</span><select name="raspberryClientId" disabled><option value="">Keiner</option>${(config?.raspberry?.clients || []).map((client) => `<option value="${esc(client.id)}" data-device-id="${esc(piDeviceId(client))}" data-role-id="${esc(client.roleId)}">${esc(client.name || client.id)}</option>`).join('')}</select></label>
+          <label class="field"><span>Geräte-ID</span><input name="deviceId" disabled maxlength="128" placeholder="z. B. kamera-1-pi" spellcheck="false"></label>
+        </div>
+      </details>
+      <div class="btn-row"><button class="btn primary" type="submit">Gerät registrieren</button></div><p class="form-error" role="alert"></p>
+    </form>
+  </details>`
 }
 
 function renderGateway() {
@@ -3379,17 +3411,16 @@ function renderGateway() {
   if (!isAdmin() || page !== 'zugang') return
   // Nicht neu aufbauen, während jemand tippt
   const active = document.activeElement
-  if (card.contains(active) && active.tagName === 'INPUT' && active.type !== 'checkbox') return
+  if (gatewayBusy || gatewayDirty || (card.contains(active) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(active.tagName))) return
   const info = gatewayInfo
   const head = `<div class="card-head gateway-head"><div><h2>Anmeldung für alle Dienste</h2>
-    <p class="muted">Intercom (Kesher), Dashboard, Companion, Portainer und Glances fragen dann zuerst nach Name und Rolle – einmal für alle, wie hier in JMS Control. Geräte im WLAN brauchen dazu einmal am Tag den Code. Companion, Portainer und Glances sind nur für den Admin. JMS Control selbst bleibt ohne Code erreichbar.</p></div>`
+    <p class="muted">Intercom (Kesher), Dashboard und JMS Control verwenden dieselbe Anmeldung und Gerätefreigabe. Companion, Portainer und Glances sind nur für den Admin. Admins können sich mit ihrer PIN ohne Tagescode anmelden. Alle persönlichen Sitzungen enden spätestens um 05:00 Uhr deutscher Zeit.</p></div>`
   if (!info) {
     card.innerHTML = `${head}</div><p class="muted">Konnte die Einstellungen nicht laden.</p>`
     return
   }
   const pinReady = me.access?.enabled
   const digits = `${info.code.slice(0, 3)} ${info.code.slice(3)}`
-  const exempt = info.exempt.length ? info.exempt : []
   card.innerHTML = `${head}
       <label class="switch"><input type="checkbox" id="gateway-enabled" ${info.enabled ? 'checked' : ''} ${pinReady ? '' : 'disabled'}><span class="switch-track"></span><span>${info.enabled ? 'Eingeschaltet' : 'Ausgeschaltet'}</span></label>
     </div>
@@ -3403,7 +3434,7 @@ function renderGateway() {
       <div class="day-code-info">
         <span class="field"><span>Code für Laptops</span></span>
         <output class="day-code-digits" aria-label="Code von heute: ${esc(info.code.split('').join(' '))}">${esc(digits)}</output>
-        <p class="muted">Neu um Mitternacht. Wer ihn heute eingegeben hat, bleibt bis morgen 5 Uhr freigeschaltet.
+        <p class="muted">Neu um Mitternacht. Die Freigabe endet um 05:00 Uhr am nächsten Morgen; zwischen Mitternacht und 05:00 Uhr noch am selben Morgen.
           <b>${info.devicesToday}</b> ${info.devicesToday === 1 ? 'Gerät ist' : 'Geräte sind'} gerade freigeschaltet.</p>
         <button class="btn small" type="button" id="gateway-renew">Neuen Code erzeugen</button>
         <div class="day-qr-monitor">
@@ -3418,7 +3449,7 @@ function renderGateway() {
               .map(([v, l]) => `<option value="${v}" ${(config?.dayQr?.size || 'm') === v ? 'selected' : ''}>${l}</option>`)
               .join('')}
           </select>
-          <small class="muted">Immer der aktuelle Code – nur auf den Monitoren am Server und festen Geräten, nie in der Vorschau.</small>
+          <small class="muted">Immer der aktuelle Code – nur für den Admin und registrierte Stationen mit der Berechtigung „Tagescode anzeigen“.</small>
         </div>
       </div>
     </div>
@@ -3427,14 +3458,13 @@ function renderGateway() {
         <input type="url" name="startUrl" value="${esc(info.startUrl)}" placeholder="${esc(publicOrigin(server))}">
         <small class="muted">Am besten das Dashboard, z. B. https://192.168.0.21:3000. Leer = JMS Control.</small>
       </label>
-      <div class="field"><span>Feste Geräte ohne Code</span>
-        <small class="muted">Stationen, Raspberry Pis, Kesher-App, Rechner im LAN: eine Adresse (192.168.0.50) oder ein Bereich (192.168.0.0/24). <b>Ohne Anmeldung</b>: kommen ohne Code und Anmeldung an Intercom und Dashboard (Stationen, Kiosk). <b>Nur ohne Code</b>: brauchen keinen Tagescode, melden sich aber mit Name und Rolle an (Arbeitsrechner). An die Admin-Dienste kommen alle nur mit Admin-Anmeldung. Der Server selbst ist immer frei.</small>
-        <div class="exempt-list" id="exempt-list">${exempt.map(exemptRow).join('')}</div>
-        <div><button class="btn small" type="button" id="exempt-add">Gerät hinzufügen</button></div>
-      </div>
       <div class="btn-row"><button class="btn primary" type="submit">Speichern</button></div>
       <p class="form-error" id="gateway-error" role="alert"></p>
-    </form>`
+    </form>
+    <div class="section-head"><div><h3>Registrierte Geräte</h3><p class="muted">Zertifikate ersetzen alle IP-Ausnahmen. Ein Widerruf sperrt das Gerät und beendet seine gebundenen Verbindungen. Dienstschlüssel werden ausschließlich direkt auf dem Server eingerichtet.</p></div></div>
+    <p class="form-error" id="machine-list-error" role="alert"></p>
+    <div class="pi-list">${info.machines?.length ? info.machines.map(machineRow).join('') : '<p class="muted">Noch keine Geräte registriert. Stelle ein Gerätezertifikat aus und registriere anschließend seinen Fingerprint.</p>'}</div>
+    ${machineCreateForm()}`
 }
 
 async function saveGateway(changes) {
@@ -3455,7 +3485,7 @@ $('#access-gateway-card').addEventListener('change', async (e) => {
   if (
     on &&
     !confirm(
-      'Anmeldung für alle Dienste einschalten?\n\nDanach brauchen alle Geräte, die nicht unter „Feste Geräte ohne Code“ stehen, den Tagescode – auch Raspberry Pis, Stationen und die Kesher-App. Diese vorher eintragen.',
+      'Anmeldung für alle Dienste einschalten?\n\nGeräte ohne registrierten kryptografischen Nachweis brauchen den Tagescode und eine Anmeldung. Technikstationen vorher mit gültigem Zertifikat einrichten. Admins können sich weiterhin mit ihrer PIN anmelden.',
     )
   ) {
     e.target.checked = false
@@ -3473,6 +3503,19 @@ $('#access-gateway-card').addEventListener('change', async (e) => {
 
 // Tages-QR-Code auf den Monitoren: normale Einstellung (config.dayQr)
 $('#access-gateway-card').addEventListener('change', (e) => {
+  if (e.target.closest('form')) gatewayDirty = true
+  if (e.target.name === 'mode' && e.target.closest('#machine-form')) {
+    const station = e.target.value === 'station'
+    for (const input of $('#machine-form').querySelectorAll('[data-station-fields] input, [data-station-fields] select')) input.disabled = !station
+    return
+  }
+  if (e.target.name === 'raspberryClientId' && e.target.closest('#machine-form')) {
+    const selected = e.target.selectedOptions[0]
+    const form = e.target.form
+    form.elements.deviceId.value = selected?.dataset.deviceId || ''
+    form.elements.roleId.value = selected?.dataset.roleId || ''
+    return
+  }
   const key = e.target.dataset.dayqr
   if (!key) return
   config.dayQr = { show: true, corner: 'br', size: 'm', ...config.dayQr, [key]: key === 'show' ? e.target.checked : e.target.value }
@@ -3480,14 +3523,44 @@ $('#access-gateway-card').addEventListener('change', (e) => {
   renderGateway()
 })
 
+$('#access-gateway-card').addEventListener('input', (e) => {
+  if (e.target.closest('form')) gatewayDirty = true
+})
+
+async function changeRegisteredMachine(suffix, method, body) {
+  const res = await fetch('/api/access/machines' + suffix, {
+    method, headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  }).catch(() => null)
+  const { ok, error, machine } = (await res?.json().catch(() => ({}))) || {}
+  if (!res?.ok || !ok) throw new Error(error || 'Geräteverwaltung nicht erreichbar')
+  return machine
+}
+
 $('#access-gateway-card').addEventListener('click', async (e) => {
-  if (e.target.closest('#exempt-add')) {
-    $('#exempt-list').insertAdjacentHTML('beforeend', exemptRow())
-    $('#exempt-list .exempt-row:last-child input').focus()
+  const revoke = e.target.closest('[data-machine-revoke]')
+  if (revoke) {
+    if (gatewayBusy) return
+    const machine = gatewayInfo?.machines?.find((entry) => entry.id === revoke.dataset.machineRevoke)
+    if (!machine || !confirm(`Gerät „${machine.name}“ widerrufen?\n\nSein Zertifikat, Dienstschlüssel und gebundene Anmeldungen werden sofort gesperrt. Laufende Verbindungen werden beendet.`)) return
+    gatewayBusy = true
+    revoke.disabled = true
+    $('#machine-list-error').textContent = ''
+    try {
+      await changeRegisteredMachine('/' + encodeURIComponent(machine.id), 'DELETE')
+      gatewayDirty = false
+      document.activeElement?.blur()
+      toast('Gerät widerrufen')
+    } catch (error) {
+      $('#machine-list-error').textContent = error.message
+      return
+    } finally {
+      gatewayBusy = false
+      revoke.disabled = false
+    }
+    await loadGateway()
     return
   }
-  const remove = e.target.closest('[data-exempt-remove]')
-  if (remove) return remove.closest('.exempt-row').remove()
   if (e.target.closest('#gateway-renew')) {
     if (!confirm('Neuen Code erzeugen? Alle Geräte, die heute schon freigeschaltet sind, müssen den neuen Code eingeben.')) return
     const res = await fetch('/api/access/code/renew', { method: 'POST' }).catch(() => null)
@@ -3498,24 +3571,53 @@ $('#access-gateway-card').addEventListener('click', async (e) => {
 })
 
 $('#access-gateway-card').addEventListener('submit', async (e) => {
-  if (e.target.id !== 'gateway-form') return
-  e.preventDefault()
   const form = e.target
-  const exempt = [...form.querySelectorAll('.exempt-row')]
-    .map((row) => ({
-      network: row.querySelector('[name="network"]').value.trim(),
-      label: row.querySelector('[name="label"]').value.trim(),
-      login: row.querySelector('[name="login"]').value === '1',
-    }))
-    .filter((entry) => entry.network)
+  if (form.id !== 'gateway-form' && form.id !== 'machine-form' && !form.dataset.machineRotate) return
+  e.preventDefault()
+  if (gatewayBusy) return
+  const errorOutput = form.querySelector('.form-error')
+  errorOutput.textContent = ''
+  const button = form.querySelector('button[type="submit"]')
+  const previousLabel = button.textContent
+  let body
   try {
-    await saveGateway({ exempt, startUrl: form.startUrl.value.trim() })
+    if (form.id !== 'gateway-form') {
+      const fingerprint = form.elements.fingerprint.value.trim().replace(/:/g, '').toLowerCase()
+      const expiresAt = new Date(form.elements.expiresAt.value).getTime()
+      if (!/^[a-f0-9]{64}$/.test(fingerprint)) throw new Error('Der SHA-256-Fingerprint muss 64 Hex-Zeichen enthalten.')
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) throw new Error('Bitte ein gültiges Ablaufdatum in der Zukunft wählen.')
+      body = { fingerprint, expiresAt }
+      if (form.id === 'machine-form') {
+        const station = form.elements.mode.value === 'station'
+        body = { ...body, name: form.elements.name.value.trim(), mode: form.elements.mode.value,
+          services: station ? [...form.querySelectorAll('[name="services"]:checked')].map((input) => input.value) : [],
+          capabilities: station ? [...form.querySelectorAll('[name="capabilities"]:checked')].map((input) => input.value) : [],
+          roleId: station ? form.elements.roleId.value : '', raspberryClientId: station ? form.elements.raspberryClientId.value : '',
+          deviceId: station ? form.elements.deviceId.value.trim() : '' }
+      } else {
+        const machine = gatewayInfo?.machines?.find((entry) => entry.id === form.dataset.machineRotate)
+        if (!machine) throw new Error('Gerät nicht mehr vorhanden. Bitte die Seite neu laden.')
+        if (fingerprint === machine.fingerprint) throw new Error('Bitte den Fingerprint eines neuen Zertifikats eingeben.')
+        if (!confirm(`Zertifikat von „${machine.name}“ ersetzen?\n\nDer alte Gerätenachweis und gebundene Sitzungen werden sofort ungültig. Das neue Zertifikat muss anschließend auf dem Gerät verwendet werden.`)) return
+      }
+    }
+    gatewayBusy = true
+    button.disabled = true
+    button.textContent = 'Wird gespeichert …'
+    if (form.id === 'gateway-form') await saveGateway({ startUrl: form.elements.startUrl.value.trim() })
+    else await changeRegisteredMachine(form.id === 'machine-form' ? '' : '/' + encodeURIComponent(form.dataset.machineRotate) + '/rotate', 'POST', body)
+    gatewayDirty = false
     document.activeElement?.blur()
-    renderGateway()
-    toast('Gespeichert')
+    toast(form.id === 'machine-form' ? 'Gerät registriert' : form.dataset.machineRotate ? 'Zertifikat ersetzt' : 'Gespeichert')
   } catch (err) {
-    $('#gateway-error').textContent = err.message
+    errorOutput.textContent = err.message
+    return
+  } finally {
+    gatewayBusy = false
+    button.disabled = false
+    button.textContent = previousLabel
   }
+  await loadGateway()
 })
 
 // --- Darstellung, QR-Codes, Menü ---------------------------------------------

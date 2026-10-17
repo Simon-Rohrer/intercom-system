@@ -27,7 +27,7 @@ function showCertHint() {
 }
 
 /** Kennung der Anmeldung aus /api/me – '' ohne Anmeldung. */
-export const loginKey = (user) => (user && !user.open ? `${user.name}|${user.roleId}|${Boolean(user.admin)}` : '')
+export const loginKey = (user) => (user && !user.open ? `${user.name}|${user.roleId}|${Boolean(user.admin)}|${user.sessionId}|${user.version}|${user.expiresAt}` : '')
 
 /**
  * An- und Abmeldung gelten für alle Dienste (dasselbe Cookie auf allen Ports). Meldet man sich
@@ -37,11 +37,11 @@ export const loginKey = (user) => (user && !user.open ? `${user.name}|${user.rol
 export function watchLogin(currentKey, { onChange = () => location.reload(), url = '/api/me' } = {}) {
   let busy = false
   const check = async () => {
-    if (busy || document.visibilityState === 'hidden') return
+    if (busy) return
     busy = true
     try {
       const me = await fetch(url, { cache: 'no-store', credentials: 'same-origin' }).then((r) => r.json())
-      if (me?.access?.enabled && loginKey(me.user) !== currentKey) onChange(me)
+      if (me?.access?.enabled && (loginKey(me.user) !== currentKey || (me.user && me.user.expiresAt <= Date.now()))) onChange(me)
     } catch {
       // Server gerade nicht erreichbar – beim nächsten Mal
     } finally {
@@ -51,7 +51,7 @@ export function watchLogin(currentKey, { onChange = () => location.reload(), url
   document.addEventListener('visibilitychange', check)
   window.addEventListener('focus', check)
   window.addEventListener('pageshow', (e) => e.persisted && check())
-  setInterval(check, 15000)
+  setInterval(check, 5000)
 }
 
 /** WebSocket mit automatischem Neuverbinden. */

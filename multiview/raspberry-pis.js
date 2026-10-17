@@ -69,7 +69,7 @@ function normalizeRaspberry(r) {
     // Erst wenn das an ist, gilt diese Konfiguration statt der Datei auf den Pis
     managed: r?.managed === true,
     serverUrl: normalizeServerUrl(r?.serverUrl),
-    allowInsecureTls: r?.allowInsecureTls !== false,
+    allowInsecureTls: false,
     browserBinary: text(r?.browserBinary),
     audioWaitSeconds: seconds(r?.audioWaitSeconds),
     displaySettleSeconds: seconds(r?.displaySettleSeconds),
@@ -79,14 +79,9 @@ function normalizeRaspberry(r) {
 }
 
 /** Passt der Eintrag zu diesem Pi? Über eine MAC-Adresse oder – ohne MACs – über die IP. */
-function clientMatches(client, macs, ips) {
-  if (client.macAddresses.length) return client.macAddresses.some((m) => macs.includes(m))
-  return Boolean(client.ipAddress) && ips.includes(client.ipAddress)
-}
-
 /** Ein Eintrag ist erst vollständig mit Name, Rolle und MAC oder IP – sonst bekommt der Pi ihn nicht. */
 function clientComplete(client) {
-  return Boolean(client.name && client.roleId && client.deviceId && (client.macAddresses.length || client.ipAddress))
+  return Boolean(client.id && client.name && client.roleId && client.deviceId)
 }
 
 function launcherClient(c) {
@@ -103,11 +98,11 @@ function launcherClient(c) {
  * Antwort für den Launcher (Feldnamen wie in raspberry-pis.json). Nur die Einträge, die zu
  * diesem Pi passen – die anderen Pis gehen ihn nichts an.
  */
-function launcherConfig(raspberry, { macs = [], ips = [] } = {}) {
+function launcherConfig(raspberry, { clientId = '' } = {}) {
   if (!raspberry?.managed) return { managed: false }
   const config = {
     allow_insecure_tls: raspberry.allowInsecureTls,
-    clients: raspberry.clients.filter((c) => clientComplete(c) && clientMatches(c, macs, ips)).map(launcherClient),
+    clients: raspberry.clients.filter((client) => clientComplete(client) && client.id === clientId).map(launcherClient),
   }
   if (raspberry.serverUrl) config.server_url = raspberry.serverUrl
   if (raspberry.browserBinary) config.browser_binary = raspberry.browserBinary

@@ -430,7 +430,7 @@
                 <label class="field"><span>Browser auf dem Pi</span>
                   <input id="pi-browserBinary" type="text" placeholder="chromium" spellcheck="false">
                 </label>
-                <label class="check pi-check"><input type="checkbox" id="pi-allowInsecureTls"> Eigenes Zertifikat des Servers akzeptieren</label>
+                <p class="muted">TLS-Prüfung ist verpflichtend. Die Server-CA und das persönliche Gerätezertifikat müssen auf dem Pi installiert sein.</p>
               </div>
               <details class="disclosure inner">
                 <summary>Wartezeiten beim Start</summary>
@@ -450,7 +450,7 @@
               <div class="section-head">
                 <div>
                   <h3>Stationen</h3>
-                  <p class="muted">Der Pi erkennt seinen Eintrag an einer MAC-Adresse (LAN und WLAN, egal welche IP er gerade hat) oder – ohne MAC – an seiner festen IP.</p>
+                  <p class="muted">Ein registriertes Gerätezertifikat ordnet den Pi seinem Eintrag zu. IP- und MAC-Adressen dienen nur zur Diagnose und erteilen keinen Zugriff. Die Zertifikatzuordnung verwaltest du unter „Benutzer &amp; Rechte → Anmeldung für alle Dienste“.</p>
                 </div>
                 <button class="btn primary" type="button" id="pi-add">+ Raspberry Pi</button>
               </div>
@@ -459,7 +459,7 @@
               <div class="section-head">
                 <div>
                   <h3>Pis im Netz</h3>
-                  <p class="muted">Pis, die in letzter Zeit nach ihren Einstellungen gefragt haben. Einen neuen Pi übernimmst du mit einem Klick – mit den Werten aus seiner Datei.</p>
+                  <p class="muted">Registrierte Pis, die zuletzt mit gültigem Gerätenachweis nach ihren Einstellungen gefragt haben. Übernommene Einstellungen ersetzen keine Zertifikatregistrierung.</p>
                 </div>
                 <button class="btn small" type="button" id="pi-refresh">Aktualisieren</button>
               </div>
@@ -468,7 +468,7 @@
               <div class="callout">
                 <b>Einmal auf jedem Pi:</b> In <code>/etc/kesher/raspberry-pis.json</code> die Zeile
                 <code id="pi-config-line">"config_url": "…/api/raspberry-pis/config"</code> eintragen und den Launcher aktualisieren
-                (<code>sudo ./install.sh &lt;user&gt; --update-config</code>, siehe Dokumentation). Alles andere in der Datei ist dann nur noch die Reserve, falls JMS Control nicht erreichbar ist.
+                (<code>sudo ./install.sh &lt;user&gt; --update-config</code>, siehe Dokumentation). Zusätzlich Server-CA, Gerätezertifikat und privaten Schlüssel nach der Betriebsdokumentation installieren. Eine lokale Reservekonfiguration umgeht die Geräteprüfung nicht.
               </div>
             </div>
 
@@ -476,7 +476,7 @@
               <div class="card-head">
                 <div>
                   <h2>Companion</h2>
-                  <p class="muted">Im Companion-Modul <b>Generic HTTP</b> eine GET-Anfrage auf diese Adressen legen. Multiviews, Layouts und Quellen gehen per Nummer, Name oder ID. Läuft Companion auf diesem Server, gilt die Adresse mit <code>127.0.0.1</code>.</p>
+                  <p class="muted">Im Companion-Modul <b>Generic HTTP</b> eine Anfrage mit dem eingerichteten Dienstnachweis auf diese Adressen legen. Multiviews, Layouts und Quellen gehen per Nummer, Name oder ID. Auch Aufrufe über <code>127.0.0.1</code> benötigen einen gültigen Dienstnachweis; Schlüssel werden nur direkt auf dem Server eingerichtet.</p>
                 </div>
               </div>
               <div id="companion-help"></div>

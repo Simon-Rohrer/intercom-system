@@ -6,6 +6,8 @@
 // Rolle wegnehmen.
 
 const WebSocket = require('ws')
+const crypto = require('node:crypto')
+const net = require('node:net')
 
 const MAX_MESSAGES = 120
 const FLASH_MAX_AGE_MS = 15 * 1000 // ältere Nachrichten (History) blinken nicht
@@ -15,7 +17,7 @@ const REVOKED_RETRY_MS = 60 * 1000 // Rolle wurde übernommen: nicht sofort zur�
 // darum Rollen und Linien regelmäßig neu holen
 const BOOTSTRAP_REFRESH_MS = 30 * 1000
 
-function createKesherChat({ getConfig, onUpdate, onFlash, onPresence = () => {}, log = console.log }) {
+function createKesherChat({ getConfig, getHeaders = () => ({}), onUpdate, onFlash, onPresence = () => {}, log = console.log }) {
   let ws = null
   let token = null
   let session = null // { url, username, roleId }
@@ -104,7 +106,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, onPresence = () => {},
   }
 
   async function api(path, options = {}) {
-    const res = await fetch(`${session.url}${path}`, { ...options, signal: AbortSignal.timeout(5000) })
+    const res = await fetch(`${session.url}${path}`, { ...options, headers: { ...options.headers, ...getHeaders() }, signal: AbortSignal.timeout(5000) })
     return res
   }
 
@@ -251,7 +253,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, onPresence = () => {},
     wsUrl.searchParams.set('token', token)
     // "native": kein WebRTC-Audio für diese reine Anzeige
     wsUrl.searchParams.set('transport', 'native')
-    const socket = new WebSocket(wsUrl)
+    const socket = new WebSocket(wsUrl, { headers: getHeaders() })
     ws = socket
     let revoked = false
 
@@ -339,41 +341,35 @@ function createKesherChat({ getConfig, onUpdate, onFlash, onPresence = () => {},
       // Rolle sofort freigeben
       fetch(`${session.url}/api/logout`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, ...getHeaders() },
         signal: AbortSignal.timeout(1500),
       }).catch(() => {})
     }
   }
 
-  /**
-   * Prüft eine Admin-PIN bei Kesher (dieselbe PIN wie im Kesher-Admin). Die dabei
-   * entstehende Kesher-Admin-Sitzung wird sofort wieder beendet.
-   */
-  async function verifyAdminPin(pin) {
+  async function verifyAdminPin(pin, { sourceIp, secret } = {}) {
     const url = settings().url
     if (!url) throw new Error('Kesher-Adresse fehlt (Einstellungen → Kesher-Chat)')
+    const address = String(sourceIp || '').replace(/^::ffff:/, '')
+    if (!secret || !net.isIP(address)) throw new Error('Sichere PIN-Prüfung ist nicht eingerichtet')
+    const value = String(pin ?? '')
+    const issuedAt = Date.now()
+    const digest = crypto.createHash('sha256').update(value).digest('hex')
+    const signature = crypto.createHmac('sha256', secret).update(`kesher:verify-pin:${address}:${issuedAt}:${digest}`).digest('hex')
     let res
     try {
-      res = await fetch(`${url}/api/admin/login`, {
+      res = await fetch(`${url}/api/admin/pin/verify-central`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: String(pin ?? '') }),
+        body: JSON.stringify({ pin: value, sourceIp: address, issuedAt, signature }),
         signal: AbortSignal.timeout(5000),
       })
     } catch {
       throw new Error('Kesher ist nicht erreichbar – die PIN kann gerade nicht geprüft werden')
     }
     if (res.status === 403) return false
-    if (!res.ok) throw new Error(`Kesher antwortet mit HTTP ${res.status}`)
-    const adminToken = (await res.json().catch(() => ({})))?.token
-    if (adminToken) {
-      fetch(`${url}/api/logout`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${adminToken}` },
-        signal: AbortSignal.timeout(3000),
-      }).catch(() => {})
-    }
-    return true
+    if (!res.ok) throw Object.assign(new Error(`Kesher antwortet mit HTTP ${res.status}`), { status: res.status === 429 ? 429 : 503 })
+    return (await res.json().catch(() => ({})))?.valid === true
   }
 
   /**
@@ -389,7 +385,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, onPresence = () => {},
     try {
       res = await fetch(`${url}/api/companion/chat-text`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getHeaders() },
         body: JSON.stringify({ roleId, username, message, roomId: roomId || '', ...(alert ? { alert: true } : {}) }),
         signal: AbortSignal.timeout(5000),
       })
@@ -408,7 +404,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, onPresence = () => {},
   async function activeRoleIds() {
     const url = settings().url
     if (!url) return []
-    const res = await fetch(`${url}/api/public-bootstrap`, { signal: AbortSignal.timeout(2000) })
+    const res = await fetch(`${url}/api/public-bootstrap`, { headers: getHeaders(), signal: AbortSignal.timeout(2000) })
     if (!res.ok) throw new Error(`Kesher antwortet mit HTTP ${res.status}`)
     const ids = (await res.json())?.activeRoleIds
     return Array.isArray(ids) ? ids : []

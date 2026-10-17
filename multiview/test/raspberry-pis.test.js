@@ -25,7 +25,7 @@ const RASPBERRY = normalizeRaspberry({
 
 test('Einstellungen werden aufgeräumt', () => {
   assert.equal(RASPBERRY.serverUrl, 'https://192.168.0.21:8443')
-  assert.equal(RASPBERRY.allowInsecureTls, true)
+  assert.equal(RASPBERRY.allowInsecureTls, false)
   assert.equal(RASPBERRY.connectTimeoutSeconds, 30)
   assert.equal(RASPBERRY.audioWaitSeconds, null)
   const [cam] = RASPBERRY.clients
@@ -34,17 +34,17 @@ test('Einstellungen werden aufgeräumt', () => {
   assert.deepEqual(cam.macAddresses, ['b8:27:eb:b2:aa:2d'])
   assert.equal(cam.audioInputMatch, 'Headset')
   assert.deepEqual(normalizeRaspberry(undefined), {
-    managed: false, serverUrl: '', allowInsecureTls: true, browserBinary: '',
+    managed: false, serverUrl: '', allowInsecureTls: false, browserBinary: '',
     audioWaitSeconds: null, displaySettleSeconds: null, connectTimeoutSeconds: null, clients: [],
   })
 })
 
 test('Pi bekommt nur seinen eigenen Eintrag, im Format der Datei', () => {
-  const res = launcherConfig(RASPBERRY, { macs: ['b8:27:eb:b2:aa:2d'], ips: ['192.168.0.157'] })
+  const res = launcherConfig(RASPBERRY, { clientId: 'a' })
   assert.deepEqual(res, {
     managed: true,
     config: {
-      allow_insecure_tls: true,
+      allow_insecure_tls: false,
       server_url: 'https://192.168.0.21:8443',
       browser_connect_timeout_seconds: 30,
       clients: [
@@ -60,10 +60,9 @@ test('Pi bekommt nur seinen eigenen Eintrag, im Format der Datei', () => {
       ],
     },
   })
-  // Ohne MACs im Eintrag zählt die IP
-  assert.equal(launcherConfig(RASPBERRY, { ips: ['192.168.0.50'] }).config.clients[0].name, 'FOH')
-  // Unvollständige Einträge (ohne Rolle) gehen nicht raus
-  assert.deepEqual(launcherConfig(RASPBERRY, { macs: ['b8:27:eb:00:00:01'] }).config.clients, [])
+  assert.equal(launcherConfig(RASPBERRY, { clientId: 'b' }).config.clients[0].name, 'FOH')
+  assert.deepEqual(launcherConfig(RASPBERRY, { clientId: 'c' }).config.clients, [])
+  assert.deepEqual(launcherConfig(RASPBERRY, { macs: ['b8:27:eb:b2:aa:2d'], ips: ['192.168.0.50'] }).config.clients, [])
 })
 
 test('Solange nicht hier verwaltet, gilt die Datei auf dem Pi', () => {

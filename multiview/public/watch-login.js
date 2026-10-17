@@ -10,7 +10,7 @@
   var key = script && script.hasAttribute('data-key') ? script.getAttribute('data-key') : null
   var busy = false
   function check() {
-    if (busy || document.visibilityState === 'hidden') return
+    if (busy) return
     busy = true
     fetch('/.jms-auth/api/me', { cache: 'no-store', credentials: 'same-origin' })
       .then(function (r) {
@@ -19,7 +19,7 @@
       .then(function (me) {
         if (!me || !me.access || !me.access.enabled) return
         var u = me.user
-        var current = u && !u.open ? u.name + '|' + u.roleId + '|' + Boolean(u.admin) : ''
+        var current = u && !u.open ? u.name + '|' + u.roleId + '|' + Boolean(u.admin) + '|' + u.sessionId + '|' + u.version + '|' + u.expiresAt : ''
         if (key === null) key = current
         else if (current !== key) location.reload()
       })
@@ -33,5 +33,6 @@
   check()
   document.addEventListener('visibilitychange', check)
   window.addEventListener('focus', check)
-  setInterval(check, 15000)
+  window.addEventListener('pageshow', check)
+  setInterval(check, 5000)
 })()

@@ -1088,18 +1088,10 @@ a.status-tile:hover { border-color: var(--accent-line); }
 }
 .gateway-form { display: flex; flex-direction: column; gap: 16px; }
 .gateway-form small { font-size: 12.5px; font-weight: 400; }
-.exempt-list { display: flex; flex-direction: column; gap: 8px; }
-.exempt-list:empty { display: none; }
-.exempt-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto auto; gap: 8px; align-items: center; }
-.exempt-row select { width: auto; }
 @media (max-width: 700px) {
   .gateway-head { flex-direction: column; }
   .day-code { grid-template-columns: 1fr; justify-items: center; text-align: center; }
   .day-code-info { align-items: center; }
-  .exempt-row { grid-template-columns: minmax(0, 1fr) auto; }
-  .exempt-row [name="label"] { grid-column: 1; grid-row: 2; }
-  .exempt-row select { grid-column: 1; grid-row: 3; width: 100%; }
-  .exempt-row .icon-btn { grid-row: 1 / span 3; grid-column: 2; }
 }
 
 /* ---- Layout-Editor 1:1 wie auf dem Monitor ----------------------------------------
