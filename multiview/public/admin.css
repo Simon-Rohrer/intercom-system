@@ -1907,13 +1907,17 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 }
 
 /* Hochformat (Monitor hochkant): Arbeitsfläche 1080×1920, Vorschau hochkant mittig */
-.canvas-frame.portrait {
-  aspect-ratio: 9 / 16;
-  width: min(100%, calc(78vh * 9 / 16));
+/* Eigene Größe: Seitenverhältnis und Pixel kommen aus --cw/--ch (scaleCanvas) */
+.canvas-frame.sized {
+  aspect-ratio: var(--cw-n) / var(--ch-n);
+  width: min(100%, calc(78vh * var(--cw-n) / var(--ch-n)));
   margin: 0 auto;
 }
-.canvas-frame.portrait > .canvas { width: 1080px; height: 1920px; }
-.output-preview.portrait iframe { width: 1080px; height: 1920px; left: var(--preview-left, 0px); }
+.canvas-frame.sized > .canvas { width: var(--cw); height: var(--ch); }
+.output-preview iframe { width: var(--pw, 1920px); height: var(--ph, 1080px); left: var(--preview-left, 0px); top: var(--preview-top, 0px); }
+.layout-size { display: flex; align-items: flex-end; gap: 8px; }
+.layout-size .field { flex: 1; min-width: 0; }
+.layout-size .times { padding-bottom: 12px; color: var(--muted, #8a8f98); }
 
 /* QR-Anzeige gehört zum jeweiligen Multiview; dieselben Formular- und Check-Stile. */
 .output-foot > .btn-row { align-items: center; min-width: 0; }

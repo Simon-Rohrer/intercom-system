@@ -1,4 +1,4 @@
-import { isPortrait, TIME_ZONE, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder } from './common.js'
+import { layoutSize, isStandardLayout, TIME_ZONE, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions } from './meters.js'
 import { createChatView } from './chat.js'
 import { chatFor, chatRoleFor } from './rights.js'
@@ -183,9 +183,10 @@ function fitStage(layout) {
   fittedLayout = layout
   const W = document.body.clientWidth
   const H = document.body.clientHeight
-  const portrait = isPortrait(layout)
-  const ratio = portrait ? 9 / 16 : 16 / 9
-  const fit = layout && (portrait || W / H < 1)
+  const size = layoutSize(layout)
+  const ratio = size.width / size.height
+  // Normales 16:9 füllt wie bisher den Bildschirm (außer hochkant), alles andere wird eingepasst
+  const fit = layout && (!isStandardLayout(layout) || W / H < 1)
   for (const el of [stage, frameLayer]) {
     if (!fit) {
       for (const p of ['width', 'height', 'left', 'top', 'right', 'bottom']) el.style.removeProperty(p)

@@ -44,17 +44,49 @@ export function berlinParts(date = new Date()) {
 /** Hochformat-Layout (9:16, z. B. für einen hochkant gedrehten Monitor)? */
 export const isPortrait = (layout) => layout?.orientation === 'portrait'
 
+/** Grenzen für eigene Größen in Pixeln */
+export const LAYOUT_MIN_PX = 100
+export const LAYOUT_MAX_PX = 8192
+const px = (v, fallback) => {
+  const n = Math.round(Number(v))
+  return Number.isFinite(n) && n > 0 ? Math.min(LAYOUT_MAX_PX, Math.max(LAYOUT_MIN_PX, n)) : fallback
+}
+
 /** Interne Größe einer Layout-Fläche – so groß wie der Monitor, auf dem es läuft. */
-export const layoutSize = (layout) => (isPortrait(layout) ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 })
+export function layoutSize(layout) {
+  if (layout?.orientation === 'custom') return { width: px(layout.width, 1920), height: px(layout.height, 1080) }
+  return isPortrait(layout) ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 }
+}
+
+/** Normales Querformat 1920×1080 (füllt den Bildschirm wie bisher)? */
+export const isStandardLayout = (layout) => {
+  const { width, height } = layoutSize(layout)
+  return width === 1920 && height === 1080
+}
+
+/** Vorschau-Element auf die Größe des Layouts einstellen (für previewMetrics und CSS). */
+export function setPreviewSize(el, layout) {
+  const { width, height } = layoutSize(layout)
+  const changed = el.dataset.w !== String(width) || el.dataset.h !== String(height)
+  el.dataset.w = String(width)
+  el.dataset.h = String(height)
+  el.style.setProperty('--pw', `${width}px`)
+  el.style.setProperty('--ph', `${height}px`)
+  el.classList.toggle('portrait', height > width)
+  return changed
+}
 
 /**
- * Vorschau in Monitorgröße verkleinern: Querformat füllt die Breite der Karte,
- * Hochformat ihre Höhe und steht mittig (Karten bleiben im Raster gleich hoch).
+ * Vorschau in Monitorgröße verkleinern und mittig in die Karte setzen
+ * (Karten bleiben im Raster gleich groß; Querformat 16:9 füllt sie ganz).
  */
 export function previewMetrics(el) {
-  if (!el.classList.contains('portrait')) return { scale: el.clientWidth / 1920, left: 0 }
-  const scale = el.clientHeight / 1920
-  return { scale, left: Math.max(0, (el.clientWidth - 1080 * scale) / 2) }
+  const w = Number(el.dataset.w) || 1920
+  const h = Number(el.dataset.h) || 1080
+  const cw = el.clientWidth
+  const ch = el.clientHeight || (cw * 9) / 16
+  const scale = Math.min(cw / w, ch / h)
+  return { scale, left: Math.max(0, (cw - w * scale) / 2), top: Math.max(0, (ch - h * scale) / 2) }
 }
 
 /** Kennung der Anmeldung aus /api/me – '' ohne Anmeldung. */

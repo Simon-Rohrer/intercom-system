@@ -1,4 +1,4 @@
-import { isPortrait, layoutSize, previewMetrics, connect, reloadWhenIdle, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
+import { isPortrait, layoutSize, isStandardLayout, setPreviewSize, LAYOUT_MIN_PX, LAYOUT_MAX_PX, previewMetrics, connect, reloadWhenIdle, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
 import { createAgendaView, agendaOptions, AGENDA_ACCENTS } from './agenda.js'
@@ -363,9 +363,10 @@ function layoutOptions(selected) {
 }
 
 const scalePreview = (el) => {
-  const { scale, left } = previewMetrics(el)
+  const { scale, left, top } = previewMetrics(el)
   el.style.setProperty('--preview-scale', String(scale))
   el.style.setProperty('--preview-left', `${left}px`)
+  el.style.setProperty('--preview-top', `${top}px`)
 }
 const previewScaler =
   typeof ResizeObserver === 'function'
@@ -430,11 +431,7 @@ function renderOutputs() {
     const output = config.outputs.find((o) => o.id === card.dataset.id)
     // Hochformat-Layout: Vorschau hochkant und mittig
     const preview = card.querySelector('.output-preview')
-    const portrait = isPortrait(config.layouts.find((l) => l.id === output?.layoutId))
-    if (preview && preview.classList.contains('portrait') !== portrait) {
-      preview.classList.toggle('portrait', portrait)
-      scalePreview(preview)
-    }
+    if (preview && setPreviewSize(preview, config.layouts.find((l) => l.id === output?.layoutId))) scalePreview(preview)
     const name = card.querySelector('[data-o="name"]')
     if (document.activeElement !== name) name.value = output.name
     const select = card.querySelector('[data-o="layoutId"]')
@@ -1099,10 +1096,13 @@ const canvas = $('#canvas')
 // so sehen Schriften, Abstände und Rahmen genau so aus wie später auf dem Monitor.
 const canvasFrame = document.getElementById('canvas-frame')
 function scaleCanvas() {
-  // Hochformat-Layouts: Arbeitsfläche 1080×1920 (Monitor hochkant)
-  const portrait = isPortrait(currentLayout())
-  canvasFrame.classList.toggle('portrait', portrait)
-  const scale = canvasFrame.clientWidth / layoutSize(currentLayout()).width
+  // Hochformat oder eigene Größe: Arbeitsfläche in genau diesen Pixeln
+  const { width, height } = layoutSize(currentLayout())
+  const sized = !isStandardLayout(currentLayout())
+  canvasFrame.classList.toggle('sized', sized)
+  for (const [k, v] of [['--cw', `${width}px`], ['--ch', `${height}px`], ['--cw-n', String(width)], ['--ch-n', String(height)]])
+    canvasFrame.style.setProperty(k, v)
+  const scale = canvasFrame.clientWidth / width
   if (scale > 0) canvasFrame.style.setProperty('--canvas-scale', String(scale))
 }
 if (typeof ResizeObserver === 'function') new ResizeObserver(scaleCanvas).observe(canvasFrame)
@@ -1509,14 +1509,34 @@ function presetIcon(rects) {
     .join('')}</span>`
 }
 
+/** 1920×1080 → "16:9", 1536×512 → "3:1" */
+function ratioText({ width, height }) {
+  const gcd = (a, b) => (b ? gcd(b, a % b) : a)
+  const g = gcd(width, height)
+  const a = width / g
+  const b = height / g
+  return a <= 64 && b <= 64 ? `${a}:${b}` : `${(width / height).toFixed(2).replace('.', ',')}:1`
+}
+
 function layoutInspector(layout) {
   return `
     <h3>Layout</h3>
     <label class="field"><span>Name</span><input type="text" data-l="name" value="${esc(layout.name)}"></label>
     <label class="field"><span>Format</span><select data-l="orientation">
-      <option value="landscape" ${isPortrait(layout) ? '' : 'selected'}>Querformat 16:9 (normaler Monitor)</option>
+      <option value="landscape" ${!layout.orientation || layout.orientation === 'landscape' ? 'selected' : ''}>Querformat 16:9 (normaler Monitor)</option>
       <option value="portrait" ${isPortrait(layout) ? 'selected' : ''}>Hochformat 9:16 (Monitor hochkant)</option>
+      <option value="custom" ${layout.orientation === 'custom' ? 'selected' : ''}>Eigene Größe (Pixel)</option>
     </select></label>
+    ${
+      layout.orientation === 'custom'
+        ? `<div class="layout-size">
+      <label class="field"><span>Breite (px)</span><input type="number" min="${LAYOUT_MIN_PX}" max="${LAYOUT_MAX_PX}" step="1" data-l="width" value="${layoutSize(layout).width}"></label>
+      <span class="times">×</span>
+      <label class="field"><span>Höhe (px)</span><input type="number" min="${LAYOUT_MIN_PX}" max="${LAYOUT_MAX_PX}" step="1" data-l="height" value="${layoutSize(layout).height}"></label>
+    </div>
+    <p class="muted small">Seitenverhältnis ${ratioText(layoutSize(layout))}. Auf dem Monitor wird die Fläche in diesem Verhältnis eingepasst (schwarze Ränder, nichts verzerrt).</p>`
+        : ''
+    }
     <div class="row">
       <label class="field"><span>Raster Spalten</span><input type="number" min="1" max="48" data-l="cols" value="${layout.cols}"></label>
       <label class="field"><span>Raster Zeilen</span><input type="number" min="1" max="48" data-l="rows" value="${layout.rows}"></label>
@@ -2069,6 +2089,17 @@ function onInspectorField(e) {
     } else if (key === 'lines') {
       layout.lines = el.value !== 'off'
       renderInspector()
+    } else if (key === 'orientation') {
+      // Eigene Größe startet mit der bisherigen Fläche
+      if (el.value === 'custom' && layout.orientation !== 'custom') Object.assign(layout, layoutSize(layout))
+      layout.orientation = el.value
+      renderInspector()
+    } else if (key === 'width' || key === 'height') {
+      if (el.value === '' || !(Number(el.value) >= LAYOUT_MIN_PX)) return // während des Tippens nichts übernehmen
+      layout[key] = clamp(Math.round(Number(el.value)), LAYOUT_MIN_PX, LAYOUT_MAX_PX)
+      const hint = el.closest('.layout-size')?.nextElementSibling
+      if (hint) hint.textContent = `Seitenverhältnis ${ratioText(layoutSize(layout))}. Auf dem Monitor wird die Fläche in diesem Verhältnis eingepasst (schwarze Ränder, nichts verzerrt).`
+      scaleCanvas()
     } else if (key === 'shared') {
       layout.shared = el.checked
     } else if (key === 'owner') {

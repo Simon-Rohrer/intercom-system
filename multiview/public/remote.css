@@ -781,4 +781,4 @@ body.booting .rm-main { opacity: 0; }
 .rm-request-withdraw:disabled { opacity: 0.5; }
 
 /* Hochformat-Layout (Monitor hochkant): Vorschau hochkant und mittig */
-.rm-preview.portrait iframe { width: 1080px !important; height: 1920px !important; left: var(--rm-left, 0px); }
+.rm-preview iframe { width: var(--pw, 1920px) !important; height: var(--ph, 1080px) !important; left: var(--rm-left, 0px); top: var(--rm-top, 0px); }
