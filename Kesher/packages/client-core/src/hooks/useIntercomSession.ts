@@ -750,6 +750,17 @@ export type IncomingAttention =
   | { kind: "call"; title: string; detail: string }
   | { kind: "chat" };
 
+/**
+ * Mirror session (Kesher tile in JMS Control) without a microphone of its own: it shows and
+ * controls the device that really uses the role. Only when the tile was given a microphone
+ * explicitly (?audioInputMatch=…) does it still capture audio itself.
+ */
+export function mirrorWithoutMic(appData: { secondary?: boolean } | null | undefined): boolean {
+  if (!appData?.secondary) return false;
+  if (typeof window === "undefined") return true;
+  return !new URLSearchParams(window.location.search).get("audioInputMatch");
+}
+
 export function useIntercomSession({
   token,
   appData,
@@ -1210,7 +1221,8 @@ export function useIntercomSession({
         lowPowerMode ? lowPowerOpusMaxBitrateBps : opusMaxBitrateBps,
       ),
     lowPowerMode,
-    enableReinit: !!(token && appData),
+    // Eine Spiegel-Sitzung ohne eigenes Mikrofon fragt nie nach dem Mikrofon
+    enableReinit: !!(token && appData) && !mirrorWithoutMic(appData),
   });
   const inputLevelDbFsRef = useRef(meterDbFsFloor);
   inputLevelDbFsRef.current = mic.inputLevelDbFs;
@@ -2555,8 +2567,9 @@ export function useIntercomSession({
           });
           pushDebugEvent("system · webrtc · remote audio track attached");
         };
-        if (viewModeOverride === "chat") {
-          // A chat display never transmits; don't ask for a microphone.
+        if (viewModeOverride === "chat" || mirrorWithoutMic(appDataRef.current)) {
+          // A chat display never transmits; a mirror (Kesher tile in JMS Control) talks through the
+          // device that really uses the role – neither asks for a microphone.
           pc.addTransceiver("audio", { direction: "recvonly" });
         } else {
           try {
@@ -2595,6 +2608,9 @@ export function useIntercomSession({
           }
         }
         ws.send(JSON.stringify({ type: "webrtc_ready", data: {} }));
+        // Ein Spiegel schickt beim Verbinden weder Kanalwahl noch Sprechmodus – der Server würde beides
+        // an das echte Gerät der Rolle weiterleiten und dort umstellen.
+        if (appDataRef.current?.secondary) return;
         sendRoomMatrix(listenRoomIdsRef.current, talkRoomIdsRef.current, true);
         const initialVoiceModeValue = voiceModeRef.current;
         const canTransmit = hasLocalTransmitTrack();
