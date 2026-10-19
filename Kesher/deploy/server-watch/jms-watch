@@ -56,8 +56,9 @@ DEFAULTS = {
     "IGNORE_UNITS": "",
     "IGNORE_CONTAINERS": "",
     "HTTP_CHECKS": "Companion=http://127.0.0.1:8000",
-    "DISK_WARN_PERCENT": "90",
-    "MEM_WARN_PERCENT": "95",
+    # Warnung (⚠️ statt 🔴), wenn Festplatte, USB-Sicherungsdatenträger bzw. Arbeitsspeicher so voll sind
+    "DISK_WARN_PERCENT": "80",
+    "MEM_WARN_PERCENT": "80",
     "TEMP_WARN_CELSIUS": "85",
     "INTERNET_HOSTS": "1.1.1.1 8.8.8.8 9.9.9.9",
     "BOOT_GRACE_SECONDS": "300",
@@ -182,8 +183,18 @@ def boot_time():
         return time.time() - float(fh.read().split()[0])
 
 
-def result(ok, name, info=""):
-    return {"ok": ok, "name": name, "info": info}
+def result(ok, name, info="", warn=False):
+    """warn=True: ein Problem ist eine Warnung (z. B. Speicher fast voll), kein Ausfall."""
+    return {"ok": ok, "name": name, "info": info, "warn": warn}
+
+
+# Ist eine Warnung aktiv, gilt sie erst 3 Prozentpunkte unter der Grenze als behoben –
+# sonst käme bei Werten um die Grenze herum ständig „Warnung“ und „wieder gut“.
+HYSTERESIS = 3
+
+
+def below(value, limit, key, active):
+    return value < (limit - HYSTERESIS if key in active else limit)
 
 
 # ---------------------------------------------------------------------------
@@ -374,12 +385,14 @@ def check_http(cfg):
     return results
 
 
-def check_system(cfg):
+def check_system(cfg, active=frozenset()):
     results = {}
     usage = shutil.disk_usage("/")
     percent = round(usage.used * 100 / usage.total)
+    limit = int(cfg["DISK_WARN_PERCENT"])
     info = f"{percent} % belegt · {fmt_gb(usage.free)} frei von {fmt_gb(usage.total)}"
-    results["disk:/"] = result(percent < int(cfg["DISK_WARN_PERCENT"]), "Speicherplatz", info)
+    ok = below(percent, limit, "disk:/", active)
+    results["disk:/"] = result(ok, "Festplatte", info if ok else f"über {limit} % voll: {info}", warn=True)
 
     try:
         mem = {}
@@ -389,8 +402,10 @@ def check_system(cfg):
                 mem[k] = int(v.split()[0]) * 1024
         used = mem["MemTotal"] - mem["MemAvailable"]
         percent = round(used * 100 / mem["MemTotal"])
+        limit = int(cfg["MEM_WARN_PERCENT"])
         info = f"{percent} % belegt · {fmt_gb(mem['MemAvailable'])} frei von {fmt_gb(mem['MemTotal'])}"
-        results["mem"] = result(percent < int(cfg["MEM_WARN_PERCENT"]), "Arbeitsspeicher", info)
+        ok = below(percent, limit, "mem", active)
+        results["mem"] = result(ok, "Arbeitsspeicher", info if ok else f"über {limit} % voll: {info}", warn=True)
     except (OSError, KeyError, ValueError):
         pass
 
@@ -409,11 +424,13 @@ def check_system(cfg):
             continue
     if temps:
         hottest = max(temps)
-        results["temp"] = result(hottest < int(cfg["TEMP_WARN_CELSIUS"]), "Temperatur", f"{hottest:.0f} °C")
+        limit = int(cfg["TEMP_WARN_CELSIUS"])
+        ok = below(hottest, limit, "temp", active)
+        results["temp"] = result(ok, "Temperatur", f"{hottest:.0f} °C" + ("" if ok else f" (Grenze {limit} °C)"), warn=True)
     return results
 
 
-def check_backup(cfg):
+def check_backup(cfg, active=frozenset()):
     """Wöchentliche Sicherung: letzte erfolgreiche Runde und – bei USB – ob der Datenträger dran ist."""
     _, out, _ = run(["systemctl", "is-enabled", "jms-backup-cloud.timer"], timeout=5)
     if out.strip() != "enabled":
@@ -427,7 +444,7 @@ def check_backup(cfg):
                     backup_cfg[k] = v.strip('"').strip("'")
     except OSError:
         pass
-    problems, parts = [], []
+    problems, parts, only_full = [], [], True
     try:
         with open(cfg["BACKUP_LAST_SUCCESS"], encoding="ascii") as fh:
             last = float(fh.read().strip())
@@ -435,6 +452,7 @@ def check_backup(cfg):
         parts.append(f"zuletzt {fmt_time(last)}")
         if age > int(cfg["BACKUP_MAX_AGE_HOURS"]) * 3600:
             problems.append(f"letzte erfolgreiche Sicherung vor {fmt_duration(age)}")
+            only_full = False
     except (OSError, ValueError):
         parts.append("noch keine wöchentliche Sicherung gelaufen")
     mount = backup_cfg.get("USB_MOUNT")
@@ -444,12 +462,14 @@ def check_backup(cfg):
             usage = shutil.disk_usage(mount)
             percent = round(usage.used * 100 / usage.total)
             parts.append(f"USB {percent} % belegt · {fmt_gb(usage.free)} frei")
-            if percent >= int(cfg["DISK_WARN_PERCENT"]):
-                problems.append(f"USB-Datenträger fast voll ({percent} %)")
+            limit = int(cfg["DISK_WARN_PERCENT"])
+            if not below(percent, limit, "backup", active):
+                problems.append(f"USB-Datenträger über {limit} % voll")
         else:
             problems.append("USB-Datenträger nicht angeschlossen")
+            only_full = False
     if problems:
-        return {"backup": result(False, "Sicherung", " · ".join(problems + parts))}
+        return {"backup": result(False, "Sicherung", " · ".join(problems + parts), warn=only_full)}
     return {"backup": result(True, "Sicherung", " · ".join(parts))}
 
 
@@ -462,8 +482,10 @@ def backup_running():
     return out.strip() in ("active", "activating")
 
 
-def collect(cfg, during_backup):
-    """Liefert die Ergebnisse und die Schlüssel-Präfixe, deren Zustand diese Runde unbekannt ist."""
+def collect(cfg, during_backup, active=frozenset()):
+    """Liefert die Ergebnisse und die Schlüssel-Präfixe, deren Zustand diese Runde unbekannt ist.
+
+    active: Schlüssel mit laufender Störung/Warnung (für die Hysterese der Füllstände)."""
     results, unknown = {}, set()
     results.update(check_internet(cfg))
     results.update(check_dns())
@@ -474,8 +496,8 @@ def collect(cfg, during_backup):
         results.update(check_containers(cfg, unknown))
         results.update(check_units(cfg, unknown))
         results.update(check_http(cfg))
-    results.update(check_system(cfg))
-    results.update(check_backup(cfg))
+    results.update(check_system(cfg, active))
+    results.update(check_backup(cfg, active))
     return results, unknown
 
 
@@ -494,10 +516,17 @@ def render_status(cfg, state, now):
     failing = [k for k, item in last.items() if not item["ok"]]
     alerted = [k for k in failing if checks.get(k, {}).get("alerted")]
     watching = [k for k in failing if k not in alerted]
+    errors = [k for k in alerted if not last[k].get("warn")]
+    warnings = [k for k in alerted if last[k].get("warn")]
 
     lines = [f"<b>{esc(cfg['SERVER_NAME'])}</b> · Status" + (f" von {fmt_time(at, now)}" if at else "")]
     if alerted:
-        lines.append(f"🔴 <b>{len(alerted)} Störung{'en' if len(alerted) > 1 else ''}</b>")
+        summary = []
+        if errors:
+            summary.append(f"🔴 <b>{len(errors)} Störung{'en' if len(errors) > 1 else ''}</b>")
+        if warnings:
+            summary.append(f"⚠️ <b>{len(warnings)} Warnung{'en' if len(warnings) > 1 else ''}</b>")
+        lines.append(" · ".join(summary))
     elif watching:
         lines.append(f"🟡 <b>Alles läuft</b> – {len(watching)} Auffälligkeit{'en' if len(watching) > 1 else ''} wird beobachtet")
     else:
@@ -520,7 +549,7 @@ def render_status(cfg, state, now):
             if item["ok"]:
                 icon = "🟢"
             elif entry and entry.get("alerted"):
-                icon = "🔴"
+                icon = "⚠️" if item.get("warn") else "🔴"
             else:
                 icon = "🟡"
             info = item["info"][:160]
@@ -681,14 +710,17 @@ def evaluate(cfg, state, results, unknown, now):
                 since = entry["down_since"]
                 name = entry.get("name") or item["name"]
                 span = f"{fmt_time(since, now)} – {fmt_time(now, since)} ({fmt_duration(now - since)})"
+                was = "Warnung" if entry.get("warn") else "gestört"
                 unsent = [i for i in state["outbox"] if i.get("key") == key and i.get("kind") == "down"]
                 if unsent:
                     # Die Störungsmeldung ging nie raus (z. B. kein Internet): eine Meldung reicht
                     state["outbox"] = [i for i in state["outbox"] if i not in unsent]
-                    queue(state, f"🟠 {title(key, name)} war gestört\n{span}\n<i>{esc(entry.get('info', ''))}</i>",
+                    head = "hatte eine Warnung" if entry.get("warn") else "war gestört"
+                    queue(state, f"🟠 {title(key, name)} {head}\n{span}\n<i>{esc(entry.get('info', ''))}</i>",
                           key, "up")
                 else:
-                    queue(state, f"🟢 {title(key, name)} wieder in Ordnung\ngestört {span}", key, "up")
+                    now_info = f"\n<i>jetzt: {esc(item['info'])}</i>" if entry.get("warn") and item.get("info") else ""
+                    queue(state, f"🟢 {title(key, name)} wieder in Ordnung\n{was} {span}{now_info}", key, "up")
             del checks[key]
             continue
 
@@ -699,11 +731,16 @@ def evaluate(cfg, state, results, unknown, now):
         entry["oks"] = 0
         entry["name"] = item["name"]
         entry["info"] = item["info"]
+        entry["warn"] = item.get("warn", False)
         needed = internet_fail_after if key == "internet" else fail_after
         if not entry["alerted"] and entry["fails"] >= needed:
             entry["alerted"] = True
-            queue(state, f"🔴 {title(key, item['name'])} ausgefallen\nseit {fmt_time(entry['down_since'], now)}"
-                         f"\n<i>{esc(item['info'])}</i>", key, "down")
+            if entry["warn"]:
+                queue(state, f"⚠️ {title(key, item['name'])} – Warnung\nseit {fmt_time(entry['down_since'], now)}"
+                             f"\n<i>{esc(item['info'])}</i>", key, "down")
+            else:
+                queue(state, f"🔴 {title(key, item['name'])} ausgefallen\nseit {fmt_time(entry['down_since'], now)}"
+                             f"\n<i>{esc(item['info'])}</i>", key, "down")
 
 
 def main_round(cfg):
@@ -726,7 +763,7 @@ def main_round(cfg):
         save_state(state)
         return
 
-    results, unknown = collect(cfg, backup_running())
+    results, unknown = collect(cfg, backup_running(), frozenset(state["checks"]))
     evaluate(cfg, state, results, unknown, now)
     # Für /status: was diese Runde nicht geprüft wurde (Sicherung), mit dem letzten Stand zeigen
     kept = {k: v for k, v in state["last"].items() if k.startswith(tuple(unknown)) and k not in results}

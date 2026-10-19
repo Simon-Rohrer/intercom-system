@@ -136,7 +136,7 @@ Der Server prüft sich jede Minute selbst (`jms-watch`) und meldet Störungen ü
 - **Docker-Container**: jeder Container mit Neustart-Regel (`always`, `unless-stopped`) muss laufen und darf nicht `unhealthy` sein.
 - **Dienste**: `docker`, `caddy`, `tailscaled`, `companion` (und `multiview`, `kesher-chat-kiosk`, falls eingeschaltet) müssen laufen. Zusätzlich wird jede systemd-Unit gemeldet, die als „failed“ steht, z. B. eine fehlgeschlagene Sicherung.
 - **Tailscale** auf dem Host und in Tailscale-Containern (z. B. `tailscale-lasse`): nicht verbunden oder abgemeldet.
-- **Companion-Weboberfläche** antwortet nicht, **Speicherplatz** über 90 %, **Arbeitsspeicher** über 95 %, **Temperatur** über 85 °C.
+- **Companion-Weboberfläche** antwortet nicht, **Warnung (⚠️)**, wenn Festplatte, Arbeitsspeicher oder USB-Sicherungsdatenträger über 80 % voll sind oder die Temperatur über 85 °C liegt.
 - **Wöchentliche Sicherung**: USB-Datenträger fehlt oder ist fast voll, letzte erfolgreiche Sicherung älter als 8 Tage.
 - **Server war aus** (Strom, Absturz): Nach dem Hochfahren kommt eine Meldung mit dem letzten Lebenszeichen.
 

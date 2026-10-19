@@ -67,11 +67,16 @@ IGNORE_UNITS=
 IGNORE_CONTAINERS=
 # Weboberflächen ohne Docker-Healthcheck: Name=URL (Leerzeichen-getrennt)
 HTTP_CHECKS=Companion=http://127.0.0.1:8000
-# Warnung, wenn / so voll ist (Prozent)
-DISK_WARN_PERCENT=90
+# Warnung, wenn Festplatte/USB-Sicherung bzw. Arbeitsspeicher so voll sind (Prozent)
+DISK_WARN_PERCENT=80
+MEM_WARN_PERCENT=80
 CONF
   chmod 0600 "${CONFIG_FILE}"
 fi
+
+# Ältere Einstellungen: Warnschwelle von 90 auf 80 % senken, Arbeitsspeicher ergänzen
+sed -i 's/^DISK_WARN_PERCENT=90$/DISK_WARN_PERCENT=80/' "${CONFIG_FILE}"
+grep -q '^MEM_WARN_PERCENT=' "${CONFIG_FILE}" || echo "MEM_WARN_PERCENT=80" >>"${CONFIG_FILE}"
 
 set_value() {
   local key="$1" value="$2"
