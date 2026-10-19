@@ -179,6 +179,19 @@ def esc(text):
     return html.escape(str(text), quote=False)
 
 
+def boot_id():
+    try:
+        with open("/proc/sys/kernel/random/boot_id", encoding="ascii") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def clock_synced():
+    code, out, _ = run(["timedatectl", "show", "-p", "NTPSynchronized", "--value"], timeout=5)
+    return code != 0 or out.strip() == "yes"  # ohne timedatectl nicht blockieren
+
+
 def boot_time():
     with open("/proc/uptime", encoding="ascii") as fh:
         return time.time() - float(fh.read().split()[0])
@@ -431,6 +444,43 @@ def check_system(cfg, active=frozenset()):
     return results
 
 
+def clock_at_boot(booted):
+    """Stand die Uhr beim Start falsch? Liefert das falsche Datum als Text oder None.
+
+    Der erste Protokolleintrag des Starts trägt die Uhrzeit, die die Hardware-Uhr lieferte."""
+    code, out, _ = run(["journalctl", "--list-boots", "-o", "json", "--no-pager"], timeout=10)
+    try:
+        boots = json.loads(out) if code == 0 else []
+        first = next(b["first_entry"] for b in boots if b.get("index") == 0) / 1e6
+    except (ValueError, StopIteration, KeyError, TypeError):
+        return None
+    if abs(first - booted) > 3600:
+        return datetime.fromtimestamp(first, TZ).strftime("%d.%m.%Y %H:%M")
+    return None
+
+
+def check_clock():
+    """Systemzeit synchron? Und hält die Hardware-Uhr (RTC) die Zeit – sonst ist nach jedem
+    Stromausfall erst einmal ein falsches Datum eingestellt (Zertifikate, Tailscale, Companion)."""
+    if not clock_synced():
+        return {"clock": result(False, "Uhrzeit", "nicht mit dem Internet abgeglichen – Zertifikate und "
+                                                  "Anmeldungen (Tailscale, Companion → Kesher) können scheitern")}
+    code, out, _ = run(["hwclock", "--get"], timeout=10)
+    if code != 0 or not out.strip():
+        return {"clock": result(True, "Uhrzeit", "mit dem Internet abgeglichen")}
+    try:
+        rtc = datetime.fromisoformat(out.strip().replace(",", ".")).timestamp()
+    except ValueError:
+        return {"clock": result(True, "Uhrzeit", "mit dem Internet abgeglichen")}
+    drift = rtc - time.time()
+    if abs(drift) > 300:
+        return {"clock": result(False, "Uhrzeit",
+                                f"Hardware-Uhr geht {fmt_duration(abs(drift))} {'vor' if drift > 0 else 'nach'} – "
+                                "einmal sudo hwclock --systohc; stimmt sie nach dem nächsten Ausschalten wieder "
+                                "nicht: CMOS-Batterie (CR2032) auf der Hauptplatine tauschen", warn=True)}
+    return {"clock": result(True, "Uhrzeit", "mit dem Internet abgeglichen · Hardware-Uhr stimmt")}
+
+
 def check_backup(cfg, active=frozenset()):
     """Wöchentliche Sicherung: letzte erfolgreiche Runde und – bei USB – ob der Datenträger dran ist."""
     _, out, _ = run(["systemctl", "is-enabled", "jms-backup-cloud.timer"], timeout=5)
@@ -498,6 +548,7 @@ def collect(cfg, during_backup, active=frozenset()):
         results.update(check_units(cfg, unknown))
         results.update(check_http(cfg))
     results.update(check_system(cfg, active))
+    results.update(check_clock())
     results.update(check_backup(cfg, active))
     return results, unknown
 
@@ -799,15 +850,24 @@ def main_round(cfg):
     booted = boot_time()
 
     last_run = state.get("last_run")
-    if last_run and booted > last_run + 30:
+    current_boot = boot_id()
+    if last_run and state.get("boot_id") and state["boot_id"] != current_boot:
+        # Neu gestartet. Die Uhr kann nach einem Stromausfall erst noch falsch gehen (Hardware-Uhr),
+        # dann stimmen die Zeiten nicht – mit der Meldung warten, bis die Zeit vom Internet da ist.
+        if not clock_synced() and now - booted < 900:
+            return
         icon, head, reason = reboot_reason()
+        wrong = clock_at_boot(booted)
+        clock_note = (f"\n⏰ Beim Start stand die Uhr auf {wrong} – die Hardware-Uhr hält die Zeit nicht "
+                      "(CMOS-Batterie CR2032 tauschen)") if wrong else ""
         queue(state, f"{icon} <b>{esc(head)}</b>\n"
                      f"aus von {fmt_time(last_run, now)} bis {fmt_time(booted, now)} (etwa {fmt_duration(booted - last_run)})\n"
-                     f"<i>Grund: {esc(reason)}</i>")
+                     f"<i>Grund: {esc(reason)}</i>{clock_note}")
     elif not last_run:
         queue(state, "👋 <b>Störungsmeldungen sind eingerichtet</b>\nFällt etwas aus, kommt hier eine Nachricht. "
                      "/status zeigt jederzeit alle Dienste.")
     state["last_run"] = now
+    state["boot_id"] = current_boot
 
     if now - booted < int(cfg["BOOT_GRACE_SECONDS"]):
         # Nach dem Hochfahren starten Container und Dienste noch – nur melden, dass er wieder da ist

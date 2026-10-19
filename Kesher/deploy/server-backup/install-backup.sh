@@ -108,8 +108,18 @@ if [[ "${USB}" == "true" ]]; then
     echo
     echo "   Angeschlossene Datenträger (die Systemplatte ${ROOT_DISK:-?} ist ausgenommen):"
     echo
-    lsblk -dno NAME,TYPE | awk '$2=="disk"{print $1}' | while read -r disk; do
-      [[ "${disk}" == "${ROOT_DISK}" ]] && continue
+    mapfile -t DISKS < <(lsblk -dno NAME,TYPE | awk -v root="${ROOT_DISK}" '$2=="disk" && $1!=root {print $1}')
+    if [[ "${#DISKS[@]}" -eq 0 ]]; then
+      cat >&2 <<EOF
+   Kein weiterer Datenträger gefunden. Ist der USB-Stick eingesteckt?
+   Prüfen: Stick abziehen, wieder anstecken, dann
+     sudo dmesg | tail -15     (sollte "usb-storage" / "sdb" zeigen)
+     lsblk
+   Danach dieses Skript noch einmal starten.
+EOF
+      exit 1
+    fi
+    for disk in "${DISKS[@]}"; do
       lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL,MODEL,TRAN,MOUNTPOINTS "/dev/${disk}"
       echo
     done

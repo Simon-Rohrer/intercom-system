@@ -137,6 +137,7 @@ Der Server prüft sich jede Minute selbst (`jms-watch`) und meldet Störungen ü
 - **Dienste**: `docker`, `caddy`, `tailscaled`, `companion` (und `multiview`, `kesher-chat-kiosk`, falls eingeschaltet) müssen laufen. Zusätzlich wird jede systemd-Unit gemeldet, die als „failed“ steht, z. B. eine fehlgeschlagene Sicherung.
 - **Tailscale** auf dem Host und in Tailscale-Containern (z. B. `tailscale-lasse`): nicht verbunden oder abgemeldet.
 - **Companion-Weboberfläche** antwortet nicht, **Warnung (⚠️)**, wenn Festplatte, Arbeitsspeicher oder USB-Sicherungsdatenträger über 80 % voll sind oder die Temperatur über 85 °C liegt.
+- **Uhrzeit**: nicht mit dem Internet abgeglichen (Störung) oder Hardware-Uhr geht falsch (Warnung). Nach einem Stromausfall stand die Uhr beim Start schon auf dem 27.07. – dann scheitern Zertifikate (Companion → Kesher, Tailscale), bis die Zeit übers Internet kommt. Ursache ist fast immer die leere CMOS-Batterie (CR2032) auf der Hauptplatine. Die Neustart-Meldung weist darauf hin.
 - **Wöchentliche Sicherung**: USB-Datenträger fehlt oder ist fast voll, letzte erfolgreiche Sicherung älter als 8 Tage.
 - **Server war aus**: Nach dem Hochfahren kommt eine Meldung mit Zeitraum und **Grund** aus dem Protokoll des vorherigen Starts – Ein-/Aus-Knopf gedrückt, per Befehl (mit Benutzer), automatischer Neustart nach Updates, Arbeitsspeicher voll, Überhitzung, Kernel-Absturz oder „Strom weg / harter Absturz“ (nicht heruntergefahren). Nachträglich: `sudo jms-watch --grund`.
 
