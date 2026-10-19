@@ -138,7 +138,7 @@ Der Server prüft sich jede Minute selbst (`jms-watch`) und meldet Störungen ü
 - **Tailscale** auf dem Host und in Tailscale-Containern (z. B. `tailscale-lasse`): nicht verbunden oder abgemeldet.
 - **Companion-Weboberfläche** antwortet nicht, **Warnung (⚠️)**, wenn Festplatte, Arbeitsspeicher oder USB-Sicherungsdatenträger über 80 % voll sind oder die Temperatur über 85 °C liegt.
 - **Wöchentliche Sicherung**: USB-Datenträger fehlt oder ist fast voll, letzte erfolgreiche Sicherung älter als 8 Tage.
-- **Server war aus** (Strom, Absturz): Nach dem Hochfahren kommt eine Meldung mit dem letzten Lebenszeichen.
+- **Server war aus**: Nach dem Hochfahren kommt eine Meldung mit Zeitraum und **Grund** aus dem Protokoll des vorherigen Starts – Ein-/Aus-Knopf gedrückt, per Befehl (mit Benutzer), automatischer Neustart nach Updates, Arbeitsspeicher voll, Überhitzung, Kernel-Absturz oder „Strom weg / harter Absturz“ (nicht heruntergefahren). Nachträglich: `sudo jms-watch --grund`.
 
 Gemeldet wird erst nach 3 Minuten Störung (Internet: 2 Minuten), damit Neustarts und Updates keinen Alarm auslösen, und noch einmal, wenn es wieder läuft. Während der wöchentlichen Sicherung werden Container und Dienste nicht geprüft. Im Bot zeigt `/status` jederzeit jeden überwachten Dienst mit eigenem Status, gegliedert nach Netzwerk, Container, Dienste, Weboberflächen und System (z. B. „🟢 kesher – läuft seit 9 Std. · gesund“). Die Antwort kommt nach wenigen Sekunden über den Dienst `jms-watch-bot`, Stand ist die letzte Prüfrunde.
 

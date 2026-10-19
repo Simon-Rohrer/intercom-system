@@ -6,6 +6,7 @@
     jms-watch --test       Testnachricht an den Bot schicken
     jms-watch --find-chat  wartet auf eine Nachricht an den Bot und zeigt die Chat-ID
     jms-watch --listen     beantwortet /status im Bot (läuft dauerhaft als jms-watch-bot.service)
+    jms-watch --grund      warum der Server zuletzt aus war (Protokoll des vorherigen Starts)
 
 Geprüft werden: Internet, DNS, Tailscale (Host und Tailscale-Container), alle
 Docker-Container mit Neustart-Regel (laufen sie, sind sie gesund?), die Dienste aus
@@ -684,6 +685,55 @@ def listen(cfg, interval=3):
 # ---------------------------------------------------------------------------
 # Ablauf
 # ---------------------------------------------------------------------------
+SHUTDOWN_CMD = re.compile(r"COMMAND=\S*\b(reboot|shutdown|poweroff|halt|systemctl\s+(?:reboot|poweroff|halt|kexec)|init\s+[06])\b.*")
+
+
+def reboot_reason():
+    """Warum war der Server aus? Liest das Ende des Protokolls vom vorherigen Start.
+
+    Liefert (Symbol, Überschrift, Grund)."""
+    code, out, _ = run(["journalctl", "-b", "-1", "-o", "cat", "-n", "3000", "--no-pager"], timeout=30)
+    if code != 0 or not out.strip():
+        return "🔄", "Server wurde neu gestartet", "Grund unbekannt (kein Protokoll vom vorherigen Start)"
+    lines = out.splitlines()
+    text = "\n".join(lines)
+    rebooting = "System is rebooting" in text or "reboot.target" in text
+    powering_off = "System is powering down" in text or "poweroff.target" in text or "Power-Off" in text
+    clean = rebooting or powering_off
+
+    reason = None
+    for line in reversed(lines):
+        if "Power key pressed" in line:
+            reason = "Ein-/Aus-Knopf am Server gedrückt"
+            break
+        m = SHUTDOWN_CMD.search(line)
+        if m and "COMMAND=" in line:
+            user = line.split(" :", 1)[0].strip() if " :" in line else "?"
+            reason = f"per Befehl von {user}: {m.group(0)[len('COMMAND='):][:80]}"
+            break
+        if "unattended-upgrade" in line.lower() and "reboot" in line.lower():
+            reason = "automatischer Neustart nach Updates"
+            break
+    if reason is None and clean:
+        reason = "sauber heruntergefahren (Auslöser nicht protokolliert, z. B. über eine Weboberfläche)"
+    if not clean:
+        tail = "\n".join(lines[-300:])
+        if "Out of memory" in tail or "oom-kill" in tail:
+            reason = "Arbeitsspeicher voll – danach abgestürzt, nicht sauber heruntergefahren"
+        elif "critical temperature" in tail.lower() or ("thermal" in tail.lower() and "shutdown" in tail.lower()):
+            reason = "Überhitzung – nicht sauber heruntergefahren"
+        elif "Kernel panic" in tail or "BUG:" in tail or "hung_task" in tail:
+            reason = "Systemabsturz (Kernel) – nicht sauber heruntergefahren"
+        else:
+            reason = ("Strom weg oder harter Absturz – der Server wurde nicht heruntergefahren "
+                      "(z. B. Stecker, Steckdosenleiste, Stromausfall, Knopf lange gedrückt)")
+    if rebooting:
+        return "🔄", "Server wurde neu gestartet", reason
+    if powering_off:
+        return "⏻", "Server war ausgeschaltet", reason
+    return "🔌", "Server war plötzlich aus", reason
+
+
 def evaluate(cfg, state, results, unknown, now):
     fail_after = int(cfg["FAIL_AFTER"])
     internet_fail_after = int(cfg["INTERNET_FAIL_AFTER"])
@@ -750,8 +800,10 @@ def main_round(cfg):
 
     last_run = state.get("last_run")
     if last_run and booted > last_run + 30:
-        queue(state, f"🔄 <b>Server wurde neu gestartet</b>\nletztes Lebenszeichen {fmt_time(last_run, now)} · "
-                     f"wieder an seit {fmt_time(booted, now)} (etwa {fmt_duration(booted - last_run)} aus)")
+        icon, head, reason = reboot_reason()
+        queue(state, f"{icon} <b>{esc(head)}</b>\n"
+                     f"aus von {fmt_time(last_run, now)} bis {fmt_time(booted, now)} (etwa {fmt_duration(booted - last_run)})\n"
+                     f"<i>Grund: {esc(reason)}</i>")
     elif not last_run:
         queue(state, "👋 <b>Störungsmeldungen sind eingerichtet</b>\nFällt etwas aus, kommt hier eine Nachricht. "
                      "/status zeigt jederzeit alle Dienste.")
@@ -831,6 +883,10 @@ def main():
         return find_chat(cfg)
     if arg == "--listen":
         return listen(cfg)
+    if arg == "--grund":
+        icon, head, reason = reboot_reason()
+        print(f"{icon} {head} – an seit {fmt_time(boot_time())}\nGrund: {reason}")
+        return 0
     if arg:
         print(__doc__)
         return 1
