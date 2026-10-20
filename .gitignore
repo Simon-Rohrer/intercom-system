@@ -21,3 +21,4 @@ app/data/
 # Companion/Kesher Runtime
 .cache/
 tmp/
+__pycache__/

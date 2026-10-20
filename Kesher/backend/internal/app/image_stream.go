@@ -141,7 +141,7 @@ func (r *ButtonImageRenderer) RenderButtonImage(state ButtonState) ([]byte, erro
 		switch state.State {
 		case "PI_ONLINE":
 			palette.background = "#0a2218" // deep dark green tint
-			palette.border = "#22c55e"      // vivid green
+			palette.border = "#22c55e"     // vivid green
 			palette.label = "#bbf7d0"
 		case "PI_OFFLINE":
 			palette.background = "#220a0a" // deep dark red tint
@@ -899,12 +899,18 @@ func (c *ImageStreamCoordinator) UnregisterClient(client *ImageStreamClient) {
 
 // HandleImageStreamWebSocket handles WebSocket connections for image streaming
 func (s *Server) HandleImageStreamWebSocket(w http.ResponseWriter, r *http.Request) {
+	validateAccess, allowed := s.serviceAuthorization(r, "image-stream")
+	if !allowed {
+		http.Error(w, "image stream access required", http.StatusForbidden)
+		return
+	}
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		s.logger.Error("websocket upgrade failed", "error", err)
 		return
 	}
 	defer conn.Close()
+	defer watchServiceConnection(validateAccess, conn.Close)()
 	targetRoleID, targetUsername := s.resolveImageStreamTarget(r.Context(), r)
 
 	client := &ImageStreamClient{
@@ -1095,6 +1101,9 @@ func (s *Server) enqueueInitialImageSnapshot(ctx context.Context, client *ImageS
 
 // HandleDebugButtonImage renders a single button image as PNG for browser-based inspection.
 func (s *Server) HandleDebugButtonImage(w http.ResponseWriter, r *http.Request) {
+	if !s.requireServiceCapability(w, r, "image-stream") {
+		return
+	}
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1145,6 +1154,9 @@ func (s *Server) HandleDebugButtonImage(w http.ResponseWriter, r *http.Request) 
 
 // HandleDebugButtonImagePreview serves a tiny HTML page to inspect generated images.
 func (s *Server) HandleDebugButtonImagePreview(w http.ResponseWriter, r *http.Request) {
+	if !s.requireServiceCapability(w, r, "image-stream") {
+		return
+	}
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return

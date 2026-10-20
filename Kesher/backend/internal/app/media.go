@@ -291,7 +291,7 @@ func (m *MediaManager) EnsurePeer(token string, user User) error {
 		m.handleRemoteTrack(peer, remote)
 	})
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		m.logger.Info("peer connection state changed", "token", token, "state", state.String())
+		m.logger.Info("peer connection state changed", "state", state.String())
 		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
 			m.RemovePeer(token)
 		}
@@ -426,7 +426,7 @@ func (m *MediaManager) HandleAnswer(token string, sdp string) error {
 	}
 	for _, c := range peer.pendingICECandidates {
 		if err := peer.pc.AddICECandidate(c); err != nil {
-			m.logger.Warn("flush pending ice candidate failed", "token", token, "error", err)
+			m.logger.Warn("flush pending ice candidate failed", "error", err)
 		}
 	}
 	peer.pendingICECandidates = nil
@@ -571,7 +571,7 @@ func (m *MediaManager) handleRemoteTrack(sourcePeer *mediaPeer, remote *webrtc.T
 				if dest.gate.Load() {
 					if _, err := dest.localTrack.Write(buf[:n]); err != nil {
 						// Log RTP write failures for diagnostics; may indicate full send buffer or peer disconnection
-						m.logger.Debug("rtp forward write failed", "dest_token", destToken, "error", err)
+						m.logger.Debug("rtp forward write failed", "error", err)
 					}
 					if !hasNativeDest && m.hub != nil && m.hub.IsNativeTransport(destToken) {
 						hasNativeDest = true
@@ -785,12 +785,12 @@ func (m *MediaManager) recomputeSourceRoutingWithSnapshotLocked(sourceToken stri
 				"intercom",
 			)
 			if err != nil {
-				m.logger.Warn("create per-dest track failed", "destPeer", p.token, "error", err)
+				m.logger.Warn("create per-dest track failed", "error", err)
 				continue
 			}
 			sender, err := p.pc.AddTrack(localTrack)
 			if err != nil {
-				m.logger.Warn("pre-attach track failed", "destPeer", p.token, "sourceToken", sourceToken, "error", err)
+				m.logger.Warn("pre-attach track failed", "error", err)
 				continue
 			}
 			p.senders[sourceToken] = sender
@@ -1023,14 +1023,14 @@ func (m *MediaManager) maybeRenegotiateLocked(peer *mediaPeer) {
 		peer.renegotiating = false
 		peer.pendingRenegotiate = true
 		m.scheduleRenegotiationLocked(peer.token)
-		m.logger.Warn("create offer failed", "token", peer.token, "error", err)
+		m.logger.Warn("create offer failed", "error", err)
 		return
 	}
 	if err := peer.pc.SetLocalDescription(offer); err != nil {
 		peer.renegotiating = false
 		peer.pendingRenegotiate = true
 		m.scheduleRenegotiationLocked(peer.token)
-		m.logger.Warn("set local description failed", "token", peer.token, "error", err)
+		m.logger.Warn("set local description failed", "error", err)
 		return
 	}
 	peer.lastSenderSetHashSet = true

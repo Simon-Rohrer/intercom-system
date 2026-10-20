@@ -1,9 +1,10 @@
-import { connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder } from './common.js'
+import { layoutSize, isStandardLayout, TIME_ZONE, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions } from './meters.js'
 import { createChatView } from './chat.js'
 import { chatFor, chatRoleFor } from './rights.js'
 import { createComposer } from './chat-compose.js'
 import { createAgendaView } from './agenda.js'
+import { createUplinkView, mergeUplink } from './uplink.js'
 import { createProPresenterView, createPlaylistView, createPreacherView } from './propresenter.js'
 import { createStageView } from './stage.js'
 import {
@@ -19,6 +20,15 @@ const screenRef = params.get('screen')
 const outputRef = params.get('id') || '1'
 const embedded = params.has('embed')
 document.body.classList.toggle('embedded', embedded)
+
+// Bedienbare Extras (z. B. CCLI kopieren) nur im Monitor-Modus und im Vollbild –
+// nicht am HDMI-Ausgang und nicht in den kleinen Vorschauen
+function updateCanCopy() {
+  const fills = window.innerWidth >= screen.width - 4 && window.innerHeight >= screen.height - 4
+  document.body.classList.toggle('can-copy', !screenRef && (!embedded || fills))
+}
+updateCanCopy()
+window.addEventListener('resize', updateCanCopy)
 
 const stage = document.getElementById('stage')
 const frameLayer = document.getElementById('frames')
@@ -40,6 +50,7 @@ const chatViews = new Set() // Chat-Kacheln
 const composers = new Set() // Eingabefelder der Chat-Kacheln (angemeldet)
 // Angemeldeter Nutzer (falls diese Seite angemeldet geöffnet ist): Chat und Intercom gehen mit ihm mit
 let viewer = null
+let viewerReady = false
 // Ohne eigene Anmeldung (Kiosk am HDMI-Ausgang): wer gerade für diesen Multiview angemeldet ist
 let stationUser = null
 let currentOutputId = null
@@ -49,24 +60,29 @@ fetch('/api/me', { cache: 'no-store' })
     viewer = me?.user && !me.user.open ? me.user : null
     if (!viewer) return
     for (const view of chatViews) view.update(chatFor(chat, view.roleId()))
+  })
+  .catch(() => {})
+  .finally(() => {
+    viewerReady = true
     if (config) {
       renderedKey = '' // Kesher-Kacheln mit „angemeldeter Nutzer“ jetzt anmelden
       render()
     }
   })
-  .catch(() => {})
 let chat = { state: 'connecting', messages: [], stationName: '' }
 let bootId = null
 const agendaViews = new Set() // ChurchTools-Kacheln
+const uplinkViews = new Set() // Upload-Kacheln (FRITZ!Box)
+let uplink = null
 let churchtools = { state: 'connecting', events: [] }
 const frames = new Map() // Kesher-Intercom: tile.id → { wrap, url }
 
 const ws = connect(
   (msg) => {
     if (msg.type === 'config') {
-      setTimeout(refreshDayQr, 300) // Schalter oder Ecke für den Tages-QR-Code geändert
       config = msg.config
       render()
+      refreshDayQr()
     } else if (msg.type === 'atem') {
       atem = msg
       updateOverlays()
@@ -84,6 +100,9 @@ const ws = connect(
     } else if (msg.type === 'churchtools') {
       churchtools = msg
       for (const view of agendaViews) view.update(churchtools)
+    } else if (msg.type === 'uplink') {
+      uplink = mergeUplink(uplink, msg)
+      for (const view of uplinkViews) view.update(uplink)
     } else if (msg.type === 'session_revoked') {
       location.reload() // Anmeldung übernommen: ohne persönlichen Chat weiter
     } else if (msg.type === 'chatFlash') {
@@ -121,10 +140,19 @@ function render() {
     ? `Bildschirm ${screenRef} · Multiview`
     : output ? `${output.name} – Multiview` : 'Multiview'
 
+  // Monitor hochkant aufgehängt (Bildschirme am Server → Drehung): das ganze Bild drehen
+  const rotate = screen?.rotate === 90 || screen?.rotate === 270 ? String(screen.rotate) : ''
+  if ((document.body.dataset.rotate || '') !== rotate) {
+    if (rotate) document.body.dataset.rotate = rotate
+    else delete document.body.dataset.rotate
+  }
   // Nur neu aufbauen, wenn sich für diesen Ausgang wirklich etwas geändert hat,
   // sonst würden die Videos bei jeder Änderung an anderen Layouts kurz flackern.
-  const key = JSON.stringify([output?.id ?? outputRef, layout, config.sources, config.chat?.url])
-  if (key === renderedKey) return updateOverlays()
+  const key = JSON.stringify([output ?? outputRef, layout, config.sources, config.chat])
+  if (key === renderedKey) {
+    fitStage(layout) // z. B. Drehung des Bildschirms geändert
+    return updateOverlays()
+  }
   renderedKey = key
 
   stage.replaceChildren()
@@ -135,6 +163,7 @@ function render() {
   chatViews.clear()
   composers.clear()
   agendaViews.clear()
+  uplinkViews.clear()
   stageViews.clear()
 
   syncFrames(layout)
@@ -146,6 +175,7 @@ function render() {
   if (!output) return showMessage(`Ausgang „${outputRef}“ nicht gefunden`)
   if (!layout) return showMessage(`${output.name}\nKein Layout zugewiesen`)
 
+  fitStage(layout)
   for (const el of [stage, frameLayer]) {
     el.style.setProperty('--bg', layout.background || '#000')
     el.style.setProperty('--gap', `${Number(layout.gap) || 0}px`)
@@ -158,6 +188,32 @@ function render() {
   updateOverlays()
   tick()
 }
+
+/**
+ * Fläche passend zum Layout-Format: Ein Hochformat-Layout (9:16) – oder ein Querformat-Layout auf
+ * einem hochkant stehenden Bildschirm – wird mittig mit schwarzen Rändern gezeigt statt verzerrt.
+ * Sonst füllt die Fläche wie bisher den ganzen Bildschirm.
+ */
+let fittedLayout = null
+function fitStage(layout) {
+  fittedLayout = layout
+  const W = document.body.clientWidth
+  const H = document.body.clientHeight
+  const size = layoutSize(layout)
+  const ratio = size.width / size.height
+  // Normales 16:9 füllt wie bisher den Bildschirm (außer hochkant), alles andere wird eingepasst
+  const fit = layout && (!isStandardLayout(layout) || W / H < 1)
+  for (const el of [stage, frameLayer]) {
+    if (!fit) {
+      for (const p of ['width', 'height', 'left', 'top', 'right', 'bottom']) el.style.removeProperty(p)
+      continue
+    }
+    const w = Math.min(W, H * ratio)
+    const h = w / ratio
+    Object.assign(el.style, { width: `${w}px`, height: `${h}px`, left: `${(W - w) / 2}px`, top: `${(H - h) / 2}px`, right: 'auto', bottom: 'auto' })
+  }
+}
+window.addEventListener('resize', () => fittedLayout && fitStage(fittedLayout))
 
 function showMessage(text) {
   const el = document.createElement('div')
@@ -208,15 +264,13 @@ function buildTile(tile, layout, usedStreams) {
   } else if (tile.kind === 'kesher') {
     // Die Kesher-Seite selbst liegt in der Ebene #frames (syncFrames) über dieser Kachel
     media.classList.add('chat')
-    media.append(
-      placeholder(
-        embedded
-          ? 'Kesher-Intercom\nnur auf dem Monitor bedienbar'
-          : tile.kesherRoleId === '@user' && !kesherPerson()
-            ? 'Kesher-Intercom\nniemand für diesen Multiview angemeldet'
-            : 'Kesher-Intercom\nwird geladen …',
-      ),
-    )
+    media.append(placeholder('Kesher-Intercom\nwird geladen …'))
+  } else if (tile.kind === 'uplink') {
+    const view = createUplinkView(tile.uplink)
+    view.update(uplink)
+    uplinkViews.add(view)
+    media.classList.add('chat')
+    media.append(view.el)
   } else if (tile.kind === 'churchtools') {
     const view = createAgendaView(tile)
     view.update(churchtools)
@@ -316,7 +370,7 @@ const hasViewerKesher = () => {
 
 /** Ohne eigene Anmeldung regelmäßig nachsehen, wer für diesen Multiview angemeldet ist. */
 async function refreshStationUser() {
-  if (embedded || viewer || !currentOutputId || !hasViewerKesher()) return
+  if (viewer || !currentOutputId || !hasViewerKesher()) return
   const data = await fetch(`/api/output/${encodeURIComponent(currentOutputId)}/user`, { cache: 'no-store' })
     .then((r) => r.json())
     .catch(() => null)
@@ -343,11 +397,10 @@ function kesherUrl(tile) {
     // Kesher erlaubt keine Leerzeichen im Namen – geschütztes Leerzeichen sieht gleich aus
     params.set('username', username.replace(/\s+/g, '\u00a0'))
     params.set('roleId', roleId)
-    // Mit der Rolle des angemeldeten Nutzers nie übernehmen: sein eigenes Kesher (Handy, Laptop,
-    // Station) soll dadurch nicht rausfliegen.
-    if (tile.kesherTakeover !== false && !asViewer) params.set('autoTakeover', '1')
-    // Als Zweitgerät: belegt die Rolle in Kesher nicht, das eigene Kesher-Gerät geht trotzdem
-    if (asViewer) params.set('secondary', '1')
+    // Immer als Spiegel (Zweitgerät): Die Kachel belegt die Rolle in Kesher nie. Ist die Rolle auf
+    // einem echten Gerät angemeldet (z. B. Laptop mit Headset), zeigt die Kachel dessen Kanäle und
+    // Sprechtasten, und was man hier umstellt, schaltet Kesher dort.
+    params.set('secondary', '1')
   }
   if (tile.kesherAudioIn) params.set('audioInputMatch', tile.kesherAudioIn)
   if (tile.kesherAudioOut) params.set('audioOutputMatch', tile.kesherAudioOut)
@@ -358,14 +411,16 @@ function kesherUrl(tile) {
  * Kesher-Fenster passend zum Layout anlegen, verschieben oder entfernen.
  * Ein Fenster bleibt bestehen, solange sich seine Adresse nicht ändert – so reißt
  * die Intercom-Verbindung nicht ab, wenn im Editor etwas anderes geändert wird.
- * In der Editor-Vorschau nie, sonst wäre die Rolle doppelt angemeldet.
+ * Eingebettete Ansichten verwenden dieselben Fenster als Zweitgerät; beim
+ * Wechsel ins Vollbild bleibt die bestehende Intercom-Verbindung erhalten.
  */
 function syncFrames(layout) {
-  // „Angemeldeter Nutzer“ ohne Person: keine Kesher-Anmeldeseite, die Kachel zeigt den Hinweis
+  // Erst die eigene Identität auflösen, damit der erste iframe-Aufruf schon die
+  // richtige Zweitgeräte-Anmeldung nutzt. Ohne Person zeigt Kesher seine Anmeldung.
   const wanted =
-    embedded || !layout
+    !layout || !viewerReady
       ? []
-      : layout.tiles.filter((t) => t.kind === 'kesher' && (t.kesherRoleId !== '@user' || kesherPerson()))
+      : layout.tiles.filter((t) => t.kind === 'kesher')
   refreshStationUser()
   const keep = new Set()
   for (const tile of wanted) {
@@ -379,6 +434,7 @@ function syncFrames(layout) {
       const wrap = document.createElement('div')
       wrap.className = 'frame-tile'
       const iframe = document.createElement('iframe')
+      iframe.title = 'Kesher-Intercom'
       iframe.allow = 'microphone; camera; autoplay; speaker-selection; fullscreen'
       iframe.src = url
       wrap.append(iframe)
@@ -453,7 +509,7 @@ function updateOverlays() {
 }
 
 function tick() {
-  const text = new Date().toLocaleTimeString('de-DE')
+  const text = new Date().toLocaleTimeString('de-DE', { timeZone: TIME_ZONE })
   for (const c of clocks) if (c.textContent !== text) c.textContent = text
 }
 setInterval(tick, 200)
@@ -540,11 +596,12 @@ keepAwake()
 
 
 // ---------------------------------------------------------------------------
-// Tages-QR-Code der Anmeldung klein in einer Ecke – immer der aktuelle (nicht in Vorschauen)
+// Tages-QR-Code der Anmeldung klein in einer Ecke – je Multiview, auch in Vorschau und Vollbild
 // ---------------------------------------------------------------------------
 
 let serverAddresses = []
 let dayQrKey = ''
+let dayQrRequest = 0
 const dayQr = document.createElement('figure')
 dayQr.className = 'day-qr'
 dayQr.hidden = true
@@ -560,16 +617,25 @@ function lanOrigin() {
 }
 
 async function refreshDayQr() {
-  if (embedded) return
-  const data = await fetch('/api/display/day-code', { cache: 'no-store' })
+  const request = ++dayQrRequest
+  const outputId = currentOutputId
+  const enabled = config?.outputs.find((output) => output.id === outputId)?.dayQr?.show
+  if (!outputId || !enabled) {
+    dayQr.hidden = true
+    dayQrKey = ''
+    return
+  }
+  const data = await fetch(`/api/display/day-code?output=${encodeURIComponent(outputId)}`, { cache: 'no-store' })
     .then((r) => r.json())
     .catch(() => null)
+  if (request !== dayQrRequest || outputId !== currentOutputId) return
   if (!data?.show) {
     dayQr.hidden = true
     dayQrKey = ''
     return
   }
-  const target = `${data.startUrl || lanOrigin()}/.jms-auth/code?c=${data.code}`
+  const base = (data.startUrl || lanOrigin()).replace(/\/+$/, '')
+  const target = `${base}/.jms-auth/code?c=${encodeURIComponent(data.code)}&next=${encodeURIComponent('/remote.html')}`
   const key = JSON.stringify([target, data.corner, data.size])
   dayQr.dataset.corner = data.corner || 'br'
   dayQr.dataset.size = data.size || 'm'

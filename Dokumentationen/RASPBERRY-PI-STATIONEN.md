@@ -19,7 +19,40 @@ IP prüfen:
 hostname -I
 ```
 
-## Konfiguration ergänzen
+## Einstellungen im Multiview (empfohlen)
+
+Seit Launcher-Version 10 stehen die Einstellungen der Pis im Multiview unter
+**Einstellungen → Raspberry Pis** (`https://192.168.0.21:8090/#/einstellungen/raspberry`, nur Admin):
+Kesher-Adresse, Zertifikat, Wartezeiten und pro Station Name, Rolle, Ansicht, MAC-Adressen,
+Audio-Geräte und Sparmodus. Der Launcher fragt beim Start und danach alle 15 Sekunden nach;
+ändert sich etwas für seinen Pi, startet er den Browser mit den neuen Einstellungen neu.
+
+Dafür steht in `/etc/kesher/raspberry-pis.json` auf dem Pi zusätzlich:
+
+```json
+"config_url": "https://192.168.0.21:8090/api/raspberry-pis/config"
+```
+
+So funktioniert es:
+
+- Solange der Schalter **Hier verwalten** aus ist, nehmen die Pis weiter ihre Datei. Unter
+  **Pis im Netz** erscheinen trotzdem alle Pis mit `config_url`; **Übernehmen** legt die
+  Station mit den Werten aus ihrer Datei und allen ihren MAC-Adressen an. Danach einschalten.
+- Eingeschaltet gilt der Multiview. In der Datei bleiben nur `config_url`,
+  `allow_insecure_tls` (für die Verbindung zum Multiview) und ggf. `heartbeat_secret`
+  maßgeblich – der Rest ist die Reserve, falls der Multiview beim Start nicht erreichbar ist.
+- Die letzte Antwort des Multiview liegt auf dem Pi in `~/.cache/kesher-pi/managed-config.json`
+  und wird genommen, wenn der Multiview beim Start nicht antwortet.
+- Ein Pi bekommt nur seinen eigenen Eintrag (über MAC oder IP). Ein Pi ohne Eintrag startet
+  bei eingeschaltetem Schalter nicht als Station und taucht unter „Pis im Netz“ auf.
+- Prüfen auf dem Pi: `sudo -u <user> /opt/kesher-pi/kesher-pi-launcher.py --print-config`
+  zeigt die wirksamen Einstellungen und woher sie kommen (`multiview`, `cache` oder `file`).
+
+Fernsteuern: Im Dashboard **Raspberry fernsteuern** öffnet Kesher direkt im Reiter
+*Raspberry* (`https://192.168.0.21:8443/?login=raspberry`), ohne automatische Anmeldung mit der
+eigenen Rolle. Dort mit **Steuern** eine verbundene Station übernehmen.
+
+## Konfiguration in der Datei (ohne Multiview)
 
 Auf dem Entwicklungsrechner diese Datei bearbeiten:
 
@@ -110,6 +143,29 @@ Audio:
 ```sh
 sudo -u <user> XDG_RUNTIME_DIR=/run/user/$(id -u <user>) DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u <user>)/bus /opt/kesher-pi/kesher-pi-launcher.py --print-audio
 ```
+
+## Messwerte im Dashboard (Glances)
+
+Im Dashboard steht unter *Admin* direkt unter *Server* der Abschnitt **Raspberry Pis** mit je einer
+Untergruppe pro Pi: Prozessor, Arbeitsspeicher, Temperatur, Speicherkarte, Lesen/Schreiben, WLAN,
+Prozesse. Die Werte liefert Glances auf dem Pi:
+
+```bash
+sudo ./install-glances.sh            # nur 192.168.0.21 (der Server) darf abfragen
+sudo ./install-glances.sh --remove   # Dienst wieder entfernen
+```
+
+- Dienst `kesher-glances` (systemd), nur die Schnittstelle auf Port `61208`, ohne Weboberfläche.
+  `IPAddressAllow` lässt nur den Server und den Pi selbst durch, alle anderen bekommen keine Antwort.
+- Kostet auf einem Pi 3 ca. 70 MB Arbeitsspeicher und im Schnitt ca. 14 % eines Kerns, aber nur,
+  solange jemand den Admin-Reiter offen hat (abgefragt wird alle 15 s).
+- **Neuer Pi:** Skript auf dem Pi ausführen, in `Kesher/server-config/homepage/services.yaml` die
+  Untergruppe `Kamera-1` kopieren (Name, `url` mit der IP des Pi), in `settings.yaml` den Namen unter
+  `Raspberry Pis` ergänzen, dann einspielen (siehe Dashboard in `BETRIEB.md`).
+- Das Dashboard fragt die **IP-Adresse** des Pi ab (Homepage kennt keine `.local`-Namen). Ändert sie
+  sich (DHCP), zeigt die Gruppe „API Error“ – dann die `url` anpassen. Abhilfe auf Dauer: feste
+  Adresse per DHCP-Reservierung auf `dc01`. Die aktuelle IP steht in JMS Control unter
+  *Einstellungen → Raspberry Pis*.
 
 ## Optional: Companion Satellite
 

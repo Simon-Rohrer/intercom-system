@@ -31,9 +31,9 @@ function write(key, value) {
 }
 
 export function currentPrefs() {
-  const theme = read('theme', 'system')
+  const theme = read('theme', 'dark')
   return {
-    theme: THEMES.some((t) => t.value === theme) ? theme : 'system',
+    theme: THEMES.some((t) => t.value === theme) ? theme : 'dark',
     wallpaper: validWallpaper(read('wallpaper', DEFAULT_WALLPAPER)),
   }
 }
@@ -46,7 +46,7 @@ export function effectiveTheme(theme = currentPrefs().theme) {
 
 export function applyPrefs({ theme, wallpaper }) {
   const root = document.documentElement
-  root.dataset.theme = THEMES.some((t) => t.value === theme) ? theme : 'system'
+  root.dataset.theme = THEMES.some((t) => t.value === theme) ? theme : 'dark'
   const dark = effectiveTheme(theme) === 'dark'
   const wp = window.MV_applyWallpaper?.(validWallpaper(wallpaper), dark)
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? wp?.bg || '#0a1d57' : '#eaf2ff')
@@ -79,7 +79,7 @@ export async function setPrefs(partial, { server = true } = {}) {
 /** Einstellungen vom Server übernehmen (nach der Anmeldung, z. B. am Handy). */
 export function adoptServerPrefs(prefs) {
   if (!prefs) return applyPrefs(currentPrefs())
-  write('theme', prefs.theme || 'system')
+  write('theme', prefs.theme || 'dark')
   if (prefs.wallpaper) write('wallpaper', validWallpaper(prefs.wallpaper))
   applyPrefs(currentPrefs())
 }

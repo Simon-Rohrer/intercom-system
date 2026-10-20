@@ -40,7 +40,7 @@ export function AdminCompanionPageConfigCard({
       setRolePages(data.rolePages || {});
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to load role pages"
+        err instanceof Error ? err.message : "Rollen-Seiten konnten nicht geladen werden"
       );
     } finally {
       setLoading(false);
@@ -55,7 +55,7 @@ export function AdminCompanionPageConfigCard({
 
   async function handleSavePage() {
     if (!selectedRoleId) {
-      setError("Please select a role");
+      setError("Bitte wähle eine Rolle");
       return;
     }
     setSaving(true);

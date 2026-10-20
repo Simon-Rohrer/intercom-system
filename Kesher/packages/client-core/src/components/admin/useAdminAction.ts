@@ -6,7 +6,7 @@ type UseAdminActionOptions = {
 };
 
 export function useAdminAction(options: UseAdminActionOptions = {}) {
-  const { onSuccess, defaultErrorMessage = "admin operation failed" } = options;
+  const { onSuccess, defaultErrorMessage = "Aktion fehlgeschlagen" } = options;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 

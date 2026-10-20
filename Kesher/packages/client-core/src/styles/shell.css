@@ -1,0 +1,999 @@
+/* ==========================================================
+   SEITENLEISTE UND SEITENRAHMEN wie in JMS Control
+   (multiview/public/admin.css: Tokens, Grundgerüst, Glas, Seitenleiste).
+   Alles hängt an .k-shell – Kiosk-Stationen, eingebettete Kacheln, die
+   Raspberry-Fernsteuerung und die Chat-Anzeige nutzen .k-shell nicht und
+   sehen deshalb aus wie bisher.
+   Hell ist der Standard, dunkel per prefers-color-scheme oder data-theme
+   (gesetzt von /.jms-auth/theme-boot.js nach der Wahl des Nutzers).
+   ========================================================== */
+
+/* ---------- Tokens: hell ---------- */
+.k-shell {
+  color-scheme: light;
+  --j-accent: var(--jms-accent, #007aff);
+  --j-bg: #e8f0fd;
+  --j-surface: rgba(255, 255, 255, 0.62);
+  --j-surface-2: rgba(255, 255, 255, 0.7);
+  --j-surface-3: rgba(255, 255, 255, 0.85);
+  --j-line: rgba(20, 40, 90, 0.1);
+  --j-line-strong: rgba(20, 40, 90, 0.18);
+  --j-sidebar-bg: rgba(255, 255, 255, 0.5);
+  --j-glass-border: rgba(255, 255, 255, 0.7);
+  --j-text: #1d1d1f;
+  --j-text-2: #3a3a3c;
+  --j-muted: #6e6e73;
+  --j-on-accent: #fff;
+  --j-nav-active: rgba(0, 122, 255, 0.16);
+  --j-nav-active: color-mix(in srgb, var(--j-accent) 22%, transparent);
+  --j-lg-rim: rgba(255, 255, 255, 0.55);
+  --j-lg-rim-soft: rgba(255, 255, 255, 0.25);
+  --j-lg-shadow: 0 12px 40px rgba(20, 30, 60, 0.12), 0 2px 8px rgba(20, 30, 60, 0.06);
+  --j-wallpaper: var(
+    --jms-wallpaper,
+    radial-gradient(120% 80% at 85% 10%, rgba(120, 175, 255, 0.55), transparent 60%),
+    radial-gradient(90% 70% at 10% 95%, rgba(150, 120, 255, 0.28), transparent 60%),
+    radial-gradient(140% 60% at 50% 55%, rgba(90, 160, 255, 0.35), transparent 70%),
+    linear-gradient(160deg, #eaf2ff 0%, #cfe0ff 45%, #e6ecff 100%)
+  );
+  --j-sidebar-w: 248px;
+  --j-topbar-h: 58px;
+  --j-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
+  --j-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, "Helvetica Neue", "Segoe UI", Roboto, sans-serif;
+
+  /* Kesher-Tokens für hell: Glas statt schwarzem Rack, Statusfarben dunkler für Kontrast */
+  --k-bg: #f2f5fa;
+  --k-rack: rgba(255, 255, 255, 0.55);
+  --k-face: rgba(255, 255, 255, 0.92);
+  --k-face-hi: #ffffff;
+  --k-line: rgba(20, 40, 90, 0.15);
+  --k-line-soft: rgba(20, 40, 90, 0.08);
+  --k-line-strong: rgba(20, 40, 90, 0.28);
+  --k-ink: #1d1d1f;
+  --k-ink-2: #3a3a3c;
+  --k-ink-3: #636366;
+  --k-ink-off: #aeaeb2;
+  --k-accent: #007aff;
+  --k-accent-ink: #ffffff;
+  --k-talk: #d70015;
+  --k-talk-deep: #fde4e2;
+  --k-listen: #1e7f37;
+  --k-listen-deep: #dcf2e2;
+  --k-call: #b86200;
+  --k-call-deep: #fff0d6;
+  --k-direct: #6e3fd1;
+  --k-direct-deep: #eee7fd;
+  --k-bcast: #1f62d6;
+  --k-bcast-deep: #e1ebff;
+  --k-ok: #1e7f37;
+  --k-bad: #d70015;
+  --k-key-shadow: 0 1px 2px rgba(20, 40, 90, 0.12);
+  --k-font-body: var(--j-font);
+  --hover-overlay: rgba(20, 40, 90, 0.06);
+  --active-overlay: rgba(20, 40, 90, 0.12);
+  --surface-darker: #e9eef6;
+  --meter-bg: rgba(20, 40, 90, 0.14);
+  --btn-bg-active: rgba(20, 40, 90, 0.12);
+  --admin-error: #b3261e;
+  --admin-modal-bg-from: #fff5f5;
+  --admin-modal-bg-to: #ffffff;
+  --admin-modal-text: #b3261e;
+  --station-pin-active-text: #ffffff;
+  --station-call-active-text: #ffffff;
+  --station-call-active-icon: #ffffff;
+  --station-broadcast-border: rgba(31, 98, 214, 0.35);
+  --station-broadcast-border-alt: rgba(31, 98, 214, 0.35);
+  --station-broadcast-active-hover-bg: #cfe0ff;
+  --station-direct-removed-bg: #fdecef;
+  --station-direct-removed-border: #f3c0cb;
+  --station-direct-removed-text: #c81e3c;
+  --disconnected-text-highlight: #ffffff;
+}
+
+/* ---------- Tokens: dunkel (Werte wie JMS Control; theme-boot.js kann sie ersetzen) ----------
+   AppShell setzt data-scheme nach System-Einstellung bzw. der Wahl in JMS Control (data-theme). */
+.k-shell[data-scheme="dark"] {
+  color-scheme: dark;
+  --j-bg: var(--jms-bg, #0a1d57);
+  --j-surface: var(--jms-surface, rgba(18, 36, 98, 0.5));
+  --j-surface-2: rgba(255, 255, 255, 0.08);
+  --j-surface-3: rgba(255, 255, 255, 0.14);
+  --j-line: rgba(255, 255, 255, 0.09);
+  --j-line-strong: rgba(255, 255, 255, 0.16);
+  --j-sidebar-bg: var(--jms-sidebar-bg, rgba(8, 22, 70, 0.45));
+  --j-glass-border: rgba(255, 255, 255, 0.08);
+  --j-text: #f5f5f7;
+  --j-text-2: #d1d1d6;
+  --j-muted: #98989d;
+  --j-nav-active: rgba(0, 122, 255, 0.3);
+  --j-nav-active: color-mix(in srgb, var(--j-accent) 35%, transparent);
+  --j-lg-rim: rgba(255, 255, 255, 0.16);
+  --j-lg-rim-soft: rgba(255, 255, 255, 0.07);
+  --j-lg-shadow: 0 16px 48px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.2);
+  --j-wallpaper: var(
+    --jms-wallpaper,
+    radial-gradient(110% 70% at 80% 0%, rgba(46, 122, 255, 0.75), transparent 60%),
+    radial-gradient(80% 60% at 0% 100%, rgba(30, 80, 220, 0.6), transparent 65%),
+    radial-gradient(160% 55% at 40% 60%, rgba(22, 92, 230, 0.45), transparent 70%),
+    linear-gradient(165deg, #07174d 0%, #0d2f8f 48%, #071338 100%)
+  );
+
+  --k-bg: rgba(6, 8, 14, 0.82);
+  --k-rack: var(--j-surface);
+  --k-face: rgba(22, 22, 26, 0.78);
+  --k-face-hi: rgba(58, 58, 64, 0.85);
+  --k-line: rgba(255, 255, 255, 0.13);
+  --k-line-soft: rgba(255, 255, 255, 0.07);
+  --k-line-strong: rgba(255, 255, 255, 0.24);
+  --k-ink: #f5f5f7;
+  --k-ink-2: #c7c7cc;
+  --k-ink-3: #98989d;
+  --k-ink-off: #5a5a5f;
+  --k-accent: #00d1ff;
+  --k-accent-ink: #001218;
+  --k-talk: #ff3b30;
+  --k-talk-deep: #5a1410;
+  --k-listen: #30d158;
+  --k-listen-deep: #0c3d1b;
+  --k-call: #ffb020;
+  --k-call-deep: #4a3205;
+  --k-direct: #b79bff;
+  --k-direct-deep: #241f33;
+  --k-bcast: #5b9bff;
+  --k-bcast-deep: #12264a;
+  --k-ok: #30d158;
+  --k-bad: #ff5a4f;
+  --k-key-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 2px 0 rgba(0, 0, 0, 0.4);
+  --hover-overlay: rgba(255, 255, 255, 0.06);
+  --active-overlay: rgba(255, 255, 255, 0.12);
+  --surface-darker: #060709;
+  --meter-bg: rgba(255, 255, 255, 0.12);
+  --btn-bg-active: rgba(255, 255, 255, 0.12);
+  --admin-error: #ffb3b3;
+  --admin-modal-bg-from: #1b1114;
+  --admin-modal-bg-to: #0f0a0c;
+  --admin-modal-text: #ff6b6b;
+  --station-pin-active-text: #1a1205;
+  --station-call-active-text: #1a1205;
+  --station-call-active-icon: #40330c;
+  --station-broadcast-border: #22365a;
+  --station-broadcast-border-alt: #22365a;
+  --station-broadcast-active-hover-bg: #1d3c6e;
+  --station-direct-removed-bg: #221218;
+  --station-direct-removed-border: #4a2632;
+  --station-direct-removed-text: #ff6a6a;
+  --disconnected-text-highlight: #ffe7e7;
+}
+
+/* ---------- Grundgerüst ---------- */
+.k-shell {
+  position: relative;
+  z-index: 0;
+  display: flex;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--j-bg);
+  color: var(--j-text);
+  font: 14.5px/1.5 var(--j-font);
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+}
+/* Wallpaper als feste Ebene (background-attachment: fixed geht auf iOS nicht) */
+.k-shell::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+  background-image: var(--j-wallpaper);
+  background-size: cover;
+  background-position: center;
+  pointer-events: none;
+}
+
+.k-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.k-shell .k-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--j-text-2);
+  cursor: pointer;
+  text-decoration: none;
+  font: inherit;
+  box-shadow: none;
+}
+.k-shell .k-icon-btn:hover {
+  background: var(--j-surface-2);
+  color: var(--j-text);
+}
+
+/* Seitenleiste */
+.k-sidebar {
+  position: sticky;
+  top: 10px;
+  height: calc(100vh - 20px);
+  height: calc(100dvh - 20px);
+  width: var(--j-sidebar-w);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin: 10px 0 10px 10px;
+  padding: 18px 14px 14px;
+  border-radius: 24px;
+  background: var(--j-sidebar-bg);
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  backdrop-filter: blur(30px) saturate(160%);
+  box-shadow: inset 0 1px 0 var(--j-lg-rim), inset 0 0 0 1px var(--j-lg-rim-soft), var(--j-lg-shadow);
+  z-index: 40;
+}
+.k-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.k-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  padding: 4px 4px 4px 8px;
+  color: var(--j-text);
+}
+.k-brand-logo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2.5px;
+  width: 34px;
+  height: 34px;
+  padding: 5px;
+  background: var(--j-text);
+  border-radius: 10px;
+  flex: none;
+}
+.k-brand-logo i {
+  background: var(--j-bg);
+  border-radius: 2px;
+  opacity: 0.9;
+}
+.k-brand-logo i:first-child {
+  background: #ff453a;
+  opacity: 1;
+}
+.k-brand-logo i:nth-child(2) {
+  background: #30d158;
+  opacity: 1;
+}
+.k-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-weight: 750;
+  font-size: 16.5px;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.k-brand-text small {
+  font-size: 11.5px;
+  font-weight: 550;
+  color: var(--j-muted);
+  letter-spacing: 0.02em;
+}
+
+.k-site-nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 -4px;
+  padding: 0 4px;
+  scrollbar-width: thin;
+}
+.k-shell .k-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: var(--j-text-2);
+  text-decoration: none;
+  text-align: left;
+  font: inherit;
+  font-weight: 550;
+  font-size: 14px;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+  box-shadow: none;
+}
+.k-shell .k-nav-link:hover {
+  background: var(--j-surface-2);
+  color: var(--j-text);
+}
+.k-shell .k-nav-link.active {
+  background: var(--j-nav-active);
+  color: var(--j-text);
+  box-shadow: inset 0 1px 0 var(--j-lg-rim-soft);
+}
+/* farbige, quadratische Icons wie in den Systemeinstellungen */
+.k-nav-link .k-icon {
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border-radius: 8px;
+  color: #fff;
+  stroke-width: 2;
+  background: linear-gradient(180deg, #a5a5ad, #7c7c84);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+.k-nav-link[data-page="dashboard"] .k-icon {
+  background: linear-gradient(180deg, #5ac8fa, #0a84ff);
+}
+.k-nav-link[data-page="intercom"] .k-icon {
+  background: linear-gradient(180deg, #6ee08a, #28b04a);
+}
+.k-nav-link[data-page="settings"] .k-icon {
+  background: linear-gradient(180deg, #a5a5ad, #6c6c74);
+}
+.k-nav-link[data-page="admin"] .k-icon {
+  background: linear-gradient(180deg, #ffb340, #ff7a00);
+}
+
+/* gruppierte Unter-Navigation (Admin-Bereiche) */
+.k-subnav-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 6px 22px;
+  padding-left: 12px;
+  border-left: 1px solid var(--j-line-strong);
+}
+.k-subnav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.k-subnav-label {
+  padding: 4px 10px 2px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--j-muted);
+}
+.k-shell .k-subnav-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--j-text-2);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: none;
+}
+.k-shell .k-subnav-link:hover {
+  background: var(--j-surface-2);
+  color: var(--j-text);
+}
+.k-shell .k-subnav-link.active {
+  background: var(--j-accent);
+  color: var(--j-on-accent);
+}
+.k-subnav-link small {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  opacity: 0.7;
+}
+
+/* Fuß: Benutzerkarte (gleich in allen JMS-Diensten) */
+.k-sidebar-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.k-user-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  background: var(--j-surface-2);
+  border: 1px solid var(--j-line);
+}
+.k-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--j-accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+.k-user-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.25;
+}
+.k-user-meta b {
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.k-user-meta span {
+  font-size: 12px;
+  color: var(--j-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.k-user-actions {
+  display: flex;
+  flex: none;
+}
+.k-user-actions .k-icon-btn {
+  width: 32px;
+  height: 32px;
+}
+
+/* Hauptspalte */
+.k-main-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.k-topbar {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--j-topbar-h);
+  padding: 6px 20px;
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  color: var(--j-text);
+}
+.k-topbar-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.k-topbar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.k-shell .k-menu-btn,
+.k-shell .k-sidebar-expand {
+  display: none;
+}
+.k-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.k-sidebar-backdrop {
+  display: none;
+}
+
+/* Seitenleiste ausblenden (nur große Bildschirme, pro Gerät gemerkt) */
+@media (min-width: 981px) {
+  .k-shell.is-collapsed .k-sidebar {
+    display: none;
+  }
+  .k-shell.is-collapsed .k-sidebar-expand {
+    display: inline-grid;
+  }
+}
+
+/* Handy und kleines Tablet: Seitenleiste fährt von links herein */
+@media (max-width: 980px) {
+  .k-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+    width: min(300px, 86vw);
+    margin: 0;
+    border-radius: 0 24px 24px 0;
+    background: var(--j-bg);
+    -webkit-transform: translateX(-105%);
+    transform: translateX(-105%);
+    transition: transform 0.2s ease;
+    z-index: 70;
+    padding-top: max(18px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(14px, env(safe-area-inset-bottom, 0px));
+  }
+  .k-sidebar::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: var(--j-sidebar-bg);
+  }
+  .k-shell.is-nav-open .k-sidebar {
+    -webkit-transform: none;
+    transform: none;
+    box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.45);
+  }
+  .k-shell .k-sidebar-collapse {
+    display: none;
+  }
+  .k-shell.is-nav-open .k-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 65;
+    background: rgba(10, 12, 16, 0.45);
+  }
+  .k-shell .k-menu-btn {
+    display: inline-grid;
+  }
+  .k-topbar {
+    padding: 6px 12px;
+    padding-top: max(6px, env(safe-area-inset-top, 0px));
+  }
+}
+
+/* ---------- Seiten (Einstellungen, Admin) ---------- */
+.k-page {
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 28px 64px;
+}
+.k-page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 18px 0 18px;
+}
+.k-page-head h1 {
+  margin: 0;
+  font-family: var(--j-font-display);
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  color: var(--j-text);
+  text-transform: none;
+}
+.k-lead {
+  margin: 6px 0 0;
+  max-width: 72ch;
+  color: var(--j-muted);
+  font-size: 15px;
+}
+.k-eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--j-muted);
+}
+
+/* Unter-Navigation als Glas-Pillen (wie die Einstellungen in JMS Control) */
+.k-subnav {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 4px 0 16px;
+  margin-bottom: 4px;
+}
+.k-subnav::-webkit-scrollbar {
+  display: none;
+}
+.k-shell .k-subnav-pill {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--j-surface-3);
+  box-shadow: inset 0 1px 0 var(--j-lg-rim-soft);
+  color: var(--j-text-2);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.k-shell .k-subnav-pill:hover {
+  color: var(--j-text);
+}
+.k-shell .k-subnav-pill.active {
+  background: var(--j-accent);
+  color: var(--j-on-accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 4px 14px rgba(0, 122, 255, 0.3);
+}
+.k-subnav-pill svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Knöpfe in der Kopfleiste (z. B. „Aktualisieren“) */
+.k-shell .k-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--j-surface-3);
+  box-shadow: inset 0 1px 0 var(--j-lg-rim-soft), 0 1px 2px rgba(0, 0, 0, 0.08);
+  color: var(--j-text);
+  font: inherit;
+  font-weight: 600;
+  font-size: 13.5px;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.k-shell .k-btn:hover {
+  background: var(--j-surface-2);
+}
+.k-shell .k-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (max-width: 980px) {
+  .k-page {
+    padding: 0 16px 48px;
+  }
+  .k-page-head {
+    padding-top: 10px;
+  }
+  .k-page-head h1 {
+    font-size: 26px;
+  }
+}
+
+/* ==========================================================
+   Intercom-Seite (StationIntercomView) in der Seitenleiste
+   ========================================================== */
+.k-station-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.k-station-who {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.k-station-who strong {
+  font-family: var(--k-font-label);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.05;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.k-station-who span {
+  color: var(--j-muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.k-station-status .station-live-name {
+  border-color: var(--j-line-strong);
+  color: var(--j-text);
+  background: var(--j-surface-2);
+}
+.k-station-status .station-top-stats {
+  margin-left: auto;
+  flex: none;
+}
+
+.root.station-shell.station-in-shell {
+  height: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  background: transparent;
+  color: var(--k-ink);
+  font-family: var(--k-font-body);
+}
+.station-in-shell .station-header {
+  position: -webkit-sticky;
+  position: sticky;
+  top: var(--j-topbar-h);
+  z-index: 20;
+}
+.station-in-shell .station-controls {
+  border-bottom: 0;
+  background: transparent;
+  padding-top: 2px;
+}
+.station-in-shell .station-content-grid {
+  margin: 0 10px 10px;
+  border-radius: 22px;
+  background: var(--k-rack);
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  backdrop-filter: blur(30px) saturate(160%);
+  box-shadow: inset 0 1px 0 var(--j-lg-rim), inset 0 0 0 1px var(--j-lg-rim-soft), var(--j-lg-shadow);
+  overflow: hidden;
+}
+.station-in-shell .station-secondary-column {
+  background: transparent;
+  border-left: 1px solid var(--k-line-soft);
+}
+.station-in-shell .station-settings-page {
+  padding-top: 4px;
+}
+
+/* breit: genau ein Bildschirm, die Tasten scrollen für sich (wie bisher) */
+@media (min-width: 1101px) {
+  .k-shell-fit .k-main-col {
+    height: 100vh;
+    height: 100dvh;
+  }
+  .k-shell-fit .k-main {
+    min-height: 0;
+    overflow: hidden;
+  }
+  .k-shell-fit .root.station-shell.station-in-shell {
+    min-height: 0;
+  }
+  .k-shell-fit .station-in-shell .station-header {
+    position: static;
+  }
+}
+@media (max-width: 1100px) {
+  .station-in-shell .station-secondary-column {
+    border-left: 0;
+    border-top: 1px solid var(--k-line-soft);
+  }
+}
+@media (max-width: 980px) {
+  .station-in-shell .station-content-grid {
+    margin: 0 6px 8px;
+    border-radius: 18px;
+  }
+  .k-station-who strong {
+    font-size: 16px;
+  }
+}
+/* Handy: Daumenleiste unten (wie bisher), oben nur Live-Punkt und Rolle */
+@media (max-width: 720px) {
+  .station-in-shell .station-header {
+    position: static;
+  }
+  .station-in-shell .station-controls {
+    background: var(--j-bg);
+    padding-top: 10px;
+  }
+  .station-in-shell .station-controls::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: -1;
+    background: var(--j-sidebar-bg);
+  }
+  .k-station-status .station-top-stats {
+    display: none;
+  }
+}
+@media (max-width: 480px) {
+  .k-station-status .station-live-name {
+    font-size: 0;
+    gap: 0;
+    padding: 6px;
+  }
+}
+
+.station-in-shell .station-content-grid[hidden] {
+  display: none;
+}
+
+/* Einstellungen als Seite statt Fenster */
+.station-in-shell .station-settings-page .station-modal-body {
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  background: transparent;
+}
+.station-in-shell .station-settings-page .station-settings-card {
+  border: 0;
+  border-radius: 22px;
+  padding: 18px;
+  background: var(--k-rack);
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  backdrop-filter: blur(30px) saturate(160%);
+  box-shadow: inset 0 1px 0 var(--j-lg-rim), inset 0 0 0 1px var(--j-lg-rim-soft), var(--j-lg-shadow);
+}
+.station-in-shell .station-settings-page .station-modal-hint {
+  margin: 4px 4px 0;
+  color: var(--j-muted);
+  font-size: 13px;
+}
+.station-settings-page input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.station-settings-page select {
+  border-radius: 8px;
+  border: 1px solid var(--k-line);
+  background-color: var(--k-face);
+  color: var(--k-ink);
+}
+.station-settings-page input:focus,
+.station-settings-page select:focus {
+  border-color: var(--k-accent);
+  outline: none;
+}
+.station-settings-page input[type="checkbox"] {
+  accent-color: var(--k-accent);
+}
+
+/* ---------- Kontrast im hellen Modus: feste dunkle Farben aus station.css ersetzen ---------- */
+.k-shell .station-mic-meter span,
+.k-shell .station-channel-meter-segment {
+  background: var(--meter-bg);
+}
+.k-shell .station-always-on-indicator {
+  background: var(--k-line-strong);
+}
+.k-shell .station-listen-led {
+  background: var(--k-line-strong);
+  box-shadow: none;
+}
+.k-shell .station-card-actions .listen.on,
+.k-shell .station-card-actions .listen.forced,
+.k-shell .station-card-actions .listen.forced:disabled {
+  color: var(--k-listen);
+}
+.k-shell .station-broadcast-card[data-talk="off"][data-can-talk="true"] {
+  border-color: var(--station-broadcast-border);
+}
+.k-shell .station-gain-control input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, var(--k-ink-2) var(--fill, 70%), var(--k-line-strong) var(--fill, 70%));
+}
+.k-shell .station-gain-control input[type="range"]::-moz-range-track {
+  background: linear-gradient(90deg, var(--k-ink-2) var(--fill, 70%), var(--k-line-strong) var(--fill, 70%));
+}
+.k-shell .station-gain-control input[type="range"]::-webkit-slider-thumb {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.k-shell .station-card[data-talk="armed"] {
+  box-shadow: inset 0 0 0 1px var(--k-talk), var(--k-key-shadow);
+}
+.k-shell .station-reply.has-caller.active,
+.k-shell .station-reply.has-caller.active strong,
+.k-shell .station-reply.has-caller.active small {
+  color: var(--station-call-active-text);
+}
+
+/* ==========================================================
+   Admin in der Seitenleiste
+   ========================================================== */
+.k-shell .root.admin-shell {
+  display: block;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--k-ink);
+  font-family: var(--k-font-body);
+}
+.k-shell .admin-settings-layout.is-nav-external {
+  display: block;
+  min-height: 0;
+}
+.k-shell .is-nav-external .admin-settings-main {
+  padding: 0;
+}
+.k-shell .admin-card {
+  border: 0;
+  border-radius: 22px;
+  background: var(--k-rack);
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  backdrop-filter: blur(30px) saturate(160%);
+  box-shadow: inset 0 1px 0 var(--j-lg-rim), inset 0 0 0 1px var(--j-lg-rim-soft), var(--j-lg-shadow);
+  overflow: hidden;
+}
+.k-shell .admin-card-header {
+  padding: 14px 18px;
+}
+.k-shell .admin-card-body {
+  padding-left: 18px;
+  padding-right: 18px;
+}
+.k-admin-status {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.k-admin-status strong {
+  font-size: 15px;
+  font-weight: 700;
+}
+.k-admin-status span {
+  font-size: 12.5px;
+  color: var(--j-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

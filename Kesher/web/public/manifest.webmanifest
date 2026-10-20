@@ -1,7 +1,8 @@
 {
-  "name": "Kesher Intercom",
-  "short_name": "Kesher",
-  "description": "Live production intercom with mobile-friendly audio controls.",
+  "name": "JMS - Intercom",
+  "lang": "de",
+  "short_name": "JMS Intercom",
+  "description": "Intercom für Technik und Gottesdienst – Sprechen, Hören und Chat, auch auf dem Handy.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#111827",

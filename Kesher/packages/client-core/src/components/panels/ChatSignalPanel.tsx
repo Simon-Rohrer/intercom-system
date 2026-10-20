@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChatTarget } from "../../types";
+import { useFreshAlerts } from "../../lib/freshAlerts";
 
 type ChatEntry = {
   from: string;
@@ -242,6 +243,12 @@ export function ChatSignalPanel({
     () => [...visibleMessages].reverse(),
     [visibleMessages],
   );
+  // Beamer-/Stage-Meldungen aus JMS Control: nur 15 s rot, dann wie jede andere Nachricht
+  const alertState = useFreshAlerts(
+    feedMessages,
+    (entry) => entry.messageId || `${entry.at}|${entry.fromUserId}|${entry.body}`,
+    (entry) => entry.source === "multiview-alert",
+  );
   const awaitingMyAck = showAckOption
     ? visibleMessages.filter(
         (entry) => !entry.self && entry.ackRequired && !entry.acked,
@@ -322,13 +329,15 @@ export function ChatSignalPanel({
                 showAckOption && !entry.self && entry.ackRequired && !entry.acked;
               // The latest received message stands out (larger, highlighted).
               const isNewest = !entry.self && index === feedMessages.length - 1;
+              const alert = alertState(entry);
               return (
                 <li
                   key={`${entry.at}-${entry.from}-${index}`}
                   className={[
                     entry.scope === "direct" ? "chat-feed-direct" : "",
                     entry.scope === "global" ? "chat-feed-global" : "",
-                    entry.source === "multiview-alert" ? "chat-feed-alert" : "",
+                    alert ? "chat-feed-alert" : "",
+                    alert === "pop" ? "chat-feed-alert-pop" : "",
                     entry.self ? "self" : "",
                     needsMyAck ? "chat-feed-ack-required" : "",
                     isNewest ? "chat-feed-newest" : "",
@@ -354,7 +363,7 @@ export function ChatSignalPanel({
                     {entry.source === "telegram" ? (
                       <span
                         className="chat-feed-source-icon"
-                        title="Message from Telegram"
+                        title="Nachricht aus Telegram"
                       >
                         Telegram
                       </span>
@@ -367,17 +376,17 @@ export function ChatSignalPanel({
                       </span>
                     ) : entry.source === "multiview-alert" ? (
                       <span
-                        className="chat-feed-source-icon chat-feed-alert-tag"
-                        title="Wichtige Meldung aus dem Multiview"
+                        className={`chat-feed-source-icon${alert ? " chat-feed-alert-tag" : ""}`}
+                        title="Wichtige Meldung aus JMS Control"
                       >
                         Wichtig
                       </span>
                     ) : entry.source === "multiview" ? (
                       <span
                         className="chat-feed-source-icon"
-                        title="Über den Multiview gesendet"
+                        title="Über JMS Control gesendet"
                       >
-                        Multiview
+                        JMS Control
                       </span>
                     ) : null}
                     {scopeTag(entry)}
@@ -443,7 +452,7 @@ export function ChatSignalPanel({
           <label className="chat-target-control">
             <span>An</span>
             <select
-              aria-label="Chat destination"
+              aria-label="Chat-Empfänger"
               value={selectedTarget}
               onChange={(event) => setSelectedTarget(event.target.value)}
             >

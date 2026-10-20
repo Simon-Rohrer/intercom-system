@@ -1,4 +1,5 @@
-import { getGlobalApiBaseUrl } from "../api";
+import { getGlobalApiBaseUrl, isUnauthorizedError } from "../api";
+import { tokenStorageKey } from "../app/settings";
 import type { LoginSuccess } from "../types";
 
 /**
@@ -12,9 +13,53 @@ export type CentralIdentity = {
   name: string;
   roleId: string;
   admin: boolean;
+  sessionId: string;
+  version: string;
+  expiresAt: number;
 };
 
 const BASE = "/.jms-auth";
+const sessionIdentityStorageKey = "intercom-central-identity";
+
+/** Compares central identities: name, role and admin. */
+export function centralIdentityKey(identity: CentralIdentity | null): string {
+  return identity ? `${identity.name}|${identity.roleId}|${identity.admin}|${identity.sessionId}|${identity.version}|${identity.expiresAt}` : "";
+}
+
+/**
+ * Stores the Kesher token together with the central identity it was opened
+ * for. After a reload the tab only keeps its session while the central login
+ * is still the same – otherwise it would stay e.g. "Licht 1" after signing in
+ * centrally as admin.
+ */
+export function storeSessionToken(token: string, identity: CentralIdentity | null): void {
+  sessionStorage.setItem(tokenStorageKey, token);
+  sessionStorage.setItem(sessionIdentityStorageKey, centralIdentityKey(identity));
+}
+
+/** Central identity the stored token was opened for ("" = none). */
+export function storedSessionIdentityKey(): string {
+  return sessionStorage.getItem(sessionIdentityStorageKey) ?? "";
+}
+
+/**
+ * What happens to the Kesher token stored in this tab once the central login
+ * is known: kept only for the same central identity, and never when the tab
+ * was opened to remote-control a Raspberry Pi (?login=raspberry) – the
+ * station selection must show up instead of the own intercom session.
+ */
+export function resolveStoredTokenRestore(options: {
+  storedToken: string | null;
+  storedIdentityKey: string;
+  identity: CentralIdentity | null;
+  raspberryRemoteLogin: boolean;
+}): "none" | "keep" | "discard" {
+  if (!options.storedToken) return "none";
+  if (options.raspberryRemoteLogin) return "discard";
+  return options.storedIdentityKey === centralIdentityKey(options.identity)
+    ? "keep"
+    : "discard";
+}
 
 export function centralLoginAvailable(): boolean {
   return getGlobalApiBaseUrl() === "" && typeof window !== "undefined";
@@ -32,18 +77,18 @@ export async function fetchCentralIdentity(): Promise<CentralIdentity | null> {
       return null;
     }
     const data = (await res.json()) as {
-      user?: { name?: string; roleId?: string; admin?: boolean; open?: boolean } | null;
+      user?: Partial<CentralIdentity> & { open?: boolean } | null;
     };
     const user = data?.user;
-    if (!user || user.open || !user.name || !user.roleId) return null;
-    return { name: user.name, roleId: user.roleId, admin: Boolean(user.admin) };
+    if (!user || user.open || !user.name || !user.roleId || !user.sessionId || !user.version || !user.expiresAt || user.expiresAt <= Date.now()) return null;
+    return { name: user.name, roleId: user.roleId, admin: Boolean(user.admin), sessionId: user.sessionId, version: user.version, expiresAt: user.expiresAt };
   } catch {
     return null;
   }
 }
 
 /** Kesher admin session for the central admin (signed ticket, no PIN). */
-export async function centralAdminLogin(): Promise<LoginSuccess> {
+export async function centralSessionLogin(): Promise<LoginSuccess> {
   const ticketRes = await fetch(`${BASE}/api/ticket?aud=kesher`, {
     cache: "no-store",
     credentials: "same-origin",
@@ -53,9 +98,9 @@ export async function centralAdminLogin(): Promise<LoginSuccess> {
     error?: string;
   };
   if (!ticketRes.ok || !ticketData.ticket) {
-    throw new Error(ticketData.error || "Zentrale Admin-Anmeldung nicht möglich.");
+    throw new Error(ticketData.error || "Zentrale Anmeldung nicht möglich.");
   }
-  const res = await fetch("/api/admin/login/central", {
+  const res = await fetch("/api/login/central", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ticket: ticketData.ticket }),
@@ -68,11 +113,21 @@ export function centralLoginUrl(next = "/"): string {
   return `${BASE}/login?next=${encodeURIComponent(next)}`;
 }
 
-/** Signs out centrally (name + role on all services) and opens the login page. */
-export async function centralLogout(next = "/"): Promise<void> {
+/** An expired gateway session requires login, not an offline screen or retries. */
+export function redirectToCentralLoginOnUnauthorized(error: unknown): boolean {
+  if (!centralLoginAvailable() || !isUnauthorizedError(error)) return false;
+  window.location.replace(centralLoginUrl(window.location.pathname + window.location.search));
+  return true;
+}
+
+/**
+ * Signs out centrally (name + role on all services) and opens the login page.
+ * The server only accepts POST for signing out (no GET link to /logout).
+ */
+export async function centralLogout(): Promise<void> {
   await fetch(`${BASE}/api/logout`, {
     method: "POST",
     credentials: "same-origin",
   }).catch(() => undefined);
-  window.location.assign(centralLoginUrl(next));
+  window.location.assign(`${BASE}/login`);
 }

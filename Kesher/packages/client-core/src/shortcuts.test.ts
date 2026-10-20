@@ -73,7 +73,7 @@ describe("keyboard shortcut settings", () => {
 
 describe("formatBinding", () => {
   it("returns 'Not set' for null", () => {
-    expect(formatBinding(null)).toBe("Not set");
+    expect(formatBinding(null)).toBe("Nicht belegt");
   });
 
   it("formats a simple key", () => {

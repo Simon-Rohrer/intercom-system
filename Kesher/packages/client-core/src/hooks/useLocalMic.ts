@@ -210,7 +210,7 @@ export async function requestLowLatencyMicStream(
   deviceId: string,
   getUserMedia: GetUserMediaFn = (constraints) => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      return Promise.reject(new Error("navigator.mediaDevices.getUserMedia is not available (is this a secure context?)"));
+      return Promise.reject(new Error("Mikrofonzugriff ist in diesem Browser nicht verfügbar (sichere Verbindung über HTTPS nötig)."));
     }
     return navigator.mediaDevices.getUserMedia(constraints);
   }
@@ -227,7 +227,7 @@ export async function requestLowLatencyMicStream(
   if (lastError instanceof Error) {
     throw lastError;
   }
-  throw new Error("Failed to access microphone with low-latency constraints");
+  throw new Error("Zugriff auf das Mikrofon fehlgeschlagen.");
 }
 
 export type UseLocalMicOptions = {
@@ -618,7 +618,7 @@ export function useLocalMic({
       };
       if (outputDeviceId) {
         if (typeof elWithSink.setSinkId !== "function") {
-          throw new Error("Output device selection is not supported");
+          throw new Error("Die Auswahl des Ausgabegeräts wird nicht unterstützt.");
         }
         await elWithSink.setSinkId(outputDeviceId);
       }
@@ -701,7 +701,7 @@ export function useLocalMic({
         onAudioError("");
       } catch (e) {
         onAudioError(
-          `Failed to switch microphone: ${e instanceof Error ? e.message : "unknown error"}`,
+          `Mikrofon konnte nicht gewechselt werden: ${e instanceof Error ? e.message : "unbekannter Fehler"}`,
         );
       }
     })();
@@ -784,7 +784,7 @@ export function useLocalMic({
   useEffect(() => {
     if (!(window.isSecureContext || window.location.hostname === "localhost")) {
       onAudioError(
-        "Microphone capture needs HTTPS (or localhost). Open the app via HTTPS for remote devices.",
+        "Für den Mikrofonzugriff ist HTTPS (oder localhost) nötig. Bitte die App auf anderen Geräten über HTTPS öffnen.",
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,4 +1,4 @@
-title: Server Dashboard
+title: JMS - Dashboard
 description: Lokale Übersicht für Serverdienste
 theme: dark
 color: slate
@@ -22,6 +22,13 @@ layout:
     tab: Admin
     style: row
     columns: 4
+  Raspberry Pis:
+    tab: Admin
+    style: row
+    columns: 1
+    Kamera-1:
+      style: row
+      columns: 4
   Container:
     tab: Admin
     style: row

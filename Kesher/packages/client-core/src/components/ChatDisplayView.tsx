@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BrandLogo } from "./BrandLogo";
+import { useFreshAlerts } from "../lib/freshAlerts";
 
 type ChatDisplayEntry = {
   from: string;
@@ -96,6 +97,8 @@ export function ChatDisplayView({
   const now = Date.now();
   const keyFor = (entry: ChatDisplayEntry) =>
     entry.messageId || `${entry.at}|${entry.fromUserId}|${entry.scope}|${entry.body}`;
+  // Beamer-/Stage-Meldungen aus JMS Control: nur 15 s rot, dann wie jede andere Nachricht
+  const alertState = useFreshAlerts(feed, keyFor, (entry) => entry.source === "multiview-alert");
   for (const entry of feed) {
     const key = keyFor(entry);
     if (!firstSeenRef.current.has(key)) firstSeenRef.current.set(key, now);
@@ -151,7 +154,8 @@ export function ChatDisplayView({
                   isNewest ? "is-newest" : "",
                   isOld ? "is-old" : "",
                   needsAck ? "needs-ack" : "",
-                  entry.source === "multiview-alert" ? "is-alert" : "",
+                  alertState(entry) ? "is-alert" : "",
+                  alertState(entry) === "pop" ? "alert-pop" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
@@ -167,9 +171,9 @@ export function ChatDisplayView({
                   ) : entry.source === "companion" ? (
                     <span className="chat-display-target">Stream Deck</span>
                   ) : entry.source === "multiview-alert" ? (
-                    <span className="chat-display-target is-alert">Wichtig</span>
+                    <span className={`chat-display-target${alertState(entry) ? " is-alert" : ""}`}>Wichtig</span>
                   ) : entry.source === "multiview" ? (
-                    <span className="chat-display-target">Multiview</span>
+                    <span className="chat-display-target">JMS Control</span>
                   ) : null}
                   {needsAck ? (
                     <span className="chat-display-ack">Bestätigung erwartet</span>

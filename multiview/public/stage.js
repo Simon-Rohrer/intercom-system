@@ -1,3 +1,4 @@
+import { TIME_ZONE } from './common.js'
 // ProPresenter-Bühne als Kachel – wie ein Stage Display: Songtext (aktuelle und nächste Folie),
 // Countdowns/Timer, Video-Countdown, Bühnennachricht und laufende Meldungen.
 // update(state) bekommt den Folien-Zustand ("propresenter"), updateStage(stage) die Zeiten und
@@ -214,7 +215,7 @@ export function createStageView(options, { interactive = false } = {}) {
       renderStage()
     },
     tick() {
-      clock.textContent = o.clock ? new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : ''
+      clock.textContent = o.clock ? new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: TIME_ZONE }) : ''
     },
   }
   view.tick()

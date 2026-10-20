@@ -4,7 +4,6 @@ export interface ModuleConfig {
   host: string;
   port: number;
   useTls: boolean;
-  allowSelfSignedTls: boolean;
   companionSecret: string;
   roleId: string;
   username: string;
@@ -16,14 +15,14 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
       type: "textinput",
       id: "host",
       label: "Backend host",
-      default: "127.0.0.1",
+      default: "192.168.0.21",
       width: 8,
     },
     {
       type: "number",
       id: "port",
       label: "Backend port",
-      default: 8080,
+      default: 8443,
       min: 1,
       max: 65535,
       width: 4,
@@ -32,15 +31,8 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
       type: "checkbox",
       id: "useTls",
       label: "Use TLS (https/wss)",
-      default: false,
-      width: 4,
-    },
-    {
-      type: "checkbox",
-      id: "allowSelfSignedTls",
-      label: "Accept self-signed TLS certificate",
       default: true,
-      width: 8,
+      width: 4,
     },
     {
       type: "textinput",

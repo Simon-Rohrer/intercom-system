@@ -1,5 +1,7 @@
-/* Handy-Fernbedienung – App-Ansicht mit Leiste unten. Baut auf den Farb-Tokens aus admin.css auf
-   (hell/dunkel, Akzentfarbe). Klassen mit rm- gehören nur zu dieser Seite. */
+/* Fernbedienung – App-Ansicht. Handy: Leiste unten. iPad (ab 768 px): breiter, Karten im Raster,
+   Leiste mit Symbol neben dem Text. Desktop (ab 1100 px): Seitenleiste links wie im Editor.
+   Baut auf den Farb-Tokens aus admin.css auf (hell/dunkel, Akzentfarbe). Klassen mit rm- gehören
+   nur zu dieser Seite. */
 
 .rm-body {
   background: var(--bg);
@@ -10,6 +12,9 @@
 .rm .icon { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .rm button { font: inherit; color: inherit; cursor: pointer; }
 .rm [hidden] { display: none !important; }
+/* Seitenleiste gibt es nur am Desktop – sonst stehen Kopf und Leiste wie gehabt für sich */
+.rm-side { display: contents; }
+.rm-brand { display: none; }
 
 /* ---- Kopf ---------------------------------------------------------------- */
 .rm-head {
@@ -68,7 +73,7 @@
 }
 
 /* ---- Inhalt -------------------------------------------------------------- */
-.rm-main { padding: 6px 16px calc(var(--tabs-h) + 24px); }
+.rm-main { padding: 6px 16px calc(var(--tabs-h) + 40px); }
 .rm-title { display: flex; align-items: center; gap: 10px; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; margin: 8px 4px 16px; }
 .rm-sub { font-size: 13px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 24px 4px 10px; }
 .rm-chip { font-size: 12px; font-weight: 650; letter-spacing: 0; padding: 3px 9px; border-radius: 99px; background: var(--amber-soft); color: var(--amber); }
@@ -207,10 +212,12 @@
 
 /* Eingabe fest über der Leiste */
 .rm-composer {
-  position: sticky;
-  bottom: calc(var(--tabs-h) + 8px);
-  z-index: 5;
-  margin-top: 10px;
+  position: fixed;
+  left: max(16px, calc((100vw - 1000px) / 2 + 28px));
+  right: max(16px, calc((100vw - 1000px) / 2 + 28px));
+  bottom: calc(var(--tabs-h) + 16px);
+  z-index: 35;
+  margin: 0;
   padding: 10px;
   border-radius: 20px;
   background: color-mix(in srgb, var(--surface) 88%, transparent);
@@ -374,7 +381,8 @@
   font-weight: 650;
 }
 .rm-tabs button .icon { width: 24px; height: 24px; transition: transform 0.15s ease; }
-.rm-tabs button.active { color: var(--accent-text); }
+.rm-tabs button[data-tab="stage"] span { line-height: 1.05; }
+.rm-tabs button.active { color: var(--accent-text); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); font-weight: 750; }
 .rm-tabs button.active .icon { transform: translateY(-1px) scale(1.06); }
 .rm-tabs button:active { background: var(--surface-2); }
 .rm-badge {
@@ -425,7 +433,7 @@ body.booting .rm-main { opacity: 0; }
 }
 
 /* Chat füllt den Platz, damit die Eingabe auch bei wenigen Nachrichten unten sitzt */
-.rm-chat:not([hidden]) { display: flex; flex-direction: column; min-height: calc(100vh - 150px - var(--tabs-h)); }
+.rm-chat:not([hidden]) { display: flex; flex-direction: column; min-height: calc(100vh - 150px - var(--tabs-h)); padding-bottom: 178px; }
 .rm-chat .rm-bubbles { flex: 1; }
 
 /* ---- Beamer-Meldungen ------------------------------------------------------------ */
@@ -579,3 +587,207 @@ body.booting .rm-main { opacity: 0; }
 .rm-main { padding-bottom: calc(var(--tabs-h) + 40px); }
 .rm-title { font-size: 32px; }
 .rm-tabs { max-width: 616px; margin: 0 auto; }
+
+/* ==== iPad ========================================================================== */
+@media (min-width: 768px) {
+  .rm { max-width: 1000px; }
+  .rm-head { padding-left: 28px; padding-right: 28px; }
+  .rm-offline { margin: 4px 28px 0; }
+  .rm-main { padding-left: 28px; padding-right: 28px; }
+  .rm-title { font-size: 36px; margin-bottom: 20px; }
+  .rm-chat:not([hidden]) { padding-bottom: 148px; }
+
+  /* Leiste wie in iPad-Apps: Symbol neben dem Text, schmaler und mittig */
+  .rm-tabs { max-width: 600px; height: 58px; }
+  .rm-body { --tabs-h: calc(58px + env(safe-area-inset-bottom)); }
+  .rm-tabs button { flex-direction: row; gap: 8px; max-width: none; font-size: 14px; }
+  .rm-tabs button .icon { width: 22px; height: 22px; }
+  .rm-badge { position: static; margin-left: -2px; box-shadow: none; }
+  .rm-badge-dot { align-self: flex-start; margin-top: 12px; }
+
+  /* Bildschirme und Monitore als Raster */
+  #outputs, #screens { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; }
+  #outputs > .rm-foldbar, #screens > .rm-foldbar, #outputs > .rm-empty { grid-column: 1 / -1; }
+
+  /* Chat: Blasen schmaler, Eingabe in einer Zeile */
+  .rm-bubble { max-width: 68%; }
+  .rm-composer .chat-compose { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; }
+  .rm-composer .chat-compose:not(:has(.chat-compose-role[hidden])) { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+  .rm-composer .chat-compose select { height: 46px; max-width: 200px; grid-column: auto !important; }
+  .rm-composer .chat-compose input { grid-column: auto; }
+
+  /* Bühne: große Anzeige, Schnelltasten als Kacheln */
+  .rm-stage { min-height: 170px; padding: 22px 24px 24px; border-radius: 26px; }
+  .rm-stage.live .rm-stage-text { font-size: 34px; }
+  .rm-quick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .rm-quick button { height: 56px; border-radius: 16px; text-align: left; padding: 0 16px; font-size: 15px; }
+
+  /* Beamer: Vorlagen im Raster */
+  .rm-templates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
+  .rm-templates > .rm-empty { grid-column: 1 / -1; }
+  .rm-requests { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rm-requests > :only-child { grid-column: 1 / -1; }
+}
+
+/* ==== Desktop: Seitenleiste links, Inhalt rechts ===================================== */
+@media (min-width: 1100px) {
+  .rm-body { --tabs-h: 0px; }
+  .rm { display: grid; grid-template-columns: 264px minmax(0, 1fr); max-width: none; min-height: 100vh; }
+
+  .rm-side {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    position: sticky;
+    top: 12px;
+    height: calc(100vh - 24px);
+    margin: 12px 0 12px 12px;
+    padding: 20px 14px 14px;
+    border-radius: 24px;
+    background: var(--sidebar-bg, var(--surface));
+    box-shadow: inset 0 1px 0 var(--lg-rim, transparent), inset 0 0 0 1px var(--lg-rim-soft, var(--line)), var(--lg-shadow, var(--shadow));
+    -webkit-backdrop-filter: blur(30px) saturate(160%);
+    backdrop-filter: blur(30px) saturate(160%);
+    z-index: 30;
+  }
+  .rm-brand { display: flex; align-items: center; gap: 11px; padding: 0 8px; }
+
+  /* Leiste als Liste mit farbigen Symbolen wie im Editor */
+  .rm-tabs {
+    position: static;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 3px;
+    height: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .rm-tabs button {
+    flex: none;
+    height: 44px;
+    padding: 0 10px;
+    gap: 12px;
+    justify-content: flex-start;
+    border-radius: 12px;
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .rm-tabs button:hover { background: var(--nav-active, var(--surface-2)); }
+  .rm-tabs button.active { color: var(--text); font-weight: 650; background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  .rm-tabs button .icon,
+  .rm-tabs button.active .icon {
+    width: 28px;
+    height: 28px;
+    padding: 5px;
+    border-radius: 8px;
+    color: #fff;
+    stroke-width: 2;
+    transform: none;
+    background: linear-gradient(180deg, #a5a5ad, #7c7c84);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 1px 2px rgba(0, 0, 0, 0.18);
+    flex: none;
+  }
+  .rm-tabs button[data-tab="outputs"] .icon { background: linear-gradient(180deg, #5ac8fa, #0a84ff); }
+  .rm-tabs button[data-tab="chat"] .icon { background: linear-gradient(180deg, #6ee08a, #28b04a); }
+  .rm-tabs button[data-tab="stage"] .icon { background: linear-gradient(180deg, #ffb340, #ff7a00); }
+  .rm-tabs button[data-tab="beamer"] .icon { background: linear-gradient(180deg, #c38bff, #8e44ec); }
+  .rm-tabs button[data-tab="screens"] .icon { background: linear-gradient(180deg, #6be0e8, #12a3b8); }
+  .rm-badge { margin-left: auto; }
+  .rm-badge-dot { align-self: center; margin-top: 0; margin-right: 4px; }
+
+  /* Kopf unten in der Seitenleiste: Bild + Name, darunter die Knöpfe */
+  .rm-head {
+    position: static;
+    order: 2;
+    margin-top: auto;
+    flex-wrap: wrap;
+    gap: 10px 8px;
+    padding: 12px 4px 0;
+    border-top: 1px solid var(--line);
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .rm-who { flex: 1 1 calc(100% - 60px); }
+  .rm-who b { font-size: 15px; }
+  .rm-icon { width: 36px; height: 36px; }
+
+  .rm-content { min-width: 0; }
+  .rm-offline { margin: 20px 40px 0; }
+  .rm-main { max-width: 1240px; padding: 22px 40px 40px; }
+  .rm-title { font-size: 34px; margin: 8px 4px 22px; }
+
+  #outputs, #screens { grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; }
+
+  /* Chat wie ein Messenger am Mac: Spalte begrenzt, Eingabe unten angeheftet */
+  .rm-chat:not([hidden]) { max-width: 960px; min-height: calc(100vh - 62px); padding-bottom: 100px; }
+  .rm-bubble { max-width: 62%; }
+  .rm-composer {
+    left: 304px;
+    right: auto;
+    width: min(calc(100vw - 344px), 960px);
+    bottom: 16px;
+  }
+
+  /* Bühne: links Anzeige + Eingabe, rechts die Schnelltasten */
+  .rm-panel[data-panel="stage"]:not([hidden]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr);
+    column-gap: 28px;
+    align-items: start;
+  }
+  .rm-panel[data-panel="stage"] > .rm-title,
+  .rm-panel[data-panel="stage"] > .rm-lead { grid-column: 1 / -1; }
+  .rm-stage { min-height: 240px; padding: 26px 28px 28px; }
+  .rm-stage-text { font-size: 19px; }
+  .rm-stage.live .rm-stage-text { font-size: 44px; letter-spacing: -0.01em; }
+  .rm-stage-side .rm-sub { margin-top: 4px; }
+  .rm-quick { grid-template-columns: 1fr; gap: 8px; }
+  .rm-quick button { height: 52px; }
+  .rm-quick button:hover { background: var(--accent-soft); color: var(--accent-text); }
+
+  /* Beamer: links vorbereiten, rechts was gerade läuft */
+  .rm-beamer { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 28px; align-items: start; }
+  .rm-beamer:has(> .rm-beamer-status[hidden]) { grid-template-columns: minmax(0, 1fr); }
+  .rm-beamer-status { grid-column: 2; grid-row: 1; position: sticky; top: 24px; }
+  .rm-beamer-prepare { grid-column: 1; grid-row: 1; }
+  .rm-beamer-status .rm-requests, .rm-beamer-prepare .rm-sub { margin-top: 0; }
+  .rm-beamer .rm-sub { margin-top: 4px; }
+  .rm-requests { grid-template-columns: 1fr; }
+  .rm-template-head:hover { background: var(--surface-2); }
+
+  .rm-toast { left: calc(50% + 138px); bottom: 28px; }
+}
+
+/* Wichtige Meldung: beim Eintreffen kurz heranzoomen, nach 15 s normal (remote.js) */
+.rm-bubble { transition: background-color 0.6s ease, color 0.6s ease, box-shadow 0.6s ease; }
+.rm-bubble.alert-pop { animation: rm-alert-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.25); }
+@keyframes rm-alert-pop {
+  0% { transform: scale(0.9); opacity: 0.4; }
+  60% { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+/* Eigene Beamer-Meldung zurückziehen */
+.rm-request-withdraw {
+  margin-top: 10px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 69, 58, 0.16);
+  color: #ff6b61;
+  font-weight: 650;
+  font-size: 14px;
+}
+.rm-request-withdraw:active { background: rgba(255, 69, 58, 0.28); }
+.rm-request-withdraw:disabled { opacity: 0.5; }
+
+/* Hochformat-Layout (Monitor hochkant): Vorschau hochkant und mittig */
+.rm-preview iframe { width: var(--pw, 1920px) !important; height: var(--ph, 1080px) !important; left: var(--rm-left, 0px); top: var(--rm-top, 0px); }

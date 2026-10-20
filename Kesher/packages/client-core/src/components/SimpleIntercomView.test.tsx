@@ -55,13 +55,13 @@ describe("SimpleIntercomView audio status", () => {
     render(<SimpleIntercomView {...baseProps} />);
 
     const audioStatus = screen.getByRole("status", {
-      name: "Audio runtime status",
+      name: "Audio-Status",
     });
     expect(audioStatus).toHaveTextContent("Audio bereit");
     expect(audioStatus).toHaveTextContent(
       "Party Line: Livestream",
     );
-    expect(screen.getByRole("button", { name: /Hold to talk/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Gedrückt halten zum Sprechen/ })).toBeEnabled();
   });
 
   it("disables PTT and explains a missing party line", () => {
@@ -74,11 +74,11 @@ describe("SimpleIntercomView audio status", () => {
     );
 
     expect(
-      screen.getByRole("status", { name: "Audio runtime status" }),
+      screen.getByRole("status", { name: "Audio-Status" }),
     ).toHaveTextContent(
       "Dieser Rolle ist keine Party Line zugewiesen",
     );
-    expect(screen.getByRole("button", { name: /Hold to talk/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Gedrückt halten zum Sprechen/ })).toBeDisabled();
   });
 
   it("stays ready in receive-only mode without a microphone", () => {
@@ -90,11 +90,11 @@ describe("SimpleIntercomView audio status", () => {
     );
 
     const audioStatus = screen.getByRole("status", {
-      name: "Audio runtime status",
+      name: "Audio-Status",
     });
     expect(audioStatus).toHaveTextContent("Nur Empfang bereit");
     expect(audioStatus).toHaveTextContent("Hören bleibt aktiv");
-    expect(screen.getByRole("button", { name: /Hold to talk/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Gedrückt halten zum Sprechen/ })).toBeDisabled();
   });
 
   it("shows browser microphone permission errors", () => {
@@ -107,7 +107,7 @@ describe("SimpleIntercomView audio status", () => {
     );
 
     const audioStatus = screen.getByRole("status", {
-      name: "Audio runtime status",
+      name: "Audio-Status",
     });
     expect(audioStatus).toHaveTextContent("Audio nicht bereit");
     expect(audioStatus).toHaveTextContent("Permission denied");

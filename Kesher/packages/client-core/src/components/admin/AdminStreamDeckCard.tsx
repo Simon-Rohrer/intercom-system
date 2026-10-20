@@ -34,9 +34,9 @@ export function AdminStreamDeckCard({
     setMessage("");
     try {
       await resetAdminRoleStreamDeckSettings(token, adminPin, selectedRoleId);
-      setMessage(`Stream Deck layout for ${selectedRoleName} reset to defaults.`);
+      setMessage(`Stream-Deck-Belegung für ${selectedRoleName} auf Standard zurückgesetzt.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "failed to reset Stream Deck settings");
+      setError(err instanceof Error ? err.message : "Stream-Deck-Einstellungen konnten nicht zurückgesetzt werden");
     } finally {
       setResetting(false);
     }

@@ -1,5 +1,5 @@
 [Unit]
-Description=JMS-Server: verschlüsselte Sicherung nach Google Drive
+Description=JMS-Server: wöchentliche verschlüsselte Sicherung (restic)
 Wants=network-online.target
 After=network-online.target docker.service
 

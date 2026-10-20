@@ -26,8 +26,71 @@ function showCertHint() {
   document.body.appendChild(el)
 }
 
+/**
+ * Alle Uhren zeigen deutsche Zeit – auch auf Geräten, die auf UTC laufen (z. B. der Kiosk-Browser
+ * am HDMI-Ausgang des Servers). Sommer-/Winterzeit rechnet der Browser selbst.
+ */
+export const TIME_ZONE = 'Europe/Berlin'
+
+/** Bestandteile einer Uhrzeit in deutscher Zeit (für Timecode u. Ä.). */
+export function berlinParts(date = new Date()) {
+  const parts = {}
+  for (const p of new Intl.DateTimeFormat('de-DE', {
+    timeZone: TIME_ZONE, hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(date)) parts[p.type] = p.value
+  return { hour: parts.hour === '24' ? '00' : parts.hour, minute: parts.minute, second: parts.second }
+}
+
+/** Hochformat-Layout (9:16, z. B. für einen hochkant gedrehten Monitor)? */
+export const isPortrait = (layout) => layout?.orientation === 'portrait'
+
+/** Grenzen für eigene Größen in Pixeln */
+export const LAYOUT_MIN_PX = 100
+export const LAYOUT_MAX_PX = 8192
+const px = (v, fallback) => {
+  const n = Math.round(Number(v))
+  return Number.isFinite(n) && n > 0 ? Math.min(LAYOUT_MAX_PX, Math.max(LAYOUT_MIN_PX, n)) : fallback
+}
+
+/** Interne Größe einer Layout-Fläche – so groß wie der Monitor, auf dem es läuft. */
+export function layoutSize(layout) {
+  if (layout?.orientation === 'custom') return { width: px(layout.width, 1920), height: px(layout.height, 1080) }
+  return isPortrait(layout) ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 }
+}
+
+/** Normales Querformat 1920×1080 (füllt den Bildschirm wie bisher)? */
+export const isStandardLayout = (layout) => {
+  const { width, height } = layoutSize(layout)
+  return width === 1920 && height === 1080
+}
+
+/** Vorschau-Element auf die Größe des Layouts einstellen (für previewMetrics und CSS). */
+export function setPreviewSize(el, layout) {
+  const { width, height } = layoutSize(layout)
+  const changed = el.dataset.w !== String(width) || el.dataset.h !== String(height)
+  el.dataset.w = String(width)
+  el.dataset.h = String(height)
+  el.style.setProperty('--pw', `${width}px`)
+  el.style.setProperty('--ph', `${height}px`)
+  el.classList.toggle('portrait', height > width)
+  return changed
+}
+
+/**
+ * Vorschau in Monitorgröße verkleinern und mittig in die Karte setzen
+ * (Karten bleiben im Raster gleich groß; Querformat 16:9 füllt sie ganz).
+ */
+export function previewMetrics(el) {
+  const w = Number(el.dataset.w) || 1920
+  const h = Number(el.dataset.h) || 1080
+  const cw = el.clientWidth
+  const ch = el.clientHeight || (cw * 9) / 16
+  const scale = Math.min(cw / w, ch / h)
+  return { scale, left: Math.max(0, (cw - w * scale) / 2), top: Math.max(0, (ch - h * scale) / 2) }
+}
+
 /** Kennung der Anmeldung aus /api/me – '' ohne Anmeldung. */
-export const loginKey = (user) => (user && !user.open ? `${user.name}|${user.roleId}|${Boolean(user.admin)}` : '')
+export const loginKey = (user) => (user && !user.open ? `${user.name}|${user.roleId}|${Boolean(user.admin)}|${user.sessionId}|${user.version}|${user.expiresAt}` : '')
 
 /**
  * An- und Abmeldung gelten für alle Dienste (dasselbe Cookie auf allen Ports). Meldet man sich
@@ -37,11 +100,11 @@ export const loginKey = (user) => (user && !user.open ? `${user.name}|${user.rol
 export function watchLogin(currentKey, { onChange = () => location.reload(), url = '/api/me' } = {}) {
   let busy = false
   const check = async () => {
-    if (busy || document.visibilityState === 'hidden') return
+    if (busy) return
     busy = true
     try {
       const me = await fetch(url, { cache: 'no-store', credentials: 'same-origin' }).then((r) => r.json())
-      if (me?.access?.enabled && loginKey(me.user) !== currentKey) onChange(me)
+      if (me?.access?.enabled && (loginKey(me.user) !== currentKey || (me.user && me.user.expiresAt <= Date.now()))) onChange(me)
     } catch {
       // Server gerade nicht erreichbar – beim nächsten Mal
     } finally {
@@ -51,7 +114,21 @@ export function watchLogin(currentKey, { onChange = () => location.reload(), url
   document.addEventListener('visibilitychange', check)
   window.addEventListener('focus', check)
   window.addEventListener('pageshow', (e) => e.persisted && check())
-  setInterval(check, 15000)
+  setInterval(check, 5000)
+}
+
+/**
+ * Neuen Stand laden – aber nicht mitten im Tippen: Ist gerade ein Eingabefeld aktiv,
+ * wird neu geladen, sobald es verlassen wird.
+ */
+export function reloadWhenIdle() {
+  const typing = () => {
+    const a = document.activeElement
+    return Boolean(a && (a.matches?.('input, textarea, select') || a.isContentEditable))
+  }
+  if (!typing()) return location.reload()
+  const later = () => setTimeout(() => (typing() ? null : location.reload()), 300)
+  document.addEventListener('focusout', later)
 }
 
 /** WebSocket mit automatischem Neuverbinden. */

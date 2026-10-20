@@ -4,6 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const http = require('http')
+const https = require('https')
 const { spawn } = require('child_process')
 const express = require('express')
 const { WebSocketServer } = require('ws')
@@ -11,10 +12,18 @@ const { Atem } = require('atem-connection')
 const { createKesherChat } = require('./kesher-chat')
 const { createKesherRoles } = require('./kesher-roles')
 const { createNeighbors } = require('./neighbors')
+const { normalizeRaspberry, parsePiRequest, createPiRegistry } = require('./raspberry-pis')
 const { createChurchTools } = require('./churchtools')
+const { createUplink, normalizeUplink } = require('./uplink')
+const { createMessageLinks } = require('./message-links')
 const QRCode = require('qrcode')
+const { normalizeDayQr, normalizeOutputDayQr } = require('./day-qr')
+const { createSsoHandlers, createSocketGuard, proxyWebSocket, sameOriginRequest, machineRequest, nativeMachineRequest, withoutOwnCookies, safePath, verifySignedRequest, DEFAULT_ORIGINS } = require('./auth-http')
+const { viewConfig, filterMessage, stationLauncherConfig } = require('./auth-permissions')
+const { deviceAssertion, startSatelliteBridge } = require('./device-transport')
 const {
-  createAccess, normalizeAccess, roleRights, allowedOutputs, editableOutputs, visibleLayouts, applyRestrictedChanges, claimLayouts, ADMIN,
+  createAccess, normalizeAccess, roleRights, allowedOutputs, editableOutputs, visibleLayouts, canEditLayout, applyRestrictedChanges, claimLayouts, ADMIN,
+  SERVICE_LEVELS,
 } = require('./access')
 
 const PORT = Number(process.env.PORT) || 8090
@@ -60,7 +69,7 @@ function defaultConfig() {
         })),
       },
     ],
-    outputs: [{ id: 'out1', name: 'Multiview 3', layoutId: 'quad' }],
+    outputs: [{ id: 'out1', name: 'Multiview 3', layoutId: 'quad', dayQr: { show: false, corner: 'br', size: 's' } }],
     chat: defaultChat(),
   }
 }
@@ -104,21 +113,13 @@ function normalizeConfig(c) {
     },
     sources: Array.isArray(c?.sources) ? c.sources : base.sources,
     layouts: Array.isArray(c?.layouts) ? c.layouts : base.layouts,
-    outputs: Array.isArray(c?.outputs) ? c.outputs : base.outputs,
+    outputs: normalizeOutputDayQr(Array.isArray(c?.outputs) ? c.outputs : base.outputs, c?.dayQr),
     screens: normalizeScreens(c?.screens),
     chat: normalizeChat(c?.chat),
     churchtools: normalizeChurchTools(c?.churchtools),
+    uplink: normalizeUplink(c?.uplink),
     access: normalizeAccess(c?.access),
-    dayQr: normalizeDayQr(c?.dayQr),
-  }
-}
-
-/** Tages-QR-Code auf den Monitoren: an/aus, Ecke (tl, tr, bl, br) und Größe (s, m, l). */
-function normalizeDayQr(d) {
-  return {
-    show: d?.show !== false,
-    corner: ['tl', 'tr', 'bl', 'br'].includes(d?.corner) ? d.corner : 'br',
-    size: ['s', 'm', 'l'].includes(d?.size) ? d.size : 'm',
+    raspberry: normalizeRaspberry(c?.raspberry),
   }
 }
 
@@ -132,6 +133,8 @@ function normalizeScreens(list) {
       id: s.id,
       name: typeof s.name === 'string' ? s.name.trim() : '',
       outputId: typeof s.outputId === 'string' && s.outputId ? s.outputId : null,
+      // Monitor hochkant aufgehängt: Bild um 90° bzw. 270° drehen (0 = normal)
+      rotate: [90, 270].includes(Number(s.rotate)) ? Number(s.rotate) : 0,
     }))
 }
 
@@ -142,13 +145,24 @@ function normalizeChurchTools(c) {
 }
 
 function loadConfig() {
+  let stored
   try {
-    return normalizeConfig(JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')))
+    stored = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'))
   } catch (err) {
-    if (err.code !== 'ENOENT') console.error('Konfiguration konnte nicht gelesen werden:', err.message)
-    return normalizeConfig(defaultConfig()) // ergänzt fehlende Bereiche (ProPresenter, Chat, …)
+    if (err.code !== 'ENOENT') throw err // Beschädigte Daten niemals durch Standardwerte ersetzen.
+    return normalizeConfig(defaultConfig())
   }
+  // Einmalige Übernahme der bisherigen globalen Anzeige, ohne andere Daten zu ändern.
+  if (Object.hasOwn(stored, 'dayQr') || stored.outputs?.some((output) => !output.dayQr)) {
+    stored.outputs = normalizeOutputDayQr(stored.outputs || [], normalizeDayQr(stored.dayQr, { show: true, corner: 'br', size: 'm' }))
+    delete stored.dayQr
+    const tmp = `${CONFIG_FILE}.tmp`
+    fs.writeFileSync(tmp, JSON.stringify(stored, null, 2))
+    fs.renameSync(tmp, CONFIG_FILE)
+  }
+  return normalizeConfig(stored)
 }
+
 
 function saveConfig() {
   fs.mkdirSync(DATA_DIR, { recursive: true })
@@ -672,7 +686,9 @@ function messageTemplates(list) {
 
 const FREE_MESSAGE_NAME = 'Multiview-Meldung' // eigene Meldung für freien Text, legt der Server bei Bedarf an
 const FREE_MESSAGE_TOKEN = 'Text'
-let announceRequests = [] // { id, uuid, name, text, from, at, status: wartet|angezeigt|beendet|ersetzt, seenInactive }
+let announceRequests = [] // { id, uuid, name, text, from, by, at, status: wartet|angezeigt|beendet|ersetzt|zurückgezogen, seenInactive }
+// Wer eine Meldung geschickt hat (Name|Rolle) – nur der (oder der Admin) darf sie zurückziehen
+const senderKey = (user) => (user && !user.open ? `${user.name}|${user.roleId}` : '')
 
 function updateAnnounceRequests(list) {
   const active = new Set(list.filter((m) => m.is_active).map((m) => m.id?.uuid))
@@ -688,7 +704,7 @@ function updateAnnounceRequests(list) {
 }
 
 const publicRequests = () =>
-  announceRequests.map(({ id, name, text, from, at, status, shownAt }) => ({ id, name, text, from, at, status, shownAt }))
+  announceRequests.map(({ id, name, text, from, by, at, status, shownAt, link }) => ({ id, name, text, from, by, at, status, shownAt, link }))
 
 /** Text mit eingesetzten Platzhaltern, wie ihn ProPresenter anzeigen wird. */
 /**
@@ -749,7 +765,7 @@ async function putMessage(message) {
  * der Vorlage, bei freiem Text im Aussehen einer normalen Laufschrift.
  * { uuid, fields: { Name: Wert } } für eine Vorlage, { text } für freien Text.
  */
-async function prepareAnnouncement({ uuid, fields, text }, from) {
+async function prepareAnnouncement({ uuid, fields, text }, from, by = '') {
   if (!ppBase()) throw Object.assign(new Error('ProPresenter nicht eingerichtet'), { status: 503 })
   const list = (await ppGet('/v1/messages')) ?? []
   const free = !uuid
@@ -791,6 +807,7 @@ async function prepareAnnouncement({ uuid, fields, text }, from) {
     name: template ? String(template.id?.name ?? '').trim() : 'Eigene Meldung',
     text: rendered,
     from,
+    by,
     at: Date.now(),
     status: 'wartet',
     seenInactive: !inbox.is_active,
@@ -901,8 +918,36 @@ function lanAddresses() {
     .map((a) => a.address)
 }
 
-// Ändert sich bei jedem Start; Monitor-Seiten laden dann den neuen Stand.
-const BOOT_ID = `${Date.now()}`
+// Ändert sich bei jedem Start UND sobald sich eine Datei der Oberfläche (public/) ändert –
+// Monitore, Editor, Handy und Prediger laden dann von selbst den neuen Stand.
+const START_ID = `${Date.now()}`
+let BOOT_ID = START_ID
+function assetsVersion() {
+  const hash = require('crypto').createHash('sha1').update(START_ID)
+  const walk = (dir) => {
+    for (const name of fs.readdirSync(dir).sort()) {
+      const file = path.join(dir, name)
+      const stat = fs.statSync(file)
+      if (stat.isDirectory()) walk(file)
+      else hash.update(`${path.relative(__dirname, file)}:${stat.size}:${stat.mtimeMs}`)
+    }
+  }
+  try {
+    walk(path.join(__dirname, 'public'))
+  } catch {
+    // Ordner gerade nicht lesbar – beim nächsten Mal
+  }
+  return hash.digest('hex').slice(0, 16)
+}
+BOOT_ID = assetsVersion()
+// Neue Dateien (z. B. per docker cp eingespielt) erkennen: alle 10 s vergleichen und dann Bescheid geben
+setInterval(() => {
+  const next = assetsVersion()
+  if (next === BOOT_ID) return
+  BOOT_ID = next
+  console.log('Oberfläche geändert – offene Seiten laden neu')
+  broadcast(serverInfo())
+}, 10_000).unref()
 
 function serverInfo() {
   return {
@@ -1056,6 +1101,7 @@ function screenList() {
       name: saved?.name || id,
       connected: detected?.connected ?? false,
       outputId: saved?.outputId ?? null,
+      rotate: saved?.rotate ?? 0,
     }
   })
 }
@@ -1083,16 +1129,32 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 
 const app = express()
 const server = http.createServer(app)
-const wss = new WebSocketServer({ server, path: '/ws' })
+const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 })
+const socketGuard = createSocketGuard()
 const knownDevices = new Set()
 
 function send(ws, msg) {
-  if (ws.readyState === 1) ws.send(JSON.stringify(msg))
+  if (ws.readyState !== 1) return
+  if (msg.type === 'session_revoked') return ws.send(JSON.stringify(msg))
+  if (!ws.authRequest || !access.trusted(clientIp(ws.authRequest), ws.authRequest)) return ws.close(4401, 'Bitte anmelden')
+  const filtered = messageForRequest(msg, ws.authRequest)
+  if (filtered) ws.send(JSON.stringify(filtered))
 }
 
 function broadcast(msg) {
-  const data = JSON.stringify(msg)
-  for (const ws of wss.clients) if (ws.readyState === 1) ws.send(data)
+  for (const ws of wss.clients) send(ws, msg)
+}
+
+let sessionsTimer = null
+/**
+ * Angemeldete Geräte haben sich geändert (Anmeldung, Seite auf/zu, Kesher verbunden): offene
+ * Einstellungen laden die Liste neu. Ohne Inhalt – die Liste selbst darf nur der Admin lesen.
+ */
+function sessionsChanged() {
+  sessionsTimer ??= setTimeout(() => {
+    sessionsTimer = null
+    broadcast({ type: 'sessions_changed' })
+  }, 300)
 }
 
 const churchTools = createChurchTools({
@@ -1101,17 +1163,34 @@ const churchTools = createChurchTools({
   // Fest gewählte Tage aller ChurchTools-Kacheln
   getDates: () =>
     config.layouts.flatMap((l) => l.tiles.filter((t) => t.kind === 'churchtools' && t.ctDate).map((t) => t.ctDate)),
-  // Filter der Kacheln mit aktuellem Datum: dafür wird bei Bedarf der nächste Ablauf gesucht
+  // Filter der Kacheln „Nächstes Event“: dafür wird das nächste Event der kommenden Tage gesucht
   getFilters: () =>
-    config.layouts.flatMap((l) => l.tiles.filter((t) => t.kind === 'churchtools' && !t.ctDate).map((t) => t.ctFilter || '')),
+    config.layouts.flatMap((l) =>
+      l.tiles.filter((t) => t.kind === 'churchtools' && !t.ctDate && t.ctMode === 'next').map((t) => t.ctFilter || ''),
+    ),
   onUpdate: broadcast,
   log: console.log,
 })
 
+// Upload der Internetleitung (FRITZ!Box) für die Kachel „Upload / Stream“
+const uplink = createUplink({ getConfig: () => config.uplink, onUpdate: broadcast, log: console.log })
+let uplinkKey = ''
+function applyUplink() {
+  const key = JSON.stringify(normalizeUplink(config.uplink))
+  if (key === uplinkKey) return
+  if (uplinkKey) uplink.reconfigure()
+  uplinkKey = key
+}
+
 const kesherChat = createKesherChat({
   getConfig: () => config.chat,
+  getHeaders: () => kesherDeviceHeaders(),
   onUpdate: broadcast,
   onFlash: broadcast,
+  // Wer in Kesher verbunden ist, zählt bei den angemeldeten Geräten als online (Handys im WLAN)
+  onPresence: sessionsChanged,
+  // Kopfhörer/Mikrofon an einem Pi eingesteckt oder abgezogen: Einstellungsseite lädt neu (ohne Inhalt, nur für Admins relevant)
+  onAudioDevices: () => broadcast({ type: 'raspberry_changed' }),
   log: console.log,
 })
 
@@ -1132,6 +1211,7 @@ function configChanged(origin = null) {
   kesherChat.reconfigure()
   applyProPresenter()
   churchTools.datesChanged()
+  applyUplink()
   if (mediamtx.proc) writeMediamtxConfig()
 }
 
@@ -1212,10 +1292,23 @@ function templatesChanged() {
 }
 
 wss.on('connection', (ws, req) => {
+  // Kaputte Pakete (z. B. Caddy schickt beim Neuladen ein unmaskiertes Schlusspaket) beenden nur
+  // diese Verbindung – ohne Fehler-Handler würde ws den ganzen Server abstürzen lassen
+  ws.on('error', (err) => console.warn('WebSocket-Fehler:', err.code || err.message))
   // Ohne Anmeldung nur feste Geräte und der Server selbst (Kiosk) – alle anderen zur Anmeldeseite
   if (!access.trusted(clientIp(req), req)) return ws.close(4401, 'Bitte anmelden')
+  ws.authRequest = req
   // Welche Anmeldung hier offen ist – so gilt eine Rolle als belegt, solange ihre Seite offen ist
   ws.sessionId = access.sessionIdOf(req)
+  const removeGuard = socketGuard.add({ sessionId: ws.sessionId, valid: () => access.trusted(clientIp(req), req), close: () => {
+    ws.close(4401, 'Anmeldung beendet')
+    setTimeout(() => ws.terminate(), 100).unref()
+  } })
+  ws.on('close', removeGuard)
+  if (ws.sessionId) {
+    sessionsChanged()
+    ws.on('close', sessionsChanged)
+  }
   send(ws, { type: 'config', config })
   send(ws, { type: 'atem', ...atemState })
   send(ws, { type: 'devices', devices: [...knownDevices] })
@@ -1223,10 +1316,12 @@ wss.on('connection', (ws, req) => {
   send(ws, serverInfo())
   send(ws, kesherChat.snapshot())
   send(ws, churchTools.snapshot())
+  send(ws, uplink.snapshot())
   send(ws, { type: 'propresenter', ...ppState })
   send(ws, { type: 'ppstage', ...stageState })
 
   ws.on('message', (raw) => {
+    if (!access.trusted(clientIp(req), req)) return ws.close(4401, 'Bitte anmelden')
     let msg
     try {
       msg = JSON.parse(raw)
@@ -1234,10 +1329,10 @@ wss.on('connection', (ws, req) => {
       return
     }
     // Ausgabe-Seiten melden die Videogeräte, die auf ihrem Rechner verfügbar sind.
-    if (msg.type === 'devices' && Array.isArray(msg.devices)) {
+    if (msg.type === 'devices' && Array.isArray(msg.devices) && (access.userOf(req)?.admin || isMachine(req, 'display'))) {
       let added = false
-      for (const d of msg.devices) {
-        if (typeof d === 'string' && d && !knownDevices.has(d)) {
+      for (const d of msg.devices.slice(0, 64)) {
+        if (typeof d === 'string' && d && d.length <= 256 && knownDevices.size < 512 && !knownDevices.has(d)) {
           knownDevices.add(d)
           added = true
         }
@@ -1247,12 +1342,53 @@ wss.on('connection', (ws, req) => {
   })
 })
 
+app.disable('x-powered-by')
+app.get('/api/healthz', (req, res) => res.json({ ok: true }))
+app.use((req, res, next) => {
+  res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'Content-Security-Policy': `frame-ancestors 'self' ${DEFAULT_ORIGINS.join(' ')}` })
+  if (req.path.startsWith('/api/') || req.path.startsWith('/.jms-auth/')) res.set('Cache-Control', 'no-store')
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !sameOriginRequest(req))
+    return res.status(403).json({ ok: false, error: 'Anfrage von einer fremden Seite abgelehnt' })
+  next()
+})
 app.use(express.json({ limit: '5mb' }))
 // Alte Browser (z. B. iPad mit iOS 12) bekommen umgeschriebene Dateien, siehe legacy.js
 app.use(require('./legacy').legacyMiddleware(path.join(__dirname, 'public')))
 app.use(express.static(path.join(__dirname, 'public')))
 
-app.get('/api/config', requireTrusted, (req, res) => res.json(config))
+app.get('/api/config', requireTrusted, requireDisplayReader, (req, res) => res.json(configForRequest(req)))
+
+// ---------------------------------------------------------------------------
+// Raspberry-Pi-Stationen (raspberry-pis.js): der Launcher auf dem Pi holt hier seine Konfiguration
+// ---------------------------------------------------------------------------
+
+const piRegistry = createPiRegistry()
+
+// Ohne Anmeldung (der Pi hat keine) – es kommen nur die Einträge zurück, die zu seinen MACs/IPs passen
+app.post('/api/raspberry-pis/config', (req, res) => {
+  if (!isMachine(req, 'pi-config')) return res.status(403).json({ ok: false, error: 'Nur für registrierte Technikstationen' })
+  const machine = access.machineOf(req)
+  const observedIp = clientIp(req).replace(/^::ffff:/, '')
+  if (!(config.raspberry.clients || []).some((client) => client.id === machine.raspberryClientId && client.roleId === machine.roleId && client.deviceId === machine.deviceId))
+    return res.status(403).json({ ok: false, error: 'Technikstation muss zuerst vom Admin registriert werden' })
+  const request = parsePiRequest(req.body)
+  piRegistry.record({ ...request, ips: [observedIp] }, observedIp)
+  res.set('Cache-Control', 'no-store').json(stationLauncherConfig(config.raspberry, machine))
+})
+
+// Für den Reiter in den Einstellungen: welche Pis gefragt haben und wie Kesher sie gerade sieht
+app.get('/api/raspberry-pis/status', requireAdmin, async (req, res) => {
+  let stations = null
+  let error = ''
+  try {
+    const r = await fetch(`${config.chat.url}/api/raspberry-pis/remote`, { headers: kesherDeviceHeaders(), signal: AbortSignal.timeout(3000) })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    stations = (await r.json())?.stations ?? []
+  } catch (err) {
+    error = `Kesher nicht erreichbar (${err.message})`
+  }
+  res.set('Cache-Control', 'no-store').json({ seen: piRegistry.list(), stations, error })
+})
 
 // ---------------------------------------------------------------------------
 // Benutzer und Rechte (access.js): Anmeldung mit Name + Kesher-Rolle, Admin mit PIN
@@ -1260,24 +1396,28 @@ app.get('/api/config', requireTrusted, (req, res) => res.json(config))
 
 const access = createAccess({
   dataDir: DATA_DIR,
+  allowBootstrap: false,
+  getRoles: () => kesherChat.snapshot().roles?.length ? loginRoles() : null,
   log: console.log,
   // Admin-PIN wie im Kesher-Admin: Kesher prüft sie
-  verifyKesherPin: (pin) => kesherChat.verifyAdminPin(pin),
+  verifyKesherPin: (pin, req) => kesherChat.verifyAdminPin(pin, { sourceIp: clientIp(req), secret: AUTH_SECRET }),
   // Eine Rolle nur einmal – auch gegenüber Geräten, die direkt bei Kesher angemeldet sind
   kesherActiveRoles: () => kesherChat.activeRoleIds(),
-  releaseKesherRole: (roleId, name) => kesherChat.releaseRole(roleId, name),
   isLive: (id) => [...wss.clients].some((ws) => ws.readyState === 1 && ws.sessionId === id),
   // Geräteadresse für die Liste der Anmeldungen (clientIp ist weiter unten definiert, wird erst bei Anfragen aufgerufen)
   ipOf: (req) => (req?.socket ? clientIp(req).replace(/^::ffff:/, '') : ''),
   // Dasselbe Gerät per IPv4 (IP-Adresse) und IPv6 (.local-Namen) erkennen
   macOf: createNeighbors().macOf,
+  onChange: sessionsChanged,
   // Übernommene oder vom Admin beendete Anmeldung: die offenen Seiten dort abmelden
   onRevoke: (ids, reason) => {
     for (const ws of wss.clients) {
       if (!ids.includes(ws.sessionId)) continue
       send(ws, { type: 'session_revoked', reason })
-      ws.sessionId = null
+      ws.close(4401, 'Anmeldung beendet')
+      setTimeout(() => ws.terminate(), 100).unref()
     }
+    socketGuard.revoke(ids)
   },
 })
 const PROFILES_FILE = path.join(DATA_DIR, 'profiles.json')
@@ -1292,7 +1432,49 @@ function requireUser(req, res, next) {
 /** Schnittstellen des Multiview selbst: angemeldet, feste Geräte oder der Server selbst (Companion, Kiosk). */
 function requireTrusted(req, res, next) {
   if (!access.trusted(clientIp(req), req)) return res.status(401).json({ ok: false, error: 'Bitte anmelden', login: true })
+  req.user = access.userOf(req)
   next()
+}
+
+function isMachine(req, capability = '', service = 'multiview') {
+  const machine = access.machineOf(req)
+  return machineRequest(req, machine?.mode === 'station' && machine.services.includes(service) && (!capability || machine.capabilities.includes(capability)), access.userOf(req))
+}
+
+function requireDisplayReader(req, res, next) {
+  if (req.user || isMachine(req, 'display') || isMachine(req, 'control')) return next()
+  res.status(403).json({ ok: false, error: 'Dieses Gerät hat keine Anzeigerechte' })
+}
+
+function requireChatReader(req, res, next) {
+  if (isMachine(req, 'chat-monitor')) return next()
+  return requireDisplayReader(req, res, next)
+}
+
+function requireMutation(req, res, next) {
+  if (isMachine(req) && !isMachine(req, 'control')) return res.status(403).json({ ok: false, error: 'Dieses Gerät hat keine Steuerrechte' })
+  if (req.method === 'POST' || (req.method === 'GET' && nativeMachineRequest(req, isMachine(req)))) return next()
+  res.set('Allow', 'POST').status(405).json({ ok: false, error: 'Bitte POST verwenden' })
+}
+
+function requireOperator(req, res, next) {
+  if (req.user?.admin || isMachine(req, 'control')) return next()
+  res.status(403).json({ ok: false, error: 'Nur für den Admin oder eine feste Technikstation' })
+}
+
+function requireSlideOperator(req, res, next) {
+  if (roleRights(config, req.user)?.controlSlides) return next()
+  return requireOperator(req, res, next)
+}
+
+function configForRequest(req) {
+  const user = access.userOf(req)
+  return viewConfig(config, user, !user ? access.machineOf(req) : null)
+}
+
+function messageForRequest(msg, req) {
+  const user = access.userOf(req)
+  return filterMessage(msg, config, user, !user ? access.machineOf(req) : null)
 }
 
 function requireAdmin(req, res, next) {
@@ -1349,9 +1531,10 @@ function avatarUrl(name) {
  * Aktive Anmeldungen (ohne Admin) mit Rechten auf den Multiview; bei mehreren die Rolle mit den
  * wenigsten Multiviews (Licht 1 vor einer Rolle, die alles darf), sonst die zuletzt aktive.
  */
-app.get('/api/output/:id/user', requireTrusted, (req, res) => {
+app.get('/api/output/:id/user', requireTrusted, requireDisplayReader, (req, res) => {
   const output = findByRef(config.outputs, req.params.id)
   if (!output) return res.status(404).json({ ok: false, user: null })
+  if (!isMachine(req, 'display') && !isMachine(req, 'control') && !allowedOutputs(config, req.user).has(output.id)) return res.status(403).json({ ok: false, user: null })
   const active = access
     .sessions()
     .filter((s) => !s.admin && s.roleId && (s.live || Date.now() - s.seen < 2 * 60 * 1000))
@@ -1367,10 +1550,12 @@ app.get(['/api/me', '/.jms-auth/api/me'], (req, res) => {
   const rights = roleRights(config, user)
   res.json({
     access: { enabled: access.enabled(), pinSource: access.pinSource() },
-    user: user && { name: user.name, roleId: user.roleId, roleName: roleName(user.roleId), admin: user.admin, open: user.open, avatar: user.open ? null : avatarUrl(user.name) },
+    user: user && { name: user.name, roleId: user.roleId, roleName: roleName(user.roleId), admin: user.admin, open: user.open, sessionId: user.sessionId, version: user.version, expiresAt: user.expiresAt, avatar: user.open ? null : avatarUrl(user.name) },
+    device: access.deviceStatus(clientIp(req), req),
     rights: rights && {
       admin: rights.admin,
       editLayouts: rights.admin || rights.editLayouts,
+      controlSlides: rights.admin || rights.controlSlides,
       outputs: [...allowedOutputs(config, user)],
       edit: [...editableOutputs(config, user)],
       layouts: visibleLayouts(config, user).map((l) => l.id),
@@ -1380,7 +1565,13 @@ app.get(['/api/me', '/.jms-auth/api/me'], (req, res) => {
 })
 
 app.get(['/api/login/roles', '/.jms-auth/api/login/roles'], async (req, res) =>
-  res.set('Cache-Control', 'no-store').json({ enabled: access.enabled(), roles: loginRoles(), occupied: await access.occupiedForLogin(req) }),
+  res.set('Cache-Control', 'no-store').json({
+    enabled: access.enabled(),
+    roles: loginRoles(),
+    occupied: await access.occupiedForLogin(req),
+    // die eigene Rolle bleibt wählbar (neu anmelden mit anderem Namen)
+    mine: access.userOf(req)?.roleId ?? null,
+  }),
 )
 
 app.post(['/api/login', '/.jms-auth/api/login'], async (req, res) => {
@@ -1458,7 +1649,27 @@ app.get(['/api/wallpaper/:file', '/.jms-auth/api/wallpaper/:file'], (req, res) =
   res.set('Cache-Control', 'public, max-age=604800').type('image/jpeg').sendFile(file)
 })
 
-app.get(['/api/avatar/:id', '/.jms-auth/api/avatar/:id'], requireTrusted, (req, res) => {
+// Dashboard (Admin): Verbindung jeder Raspberry-Station live aus Kesher – mit WLAN-IP aus dem Herzschlag
+// und den Rollennamen (die Messwerte zeigt das Dashboard über Glances auf dem Pi)
+app.get(['/api/raspberry-pis/live', '/.jms-auth/api/raspberry-pis/live'], requireAdmin, async (req, res) => {
+  try {
+    const data = await kesherChat.raspberryPis()
+    const names = Object.fromEntries((kesherChat.snapshot().roles ?? []).map((r) => [r.id, r.name]))
+    res.set('Cache-Control', 'no-store').json({
+      ok: true,
+      offlineAfterMs: data.offlineAfterMs,
+      stations: (data.stations ?? []).map((s) => ({
+        ...s,
+        roleName: names[s.roleId] || s.roleId || '',
+        intercomRoleName: s.intercomRoleId ? names[s.intercomRoleId] || s.intercomRoleId : '',
+      })),
+    })
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err.message })
+  }
+})
+
+app.get(['/api/avatar/:id', '/.jms-auth/api/avatar/:id'], requireTrusted, requireChatReader, (req, res) => {
   if (!/^[0-9a-f]{20}$/.test(req.params.id)) return res.status(404).end()
   const file = avatarFile(req.params.id)
   if (!fs.existsSync(file)) return res.status(404).end()
@@ -1504,13 +1715,20 @@ app.post('/api/chat/send', requireUser, async (req, res) => {
 })
 
 // QR-Code-Anmeldung fürs Handy: Einmal-Link, 10 Minuten gültig
-app.post(['/api/me/qr', '/.jms-auth/api/me/qr'], requireUser, (req, res) => res.json({ ok: true, ...access.createQrToken(req.user) }))
+// Dazu der Tagescode (nur wenn die Freischaltung an ist) – für Laptops, die keinen QR scannen können
+app.post(['/api/me/qr', '/.jms-auth/api/me/qr'], requireUser, (req, res) => {
+  try {
+    const dayCode = access.gateway().active ? access.dayCode().code : null
+    res.json({ ok: true, ...access.createQrToken(req.user, req), dayCode })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
+})
 
 app.get('/q/:token', (req, res) => {
   const ok = access.redeemQrToken(req.params.token, req, res)
   // Der Code kommt von einem angemeldeten Gerät – das Handy gleich für heute freischalten,
   // damit es auch Intercom und Dashboard ohne Tagescode öffnen kann
-  if (ok && access.deviceStatus(clientIp(req), req).required) access.approveDevice(clientIp(req), req, res)
   res.redirect(ok ? '/remote.html' : '/login.html?qr=abgelaufen')
 })
 
@@ -1520,7 +1738,6 @@ app.get('/q/:token', (req, res) => {
 app.get('/.jms-auth/q/:token', (req, res) => {
   const ok = access.redeemQrToken(req.params.token, req, res)
   if (!ok) return res.redirect(302, `${loginPath('/')}&qr=abgelaufen`)
-  if (access.deviceStatus(clientIp(req), req).required) access.approveDevice(clientIp(req), req, res)
   res.redirect(302, '/')
 })
 
@@ -1538,20 +1755,46 @@ app.get(['/api/qr.svg', '/.jms-auth/api/qr.svg'], async (req, res) => {
 // Admin: PIN und angemeldete Geräte
 app.post('/api/access/pin', requireAdmin, async (req, res) => {
   try {
-    const wasOpen = !access.enabled()
-    await access.setAdminPin(req.body || {}, req.user)
-    // Wer die Anmeldung gerade einschaltet, bleibt als Admin angemeldet (PIN ist eben geprüft)
-    if (wasOpen && access.enabled())
-      await access.login({ name: req.body?.name || 'Admin', roleId: ADMIN }, req, res, { pinChecked: true })
+    await access.setAdminPin(req.body || {}, req.user, req)
     res.json({ ok: true, enabled: access.enabled() })
   } catch (err) {
     res.status(err.status || 400).json({ ok: false, error: err.message })
   }
 })
 
-app.get('/api/access/sessions', requireAdmin, (req, res) =>
-  res.json(access.sessions().map((s) => ({ ...s, roleName: roleName(s.roleId), self: s.id === req.user.sessionId, avatar: avatarUrl(s.name) }))),
-)
+/**
+ * Anmeldungen, deren Kesher-Seite gerade verbunden ist. Kesher meldet nur Rolle und Namen (ohne
+ * Leerzeichen), keine Adresse: Rollen gibt es nur einmal, der Admin wird am Namen erkannt.
+ * Hat eine Person die Rolle auf mehreren Geräten, zählt die zuletzt aktive Anmeldung.
+ */
+function sessionsInKesher(list) {
+  const key = (name) => String(name ?? '').replace(/\s+/g, '').toLowerCase()
+  const ids = new Set()
+  for (const p of kesherChat.presence()) {
+    const sameName = (s) => key(s.name) === key(p.username)
+    const match = list
+      .filter((s) => (s.admin ? sameName(s) : s.roleId === p.roleId))
+      .sort((a, b) => sameName(b) - sameName(a) || b.seen - a.seen)[0]
+    if (match) ids.add(match.id)
+  }
+  return ids
+}
+
+app.get('/api/access/sessions', requireAdmin, (req, res) => {
+  const list = access.sessions()
+  const inKesher = sessionsInKesher(list)
+  res.json(
+    list.map((s) => ({
+      ...s,
+      kesher: inKesher.has(s.id),
+      // online: Seite im Multiview oder Kesher offen, sonst eben noch an einem Dienst aktiv (Dashboard …)
+      online: s.live || inKesher.has(s.id) || Date.now() - s.seen < 2 * 60 * 1000,
+      roleName: roleName(s.roleId),
+      self: s.id === req.user.sessionId,
+      avatar: avatarUrl(s.name),
+    })),
+  )
+})
 
 app.delete('/api/access/sessions/:id', requireAdmin, (req, res) => {
   access.endSession(req.params.id)
@@ -1568,6 +1811,13 @@ app.delete('/api/access/sessions/:id', requireAdmin, (req, res) => {
 
 // Gemeinsames Geheimnis mit Kesher für die Admin-Anmeldung dort (Tickets, siehe access.js)
 const AUTH_SECRET = process.env.JMS_AUTH_SECRET || ''
+const kesherDeviceKey = process.env.JMS_KESHER_DEVICE_KEY_FILE ? fs.readFileSync(process.env.JMS_KESHER_DEVICE_KEY_FILE, 'utf8').trim() : ''
+
+function kesherDeviceHeaders() {
+  const machine = access.machineOf({ headers: { 'x-jms-device-key': kesherDeviceKey }, socket: { remoteAddress: '127.0.0.1' } })
+  const assertion = deviceAssertion(machine, AUTH_SECRET)
+  return assertion ? { 'X-JMS-Device-Assertion': assertion, 'X-JMS-Gateway': 'machine' } : {}
+}
 
 /** Adresse des Geräts. Hinter Caddy steht sie in X-Forwarded-For – das gilt nur für Anfragen vom Server selbst. */
 function clientIp(req) {
@@ -1577,25 +1827,41 @@ function clientIp(req) {
 }
 
 /** Nur Pfade auf derselben Adresse als Rücksprungziel, nie eine fremde Seite. */
-const safeNext = (value, fallback = '/') => {
-  const next = String(value || '')
-  return next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : fallback
+const safeNext = safePath
+
+/**
+ * Anmeldeseite mit Rücksprungziel. Für Dienste nur für den Admin (Companion, Portainer …) bietet
+ * sie dann nur die Admin-Anmeldung an – eine Rolle brächte dort ja nur „Nur für den Admin“.
+ */
+const loginPath = (next, service = '') => {
+  const adminOnly = service && (SERVICE_LEVELS[service] ?? 'admin') === 'admin'
+  return `/.jms-auth/login?next=${encodeURIComponent(safeNext(next))}${adminOnly ? `&nur=admin&dienst=${encodeURIComponent(service)}` : ''}`
 }
 
-const loginPath = (next) => `/.jms-auth/login?next=${encodeURIComponent(safeNext(next))}`
+/**
+ * Wächter für Seiten, die die Anmeldung nicht selbst verfolgen (Companion, „Nur für den Admin“):
+ * lädt neu, sobald sich die Anmeldung ändert (public/watch-login.js). Der Server sagt ihm, für wen
+ * die Seite gebaut ist – sonst merkt er sich erst beim ersten Nachfragen, wer angemeldet ist, und
+ * übersieht einen Wechsel, der passiert, während die Seite noch im Hintergrund lädt.
+ */
+function watchTag(user) {
+  const key = user && !user.open ? `${user.name}|${user.roleId}|${Boolean(user.admin)}|${user.sessionId || ''}|${user.version || ''}|${user.expiresAt || ''}` : null
+  return `<script src="/.jms-auth/watch-login.js"${key === null ? '' : ` data-key="${escapeHtml(key)}"`} defer></script>`
+}
 
-function forbiddenPage(user, next) {
+function forbiddenPage(user, next, service) {
   return `<!doctype html>
 <html lang="de" data-theme="system"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Nur für den Admin</title>
-<script src="/.jms-auth/theme-boot.js"></script><link rel="stylesheet" href="/.jms-auth/admin.css"></head>
+<title>JMS - Technik</title>
+<script src="/.jms-auth/theme-boot.js"></script><link rel="stylesheet" href="/.jms-auth/admin.css">
+${watchTag(user)}</head>
 <body><div class="auth-page"><div class="card auth-card">
 <div class="brand"><span class="brand-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="brand-text">Technik<small>Anmeldung</small></span></div>
 <div><h1>Nur für den Admin</h1>
 <p class="muted">Du bist als <b>${escapeHtml(user?.name)}</b> angemeldet. Dieser Bereich ist nur mit der Admin-Anmeldung erreichbar.</p></div>
-<a class="btn primary block" href="${escapeHtml(`${loginPath(next)}&wechseln=1`)}">Als Admin anmelden</a>
-<a class="btn block" href="/.jms-auth/logout">Abmelden</a>
+<a class="btn primary block" href="${escapeHtml(`${loginPath(next, service)}&wechseln=1`)}">Als Admin anmelden</a>
+<form action="/.jms-auth/logout" method="post"><button class="btn block" type="submit">Abmelden</button></form>
 </div></div></body></html>`
 }
 
@@ -1609,6 +1875,15 @@ app.get('/.jms-auth/check', (req, res) => {
   const service = String(req.query.service || '')
   const { action, user } = access.check({ service, ip: clientIp(req) }, req)
   if (action === 'allow') {
+    const machine = !user && isMachine(req, '', service)
+    res.set({ 'X-JMS-Gateway': machine ? 'machine' : 'central', 'X-JMS-Session-Id': user?.sessionId || '',
+      'X-JMS-Device-Assertion': machine && service === 'kesher' ? deviceAssertion(access.machineOf(req), AUTH_SECRET) : '' })
+    const forwardedMethod = req.get('x-forwarded-method') || 'GET'
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(forwardedMethod) && !sameOriginRequest(req))
+      return res.status(403).json({ ok: false, error: 'Anfrage von einer fremden Seite abgelehnt' })
+    const forwardedPath = String(req.get('x-forwarded-uri') || '').split('?')[0]
+    if (service === 'kesher' && ['/api/login', '/api/login/takeover', '/api/admin/login'].includes(forwardedPath) && !machine)
+      return res.status(403).json({ ok: false, error: 'Bitte die zentrale Anmeldung verwenden' })
     if (user && !user.open)
       res.set({ 'X-Jms-User': encodeURIComponent(user.name), 'X-Jms-Role': user.roleId, 'X-Jms-Admin': user.admin ? '1' : '0' })
     return res.status(204).end()
@@ -1618,24 +1893,232 @@ app.get('/.jms-auth/check', (req, res) => {
   const wantsPage =
     (req.get('x-forwarded-method') || 'GET') === 'GET' && /text\/html/.test(req.get('accept') || '') && !req.get('upgrade')
   if (action === 'forbidden')
-    return wantsPage ? res.status(403).type('html').send(forbiddenPage(user, next)) : res.status(403).json({ ok: false, error: 'Nur für den Admin' })
-  if (wantsPage) return res.redirect(302, loginPath(next))
-  res.set('X-Jms-Login', loginPath(next)).status(401).json({ ok: false, error: 'Bitte anmelden', login: loginPath(next) })
+    return wantsPage ? res.status(403).type('html').send(forbiddenPage(user, next, service)) : res.status(403).json({ ok: false, error: 'Nur für den Admin' })
+  if (wantsPage) return res.redirect(302, loginPath(next, service))
+  res.set('X-Jms-Login', loginPath(next, service)).status(401).json({ ok: false, error: 'Bitte anmelden', login: loginPath(next, service) })
 })
 
 app.get('/.jms-auth/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')))
 
-app.get('/.jms-auth/logout', (req, res) => {
+// Fremde Oberflächen hinter der zentralen Anmeldung (Companion) merken An- und Abmeldung in anderen
+// Tabs nicht selbst. Caddy schickt ihre Seitenaufrufe (Accept: text/html) hierher (Baustein
+// jms_watch im Caddyfile): Der Multiview holt die Seite vom Dienst und hängt watch-login.js ein,
+// das bei geänderter Anmeldung neu lädt. Nur HTML, nur für Angemeldete mit Zugang zum Dienst –
+// /.jms-auth/* ist auf jeder Adresse offen, das hier darf also kein Umweg an der Anmeldung vorbei sein.
+const WATCHED_SERVICES = {
+  companion: process.env.COMPANION_URL || 'http://127.0.0.1:8000',
+  // Eigene Anmeldung am Dienst: der Admin wird dort automatisch angemeldet (siehe unten)
+  portainer: process.env.PORTAINER_URL || 'https://127.0.0.1:9443',
+  router: process.env.ROUTER_URL || 'http://192.168.0.250',
+  dns: process.env.DNS_URL || 'http://127.0.0.1:8083',
+  glances: process.env.GLANCES_URL || 'http://127.0.0.1:61208',
+}
+const WEBSOCKET_SERVICES = {
+  ...WATCHED_SERVICES,
+  kesher: process.env.KESHER_URL || 'http://127.0.0.1:8080',
+  dashboard: process.env.DASHBOARD_URL || 'http://127.0.0.1:3000',
+  glances: process.env.GLANCES_URL || 'http://127.0.0.1:61208',
+}
+
+/** Dienste, deren Seiten die Sitzung des Dienstes brauchen (Cookie des Browsers wird mitgeschickt). */
+const PAGE_COOKIE_SERVICES = new Set(['router'])
+/** Unsere eigenen Cookies gehen nie an einen fremden Dienst. */
+
+/** Seite eines Dienstes holen; Portainer hat nur ein selbst signiertes Zertifikat (nur 127.0.0.1). */
+function fetchUpstreamPage(url, userAgent, cookie = '') {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url)
+    const lib = target.protocol === 'https:' ? https : http
+    const request = lib.request(
+      target,
+      {
+        method: 'GET',
+        headers: { Accept: 'text/html', 'Accept-Encoding': 'identity', 'User-Agent': userAgent || '', ...(cookie ? { Cookie: cookie } : {}) },
+        rejectUnauthorized: !(target.protocol === 'https:' && target.hostname === '127.0.0.1'),
+        timeout: 5000,
+      },
+      (response) => {
+        const chunks = []
+        response.on('data', (c) => chunks.push(c))
+        response.on('end', () =>
+          resolve({
+            status: response.statusCode || 502,
+            headers: response.headers,
+            body: Buffer.concat(chunks).toString('utf8'),
+          }),
+        )
+        response.on('error', reject)
+      },
+    )
+    request.on('timeout', () => request.destroy(new Error('timeout')))
+    request.on('error', reject)
+    request.end()
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Zugangsdaten der Dienste mit eigener Anmeldung (Portainer, Router). Der Admin trägt sie einmal
+// in JMS Control ein; danach trägt ein kleines Skript sie auf der Anmeldeseite des Dienstes ein und
+// schickt sie ab – aber nur, wenn der Admin über die zentrale Anmeldung dort ist. Die Passwörter
+// liegen im Datenordner (nur für den Server lesbar) und gehen nie an andere als den angemeldeten Admin.
+// ---------------------------------------------------------------------------
+
+const SERVICE_CREDENTIALS_FILE = path.join(DATA_DIR, 'service-credentials.json')
+const CREDENTIAL_SERVICES = {
+  portainer: { label: 'Portainer', username: true },
+  router: { label: 'Router (Speedport)', username: false },
+}
+
+function readServiceCredentials() {
+  try {
+    const data = JSON.parse(fs.readFileSync(SERVICE_CREDENTIALS_FILE, 'utf8'))
+    return data && typeof data === 'object' ? data : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeServiceCredentials(data) {
+  fs.mkdirSync(DATA_DIR, { recursive: true })
+  const tmp = `${SERVICE_CREDENTIALS_FILE}.tmp`
+  fs.writeFileSync(tmp, JSON.stringify(data), { mode: 0o600 })
+  fs.renameSync(tmp, SERVICE_CREDENTIALS_FILE)
+}
+
+app.get('/api/service-credentials', requireAdmin, (req, res) => {
+  const stored = readServiceCredentials()
+  const out = {}
+  for (const [id, def] of Object.entries(CREDENTIAL_SERVICES)) {
+    out[id] = { label: def.label, username: def.username, set: Boolean(stored[id]?.password), user: def.username ? stored[id]?.username || '' : '' }
+  }
+  res.set('Cache-Control', 'no-store').json(out)
+})
+
+app.put('/api/service-credentials/:service', requireAdmin, (req, res) => {
+  const def = CREDENTIAL_SERVICES[req.params.service]
+  if (!def) return res.status(404).json({ ok: false, error: 'Unbekannter Dienst' })
+  const password = String(req.body?.password ?? '')
+  const username = def.username ? String(req.body?.username ?? '').trim() : ''
+  if (!password || password.length > 200) return res.status(400).json({ ok: false, error: 'Passwort fehlt' })
+  if (def.username && !username) return res.status(400).json({ ok: false, error: 'Benutzername fehlt' })
+  const stored = readServiceCredentials()
+  stored[req.params.service] = def.username ? { username, password } : { password }
+  writeServiceCredentials(stored)
+  res.json({ ok: true })
+})
+
+app.delete('/api/service-credentials/:service', requireAdmin, (req, res) => {
+  if (!CREDENTIAL_SERVICES[req.params.service]) return res.status(404).json({ ok: false, error: 'Unbekannter Dienst' })
+  const stored = readServiceCredentials()
+  delete stored[req.params.service]
+  writeServiceCredentials(stored)
+  res.json({ ok: true })
+})
+
+// Die Anmeldeseite des Dienstes holt sich hier die Zugangsdaten – nur der angemeldete Admin, nur
+// von der eigenen Seite (kein Zugriff aus fremden Tabs).
+app.get('/.jms-auth/api/autologin/:service', (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  const user = access.userOf(req)
+  const site = req.get('sec-fetch-site')
+  if (!CREDENTIAL_SERVICES[req.params.service] || !user?.admin || (site && site !== 'same-origin') || req.get('x-jms-autologin') !== '1') {
+    return res.status(404).json({ ok: false })
+  }
+  const stored = readServiceCredentials()[req.params.service]
+  if (!stored?.password) return res.status(404).json({ ok: false })
+  res.json({ ok: true, username: stored.username || '', password: stored.password })
+})
+
+app.get(/^\/\.jms-auth\/page\/([a-z]+)(\/.*)?$/, async (req, res) => {
+  const service = req.params[0]
+  const upstream = WATCHED_SERVICES[service]
+  if (!upstream) return res.status(404).end()
+  const rest = req.params[1] || '/'
+  const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : ''
+  const { action, user } = access.check({ service, ip: clientIp(req) }, req)
+  if (action !== 'allow') return res.redirect(302, loginPath(rest + query, service))
+  let page
+  try {
+    page = await fetchUpstreamPage(
+      `${upstream}${rest}${query}`,
+      req.get('user-agent'),
+      PAGE_COOKIE_SERVICES.has(service) ? withoutOwnCookies(req.headers.cookie) : '',
+    )
+  } catch {
+    return res.status(502).type('text').send(`${service} ist gerade nicht erreichbar`)
+  }
+  const type = String(page.headers['content-type'] || '')
+  for (const c of [].concat(page.headers['set-cookie'] || [])) if (PAGE_COOKIE_SERVICES.has(service)) res.append('Set-Cookie', c)
+  if (page.status >= 300 && page.status < 400) {
+    // Weiterleitungen auf die Adresse des Dienstes selbst (Router: http://192.168.0.250/…) bleiben auf dieser Adresse
+    const origin = new URL(upstream).origin
+    const target = String(page.headers.location || '/')
+    return res.redirect(page.status, target.startsWith(origin) ? target.slice(origin.length) || '/' : target)
+  }
+  if (!/text\/html/i.test(type)) return res.status(404).end()
+  // Eigene Anmeldung des Dienstes: den Admin automatisch anmelden, wenn Zugangsdaten hinterlegt sind
+  const auto =
+    user?.admin && CREDENTIAL_SERVICES[service] && readServiceCredentials()[service]?.password
+      ? `<script src="/.jms-auth/autologin.js" data-service="${service}" defer></script>`
+      : ''
+  // JMS-Leiste unten links: zurück zum Dashboard, wer angemeldet ist, Konto wechseln, Abmelden
+  const tag = watchTag(user) + auto + '<script src="/.jms-auth/jms-bar.js" defer></script>'
+  const html = page.body
+  res
+    .status(page.status)
+    .set({ 'Content-Type': type, 'Cache-Control': 'no-store' })
+    .send(/<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${tag}</head>`) : tag + html)
+})
+
+app.post('/.jms-auth/logout', (req, res) => {
   access.logout(req, res)
   res.redirect(302, loginPath(req.query.next))
 })
 
+// ---------------------------------------------------------------------------
+// Abgleich der Anmeldung zwischen den Adressen. Unter der IP teilen sich alle Dienste ein Cookie
+// (Cookies kennen keine Ports), intercom.local, jmscontrol.local usw. haben aber je ein eigenes.
+// Die Anmeldeseite holt die Anmeldung darum per Weiterleitung von der zentralen Adresse
+// (JMS_SSO_ORIGIN, z. B. https://192.168.0.21:8090) ab und bringt sie nach dem Anmelden dorthin.
+// Abmelden beendet die Anmeldung unter allen Adressen (gleiche ID, siehe access.js).
+// ---------------------------------------------------------------------------
+
+const SSO_ORIGIN = String(process.env.JMS_SSO_ORIGIN || '').replace(/\/+$/, '')
+const sso = createSsoHandlers({ access, centralOrigin: SSO_ORIGIN, ipOf: clientIp, loginPath,
+  origins: process.env.JMS_SSO_ORIGINS ? process.env.JMS_SSO_ORIGINS.split(',').map((origin) => origin.trim()) : DEFAULT_ORIGINS })
+
+app.get(['/api/sso', '/.jms-auth/api/sso'], (req, res) =>
+  res.set('Cache-Control', 'no-store').json({ origin: access.enabled() && sso.central ? sso.central : null, central: sso.isCentral(req) }),
+)
+
+// Zentrale Adresse: die Anmeldung an eine andere Adresse weitergeben – oder sagen, dass es keine gibt
+app.get('/.jms-auth/sso/start', sso.start)
+app.get('/.jms-auth/sso/issue', sso.issue)
+
+// Ticket einlösen: hier gilt dann dieselbe Anmeldung. Mit host (an der zentralen Adresse) geht es
+// danach zurück zu der Adresse, an der man sich gerade angemeldet hat.
+app.get('/.jms-auth/sso/accept', sso.accept)
+
+// Nach dem Anmelden an einer anderen Adresse: die Anmeldung zur zentralen Adresse bringen
+app.get('/.jms-auth/sso/push', sso.push)
+
+app.post('/.jms-auth/api/session-status', (req, res) => {
+  if (!verifySignedRequest(AUTH_SECRET, 'introspect', req.body)) return res.status(403).json({ active: false })
+  res.json(access.sessionStatusById(req.body.sessionId))
+})
+
+app.post('/.jms-auth/api/revoke-admin', (req, res) => {
+  if (!verifySignedRequest(AUTH_SECRET, 'revoke-admin', req.body)) return res.status(403).json({ ok: false })
+  access.revokeAdmins('Admin-PIN geändert')
+  res.json({ ok: true })
+})
+
 // Tagescode: braucht dieses Gerät ihn noch?
-app.get('/.jms-auth/api/device', (req, res) => {
+app.get(['/api/device', '/.jms-auth/api/device'], (req, res) => {
   res.set('Cache-Control', 'no-store').json(access.deviceStatus(clientIp(req), req))
 })
 
-app.post('/.jms-auth/api/device', (req, res) => {
+app.post(['/api/device', '/.jms-auth/api/device'], (req, res) => {
   try {
     if (access.deviceStatus(clientIp(req), req).required) access.redeemDayCode(req.body?.code, clientIp(req), req, res)
     res.json({ ok: true })
@@ -1668,7 +2151,7 @@ app.get('/.jms-auth/api/ticket', requireUser, (req, res) => {
 // Admin: Einstellungen, Tagescode und freigeschaltete Geräte
 function gatewayInfo() {
   const code = access.dayCode()
-  return { ...access.gateway(), code: code.code, day: code.day, devicesToday: access.devicesToday(), secret: Boolean(AUTH_SECRET) }
+  return { ...access.gateway(), machines: access.listMachines(), code: code.code, day: code.day, devicesToday: access.devicesToday(), secret: Boolean(AUTH_SECRET) }
 }
 
 /**
@@ -1679,15 +2162,35 @@ function gatewayInfo() {
 app.get('/api/display/day-code', (req, res) => {
   res.set('Cache-Control', 'no-store')
   const gateway = access.gateway()
-  if (!gateway.active || !config.dayQr?.show) return res.json({ show: false })
-  const device = access.deviceStatus(clientIp(req), req)
-  if (device.required && !device.approved && !access.userOf(req)?.admin)
+  if (!gateway.active) return res.json({ show: false })
+  const user = access.userOf(req)
+  if (!user?.admin && !isMachine(req, 'day-code'))
     return res.status(403).json({ show: false, error: 'Nur für feste Geräte' })
+  const output = config.outputs.find((item) => item.id === req.query.output)
+  if (!output?.dayQr?.show) return res.json({ show: false })
   const code = access.dayCode()
-  res.json({ show: true, code: code.code, day: code.day, startUrl: gateway.startUrl, corner: config.dayQr.corner, size: config.dayQr.size })
+  res.json({ show: true, code: code.code, day: code.day, startUrl: gateway.startUrl, corner: output.dayQr.corner, size: output.dayQr.size })
 })
 
 app.get('/api/access/gateway', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json(gatewayInfo()))
+
+app.get('/api/access/machines', requireAdmin, (req, res) => res.json(access.listMachines()))
+app.post('/api/access/machines', requireAdmin, (req, res) => {
+  try { res.status(201).json({ ok: true, ...access.createMachine(req.body) }) }
+  catch (error) { res.status(error.status || 400).json({ ok: false, error: error.message }) }
+})
+app.post('/api/access/machines/:id/rotate', requireAdmin, (req, res) => {
+  try { res.json({ ok: true, ...access.rotateMachine(req.params.id, req.body) }) }
+  catch (error) { res.status(error.status || 400).json({ ok: false, error: error.message }) }
+})
+app.delete('/api/access/machines/:id', requireAdmin, (req, res) => {
+  try { access.revokeMachine(req.params.id); res.json({ ok: true }) }
+  catch (error) { res.status(error.status || 400).json({ ok: false, error: error.message }) }
+})
+app.post('/.jms-auth/api/machine-status', (req, res) => {
+  if (!verifySignedRequest(AUTH_SECRET, 'machine', req.body)) return res.status(403).json({ active: false })
+  res.json(access.machineStatus(req.body.deviceId, req.body.version))
+})
 
 app.put('/api/access/gateway', requireAdmin, (req, res) => {
   try {
@@ -1711,9 +2214,9 @@ app.get(['/vendor/jsQR.js', '/.jms-auth/vendor/jsQR.js'], (req, res) =>
 
 // Admin: Rollen anlegen, umbenennen und löschen. Sie werden in Kesher gespeichert (über eine kurze
 // Admin-Sitzung mit Ticket); die Multiview-Rechte der Rolle stehen hier in config.access.roles.
-const kesherRoles = createKesherRoles({
+const kesherRolesFor = (user) => createKesherRoles({
   getUrl: () => config.chat?.url,
-  getTicket: () => access.createTicket({ name: 'Multiview', roleId: ADMIN, admin: true }, 'kesher', AUTH_SECRET),
+  getTicket: () => access.createTicket(user, 'kesher', AUTH_SECRET),
 })
 
 /** Kesher-Rollen gleich neu laden, damit Anmeldung und Rechte-Tabelle sie sofort kennen. */
@@ -1724,7 +2227,7 @@ const roleError = (res, err) => res.status(err.status || 400).json({ ok: false, 
 app.post('/api/access/roles', requireAdmin, async (req, res) => {
   try {
     const copyFrom = String(req.body?.copyFrom || '')
-    const role = await kesherRoles.create({ name: req.body?.name, copyFrom })
+    const role = await kesherRolesFor(req.user).create({ name: req.body?.name, copyFrom })
     // Mit Vorlage: auch die Multiview-Rechte übernehmen
     if (copyFrom && config.access?.roles?.[copyFrom]) {
       config.access.roles[role.id] = structuredClone(config.access.roles[copyFrom])
@@ -1740,7 +2243,7 @@ app.post('/api/access/roles', requireAdmin, async (req, res) => {
 
 app.put('/api/access/roles/:id', requireAdmin, async (req, res) => {
   try {
-    const role = await kesherRoles.rename(req.params.id, req.body?.name)
+    const role = await kesherRolesFor(req.user).rename(req.params.id, req.body?.name)
     console.log(`Zugang: Rolle ${role.id} heißt jetzt „${role.name}“`)
     await refreshRoles()
     res.json({ ok: true, role })
@@ -1752,10 +2255,10 @@ app.put('/api/access/roles/:id', requireAdmin, async (req, res) => {
 app.delete('/api/access/roles/:id', requireAdmin, async (req, res) => {
   const id = req.params.id
   try {
-    if (id === config.chat?.roleId) throw Object.assign(new Error('Mit dieser Rolle zeigt der Multiview den Kesher-Chat – sie bleibt'), { status: 409 })
+    if (id === config.chat?.roleId) throw Object.assign(new Error('Mit dieser Rolle zeigt JMS Control den Kesher-Chat – sie bleibt'), { status: 409 })
     const holder = access.occupiedRoles()[id]
     if (holder) throw Object.assign(new Error(`„${holder}“ ist gerade mit dieser Rolle angemeldet – erst abmelden (Angemeldete Geräte)`), { status: 409 })
-    await kesherRoles.remove(id)
+    await kesherRolesFor(req.user).remove(id)
     if (config.access?.roles?.[id]) {
       delete config.access.roles[id]
       configChanged()
@@ -1780,7 +2283,7 @@ function restoreTarget() {
 
 // ProPresenter steuern – NUR diese Befehle (Weiter, Zurück, Ausblenden, Einblenden, Folie wählen).
 // Alles andere der Schnittstelle bleibt gesperrt.
-app.post('/api/propresenter/control', requireTrusted, async (req, res) => {
+app.post('/api/propresenter/control', requireTrusted, requireSlideOperator, async (req, res) => {
   const base = ppBase()
   if (!base) return res.status(503).json({ ok: false, error: 'ProPresenter nicht eingerichtet' })
   const { action, presentation, index } = req.body || {}
@@ -1826,7 +2329,7 @@ async function handleStageMessage(req, res, text) {
     res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
   }
 }
-app.all('/api/propresenter/stage-message/clear', requireTrusted, (req, res) => handleStageMessage(req, res, ''))
+app.all('/api/propresenter/stage-message/clear', requireTrusted, requireMutation, (req, res) => handleStageMessage(req, res, ''))
 
 /**
  * Wichtigen Hinweis in den Kesher-Chat schreiben (rot markiert) – als die Rolle des Nutzers,
@@ -1853,6 +2356,7 @@ app.post('/api/propresenter/announce', requireUser, async (req, res) => {
     request = await prepareAnnouncement(
       { uuid: req.body?.uuid ? String(req.body.uuid) : '', fields: req.body?.fields || {}, text: req.body?.text },
       from,
+      senderKey(user),
     )
   } catch (err) {
     return res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
@@ -1865,7 +2369,148 @@ app.post('/api/propresenter/announce', requireUser, async (req, res) => {
   )
   res.json({ ok: true, request: publicRequests().find((r) => r.id === request.id), notified })
 })
-app.all('/api/propresenter/stage-message', requireTrusted, (req, res) => {
+// Beamer-Meldung zurückziehen (Handy): nur die eigene, nur solange sie wartet oder läuft – einmal.
+// Der Text in der „Multiview-Meldung“ wird geleert (falls dort noch genau diese Meldung steht);
+// läuft sie schon auf dem Beamer, bekommt der Bediener im Chat Bescheid, sie auszublenden.
+app.post('/api/propresenter/announce/:id/withdraw', requireUser, requireMutation, async (req, res) => {
+  const user = req.user
+  const request = announceRequests.find((r) => r.id === req.params.id)
+  if (!request) return res.status(404).json({ ok: false, error: 'Diese Meldung gibt es nicht mehr' })
+  if (!user.admin && (!request.by || request.by !== senderKey(user)))
+    return res.status(403).json({ ok: false, error: 'Nur die eigene Meldung lässt sich zurückziehen' })
+  if (request.status !== 'wartet' && request.status !== 'angezeigt')
+    return res.status(409).json({ ok: false, error: 'Diese Meldung ist schon vorbei' })
+  const wasShown = request.status === 'angezeigt'
+  try {
+    const list = (await ppGet('/v1/messages')) ?? []
+    const inbox = list.find((m) => m.id?.uuid === request.uuid)
+    const token = inbox?.tokens?.find((t) => t.name === FREE_MESSAGE_TOKEN)
+    // Nur leeren, wenn dort noch genau diese Meldung steht (nicht schon eine neuere)
+    if (inbox && token && String(token.text?.text ?? '') === request.text)
+      await putMessage({ ...inbox, tokens: inbox.tokens.map((t) => (t === token ? { ...t, text: { ...t.text, text: '' } } : t)) })
+  } catch (err) {
+    return res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
+  }
+  request.status = 'zurückgezogen'
+  stageMessagesAt = 0
+  requestStagePoll()
+  console.log(`ProPresenter: Beamer-Meldung zurückgezogen „${request.text}“ (${user.name || req.ip})`)
+  await notifyChat(
+    user,
+    wasShown
+      ? `Beamer-Meldung zurückgezogen: „${request.text}“ – läuft noch, bitte „${FREE_MESSAGE_NAME}“ in ProPresenter ausblenden`
+      : `Beamer-Meldung zurückgezogen: „${request.text}“`,
+  )
+  res.json({ ok: true })
+})
+
+// ---------------------------------------------------------------------------
+// Nachrichten-Links (message-links.js): Ordner & Co. schicken ohne Anmeldung eine Meldung auf
+// den Beamer (vorbereitet, angezeigt vom ProPresenter-Bediener) oder das Stage Display.
+// Seite: /nachricht.html?k=<Token>. Verwalten nur der Admin (Benutzer & Rechte → Nachrichten-Links).
+// ---------------------------------------------------------------------------
+const messageLinks = createMessageLinks({ dataDir: DATA_DIR })
+const linkStage = new Map() // Link-ID → zuletzt über diesen Link gesetzte Bühnennachricht (nur die darf er löschen)
+
+app.get('/api/message-links', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json({ ok: true, links: messageLinks.list() }))
+app.post('/api/message-links', requireAdmin, (req, res) => {
+  try {
+    res.json({ ok: true, link: messageLinks.create(req.body) })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
+})
+app.put('/api/message-links/:id', requireAdmin, (req, res) => {
+  try {
+    res.json({ ok: true, link: messageLinks.update(req.params.id, req.body) })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
+})
+app.delete('/api/message-links/:id', requireAdmin, (req, res) => {
+  try {
+    messageLinks.remove(req.params.id)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
+})
+
+function linkOf(req, res) {
+  res.set('Cache-Control', 'no-store')
+  const link = messageLinks.byToken(req.params.token)
+  if (!link) res.status(404).json({ ok: false, error: 'Dieser Link gilt nicht (mehr). Bitte beim Technik-Team einen neuen holen.' })
+  return link
+}
+
+app.get('/api/nachricht/:token', (req, res) => {
+  const link = linkOf(req, res)
+  if (!link) return
+  res.json({
+    ok: true,
+    name: link.name,
+    stage: link.stage,
+    beamer: link.beamer,
+    connected: stageState.connected,
+    stageMessage: link.stage ? stageState.message : '',
+    ownStage: link.stage && Boolean(stageState.message) && linkStage.get(link.id) === stageState.message,
+    templates: link.beamer ? stageState.templates.filter((t) => !t.free) : [],
+    requests: link.beamer ? publicRequests().filter((r) => r.link === link.id && r.status !== 'ersetzt').slice(0, 3) : [],
+  })
+})
+
+app.post('/api/nachricht/:token', async (req, res) => {
+  const link = linkOf(req, res)
+  if (!link) return
+  const from = messageLinks.cleanName(req.body?.from)
+  const target = req.body?.target
+  const fail = (err) =>
+    res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
+  if (!from) return res.status(400).json({ ok: false, error: 'Bitte deinen Namen eingeben' })
+  const who = `${from} (${link.name})`
+  try {
+    if (target === 'stage') {
+      if (!link.stage) return res.status(403).json({ ok: false, error: 'Dieser Link darf nicht aufs Stage Display schicken' })
+      const text = String(req.body?.text ?? '').trim().slice(0, 200)
+      if (!text) {
+        // Löschen nur, was über diesen Link kam – eine Nachricht der Technik bleibt stehen
+        if (linkStage.get(link.id) !== stageState.message) return res.status(403).json({ ok: false, error: 'Diese Nachricht kam nicht von hier' })
+        await setStageMessage('')
+        linkStage.delete(link.id)
+        console.log(`ProPresenter: Bühnennachricht gelöscht (Nachrichten-Link „${link.name}“, ${from})`)
+        return res.json({ ok: true })
+      }
+      messageLinks.check(link)
+      await setStageMessage(text)
+      messageLinks.record(link)
+      linkStage.set(link.id, text)
+      console.log(`ProPresenter: Bühnennachricht „${text}“ (Nachrichten-Link „${link.name}“, ${from})`)
+      notifyChat(null, `Bühnennachricht (Stage Display) von ${who}: „${text}“`)
+      return res.json({ ok: true })
+    }
+    if (target === 'beamer') {
+      if (!link.beamer) return res.status(403).json({ ok: false, error: 'Dieser Link darf nicht auf den Beamer schicken' })
+      messageLinks.check(link)
+      const request = await prepareAnnouncement(
+        { uuid: req.body?.uuid ? String(req.body.uuid) : '', fields: req.body?.fields || {}, text: req.body?.text },
+        who,
+      )
+      messageLinks.record(link)
+      request.link = link.id
+      console.log(`ProPresenter: Beamer-Meldung vorbereitet „${request.text}“ (Nachrichten-Link „${link.name}“, ${from})`)
+      const notified = await notifyChat(
+        null,
+        `Beamer-Meldung von ${who} wartet in ProPresenter: „${request.text}“ – bitte „${FREE_MESSAGE_NAME}“ unter Meldungen anzeigen`,
+      )
+      return res.json({ ok: true, notified })
+    }
+    res.status(400).json({ ok: false, error: 'Ziel fehlt (Beamer oder Stage Display)' })
+  } catch (err) {
+    fail(err)
+  }
+})
+
+app.all('/api/propresenter/stage-message', requireTrusted, requireMutation, (req, res) => {
   const text = req.body?.text ?? req.query.text
   // Ohne Text nichts tun (ein versehentlich geöffneter Link soll die Nachricht nicht löschen)
   if (text == null) return res.status(400).json({ ok: false, error: 'text fehlt, z. B. ?text=Noch%205%20Minuten' })
@@ -1873,7 +2518,7 @@ app.all('/api/propresenter/stage-message', requireTrusted, (req, res) => {
 })
 
 // Folienbilder von ProPresenter weiterreichen (Browser brauchen so nur diesen Server)
-app.get('/api/propresenter/thumb/:uuid/:index', requireTrusted, async (req, res) => {
+app.get('/api/propresenter/thumb/:uuid/:index', requireTrusted, requireDisplayReader, async (req, res) => {
   const base = ppBase()
   if (!base) return res.status(503).end()
   const quality = Math.min(Math.max(Number(req.query.q) || 960, 100), 1920)
@@ -1895,11 +2540,11 @@ app.get('/api/propresenter/thumb/:uuid/:index', requireTrusted, async (req, res)
 })
 
 // Zustand der Kesher-Chat-Verbindung (zur Fehlersuche)
-app.get('/api/chat', requireTrusted, (req, res) => res.json(kesherChat.snapshot()))
+app.get('/api/chat', requireTrusted, requireChatReader, (req, res) => res.json(messageForRequest(kesherChat.snapshot(), req)))
 
 // ChurchTools: Verbindung mit dem Server-Konto (Token oder Benutzername/Passwort).
 // Das Passwort wird nur zum Holen des Login-Tokens benutzt und nicht gespeichert.
-app.get('/api/churchtools', requireTrusted, (req, res) => res.json(churchTools.snapshot()))
+app.get('/api/churchtools', requireTrusted, requireDisplayReader, (req, res) => res.json(messageForRequest(churchTools.snapshot(), req)))
 app.post('/api/churchtools/connect', requireAdmin, async (req, res) => {
   try {
     const { url, token, username, password } = req.body || {}
@@ -1918,7 +2563,8 @@ app.post('/api/churchtools/refresh', requireAdmin, async (req, res) => {
 })
 
 // WebRTC-Anmeldung (WHEP) an MediaMTX weiterreichen, damit Browser nur diesen Port brauchen
-app.post('/whep/:path', requireTrusted, express.text({ type: () => true, limit: '1mb' }), async (req, res) => {
+app.post('/whep/:path', requireTrusted, requireDisplayReader, express.text({ type: () => true, limit: '1mb' }), async (req, res) => {
+  if (!configForRequest(req).sources.some((source) => source.type === 'stream' && streamPath(source) === req.params.path)) return res.status(403).send('Keine Berechtigung für diese Quelle')
   if (!mediamtx.proc) return res.status(503).send('MediaMTX läuft nicht')
   try {
     const upstream = await fetch(
@@ -1989,19 +2635,20 @@ app.delete('/api/templates/:id', requireUser, (req, res) => {
   res.json({ ok: true })
 })
 
-app.get('/api/state', requireTrusted, (req, res) => {
+app.get('/api/state', requireTrusted, requireDisplayReader, (req, res) => {
+  const visible = configForRequest(req)
   res.json({
     atem: atemState,
     propresenter: ppState,
     propresenterStage: stageState,
-    layouts: config.layouts.map((l, i) => ({ nr: i + 1, id: l.id, name: l.name })),
-    outputs: config.outputs.map((o, i) => ({
+    layouts: visible.layouts.map((l, i) => ({ nr: i + 1, id: l.id, name: l.name })),
+    outputs: visible.outputs.map((o, i) => ({
       nr: i + 1,
       id: o.id,
       name: o.name,
       layout: config.layouts.find((l) => l.id === o.layoutId)?.name ?? null,
     })),
-    screens: screenList().map((s, i) => ({
+    screens: screenList().filter((screen) => req.user?.admin || isMachine(req, 'display') || isMachine(req, 'control') || visible.screens.some((entry) => entry.id === screen.id)).map((s, i) => ({
       nr: i + 1,
       id: s.id,
       name: s.name,
@@ -2013,30 +2660,34 @@ app.get('/api/state', requireTrusted, (req, res) => {
 
 // Companion-freundliche Endpunkte (GET oder POST, z. B. über das "Generic HTTP"-Modul)
 
-app.all('/api/output/:output/layout/:layout', requireTrusted, (req, res) => {
+app.all('/api/output/:output/layout/:layout', requireTrusted, requireMutation, (req, res) => {
   const output = findByRef(config.outputs, req.params.output)
   const layout = findByRef(config.layouts, req.params.layout)
   if (!output) return res.status(404).json({ ok: false, error: 'Ausgang nicht gefunden' })
   if (!layout) return res.status(404).json({ ok: false, error: 'Layout nicht gefunden' })
+  if (!isMachine(req, 'control') && (!editableOutputs(config, req.user).has(output.id) || !visibleLayouts(config, req.user).some((entry) => entry.id === layout.id)))
+    return res.status(403).json({ ok: false, error: 'Keine Berechtigung für Multiview oder Layout' })
   output.layoutId = layout.id
   configChanged()
   res.json({ ok: true, output: output.name, layout: layout.name })
 })
 
-app.all('/api/output/:output/:dir(next|prev)', requireTrusted, (req, res) => {
+app.all('/api/output/:output/:dir(next|prev)', requireTrusted, requireMutation, (req, res) => {
   const output = findByRef(config.outputs, req.params.output)
   if (!output) return res.status(404).json({ ok: false, error: 'Ausgang nicht gefunden' })
-  if (!config.layouts.length) return res.status(404).json({ ok: false, error: 'Keine Layouts vorhanden' })
+  if (!isMachine(req, 'control') && !editableOutputs(config, req.user).has(output.id)) return res.status(403).json({ ok: false, error: 'Keine Berechtigung für Multiview' })
+  const choices = isMachine(req, 'control') ? config.layouts : visibleLayouts(config, req.user)
+  if (!choices.length) return res.status(404).json({ ok: false, error: 'Keine Layouts vorhanden' })
   const step = req.params.dir === 'next' ? 1 : -1
-  const current = config.layouts.findIndex((l) => l.id === output.layoutId)
-  const layout = config.layouts[(current + step + config.layouts.length) % config.layouts.length]
+  const current = choices.findIndex((l) => l.id === output.layoutId)
+  const layout = choices[(current + step + choices.length) % choices.length]
   output.layoutId = layout.id
   configChanged()
   res.json({ ok: true, output: output.name, layout: layout.name })
 })
 
 // Bildschirm am Server auf einen Multiview schalten ("aus" = schwarz)
-app.all('/api/screen/:screen/output/:output', requireTrusted, (req, res) => {
+app.all('/api/screen/:screen/output/:output', requireTrusted, requireMutation, requireOperator, (req, res) => {
   const screen = findByRef(screenList(), req.params.screen)
   if (!screen) return res.status(404).json({ ok: false, error: 'Bildschirm nicht gefunden' })
   const off = ['aus', 'off', '0'].includes(req.params.output.toLowerCase())
@@ -2047,28 +2698,68 @@ app.all('/api/screen/:screen/output/:output', requireTrusted, (req, res) => {
   res.json({ ok: true, screen: screen.name, output: output?.name ?? null })
 })
 
-app.all('/api/layout/:layout/tile/:tile/source/:source', requireTrusted, (req, res) => {
+app.all('/api/layout/:layout/tile/:tile/source/:source', requireTrusted, requireMutation, (req, res) => {
   const layout = findByRef(config.layouts, req.params.layout)
   const tile = layout && findByRef(layout.tiles, req.params.tile)
   const source = findByRef(config.sources, req.params.source)
   if (!tile) return res.status(404).json({ ok: false, error: 'Layout oder Kachel nicht gefunden' })
   if (!source) return res.status(404).json({ ok: false, error: 'Quelle nicht gefunden' })
+  if (!isMachine(req, 'control') && !canEditLayout(config, req.user, layout)) return res.status(403).json({ ok: false, error: 'Keine Berechtigung für Layout' })
   tile.kind = 'source'
   tile.sourceId = source.id
   configChanged()
   res.json({ ok: true, layout: layout.name, source: source.name })
 })
 
+server.on('upgrade', (req, socket, head) => {
+  const reject = (status) => {
+    socket.end(`HTTP/1.1 ${status} ${status === 403 ? 'Forbidden' : 'Unauthorized'}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`)
+  }
+  socket.on('error', () => {})
+  if (!sameOriginRequest(req)) return reject(403)
+  let url
+  try { url = new URL(req.url, 'http://localhost') } catch { return reject(403) }
+  if (url.pathname === '/ws') {
+    if (!access.trusted(clientIp(req), req)) return reject(401)
+    return wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req))
+  }
+  const match = /^\/\.jms-auth\/ws\/([a-z]+)(\/.*)?$/.exec(url.pathname)
+  const service = match?.[1]
+  const upstream = service && WEBSOCKET_SERVICES[service]
+  if (!upstream) return reject(403)
+  const decision = access.check({ service, ip: clientIp(req) }, req)
+  if (decision.action !== 'allow') return reject(decision.action === 'forbidden' ? 403 : 401)
+  req.headers['x-jms-gateway'] = !decision.user && isMachine(req, '', service) ? 'machine' : 'central'
+  req.headers['x-jms-session-id'] = decision.user?.sessionId || ''
+  req.headers['x-jms-device-assertion'] = !decision.user && service === 'kesher' ? deviceAssertion(access.machineOf(req), AUTH_SECRET) : ''
+  return proxyWebSocket(req, socket, head, {
+    upstream, upstreamPath: `${match[2] || '/'}${url.search}`, guard: socketGuard,
+    sessionId: access.sessionIdOf(req), stripCookies: withoutOwnCookies,
+    valid: () => access.check({ service, ip: clientIp(req) }, req).action === 'allow',
+  })
+})
+
+const expiryTimer = setInterval(() => access.sweep(), 1000)
+expiryTimer.unref()
+
 server.listen(PORT, HOST, () => {
-  console.log('Multiview Builder läuft:')
+  console.log('JMS Control läuft:')
   console.log(`  Webseite: http://localhost:${PORT}/`)
   for (const a of lanAddresses()) console.log(`            http://${a}:${PORT}/`)
   console.log(`  Monitor:  http://localhost:${PORT}/output.html?id=1`)
+  kesherChat.start()
+  if (process.env.JMS_DISABLE_HARDWARE === '1') return
+  if (process.env.JMS_SATELLITE_TLS_DIR) {
+    const directory = process.env.JMS_SATELLITE_TLS_DIR
+    const bridge = startSatelliteBridge({ access, caFile: path.join(directory, 'ca.crt'), certFile: path.join(directory, 'server.crt'), keyFile: path.join(directory, 'server.key') })
+    bridge.server.on('error', (error) => { console.error('Satellite-TLS nicht verfügbar:', error.code); process.exit(1) })
+  }
   refreshScreens()
   setInterval(refreshScreens, 3000)
   applyAtemIp()
   applyProPresenter()
   startMediamtx()
-  kesherChat.start()
   churchTools.start()
+  applyUplink()
+  uplink.start()
 })

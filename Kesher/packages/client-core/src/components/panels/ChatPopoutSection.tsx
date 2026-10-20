@@ -77,7 +77,7 @@ export function ChatPopoutSection({ children }: ChatPopoutSectionProps) {
     popupDocument.documentElement.lang = document.documentElement.lang || "en";
     popupDocument.documentElement.className = "chat-popout-document";
     popupDocument.head.replaceChildren();
-    popupDocument.title = "Chat - kesher";
+    popupDocument.title = "JMS - Intercom-Chat";
 
     const base = popupDocument.createElement("base");
     base.href = document.baseURI;
@@ -129,13 +129,13 @@ export function ChatPopoutSection({ children }: ChatPopoutSectionProps) {
             className={`station-chat-popout-button ${popup ? "active" : ""}`}
             aria-label={
               popup
-                ? "Focus chat window"
-                : "Open chat in a separate window"
+                ? "Chat-Fenster nach vorne holen"
+                : "Chat in eigenem Fenster öffnen"
             }
             title={
               popup
-                ? "Focus chat window"
-                : "Open chat in a separate window"
+                ? "Chat-Fenster nach vorne holen"
+                : "Chat in eigenem Fenster öffnen"
             }
             onClick={openPopup}
           >
@@ -153,8 +153,8 @@ export function ChatPopoutSection({ children }: ChatPopoutSectionProps) {
                 <button
                   type="button"
                   className="chat-popout-close"
-                  aria-label="Close chat window"
-                  title="Close chat window"
+                  aria-label="Chat-Fenster schließen"
+                  title="Chat-Fenster schließen"
                   onClick={closePopup}
                 >
                   <CloseIcon />

@@ -25,7 +25,7 @@
   background: var(--k-bg);
   color: var(--k-ink);
   font-family: var(--k-font-body);
-  font-size: clamp(10px, min(2.4cqw, 4.2cqh), 34px);
+  font-size: calc(clamp(10px, min(2.4cqw, 4.2cqh), 34px) * var(--ag-scale, 1));
   overflow: hidden;
   text-align: left;
 }
@@ -80,9 +80,13 @@
   list-style: none;
   margin: 0;
   padding: 0.5em 0 1em;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
   min-height: 0;
 }
+.agenda-list::-webkit-scrollbar { display: none; }
 
 .agenda-item {
   position: relative;
@@ -107,6 +111,79 @@
 }
 .agenda-resp { color: var(--k-ink-2); font-size: 0.85em; }
 .agenda-note { color: var(--k-ink-3); font-size: 0.8em; white-space: pre-wrap; }
+.agenda-ccli-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: calc(0.8em * var(--ag-ccli-scale, 1));
+}
+.agenda-ccli {
+  font-family: var(--k-font-mono);
+  font-weight: 600;
+  color: var(--ag-ccli-color, #a9b2be);
+  padding: 0.05em 0.45em;
+  border: 1px solid currentColor;
+  border-radius: 0.3em;
+  white-space: nowrap;
+}
+/* Kopieren nur im Monitor-Modus und im Vollbild (output.js setzt body.can-copy) */
+.agenda-copy {
+  display: none;
+  font: 600 0.8em var(--k-font-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--k-ink);
+  background: var(--k-face-hi);
+  border: 1px solid var(--k-line-strong);
+  border-radius: 0.35em;
+  padding: 0.2em 0.6em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.agenda-copy:hover { border-color: var(--ag-ccli-color, #a9b2be); }
+.agenda-copy.done { color: var(--k-ok); border-color: var(--k-ok); }
+body.can-copy .agenda-copy { display: inline-block; }
+
+/* Aufklappbare Punkte: Programmspalten und ausgeblendete Angaben */
+.agenda-item.has-sub { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.agenda-item.has-sub:focus-visible { outline: 2px solid var(--k-accent); outline-offset: -2px; }
+.agenda-item.has-sub .agenda-item-title::after {
+  content: "";
+  width: 0.45em;
+  height: 0.45em;
+  margin-left: 0.1em;
+  border-right: 0.12em solid var(--k-ink-3);
+  border-bottom: 0.12em solid var(--k-ink-3);
+  transform: translateY(-0.2em) rotate(45deg);
+  transition: transform 0.2s ease;
+  align-self: center;
+}
+.agenda-item.has-sub.open .agenda-item-title::after { transform: translateY(0.05em) rotate(-135deg); }
+.agenda-sub {
+  display: none;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.3em 0.8em;
+  margin: 0.35em 0 0.15em;
+  padding: 0.45em 0.7em;
+  background: var(--k-face-hi);
+  border-left: 0.15em solid var(--k-line-strong);
+  border-radius: 0.3em;
+  font-size: 0.85em;
+}
+.agenda-item.open .agenda-sub { display: grid; }
+.agenda-item.current .agenda-sub { background: #000000; }
+.agenda-sub dt {
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.85em;
+  color: var(--k-ink-3);
+  padding-top: 0.1em;
+}
+.agenda-sub dd { margin: 0; color: var(--k-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.agenda-item.open.done { opacity: 0.75; }
+
 .agenda-dur { font-family: var(--k-font-mono); color: var(--k-ink-3); font-size: 0.85em; }
 
 .agenda-item.type-header {
@@ -139,3 +216,21 @@
   background: var(--k-accent);
   transition: width 1s linear;
 }
+
+/* Darstellung (Kachel-Einstellungen „Darstellung“) */
+.agenda.no-header { grid-template-rows: minmax(0, 1fr); }
+.agenda.no-header .agenda-header { display: none; }
+.agenda.no-time .agenda-time,
+.agenda.no-dur .agenda-dur,
+.agenda.no-progress .agenda-progress { display: none; }
+.agenda.no-time .agenda-item { grid-template-columns: minmax(0, 1fr) auto; }
+.agenda.no-dur .agenda-item { grid-template-columns: 3.4em minmax(0, 1fr); }
+.agenda.no-time.no-dur .agenda-item,
+.agenda.no-time .agenda-item.type-header { grid-template-columns: minmax(0, 1fr); }
+.agenda.density-compact .agenda-item { padding-top: 0.2em; padding-bottom: 0.2em; gap: 0.1em 0.7em; }
+.agenda.density-compact .agenda-item.type-header { padding-top: 0.45em; }
+.agenda.density-compact .agenda-main { gap: 0; }
+.agenda.density-airy .agenda-item { padding-top: 0.8em; padding-bottom: 0.8em; }
+.agenda.density-airy .agenda-item.type-header { padding-top: 1.2em; }
+.agenda.density-airy .agenda-main { gap: 0.3em; }
+.agenda.hide-done .agenda-item.done:not(.current) { display: none; }

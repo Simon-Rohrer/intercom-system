@@ -18,8 +18,16 @@ services:
       KESHER_URL: "http://127.0.0.1:8080"
       # Zentrale Anmeldung: gemeinsames Geheimnis mit Kesher (aus .env, gleicher Wert wie dort)
       JMS_AUTH_SECRET: ${JMS_AUTH_SECRET:-}
+      JMS_DEVICE_PROXY_SECRET: ${JMS_DEVICE_PROXY_SECRET:?Device proxy secret required}
+      JMS_KESHER_DEVICE_KEY_FILE: /run/jms-device/kesher.key
+      JMS_SATELLITE_TLS_DIR: /run/jms-device/satellite
+      # Zentrale Adresse für den Abgleich der Anmeldung zwischen IP und .local-Namen
+      # (dort gilt ein Cookie für alle Dienste; die .local-Seiten holen die Anmeldung von dort)
+      JMS_SSO_ORIGIN: "https://192.168.0.21:8090"
     volumes:
       - multiview-data:/data
+      - /etc/jms-auth/services/kesher.key:/run/jms-device/kesher.key:ro
+      - /etc/jms-auth/satellite-tls:/run/jms-device/satellite:ro
     logging:
       driver: json-file
       options:

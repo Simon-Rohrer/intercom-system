@@ -263,6 +263,14 @@ const server = setupServer(
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+it("preserves the public bootstrap HTTP status for authentication recovery", async () => {
+  for (const status of [401, 403, 503]) {
+    server.use(http.get("http://localhost/api/public-bootstrap", () =>
+      HttpResponse.json({ error: "Bitte anmelden" }, { status }),
+    ));
+    await expect(getPublicBootstrap()).rejects.toMatchObject({ name: "ApiError", status });
+  }
+});
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 

@@ -66,11 +66,34 @@ docker compose -f deploy/compose/docker-compose.yml down
 
 ## Daten sichern
 
-Der JMS-Server sichert sich jede Nacht um 3:30 Uhr (deutsche Zeit) verschlüsselt in Google Drive (restic über rclone, Ordner `JMS-Backup`). Kesher und Companion sind dabei ca. 1 Minute aus. Hochgeladen werden nur Änderungen; es bleiben 7 tägliche und 4 wöchentliche Sicherungen, sonntags wird ein Teil der Daten zurückgelesen und geprüft. Schlägt eine Sicherung fehl, kommt eine Telegram-Nachricht (wenn in `/etc/jms-backup/cloud.env` eingetragen). Eine verpasste Sicherung (Server war um 3:30 aus) wird bewusst nicht beim Einschalten nachgeholt.
+Der JMS-Server sichert sich **einmal pro Woche, montags um 3:30 Uhr** (deutsche Zeit, direkt nach dem Sonntag, an dem die Systeme am meisten genutzt werden), verschlüsselt auf einen **USB-Datenträger**, der dauerhaft am Server steckt (restic, eingebunden unter `/mnt/jms-backup`). Kesher und Companion sind dabei ca. 1 Minute aus. Gespeichert werden nur Änderungen; es bleiben 8 wöchentliche und 6 monatliche Sicherungen (ein halbes Jahr zurück), nach jeder Sicherung wird ein Teil der Daten zurückgelesen und geprüft. Eine verpasste Sicherung (Server war montags um 3:30 aus) wird bewusst nicht beim Einschalten nachgeholt – der Störungs-Bot meldet sich dann, und sie lässt sich von Hand starten (siehe unten). Fehlt der Datenträger, bricht die Sicherung ab, bevor Kesher angehalten wird, und schreibt nie auf die Server-Festplatte.
 
-Gesichert werden alle Docker-Volumes (u. a. Kesher-Datenbank, Multiview-Einstellungen, Portainer), Companion, Caddy, Netzwerk, WireGuard, Kiosk, systemd-Dienste, `/opt/homelab` und der Quellstand `~/intercom-system` mit lokalen Änderungen.
+Der Störungs-Bot (siehe unten) meldet eine fehlgeschlagene Sicherung, einen fehlenden oder fast vollen USB-Datenträger und wenn die letzte erfolgreiche Sicherung länger als 8 Tage her ist. In `/status` steht, wann zuletzt gesichert wurde.
 
-Einrichten (einmalig am Server, Google-Anmeldung über einen Rechner mit Browser):
+Größe: 64–128 GB reichen (eine Sicherung ist klein, weil Docker-Images und Betriebssystem nicht mitgesichert werden; jede weitere Woche kommt nur die Änderung dazu). Belegung prüfen: `sudo jms-backup --list` bzw. `/status` im Bot. Bei einer Sicherung pro Woche reicht ein guter Marken-USB-Stick; eine kleine USB-SSD hält noch länger.
+
+Einrichten (einmalig, Datenträger vorher anstecken):
+
+```sh
+cd ~/intercom-system/Kesher/deploy/server-backup
+sudo ./install-backup.sh --usb            # vorhandenes Dateisystem nutzen (ext4, exFAT, NTFS …)
+sudo ./install-backup.sh --usb --format   # vorher mit ext4 neu formatieren (löscht den Datenträger)
+```
+
+Das Skript zeigt die angeschlossenen Datenträger (die Systemplatte nie), fragt nach der Partition (z. B. `sdb1`), trägt sie in `/etc/fstab` ein (`nofail`: der Server startet auch ohne) und zeigt am Ende das **Backup-Passwort**. Es muss außerhalb des Servers aufbewahrt werden – ohne es ist keine Sicherung lesbar, auch nicht vom USB-Datenträger.
+
+Gesichert werden alle Docker-Volumes (u. a. Kesher-Datenbank, Multiview-Einstellungen, Portainer), Companion, Caddy, Netzwerk, Kiosk, systemd-Dienste, `/opt/homelab` und der Quellstand `~/intercom-system` mit lokalen Änderungen.
+
+```sh
+sudo systemctl start jms-backup-cloud     # Sicherung jetzt
+journalctl -u jms-backup-cloud -n 50      # letzter Lauf
+systemctl list-timers jms-backup-cloud    # nächster Lauf
+sudo jms-backup --list                    # wöchentliche Sicherungen anzeigen
+sudo jms-backup --restore /home/master/restore   # neueste Sicherung holen
+sudo jms-backup                           # Vollsicherung als Ordner unter /home/master/backups (für den Mac)
+```
+
+**Alternative Google Drive** (auf dem JMS-Server bewusst nicht genutzt, Einrichtung aufwändig; Google-Anmeldung über einen Rechner mit Browser):
 
 ```sh
 cd ~/intercom-system/Kesher/deploy/server-backup
@@ -80,15 +103,6 @@ sudo ./install-backup.sh
 Das Skript zeigt am Ende das **Backup-Passwort**. Es muss außerhalb des Servers aufbewahrt werden – ohne es ist keine Sicherung lesbar.
 
 **Eigener Google-Zugang (nötig):** Der eingebaute Zugang von rclone wird von Google oft gebremst („rateLimitExceeded“). Einmalig mit dem Technik-Konto in der [Google Cloud Console](https://console.cloud.google.com): Projekt anlegen → *APIs & Dienste* → *Google Drive API* aktivieren → *OAuth-Zustimmungsbildschirm*: extern, App-Name, E-Mail, Bereich `…/auth/drive.file`, danach **„App veröffentlichen“** (sonst läuft die Anmeldung nach 7 Tagen ab) → *Anmeldedaten* → *OAuth-Client-ID* vom Typ **Desktop-App**. Dann auf dem Server `sudo ./install-backup.sh --client-id <ID> --client-secret <Secret>` und neu anmelden. Mit `drive.file` sieht ein neuer Zugang die Dateien des alten nicht – einen alten Ordner `JMS-Backup` vorher in Drive löschen; das Skript legt ihn neu an.
-
-```sh
-sudo systemctl start jms-backup-cloud     # Sicherung jetzt
-journalctl -u jms-backup-cloud -n 50      # letzter Lauf
-systemctl list-timers jms-backup-cloud    # nächster Lauf
-sudo jms-backup --list                    # Sicherungen in Google Drive
-sudo jms-backup --restore /home/master/restore   # neueste Sicherung holen
-sudo jms-backup                           # Vollsicherung als Ordner unter /home/master/backups (für den Mac)
-```
 
 Nach `--restore` liegen die Daten unter `/home/master/restore/var/lib/jms-backup/stage` (Volumes, Companion, Kesher-Version und lokale Änderungen), Systemdateien und Quellstand unter ihrem ursprünglichen Pfad in `/home/master/restore`. Ein Volume zurückspielen (Kesher vorher anhalten):
 
@@ -113,6 +127,31 @@ Wenn direkt auf die Datenbank zugegriffen werden muss, liegt sie im Container un
 ```text
 /app/data/intercom.db
 ```
+
+## Störungsmeldungen per Telegram
+
+Der Server prüft sich jede Minute selbst (`jms-watch`) und meldet Störungen über einen **eigenen Telegram-Bot**, der nur dafür da ist (nicht der Kesher-Bot):
+
+- **Internet und DNS**: Ohne Internet kann der Server nichts schicken. Die Meldung kommt deshalb, sobald die Verbindung wieder steht, als „war gestört von … bis …“. Den Ausfall vom 15.10.2026 (17:04 bis 08:57, kein Tailscale-Zugang von außen) hätte er so gemeldet.
+- **Docker-Container**: jeder Container mit Neustart-Regel (`always`, `unless-stopped`) muss laufen und darf nicht `unhealthy` sein.
+- **Dienste**: `docker`, `caddy`, `tailscaled`, `companion` (und `multiview`, `kesher-chat-kiosk`, falls eingeschaltet) müssen laufen. Zusätzlich wird jede systemd-Unit gemeldet, die als „failed“ steht, z. B. eine fehlgeschlagene Sicherung.
+- **Tailscale** auf dem Host und in Tailscale-Containern (z. B. `tailscale-lasse`): nicht verbunden oder abgemeldet.
+- **Companion-Weboberfläche** antwortet nicht, **Warnung (⚠️)**, wenn Festplatte, Arbeitsspeicher oder USB-Sicherungsdatenträger über 80 % voll sind oder die Temperatur über 85 °C liegt.
+- **Uhrzeit**: nicht mit dem Internet abgeglichen (Störung) oder Hardware-Uhr geht falsch (Warnung). Nach einem Stromausfall stand die Uhr beim Start schon auf dem 27.07. – dann scheitern Zertifikate (Companion → Kesher, Tailscale), bis die Zeit übers Internet kommt. Ursache ist fast immer die leere CMOS-Batterie (CR2032) auf der Hauptplatine. Die Neustart-Meldung weist darauf hin.
+- **Wöchentliche Sicherung**: USB-Datenträger fehlt oder ist fast voll, letzte erfolgreiche Sicherung älter als 8 Tage.
+- **Server war aus**: Nach dem Hochfahren kommt eine Meldung mit Zeitraum und **Grund** aus dem Protokoll des vorherigen Starts – Ein-/Aus-Knopf gedrückt, per Befehl (mit Benutzer), automatischer Neustart nach Updates, Arbeitsspeicher voll, Überhitzung, Kernel-Absturz oder „Strom weg / harter Absturz“ (nicht heruntergefahren). Nachträglich: `sudo jms-watch --grund`.
+
+Gemeldet wird erst nach 3 Minuten Störung (Internet: 2 Minuten), damit Neustarts und Updates keinen Alarm auslösen, und noch einmal, wenn es wieder läuft. Während der wöchentlichen Sicherung werden Container und Dienste nicht geprüft. Im Bot zeigt `/status` jederzeit jeden überwachten Dienst mit eigenem Status, gegliedert nach Netzwerk, Container, Dienste, Weboberflächen und System (z. B. „🟢 kesher – läuft seit 9 Std. · gesund“). Die Antwort kommt nach wenigen Sekunden über den Dienst `jms-watch-bot`, Stand ist die letzte Prüfrunde.
+
+Einrichten (fragt nach dem Bot-Token und findet die Chat-ID selbst):
+
+1. In Telegram `@BotFather` öffnen, `/newbot` senden, Namen (z. B. „JMS Störungen“) und Benutzernamen vergeben, Token kopieren.
+2. Auf dem Server: `cd ~/intercom-system/Kesher/deploy/server-watch && sudo ./install-watch.sh`, Token einfügen.
+3. Wenn das Skript es sagt, in Telegram den neuen Bot öffnen und auf **Start** tippen. Danach kommt die Begrüßung vom Bot.
+
+Weitere Befehle: `sudo jms-watch --status` (Zustand im Terminal), `sudo jms-watch --test` (Testnachricht), `sudo ./install-watch.sh --new-bot` (anderer Bot/Chat), `sudo ./install-watch.sh --uninstall`. Einstellungen (Wartezeiten, auszunehmende Container oder Dienste über `IGNORE_CONTAINERS` / `IGNORE_UNITS`) stehen in `/etc/jms-watch/watch.env` und wirken ab der nächsten Minute. Protokoll: `journalctl -u jms-watch -n 50`.
+
+Wird ein Container absichtlich länger gestoppt, meldet der Bot das nach 3 Minuten einmal. Soll das nicht passieren, den Container in `IGNORE_CONTAINERS` eintragen.
 
 ## Chat automatisch leeren
 
@@ -178,7 +217,7 @@ Kacheln mit dem Inhalt **ChurchTools-Ablauf** zeigen den Ablauf des heutigen Eve
 2. Im Multiview-Editor unter *Einstellungen → ChurchTools* die Adresse (z. B. `https://gemeinde.church.tools`) sowie Benutzername und Passwort eintragen und **Verbinden** klicken. Alternativ direkt den Login-Token des Kontos eintragen.
 3. Das Passwort wird nur einmal zum Holen des Login-Tokens benutzt. Gespeichert wird nur der Token in `churchtools-secret.json` im Daten-Volume (nur für den Server lesbar, wird nie an Browser geschickt).
 
-Der Server fragt ChurchTools jede Minute ab. Pro Kachel lässt sich unter *Datum* **Aktuelles Datum** oder **Festes Datum** (mit Kalender, z. B. 15.10.) wählen; nur beim aktuellen Datum wird der laufende Punkt hervorgehoben. Bei mehreren Events am Tag zeigt die Kachel das laufende, sonst das nächste; im Kachel-Feld *Event* lässt sich ein Name oder Kalender als Filter eintragen. Unter *Einstellungen → ChurchTools* steht eine Übersicht aller abgefragten Tage mit ihren Events.
+Der Server fragt ChurchTools jede Minute ab. Pro Kachel lässt sich unter *Datum* wählen: **Heute** (das laufende, sonst das nächste Event von heute), **Nächstes Event** (das laufende, sonst das nächste – auch an späteren Tagen, bis sechs Wochen voraus) oder **Festes Datum** (mit Kalender, z. B. 15.10.). Der laufende Punkt wird nur bei Events von heute hervorgehoben. Im Kachel-Feld *Event* lässt sich ein Name oder Kalender als Filter eintragen. Events ohne Ablauf werden ebenfalls angezeigt, die Kachel meldet dann „Kein Ablauf hinterlegt“. Unter *Einstellungen → ChurchTools* steht eine Übersicht aller Events von heute bis in vier Wochen (mit Zahl der Ablaufpunkte oder „Kein Ablauf hinterlegt“), dazu die festen Daten der Kacheln. Die Abläufe dieser Übersicht fragt der Server höchstens alle zehn Minuten neu ab.
 
 ## Wichtig im Fehlerfall
 
@@ -216,7 +255,7 @@ Ziel: Alle Weboberflächen unter `https://192.168.0.21:<gewohnter Port>`. Caddy 
 | Glances | `https://192.168.0.21:61208` | `127.0.0.1:61208` |
 | Portainer | `https://192.168.0.21:9443` | `127.0.0.1:9443` (eigenes HTTPS, Caddy davor) |
 
-Die bisherigen Namens-Adressen (`kesher.jms.de`, `dashboard.jms.de`, `companion.jms.de`, … sowie `*.local`) bleiben erhalten; neu ist `multiview.jms.de` / `multiview.local`.
+Die bisherigen Namens-Adressen (`kesher.jms.de`, `dashboard.jms.de`, `companion.jms.de`, … sowie `*.local`) bleiben erhalten; neu ist `multiview.jms.de` / `jmscontrol.local` (`multiview.local` gibt es seit 15.10.2026 nicht mehr).
 
 Vorlage: `Kesher/server-config/Caddyfile.jms` (aufgebaut auf der aktiven Server-Konfiguration vom 12.10.2026, mit `caddy adapt --validate` auf dem Server geprüft).
 
@@ -246,9 +285,9 @@ Wer über das WLAN (Handy, iPad, Laptop) auf Intercom, Dashboard oder die Techni
 
 Das Dashboard (Homepage, `https://192.168.0.21:3000`) hat oben zwei Seiten zum Umschalten:
 
-- **Start** – für alle: Intercom, Multiview, Fernbedienung, Prediger-Ansicht sowie *Konto* (Abmelden, Konto wechseln).
-- **Admin** – Companion, Portainer, Glances, lokaler DNS, Router; Serverwerte (Prozessor, Arbeitsspeicher, Temperatur, Laufwerk, Prozesse, Container-Auslastung) und der Zustand jedes Containers.
+- **Start** – für alle: Intercom, Raspberry fernsteuern, Multiview, Fernbedienung, Prediger-Ansicht sowie *Konto* (Abmelden, Konto wechseln).
+- **Admin** – Companion, Portainer, Glances, lokaler DNS, Router; Serverwerte (Prozessor, Arbeitsspeicher, Temperatur, Laufwerk, Prozesse, Container-Auslastung), darunter dieselben Werte für jeden Raspberry Pi (Abschnitt *Raspberry Pis*, Glances auf dem Pi, siehe `RASPBERRY-PI-STATIONEN.md`) und der Zustand jedes Containers.
 
 Die Admin-Seite sieht nur, wer im Dashboard als Admin angemeldet ist (`custom.js` fragt `/.jms-auth/api/me`); alle anderen sehen nur „Start“ ohne Umschaltleiste – als Admin anmelden über *Konto → Konto wechseln*. Ist die zentrale Anmeldung aus, sehen alle beide Seiten. Die Admin-Dienste selbst prüft Caddy unabhängig davon.
 
-Konfiguration im Repo unter `Kesher/server-config/homepage/` (`settings.yaml`: welche Gruppe auf welcher Seite, `services.yaml`: Kacheln, `custom.js`, `custom.css`). Auf dem Server liegen sie in `/opt/homelab/config/homepage/` (gehört root – ohne sudo per `docker cp <datei> homepage:/app/config/` kopieren). Änderungen an `settings.yaml` wirken erst nach `docker restart homepage`.
+Konfiguration im Repo unter `Kesher/server-config/homepage/` (`settings.yaml`: welche Gruppe auf welcher Seite, `services.yaml`: Kacheln, `custom.js`, `custom.css`). Auf dem Server liegen sie in `/opt/homelab/config/homepage/` (gehört root – ohne sudo per `docker cp <datei> homepage:/app/config/` kopieren). Änderungen an `settings.yaml` wirken erst nach `docker restart homepage`. **Danach** einmal `curl -s -H "Host: dashboard.local" http://127.0.0.1:3000/api/revalidate` auf dem Server – sonst liefert Homepage nach dem Neustart noch die alte, vorgefertigte Seite aus (fehlende Gruppen, falsche Reiter).

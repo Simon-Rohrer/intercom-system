@@ -89,4 +89,14 @@ describe("resolveAutoLoginConfiguration", () => {
     expect(unknown.enabled).toBe(true);
     expect(unknown.roleId).toBe("");
   });
+
+  it("skips every auto-login when opened to remote-control a Raspberry Pi", () => {
+    const config = resolveAutoLoginConfiguration("?login=raspberry", roles, {
+      name: "Tim",
+      roleId: "audio",
+      admin: false,
+    });
+    expect(config.enabled).toBe(false);
+    expect(config.central).toBe(false);
+  });
 });

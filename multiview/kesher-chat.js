@@ -6,6 +6,8 @@
 // Rolle wegnehmen.
 
 const WebSocket = require('ws')
+const crypto = require('node:crypto')
+const net = require('node:net')
 
 const MAX_MESSAGES = 120
 const FLASH_MAX_AGE_MS = 15 * 1000 // ältere Nachrichten (History) blinken nicht
@@ -15,7 +17,7 @@ const REVOKED_RETRY_MS = 60 * 1000 // Rolle wurde übernommen: nicht sofort zur�
 // darum Rollen und Linien regelmäßig neu holen
 const BOOTSTRAP_REFRESH_MS = 30 * 1000
 
-function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
+function createKesherChat({ getConfig, getHeaders = () => ({}), onUpdate, onFlash, onPresence = () => {}, onAudioDevices = () => {}, log = console.log }) {
   let ws = null
   let token = null
   let session = null // { url, username, roleId }
@@ -26,6 +28,8 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
   let error = ''
   let retryTimer = null
   let stopped = false
+  let presence = [] // wer gerade in Kesher verbunden ist: [{ roleId, username }]
+  let audioDevices = {} // je Benutzername: { inputs: [Namen], outputs: [Namen] }
 
   const settings = () => {
     const c = getConfig() || {}
@@ -56,6 +60,34 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
 
   function publish() {
     onUpdate(snapshot())
+  }
+
+  /**
+   * Kopfhörer und Mikrofone je verbundenem Gerät (z. B. Raspberry Pi), wie der Browser dort sie meldet.
+   * Nur die Gerätelisten zählen – Pegel und Auswahl ändern sich laufend und lösen nichts aus.
+   */
+  function setAudioDevices(list) {
+    const labels = (devices) => [...new Set((devices ?? []).map((d) => String(d?.label ?? '').trim()).filter(Boolean))].sort()
+    const next = Object.fromEntries(
+      list
+        .filter((p) => p?.username && p?.audioState)
+        .map((p) => [String(p.username), { inputs: labels(p.audioState.inputDevices), outputs: labels(p.audioState.outputDevices) }])
+        .sort(([a], [b]) => a.localeCompare(b)),
+    )
+    if (JSON.stringify(next) === JSON.stringify(audioDevices)) return
+    audioDevices = next
+    onAudioDevices()
+  }
+
+  /** Kesher meldet bei jeder Änderung die ganze Liste der verbundenen Geräte. */
+  function setPresence(list) {
+    setAudioDevices(list)
+    const next = list
+      .map((p) => ({ roleId: String(p?.roleId ?? ''), username: String(p?.username ?? '') }))
+      .sort((a, b) => a.roleId.localeCompare(b.roleId) || a.username.localeCompare(b.username))
+    if (JSON.stringify(next) === JSON.stringify(presence)) return
+    presence = next
+    onPresence()
   }
 
   /** Wer hört auf einer Party Line mit (Empfänger und Zwangs-Mithörer)? */
@@ -93,7 +125,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
   }
 
   async function api(path, options = {}) {
-    const res = await fetch(`${session.url}${path}`, { ...options, signal: AbortSignal.timeout(5000) })
+    const res = await fetch(`${session.url}${path}`, { ...options, headers: { ...options.headers, ...getHeaders() }, signal: AbortSignal.timeout(5000) })
     return res
   }
 
@@ -107,6 +139,14 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
     }
     if (!res.ok) throw new Error(`Anmeldung fehlgeschlagen (HTTP ${res.status}): ${(await res.text()).trim()}`)
     token = (await res.json()).token
+  }
+
+  /** Raspberry-Pi-Stationen mit Herzschlag (IP, Rolle, Browser, Anmeldung …) – mit der Sitzung des Chat-Monitors. */
+  async function raspberryPis() {
+    if (!token) throw new Error('Kesher ist gerade nicht verbunden')
+    const res = await api('/api/raspberry-pis', { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) throw new Error(`Kesher antwortet mit HTTP ${res.status}`)
+    return res.json()
   }
 
   async function loadBootstrap() {
@@ -232,7 +272,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
     wsUrl.searchParams.set('token', token)
     // "native": kein WebRTC-Audio für diese reine Anzeige
     wsUrl.searchParams.set('transport', 'native')
-    const socket = new WebSocket(wsUrl)
+    const socket = new WebSocket(wsUrl, { headers: getHeaders() })
     ws = socket
     let revoked = false
 
@@ -251,6 +291,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
       if (msg.type === 'chat') onChat(msg.data || {})
       else if (msg.type === 'chat_ack') onAck(msg.data)
       else if (msg.type === 'chat_history_cleared') clearHistory()
+      else if (msg.type === 'presence') setPresence(Array.isArray(msg.data) ? msg.data : [])
       else if (msg.type === 'session_revoked') {
         revoked = true
         token = null
@@ -271,6 +312,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
     socket.on('close', () => {
       if (ws !== socket) return
       ws = null
+      setPresence([]) // ohne Verbindung wissen wir nicht, wer da ist
       if (stopped) return
       setState('reconnecting', revoked ? 'Rolle wurde von einem anderen Gerät übernommen' : error || 'Verbindung getrennt')
       schedule(revoked ? REVOKED_RETRY_MS : RETRY_MS)
@@ -318,41 +360,35 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
       // Rolle sofort freigeben
       fetch(`${session.url}/api/logout`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, ...getHeaders() },
         signal: AbortSignal.timeout(1500),
       }).catch(() => {})
     }
   }
 
-  /**
-   * Prüft eine Admin-PIN bei Kesher (dieselbe PIN wie im Kesher-Admin). Die dabei
-   * entstehende Kesher-Admin-Sitzung wird sofort wieder beendet.
-   */
-  async function verifyAdminPin(pin) {
+  async function verifyAdminPin(pin, { sourceIp, secret } = {}) {
     const url = settings().url
     if (!url) throw new Error('Kesher-Adresse fehlt (Einstellungen → Kesher-Chat)')
+    const address = String(sourceIp || '').replace(/^::ffff:/, '')
+    if (!secret || !net.isIP(address)) throw new Error('Sichere PIN-Prüfung ist nicht eingerichtet')
+    const value = String(pin ?? '')
+    const issuedAt = Date.now()
+    const digest = crypto.createHash('sha256').update(value).digest('hex')
+    const signature = crypto.createHmac('sha256', secret).update(`kesher:verify-pin:${address}:${issuedAt}:${digest}`).digest('hex')
     let res
     try {
-      res = await fetch(`${url}/api/admin/login`, {
+      res = await fetch(`${url}/api/admin/pin/verify-central`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: String(pin ?? '') }),
+        body: JSON.stringify({ pin: value, sourceIp: address, issuedAt, signature }),
         signal: AbortSignal.timeout(5000),
       })
     } catch {
       throw new Error('Kesher ist nicht erreichbar – die PIN kann gerade nicht geprüft werden')
     }
     if (res.status === 403) return false
-    if (!res.ok) throw new Error(`Kesher antwortet mit HTTP ${res.status}`)
-    const adminToken = (await res.json().catch(() => ({})))?.token
-    if (adminToken) {
-      fetch(`${url}/api/logout`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${adminToken}` },
-        signal: AbortSignal.timeout(3000),
-      }).catch(() => {})
-    }
-    return true
+    if (!res.ok) throw Object.assign(new Error(`Kesher antwortet mit HTTP ${res.status}`), { status: res.status === 429 ? 429 : 503 })
+    return (await res.json().catch(() => ({})))?.valid === true
   }
 
   /**
@@ -368,7 +404,7 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
     try {
       res = await fetch(`${url}/api/companion/chat-text`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getHeaders() },
         body: JSON.stringify({ roleId, username, message, roomId: roomId || '', ...(alert ? { alert: true } : {}) }),
         signal: AbortSignal.timeout(5000),
       })
@@ -387,43 +423,17 @@ function createKesherChat({ getConfig, onUpdate, onFlash, log = console.log }) {
   async function activeRoleIds() {
     const url = settings().url
     if (!url) return []
-    const res = await fetch(`${url}/api/public-bootstrap`, { signal: AbortSignal.timeout(2000) })
+    const res = await fetch(`${url}/api/public-bootstrap`, { headers: getHeaders(), signal: AbortSignal.timeout(2000) })
     if (!res.ok) throw new Error(`Kesher antwortet mit HTTP ${res.status}`)
     const ids = (await res.json())?.activeRoleIds
     return Array.isArray(ids) ? ids : []
   }
 
-  /**
-   * Rolle in Kesher freigeben, wenn jemand sie in der zentralen Anmeldung übernimmt: Kesher
-   * übernimmt sie (das andere Gerät wird abgemeldet), die neue Sitzung endet gleich wieder.
-   * Danach meldet sich die Kesher-Seite des neuen Nutzers ganz normal an.
-   */
-  async function releaseRole(roleId, username) {
-    const url = settings().url
-    if (!url) throw new Error('Kesher-Adresse fehlt (Einstellungen → Kesher-Chat)')
-    const name = String(username ?? '').replace(/\s+/g, '') || 'Anmeldung' // Kesher-Namen ohne Leerzeichen
-    let res
-    try {
-      res = await fetch(`${url}/api/login/takeover`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: name, roleId }),
-        signal: AbortSignal.timeout(5000),
-      })
-    } catch {
-      throw new Error('Kesher ist nicht erreichbar – die Rolle lässt sich dort gerade nicht übernehmen')
-    }
-    if (!res.ok) throw new Error(`Kesher: Rolle nicht übernommen (HTTP ${res.status})`)
-    const sessionToken = (await res.json().catch(() => ({})))?.token
-    if (sessionToken)
-      await fetch(`${url}/api/logout`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${sessionToken}` },
-        signal: AbortSignal.timeout(3000),
-      }).catch(() => {})
+  return {
+    start: connect, reconfigure, refresh, stop, snapshot, verifyAdminPin, sendText, activeRoleIds, raspberryPis,
+    presence: () => presence,
+    audioDevices: () => audioDevices,
   }
-
-  return { start: connect, reconfigure, refresh, stop, snapshot, verifyAdminPin, sendText, activeRoleIds, releaseRole }
 }
 
 module.exports = { createKesherChat }

@@ -1,23 +1,27 @@
-// Fernbedienung fürs Handy – wie eine kleine App mit Leiste unten:
-//   Bildschirme: die eigenen Multiviews umschalten (welches Layout läuft)
+// Fernbedienung fürs Handy, iPad und den Desktop – wie eine kleine App mit Leiste unten
+// (am Desktop als Seitenleiste links, siehe remote.css):
+//   Multiviews:  die eigenen Multiviews umschalten (welches Layout läuft)
 //   Chat:        Kesher-Chat lesen und als die angemeldete Rolle schreiben
-//   Bühne:       Bühnennachricht (Stage Display) in ProPresenter senden/löschen
+//   Stage Display: Nachricht auf dem Stage Display in ProPresenter senden/löschen
 //   Beamer:      Meldung für die Gemeinde in ProPresenter vorbereiten – anzeigen tut sie der Bediener
 //   Monitore:    (nur Admin) welcher Multiview auf welchem Monitor am Server läuft
-import { connect, watchLogin, loginKey } from './common.js'
+import { setPreviewSize, previewMetrics, connect, reloadWhenIdle, watchLogin, loginKey, TIME_ZONE } from './common.js'
 import { adoptServerPrefs, applyPrefs, currentPrefs, nextTheme, setPrefs, themeIcon } from './theme.js'
 import { visibleOutputs, visibleLayouts, canEditOutput, chatFor } from './rights.js'
 import { createComposer } from './chat-compose.js'
 import { fillAvatar, pickAvatar } from './avatar.js'
+import { serviceUrl, findService } from './services.js'
 
 const $ = (sel) => document.querySelector(sel)
 const $$ = (sel) => [...document.querySelectorAll(sel)]
+$('#dashboard-link').href = serviceUrl(findService('dashboard'))
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
 const QUICK_MESSAGES = ['Noch 5 Minuten', 'Noch 2 Minuten', 'Bitte zum Ende kommen', 'Lauter sprechen', 'Mikrofon näher an den Mund']
 
 let user = { admin: false, open: false, name: '', roleId: '' } // wird in start() gesetzt
+let serverBootId = null
 let config = null
 let screens = [] // erkannte Anschlüsse
 let stage = { message: '' }
@@ -82,6 +86,10 @@ async function start() {
       if (msg.type === 'config') {
         config = msg.config
         render()
+      } else if (msg.type === 'server') {
+        // Neuer Stand auf dem Server (Update oder geänderte Dateien): von selbst neu laden
+        if (msg.bootId && serverBootId && msg.bootId !== serverBootId) return reloadWhenIdle()
+        serverBootId = msg.bootId ?? serverBootId
       } else if (msg.type === 'screens') {
         screens = msg.screens
         renderScreens()
@@ -193,8 +201,10 @@ $('#tabs').addEventListener('click', (e) => {
   tab = btn.dataset.tab
   writeJson(localStorage, 'mv.remote.tab', tab)
   renderTabs()
+  // Beim Öffnen immer am Anfang des Bereichs bleiben: Der Sticky-Kopf bleibt
+  // dadurch sichtbar. Neue Nachrichten scrollen weiterhin nur dann ans Ende,
+  // wenn man vorher bereits am Ende des Chats war.
   window.scrollTo(0, 0)
-  if (tab === 'chat') scrollChatToEnd()
 })
 
 function updateBadges() {
@@ -247,7 +257,7 @@ function renderOutputs() {
   const keep = new Map([...box.querySelectorAll('.rm-preview')].map((el) => [el.dataset.id, el]))
   box.replaceChildren()
   if (!outputs.length) {
-    box.innerHTML = `<div class="rm-empty"><b>Noch kein Bildschirm freigegeben</b>Der Admin legt unter „Benutzer &amp; Rechte“ fest, welche Bildschirme deine Rolle bedienen darf.</div>`
+    box.innerHTML = `<div class="rm-empty"><b>Noch kein Multiview freigegeben</b>Der Admin legt unter „Benutzer &amp; Rechte“ fest, welche Multiviews deine Rolle bedienen darf.</div>`
     return
   }
   const keys = outputs.map((o) => `o:${o.id}`)
@@ -292,9 +302,10 @@ function renderOutputs() {
         keep.get(output.id) ??
         Object.assign(document.createElement('div'), {
           className: 'rm-preview',
-          innerHTML: `<iframe src="/output.html?id=${encodeURIComponent(output.id)}&embed=1" title="${esc(output.name)}"></iframe>`,
+          innerHTML: `<iframe src="/output.html?id=${encodeURIComponent(output.id)}&embed=1" allow="microphone; camera; fullscreen; autoplay; speaker-selection; clipboard-write" title="${esc(output.name)}"></iframe>`,
         })
       preview.dataset.id = output.id
+      setPreviewSize(preview, current)
       card.querySelector('.rm-card-head').after(preview)
       previewScaler.observe(preview)
     }
@@ -304,8 +315,13 @@ function renderOutputs() {
 
 // Vorschau in Monitorgröße rendern und verkleinern – sonst wäre die Schrift im Verhältnis
 // zu den Kacheln viel zu groß (der Multiview rechnet Schriftgrößen mit Mindestwerten).
-const PREVIEW_WIDTH = 1920
-const scalePreview = (el) => el.style.setProperty('--rm-scale', String(el.clientWidth / PREVIEW_WIDTH))
+const scalePreview = (el) => {
+  // Querformat füllt die Kartenbreite, Hochformat (Monitor hochkant) die Höhe – mittig
+  const { scale, left, top } = previewMetrics(el)
+  el.style.setProperty('--rm-scale', String(scale))
+  el.style.setProperty('--rm-left', `${left}px`)
+  el.style.setProperty('--rm-top', `${top}px`)
+}
 // Ältere iPhones (iOS 12) kennen ResizeObserver nicht – dann beim Drehen/Ändern der Größe neu rechnen
 const previewScaler =
   typeof ResizeObserver === 'function'
@@ -431,11 +447,25 @@ function scrollChatToEnd() {
   requestAnimationFrame(() => window.scrollTo(0, document.documentElement.scrollHeight))
 }
 
-const time = (ms) => new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
-const day = (ms) => new Date(ms).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
+const time = (ms) => new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: TIME_ZONE })
+const day = (ms) => new Date(ms).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TIME_ZONE })
+
+// Beamer-/Bühnen-Meldungen nur 15 s rot, danach wie jede andere Nachricht
+const ALERT_MS = 15 * 1000
+let alertTimer = null
 
 function renderChat() {
   composer?.update(chat)
+  clearTimeout(alertTimer)
+  const now = Date.now()
+  let nextAlertEnd = Infinity
+  const alertState = (m) => {
+    if (m.source !== 'multiview-alert') return ''
+    const age = now - (m.receivedAt || m.timestamp || now)
+    if (age >= ALERT_MS) return ''
+    nextAlertEnd = Math.min(nextAlertEnd, ALERT_MS - age)
+    return age < 1500 ? 'alert alert-pop' : 'alert'
+  }
   const own = ownRole()
   // Server liefert die neueste zuerst – im Messenger steht sie unten
   const messages = myMessages().slice(0, 40).reverse()
@@ -455,7 +485,7 @@ function renderChat() {
         lastDay = d
         lastFrom = `${m.from}|${m.fromRoleId}`
         const who = mine ? '' : `<b>${esc(m.from)}</b>${m.fromRole && m.fromRole !== m.from ? ` · ${esc(m.fromRole)}` : ''}`
-        return `${dayLine}<li class="rm-bubble ${mine ? 'mine' : ''} ${sameSender ? 'cont' : ''} ${m.source === 'multiview-alert' ? 'alert' : ''}">
+        return `${dayLine}<li class="rm-bubble ${mine ? 'mine' : ''} ${sameSender ? 'cont' : ''} ${alertState(m)}">
           ${who && !sameSender ? `<div class="rm-bubble-from">${who}</div>` : ''}
           <div class="rm-bubble-body">${esc(m.body)}</div>
           <div class="rm-bubble-meta"><span class="rm-target">${esc(m.target)}</span>${esc(time(m.timestamp))}</div>
@@ -467,6 +497,7 @@ function renderChat() {
     if (nearEnd) scrollChatToEnd()
   }
   updateBadges()
+  if (nextAlertEnd !== Infinity) alertTimer = setTimeout(renderChat, nextAlertEnd + 50)
 }
 
 // --- Bühnennachricht -------------------------------------------------------------------
@@ -477,11 +508,15 @@ function renderMessage() {
   const live = propresenter.connected && stage.message
   card.classList.toggle('live', Boolean(live))
   card.classList.toggle('offline', !propresenter.connected)
-  $('#stage-label').textContent = !propresenter.connected ? 'ProPresenter nicht verbunden' : live ? 'Gerade auf der Bühne' : 'Keine Nachricht'
-  $('#message-current').textContent = live ? stage.message : propresenter.connected ? 'Die Bühne zeigt gerade keine Nachricht.' : 'Senden geht erst wieder, wenn ProPresenter erreichbar ist.'
+  $('#stage-label').textContent = !propresenter.connected ? 'ProPresenter nicht verbunden' : live ? 'Gerade auf dem Stage Display' : 'Keine Nachricht'
+  $('#message-current').textContent = live ? stage.message : propresenter.connected ? 'Das Stage Display zeigt gerade keine Nachricht.' : 'Senden geht erst wieder, wenn ProPresenter erreichbar ist.'
   $('#message-clear').hidden = !live
+  // Die eigene, gerade gesendete Nachricht wird zurückgezogen, eine fremde nur gelöscht
+  $('#message-clear').textContent = live && stage.message === lastSentStage ? 'Zurückziehen' : 'Löschen'
   renderTabs()
 }
+
+let lastSentStage = ''
 
 async function sendMessage(text) {
   const res = await fetch(text ? '/api/propresenter/stage-message' : '/api/propresenter/stage-message/clear', {
@@ -492,7 +527,9 @@ async function sendMessage(text) {
   const data = await res?.json().catch(() => ({}))
   if (!res?.ok || !data?.ok) return toast(data?.error || 'Senden fehlgeschlagen', 'error')
   navigator.vibrate?.(15)
-  toast(text ? 'Auf der Bühne ✓' : 'Nachricht gelöscht', 'ok')
+  const withdrawn = !text && stage.message && stage.message === lastSentStage
+  lastSentStage = text
+  toast(text ? 'Auf dem Stage Display ✓' : withdrawn ? 'Zurückgezogen' : 'Nachricht gelöscht', 'ok')
 }
 
 $('#message-form').addEventListener('submit', (e) => {
@@ -505,7 +542,7 @@ $('#message-form').addEventListener('submit', (e) => {
 })
 $('#message-clear').addEventListener('click', () => sendMessage(''))
 $('#message-quick').addEventListener('click', (e) => {
-  // Nur eintragen, gesendet wird mit dem Pfeil – ein versehentliches Antippen landet nicht auf der Bühne
+  // Nur eintragen, gesendet wird mit dem Pfeil – ein versehentliches Antippen landet nicht auf dem Stage Display
   const btn = e.target.closest('[data-quick]')
   if (!btn) return
   $('#message-text').value = btn.dataset.quick
@@ -522,12 +559,16 @@ const REQUEST_STATUS = {
   angezeigt: ['live', 'Auf dem Beamer'],
   beendet: ['done', 'Beendet'],
   ersetzt: ['done', 'Ersetzt'],
+  zurückgezogen: ['done', 'Zurückgezogen'],
 }
+// Eigene Meldungen (Name|Rolle wie auf dem Server) lassen sich zurückziehen
+const ownSender = () => (user && !user.open ? `${user.name}|${user.roleId}` : '')
 let openTemplate = null // aufgeklappte Vorlage (uuid, '' = eigene Meldung)
 let templatesKey = ''
 
 function renderBeamer() {
   const requests = (stage.requests ?? []).filter((r) => r.status !== 'ersetzt').slice(0, 4)
+  $('#beamer-status').hidden = !requests.length
   $('#beamer-requests').innerHTML = requests
     .map((r) => {
       const [kind, label] = REQUEST_STATUS[r.status] ?? ['done', r.status]
@@ -535,6 +576,11 @@ function renderBeamer() {
         <span class="rm-request-state">${esc(label)}</span>
         <div class="rm-request-text">${esc(r.text)}</div>
         <div class="rm-request-meta">${esc(r.name)}${r.from ? ` · ${esc(r.from)}` : ''} · ${esc(time(r.at))}</div>
+        ${
+          (r.status === 'wartet' || r.status === 'angezeigt') && (user?.admin || (r.by && r.by === ownSender()))
+            ? `<button type="button" class="rm-request-withdraw" data-withdraw="${esc(r.id)}">Zurückziehen</button>`
+            : ''
+        }
       </div>`
     })
     .join('')
@@ -569,6 +615,20 @@ function renderBeamer() {
     : [card('', 'Eigene Meldung', 'Freier Text', ['Text']), ...templates.map((t) => card(t.uuid, t.name, t.text, t.fields))].join('')
   $('#beamer-templates .rm-template.open input')?.focus()
 }
+
+$('#beamer-requests').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-withdraw]')
+  if (!btn) return
+  btn.disabled = true
+  const res = await fetch(`/api/propresenter/announce/${encodeURIComponent(btn.dataset.withdraw)}/withdraw`, { method: 'POST' }).catch(() => null)
+  const data = await res?.json().catch(() => ({}))
+  if (!res?.ok || !data?.ok) {
+    btn.disabled = false
+    return toast(data?.error || 'Zurückziehen fehlgeschlagen', 'error')
+  }
+  navigator.vibrate?.(15)
+  toast('Zurückgezogen', 'ok')
+})
 
 $('#beamer-templates').addEventListener('click', (e) => {
   const head = e.target.closest('[data-toggle]')

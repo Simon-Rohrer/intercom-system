@@ -1,0 +1,13 @@
+[Unit]
+Description=JMS-Server: Störungs-Bot beantwortet /status
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/sbin/jms-watch --listen
+Restart=always
+RestartSec=10
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

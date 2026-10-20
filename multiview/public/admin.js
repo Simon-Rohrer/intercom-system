@@ -1,13 +1,15 @@
-import { connect, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
+import { isPortrait, layoutSize, isStandardLayout, setPreviewSize, LAYOUT_MIN_PX, LAYOUT_MAX_PX, previewMetrics, connect, reloadWhenIdle, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
-import { createAgendaView } from './agenda.js'
+import { createUplinkView, mergeUplink, uplinkOptions } from './uplink.js'
+import { createAgendaView, agendaOptions, AGENDA_ACCENTS, AGENDA_CCLI_COLORS } from './agenda.js'
 import {
   createProPresenterView, createPlaylistView, createPreacherView, ppOptions, playlistOptions, preacherOptions,
 } from './propresenter.js'
 import { createStageView, stageOptions, fmtTimer } from './stage.js'
 import { adoptServerPrefs, appearanceHtml, bindAppearance, currentPrefs, nextTheme, setPrefs, themeIcon, THEMES, onPrefsChange } from './theme.js'
 import { avatarHtml, pickAvatar, removeAvatar } from './avatar.js'
+import { SERVICE_GROUPS, SERVICE_ICONS, serviceUrl, findService } from './services.js'
 import { roleRights, visibleOutputs, visibleLayouts, canEditLayout, canEditOutput, claimLayouts, publicOrigin, chatFor, chatRoleFor } from './rights.js'
 import {
   attachDevice, attachNetworkStream, makeVideo, makeTestPattern, mediaKey,
@@ -20,12 +22,12 @@ const esc = (s) =>
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max)
 
 const CLIENT_ID = uid('c')
-const PAGES = ['uebersicht', 'eingaenge', 'layouts', 'einstellungen', 'zugang']
-const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'zugang']
+const PAGES = ['uebersicht', 'multiviews', 'eingaenge', 'layouts', 'einstellungen', 'services']
+const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'services']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
-const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'companion', 'bildschirme', 'geraete']
-// Unterseiten von Benutzer & Rechte: #/zugang/rollen …
-const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste']
+const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'raspberry', 'companion', 'bildschirme', 'geraete', 'zugang']
+// Unterseiten von Benutzer & Rechte: #/einstellungen/zugang/rollen …
+const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste', 'zugangsdaten', 'nachrichten']
 const SOURCE_TYPES = {
   device: 'Capture-Gerät',
   stream: 'Netzwerk-Stream',
@@ -69,6 +71,8 @@ function gridPreset(n) {
 let config = null
 let atem = { connected: false, program: [], preview: [], inputs: {} }
 let page = 'uebersicht'
+let settingsSection = ''
+let accessSection = ''
 let serverDevices = []
 let detectedScreens = [] // Anschlüsse der Grafikkarte am Server { id, connected, mode }
 let server ={ addresses: [], ports: {}, mediamtx: { status: 'unknown', message: '' } }
@@ -85,6 +89,8 @@ let chat = { state: 'connecting', messages: [], stationName: '' }
 const chatViews = new Set()
 let churchtools = { state: 'connecting', events: [] }
 const agendaViews = new Set()
+const uplinkViews = new Set()
+let uplink = null
 let templates = [] // gespeicherte Layouts { id, name, savedAt, owner, tiles, own }
 
 // Wer ist angemeldet? Wird in start() geladen, bevor die Verbindung zum Server aufgeht.
@@ -113,6 +119,14 @@ function onMessage(msg) {
     if (!config) return
     renderScreens()
     renderCompanion()
+  } else if (msg.type === 'uplink') {
+    uplink = mergeUplink(uplink, msg)
+    for (const view of uplinkViews) {
+      if (view.el.isConnected) view.update(uplink)
+      else uplinkViews.delete(view)
+    }
+    const hint = inspector.querySelector('[data-uplink-state]')
+    if (hint) hint.textContent = uplinkStateText()
   } else if (msg.type === 'churchtools') {
     churchtools = msg
     renderChurchTools()
@@ -126,6 +140,7 @@ function onMessage(msg) {
     renderChatStatus()
     renderStatusStrip()
     renderAccess()
+    if (config) renderRaspberry() // Rollen für die Auswahl kommen mit dem Chat
     for (const view of chatViews) {
       if (view.el.isConnected) view.update(chatFor(chat, view.roleId?.() ?? ''))
       else chatViews.delete(view)
@@ -141,6 +156,12 @@ function onMessage(msg) {
     for (const el of canvas.querySelectorAll('.etile')) el.ppView?.updateStage?.(ppStage)
     // Timer-Auswahl der Bühnen-Kachel nachziehen, wenn ProPresenter andere Timer meldet
     if (timersChanged && inspector.querySelector('[data-st-timer]')) renderInspector()
+  } else if (msg.type === 'raspberry_changed') {
+    // An einem Pi wurde ein Kopfhörer oder Mikrofon ein- oder ausgesteckt: Auswahl gleich nachziehen
+    if (page === 'einstellungen' && !$('#set-raspberry').hidden) loadRaspberryStatus()
+  } else if (msg.type === 'sessions_changed') {
+    // Gerät an- oder abgemeldet, Seite geöffnet oder geschlossen: Liste gleich nachziehen
+    if (page === 'einstellungen' && !$('#set-sessions').hidden) loadSessions()
   } else if (msg.type === 'templates_changed') {
     loadTemplates()
   } else if (msg.type === 'session_revoked') {
@@ -151,7 +172,7 @@ function onMessage(msg) {
     lastLevels = msg
   } else if (msg.type === 'server') {
     // Nach einem Update des Servers neu laden, sonst läuft hier noch der alte Stand
-    if (msg.bootId && server?.bootId && msg.bootId !== server.bootId && !saveTimer) return location.reload()
+    if (msg.bootId && server?.bootId && msg.bootId !== server.bootId && !saveTimer) return reloadWhenIdle()
     server = msg
     renderStreams()
     renderSources()
@@ -220,25 +241,75 @@ function toast(text) {
 // Seiten
 // ---------------------------------------------------------------------------
 
+// „Dashboard“ in der Seitenleiste: zurück zur Startseite – unter derselben Art Adresse (IP, .local, jms.de)
+$('#nav-dashboard').href = serviceUrl(findService('dashboard'))
+
+/** Seite „Services“: alle Dienste als Kacheln, Verwaltung nur für Admins. */
+function renderServices() {
+  $('#services-list').innerHTML = SERVICE_GROUPS.filter((g) => !g.admin || isAdmin())
+    .map((g) => `<section class="services-group">
+      <h2>${esc(g.title)}</h2>
+      <div class="services-grid">${g.services
+        .map((svc) => {
+          const url = serviceUrl(svc)
+          return `<a class="glass service-card" href="${esc(url)}" ${svc.id === 'jmscontrol' ? '' : 'target="_blank" rel="noopener"'}>
+            <span class="app-icon ${svc.color}"><svg viewBox="0 0 24 24" aria-hidden="true">${SERVICE_ICONS[svc.icon] ?? ''}</svg></span>
+            <span class="service-text"><b>${esc(svc.name)}</b><span class="desc">${esc(svc.desc)}</span><code>${esc(url.replace(/^https:\/\//, '').replace(/\/$/, ''))}</code></span>
+          </a>`
+        })
+        .join('')}</div>
+    </section>`)
+    .join('')
+}
+
 function showPage() {
-  const [requested, sub] = location.hash.replace(/^#\/?/, '').split('/')
+  let [requested, sub, nested] = location.hash.replace(/^#\/?/, '').split('/')
+  // Benutzer & Rechte war früher ein eigener Hauptbereich. Die alte URL bleibt als Alias bestehen.
+  if (requested === 'zugang') {
+    requested = 'einstellungen'
+    nested = sub
+    sub = 'zugang'
+  }
+  // Layouts sind eine Unterseite der Multiviews (die alte Adresse #/layouts geht weiter)
+  if (requested === 'multiviews' && sub === 'layouts') requested = 'layouts'
   page = PAGES.includes(requested) && (isAdmin() || !ADMIN_PAGES.includes(requested)) ? requested : 'uebersicht'
+  settingsSection = ''
+  accessSection = ''
   for (const p of PAGES) $(`#page-${p}`).hidden = p !== page
-  const sectionsOf = { einstellungen: SETTINGS_SECTIONS, zugang: ZUGANG_SECTIONS }[page]
-  if (sectionsOf) {
-    const section = sectionsOf.includes(sub) ? sub : sectionsOf[0]
-    document.querySelectorAll(`#page-${page} [data-section]`).forEach((el) => (el.hidden = el.dataset.section !== section))
-    document.querySelectorAll(`#page-${page} [data-section-link]`).forEach((a) => {
-      a.classList.toggle('active', a.dataset.sectionLink === section)
-      if (a.dataset.sectionLink === section) a.setAttribute('aria-current', 'page')
+
+  if (page === 'einstellungen') {
+    settingsSection = SETTINGS_SECTIONS.includes(sub) ? sub : SETTINGS_SECTIONS[0]
+    const configRoot = $('#settings-config-content')
+    configRoot.hidden = settingsSection === 'zugang'
+    configRoot.querySelectorAll('[data-section]').forEach((el) => (el.hidden = el.dataset.section !== settingsSection))
+    document.querySelectorAll('#page-einstellungen [data-section-link]').forEach((a) => {
+      a.classList.toggle('active', a.dataset.sectionLink === settingsSection)
+      if (a.dataset.sectionLink === settingsSection) a.setAttribute('aria-current', 'page')
       else a.removeAttribute('aria-current')
     })
+    const accessRoot = $('#settings-access-content')
+    const accessActive = settingsSection === 'zugang'
+    accessRoot.hidden = !accessActive
+    if (accessActive) {
+      accessSection = ZUGANG_SECTIONS.includes(nested) ? nested : ZUGANG_SECTIONS[0]
+      accessRoot.querySelectorAll('[data-access-section]').forEach((el) => (el.hidden = el.dataset.accessSection !== accessSection))
+      accessRoot.querySelectorAll('[data-access-section-link]').forEach((a) => {
+        a.classList.toggle('active', a.dataset.accessSectionLink === accessSection)
+        if (a.dataset.accessSectionLink === accessSection) a.setAttribute('aria-current', 'page')
+        else a.removeAttribute('aria-current')
+      })
+    }
   }
-  document.querySelectorAll('.site-nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === page))
+
+  const navPage = page === 'layouts' ? 'multiviews' : page
+  document.querySelectorAll('.site-nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === navPage))
   document.body.classList.remove('nav-open')
   if (page === 'eingaenge') autoScanDevices()
-  if (page === 'einstellungen' && sub === 'geraete') loadSessions()
-  if (page === 'zugang') loadGateway()
+  if (page === 'einstellungen' && settingsSection === 'geraete') loadSessions()
+  if (page === 'einstellungen' && settingsSection === 'raspberry') loadRaspberryStatus()
+  if (page === 'einstellungen' && settingsSection === 'zugang') loadGateway()
+  if (page === 'einstellungen' && settingsSection === 'zugang' && accessSection === 'nachrichten') loadMessageLinks()
+  if (page === 'services') renderServices()
   renderAll()
   window.scrollTo(0, 0)
 }
@@ -262,6 +333,7 @@ function renderAll() {
   renderChat()
   renderChurchTools()
   renderProPresenter()
+  renderRaspberry()
   renderCompanion()
   renderAtemPill()
   renderDatalists()
@@ -326,7 +398,12 @@ function layoutOptions(selected) {
   ].join('')
 }
 
-const scalePreview = (el) => el.style.setProperty('--preview-scale', String(el.clientWidth / 1920))
+const scalePreview = (el) => {
+  const { scale, left, top } = previewMetrics(el)
+  el.style.setProperty('--preview-scale', String(scale))
+  el.style.setProperty('--preview-left', `${left}px`)
+  el.style.setProperty('--preview-top', `${top}px`)
+}
 const previewScaler =
   typeof ResizeObserver === 'function'
     ? new ResizeObserver((entries) => entries.forEach((entry) => scalePreview(entry.target)))
@@ -334,8 +411,8 @@ const previewScaler =
 
 function renderOutputs() {
   const grid = $('#output-cards')
-  // Vorschauen (iframes) nur laden, solange die Übersicht offen ist
-  if (page !== 'uebersicht') {
+  // Vorschauen (iframes) nur laden, solange die Seite Multiviews offen ist
+  if (page !== 'multiviews') {
     if (outputsKey) grid.replaceChildren()
     outputsKey = ''
     return
@@ -349,7 +426,7 @@ function renderOutputs() {
         .map(
           (o) => `<article class="card output-card" data-id="${esc(o.id)}">
           <div class="output-preview">
-            <iframe src="${esc(outputUrl(o, true))}" allow="camera; fullscreen; autoplay" title="${esc(o.name)}"></iframe>
+            <iframe src="${esc(outputUrl(o, true))}" allow="microphone; camera; fullscreen; autoplay; speaker-selection; clipboard-write" title="${esc(o.name)}"></iframe>
           </div>
           <div class="output-body">
             <div class="output-title">
@@ -360,6 +437,18 @@ function renderOutputs() {
               <div class="btn-row">
                 <button class="btn primary" data-action="fullscreen">⛶ Vollbild</button>
                 <a class="btn" href="${esc(outputUrl(o))}" target="_blank" rel="noopener">Monitor-Ansicht ↗</a>
+                <div class="output-qr-controls">
+                  <label class="check"><input type="checkbox" data-output-dayqr="show"> QR-Code anzeigen</label>
+                  <div class="output-qr-options" hidden>
+                    <select data-output-dayqr="corner" aria-label="QR-Code-Position">
+                      <option value="br">unten rechts</option><option value="bl">unten links</option>
+                      <option value="tr">oben rechts</option><option value="tl">oben links</option>
+                    </select>
+                    <select data-output-dayqr="size" aria-label="QR-Code-Größe">
+                      <option value="s">klein</option><option value="m">mittel</option><option value="l">groß</option>
+                    </select>
+                  </div>
+                </div>
               </div>
               ${isAdmin() ? '<button class="btn small danger" data-action="delete-output">Entfernen</button>' : ''}
             </div>
@@ -376,6 +465,9 @@ function renderOutputs() {
   for (const preview of grid.querySelectorAll('.output-preview')) previewScaler.observe(preview)
   for (const card of grid.querySelectorAll('.output-card')) {
     const output = config.outputs.find((o) => o.id === card.dataset.id)
+    // Hochformat-Layout: Vorschau hochkant und mittig
+    const preview = card.querySelector('.output-preview')
+    if (preview && setPreviewSize(preview, config.layouts.find((l) => l.id === output?.layoutId))) scalePreview(preview)
     const name = card.querySelector('[data-o="name"]')
     if (document.activeElement !== name) name.value = output.name
     const select = card.querySelector('[data-o="layoutId"]')
@@ -386,11 +478,27 @@ function renderOutputs() {
       : `<option>${esc(config.layouts.find((l) => l.id === output.layoutId)?.name ?? '– kein Layout –')} · nur ansehen</option>`
     select.disabled = !editable
     card.querySelector('iframe').title = output.name
+    const qrControls = card.querySelector('.output-qr-controls')
+    if (qrControls) {
+      const qr = output.dayQr || { show: false, corner: 'br', size: 's' }
+      qrControls.querySelector('[data-output-dayqr="show"]').checked = qr.show
+      qrControls.querySelector('.output-qr-options').hidden = !qr.show
+      for (const key of ['corner', 'size']) qrControls.querySelector(`[data-output-dayqr="${key}"]`).value = qr[key]
+    }
   }
 }
 
 function onOutputField(e) {
   const el = e.target
+  const qrKey = el.dataset.outputDayqr
+  if (qrKey) {
+    if (e.type !== 'change' || !isAdmin() || !['show', 'corner', 'size'].includes(qrKey)) return
+    const output = config.outputs.find((o) => o.id === el.closest('.output-card').dataset.id)
+    output.dayQr = { show: false, corner: 'br', size: 's', ...output.dayQr, [qrKey]: qrKey === 'show' ? el.checked : el.value }
+    el.closest('.output-qr-controls').querySelector('.output-qr-options').hidden = !output.dayQr.show
+    changed(0)
+    return
+  }
   const key = el.dataset.o
   if (!key) return
   if ((e.type === 'input') !== (el.type === 'text')) return
@@ -424,6 +532,7 @@ $('#output-add').addEventListener('click', () => {
   config.outputs.push({
     id: uid('o'),
     name: `Multiview ${config.outputs.length + 1}`,
+    dayQr: { show: false, corner: 'br', size: 's' },
     layoutId: config.layouts[0]?.id ?? null,
   })
   renderAll()
@@ -473,12 +582,17 @@ function renderScreens() {
       <td><code>${esc(id)}</code></td>
       <td><input type="text" data-s="name" value="${esc(saved?.name)}" placeholder="${esc(connectorLabel(id))}"></td>
       <td><select data-s="outputId">${outputOptions}</select></td>
+      <td><select data-s="rotate" aria-label="Drehung">
+        <option value="0" ${!saved?.rotate ? 'selected' : ''}>normal</option>
+        <option value="90" ${saved?.rotate === 90 ? 'selected' : ''}>hochkant ↻ 90°</option>
+        <option value="270" ${saved?.rotate === 270 ? 'selected' : ''}>hochkant ↺ 270°</option>
+      </select></td>
       <td>${status}</td>
     </tr>`
   })
   body.innerHTML =
     rows.join('') ||
-    `<tr><td colspan="4" class="muted">Keine Anschlüsse gefunden. Sie erscheinen hier, wenn der Multiview-Server
+    `<tr><td colspan="5" class="muted">Keine Anschlüsse gefunden. Sie erscheinen hier, wenn JMS Control
       auf dem Linux-Rechner läuft, an dem die Monitore hängen.</td></tr>`
 }
 
@@ -490,7 +604,7 @@ function onScreenField(e) {
   const id = el.closest('tr').dataset.id
   let screen = config.screens.find((s) => s.id === id)
   if (!screen) config.screens.push((screen = { id, name: '', outputId: null }))
-  screen[key] = key === 'name' ? el.value : el.value || null
+  screen[key] = key === 'name' ? el.value : key === 'rotate' ? Number(el.value) || 0 : el.value || null
   renderCompanion()
   changed(key === 'name' ? 350 : 0)
 }
@@ -1016,10 +1130,15 @@ livePreviewToggle.addEventListener('change', () => {
 const canvas = $('#canvas')
 // Die Arbeitsfläche ist intern so groß wie ein Monitor (1920×1080) und wird verkleinert –
 // so sehen Schriften, Abstände und Rahmen genau so aus wie später auf dem Monitor.
-const CANVAS_WIDTH = 1920
 const canvasFrame = document.getElementById('canvas-frame')
 function scaleCanvas() {
-  const scale = canvasFrame.clientWidth / CANVAS_WIDTH
+  // Hochformat oder eigene Größe: Arbeitsfläche in genau diesen Pixeln
+  const { width, height } = layoutSize(currentLayout())
+  const sized = !isStandardLayout(currentLayout())
+  canvasFrame.classList.toggle('sized', sized)
+  for (const [k, v] of [['--cw', `${width}px`], ['--ch', `${height}px`], ['--cw-n', String(width)], ['--ch-n', String(height)]])
+    canvasFrame.style.setProperty(k, v)
+  const scale = canvasFrame.clientWidth / width
   if (scale > 0) canvasFrame.style.setProperty('--canvas-scale', String(scale))
 }
 if (typeof ResizeObserver === 'function') new ResizeObserver(scaleCanvas).observe(canvasFrame)
@@ -1142,8 +1261,10 @@ function syncTileMedia(el, tile) {
   const key =
     tile.kind === 'chat'
       ? JSON.stringify(['chat', tile.chatRole ?? '', chatOptions(tile.chat)])
+      : tile.kind === 'uplink'
+        ? JSON.stringify(['uplink', uplinkOptions(tile.uplink)])
       : tile.kind === 'churchtools'
-        ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctDate])
+        ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctSongInfo, tile.ctCcli, tile.ctDate, tile.ctMode, agendaOptions(tile.agendaLook)])
         : livePreview && source
         ? JSON.stringify([source.type, source.device, source.url, source.name])
         : ''
@@ -1151,7 +1272,7 @@ function syncTileMedia(el, tile) {
   el.dataset.mediaKey = key
   el.querySelector('.etile-media')?.remove()
   el.classList.toggle('live', Boolean(key))
-  el.classList.toggle('chat-tile', tile.kind === 'chat' || tile.kind === 'churchtools')
+  el.classList.toggle('chat-tile', tile.kind === 'chat' || tile.kind === 'churchtools' || tile.kind === 'uplink')
   if (!key) return
   const media = document.createElement('div')
   media.className = 'etile-media'
@@ -1165,6 +1286,11 @@ function syncTileMedia(el, tile) {
     const view = createAgendaView(tile)
     view.update(churchtools)
     agendaViews.add(view)
+    media.append(view.el)
+  } else if (tile.kind === 'uplink') {
+    const view = createUplinkView(tile.uplink)
+    view.update(uplink)
+    uplinkViews.add(view)
     media.append(view.el)
   } else if (source.type === 'device') {
     const hint = document.createElement('span')
@@ -1204,12 +1330,17 @@ function describeTile(tile) {
         : tile.kesherRoleId
           ? chat.roles?.find((r) => r.id === tile.kesherRoleId)?.name || tile.kesherRoleId
           : 'ohne Rolle'
-    return { title: 'Kesher-Intercom', sub: `${role} · nur auf dem Monitor bedienbar` }
+    return { title: 'Kesher-Intercom', sub: `${role} · in Vorschau und Vollbild bedienbar` }
   }
   if (tile.kind === 'churchtools') {
-    const day = tile.ctDate ? new Date(`${tile.ctDate}T12:00:00Z`).toLocaleDateString('de-DE', { timeZone: 'UTC' }) : 'heute'
+    const day = tile.ctDate
+      ? new Date(`${tile.ctDate}T12:00:00Z`).toLocaleDateString('de-DE', { timeZone: 'UTC' })
+      : tile.ctMode === 'next'
+        ? 'nächstes Event'
+        : 'heute'
     return { title: 'ChurchTools-Ablauf', sub: [day, tile.ctFilter].filter(Boolean).join(' · ') }
   }
+  if (tile.kind === 'uplink') return { title: 'Upload / Stream', sub: 'Internet-Upload (FRITZ!Box)' }
   if (tile.kind === 'propresenter') return { title: 'ProPresenter', sub: 'Folien' }
   if (tile.kind === 'playlist') return { title: 'Playlist', sub: 'ProPresenter' }
   if (tile.kind === 'preacher') return { title: 'Prediger', sub: 'ProPresenter-Steuerung' }
@@ -1422,10 +1553,34 @@ function presetIcon(rects) {
     .join('')}</span>`
 }
 
+/** 1920×1080 → "16:9", 1536×512 → "3:1" */
+function ratioText({ width, height }) {
+  const gcd = (a, b) => (b ? gcd(b, a % b) : a)
+  const g = gcd(width, height)
+  const a = width / g
+  const b = height / g
+  return a <= 64 && b <= 64 ? `${a}:${b}` : `${(width / height).toFixed(2).replace('.', ',')}:1`
+}
+
 function layoutInspector(layout) {
   return `
     <h3>Layout</h3>
     <label class="field"><span>Name</span><input type="text" data-l="name" value="${esc(layout.name)}"></label>
+    <label class="field"><span>Format</span><select data-l="orientation">
+      <option value="landscape" ${!layout.orientation || layout.orientation === 'landscape' ? 'selected' : ''}>Querformat 16:9 (normaler Monitor)</option>
+      <option value="portrait" ${isPortrait(layout) ? 'selected' : ''}>Hochformat 9:16 (Monitor hochkant)</option>
+      <option value="custom" ${layout.orientation === 'custom' ? 'selected' : ''}>Eigene Größe (Pixel)</option>
+    </select></label>
+    ${
+      layout.orientation === 'custom'
+        ? `<div class="layout-size">
+      <label class="field"><span>Breite (px)</span><input type="number" min="${LAYOUT_MIN_PX}" max="${LAYOUT_MAX_PX}" step="1" data-l="width" value="${layoutSize(layout).width}"></label>
+      <span class="times">×</span>
+      <label class="field"><span>Höhe (px)</span><input type="number" min="${LAYOUT_MIN_PX}" max="${LAYOUT_MAX_PX}" step="1" data-l="height" value="${layoutSize(layout).height}"></label>
+    </div>
+    <p class="muted small">Seitenverhältnis ${ratioText(layoutSize(layout))}. Auf dem Monitor wird die Fläche in diesem Verhältnis eingepasst (schwarze Ränder, nichts verzerrt).</p>`
+        : ''
+    }
     <div class="row">
       <label class="field"><span>Raster Spalten</span><input type="number" min="1" max="48" data-l="cols" value="${layout.cols}"></label>
       <label class="field"><span>Raster Zeilen</span><input type="number" min="1" max="48" data-l="rows" value="${layout.rows}"></label>
@@ -1676,6 +1831,85 @@ function chatSection(tile) {
       <p class="muted">Der Chat zeigt, was die Rolle auch in Kesher sieht: globale Nachrichten und die ihrer Party Lines. „Angemeldete Rolle“: Wer angemeldet ist, sieht seinen Chat – Monitore ohne Anmeldung zeigen alles.</p>`
 }
 
+function uplinkStateText() {
+  if (!uplink) return 'Verbinde …'
+  if (uplink.state === 'ok') {
+    const last = uplink.history?.[uplink.history.length - 1]
+    return `Verbunden – gerade ${last ? (last.up / 1e6).toFixed(1).replace('.', ',') : '–'} Mbit/s Upload`
+  }
+  return uplink.state === 'off' ? 'Abfrage ausgeschaltet' : `Fehler: ${uplink.error || 'keine Antwort'}`
+}
+
+/** Upload-Kachel: Titel, Kurve, Warnung und (nur Admin) die Adresse der FRITZ!Box */
+function uplinkSection(tile) {
+  const o = uplinkOptions(tile.uplink)
+  const u = config.uplink || { enabled: true, host: '192.168.178.1' }
+  return `
+    <label class="field"><span>Titel</span><input type="text" data-ul="title" value="${esc(o.title)}" maxlength="40"></label>
+    <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+      <input type="range" min="0.5" max="2.5" step="0.1" data-ul="size" value="${o.size}"></label>
+    <label class="check"><input type="checkbox" data-ul="chart" ${o.chart ? 'checked' : ''}> Kurve anzeigen</label>
+    <label class="field"><span>Zeitraum der Kurve <output>${o.minutes} min</output></span>
+      <input type="range" min="1" max="15" step="1" data-ul="minutes" value="${o.minutes}"></label>
+    <label class="check"><input type="checkbox" data-ul="down" ${o.down ? 'checked' : ''}> Download zusätzlich zeigen</label>
+    <label class="field"><span>Warnen, wenn der Upload unter … Mbit/s fällt (0 = aus)</span>
+      <input type="number" min="0" max="1000" step="0.5" data-ul="alarm" value="${o.alarm}"></label>
+    <p class="muted small">Die Warnung (rot) kommt nur, wenn vorher schon mehr lief – also wenn ein laufender Stream einbricht, nicht wenn gar nicht gestreamt wird.</p>
+    ${
+      user?.admin
+        ? `<div class="meter-settings">
+      <h4>FRITZ!Box</h4>
+      <label class="check"><input type="checkbox" data-uplink="enabled" ${u.enabled !== false ? 'checked' : ''}> Upload abfragen</label>
+      <label class="field"><span>Adresse der FRITZ!Box</span><input type="text" data-uplink="host" value="${esc(u.host)}" placeholder="192.168.178.1"></label>
+      <p class="muted small" data-uplink-state>${esc(uplinkStateText())}</p>
+      <p class="muted small">Ohne Anmeldung über UPnP (Port 49000). Gezeigt wird der Upload der ganzen Internetleitung – während des YouTube-Streams ist das fast nur der Stream. Klappt es nicht: In der FRITZ!Box unter Heimnetz → Netzwerk → Netzwerkeinstellungen „Statusinformationen über UPnP übertragen“ einschalten.</p>
+    </div>`
+        : ''
+    }`
+}
+
+/** Ablauf-Kachel: Schriftgröße, Abstände und was angezeigt wird. */
+function agendaLookSection(tile) {
+  const o = agendaOptions(tile.agendaLook)
+  const check = (key, label) =>
+    `<label class="check"><input type="checkbox" data-ag="${key}" ${o[key] ? 'checked' : ''}> ${label}</label>`
+  const ccliNames = { '#a9b2be': 'Hellgrau', '#ffffff': 'Weiß', '#00d1ff': 'Cyan', '#ffd60a': 'Gelb', '#ffb020': 'Orange', '#30d158': 'Grün', '#ff5a4f': 'Rot', '#bf5af2': 'Lila' }
+  const accentNames = { '#00d1ff': 'Cyan', '#30d158': 'Grün', '#ffb020': 'Orange', '#ff5a4f': 'Rot', '#bf5af2': 'Lila', '#ffffff': 'Weiß' }
+  return `
+    <div class="meter-settings">
+      <h4>Darstellung</h4>
+      <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+        <input type="range" min="0.5" max="3" step="0.1" data-ag="size" value="${o.size}"></label>
+      <label class="field"><span>Zeilenabstand</span>
+        <select data-ag="density">
+          <option value="compact" ${o.density === 'compact' ? 'selected' : ''}>Kompakt (mehr Punkte sichtbar)</option>
+          <option value="normal" ${o.density === 'normal' ? 'selected' : ''}>Normal</option>
+          <option value="airy" ${o.density === 'airy' ? 'selected' : ''}>Luftig (besser lesbar)</option>
+        </select></label>
+      <label class="field"><span>Farbe für den laufenden Punkt</span>
+        <select data-ag="accent">
+          ${AGENDA_ACCENTS.map((c) => `<option value="${c}" ${o.accent === c ? 'selected' : ''}>${accentNames[c] || c}</option>`).join('')}
+        </select></label>
+      ${check('header', 'Kopfzeile (Event, Datum, Status)')}
+      ${check('time', 'Uhrzeiten')}
+      ${check('duration', 'Dauer')}
+      ${check('progress', 'Fortschrittsbalken beim laufenden Punkt')}
+      ${check('sections', 'Abschnitts-Überschriften')}
+      ${check('before', 'Punkte vor Beginn des Events')}
+      ${check('hideDone', 'Erledigte Punkte ausblenden')}
+      ${check('openAll', 'Programmspalten immer aufgeklappt (für Monitore ohne Bedienung)')}
+      <label class="field"><span>CCLI-Nummer: Größe <output>${Math.round(o.ccliSize * 100)} %</output></span>
+        <input type="range" min="0.5" max="2.5" step="0.1" data-ag="ccliSize" value="${o.ccliSize}"></label>
+      <label class="field"><span>CCLI-Nummer: Farbe</span>
+        <select data-ag="ccliColor">
+          ${AGENDA_CCLI_COLORS.map((c) => `<option value="${c}" ${o.ccliColor === c ? 'selected' : ''}>${ccliNames[c] || c}</option>`).join('')}
+        </select></label>
+      <p class="muted small">Im Monitor-Modus und im Vollbild steht neben der CCLI-Nummer ein Knopf „Kopieren“.</p>
+      <label class="field"><span>Nur diese Programmspalten (Komma getrennt, leer = alle)</span>
+        <input type="text" data-ag="columns" value="${esc(o.columns)}" placeholder="z. B. Technik, Programm"></label>
+    </div>`
+}
+
 /** Chat-Kachel: Schriftgröße und was angezeigt wird. */
 function chatLookSection(tile) {
   const o = chatOptions(tile.chat)
@@ -1688,6 +1922,11 @@ function chatLookSection(tile) {
         <input type="range" min="0.5" max="2.5" step="0.1" data-chat="size" value="${o.size}"></label>
       <label class="field"><span>Nachrichten <output>${o.count}</output></span>
         <input type="range" min="1" max="60" step="1" data-chat="count" value="${o.count}"></label>
+      <label class="field"><span>Reihenfolge</span>
+        <select data-chat="newestTop">
+          <option value="" ${o.newestTop ? '' : 'selected'}>Neueste Nachricht unten (wie in Kesher)</option>
+          <option value="1" ${o.newestTop ? 'selected' : ''}>Neueste Nachricht oben</option>
+        </select></label>
       ${check('follow', 'An neuester Nachricht hängen (immer die neueste zeigen)')}
       ${check('newest', 'Neueste Nachricht groß hervorheben')}
       ${check('meta', 'Absender, Ziel und Uhrzeit zeigen')}
@@ -1718,13 +1957,13 @@ function kesherSection(tile) {
           <option value="chat" ${view === 'chat' ? 'selected' : ''}>Nur Chat (ohne Mikrofon)</option>
         </select>
       </label>
-      <label class="check"><input type="checkbox" data-t="kesherTakeover" ${tile.kesherTakeover !== false ? 'checked' : ''}> Rolle übernehmen, wenn sie schon angemeldet ist <span class="muted">(nicht bei „angemeldeter Nutzer“ – dessen eigenes Kesher bleibt angemeldet)</span></label>
+      <p class="muted small">Die Kachel <b>spiegelt</b> die Rolle nur und belegt sie nie: Melde dich mit derselben Rolle an deinem Gerät mit Headset an (Laptop, Handy) – die Kachel zeigt dann dessen Kanäle, und was du hier umstellst oder drückst, schaltet Kesher dort.</p>
       <label class="check"><input type="checkbox" data-t="kesherHideControls" ${tile.kesherHideControls ? 'checked' : ''}> Sprechtasten ausblenden (Hold to talk, Reply, Always on)</label>
       <p class="muted">Die Kanäle passen sich immer der Kachelgröße an. Ohne Sprechtasten spricht man über Stream Deck oder Tastatur – oder in Kesher unter Einstellungen „Direct PTT Mode“ einschalten, dann ist jede Kanal-Taste eine Sprechtaste.</p>
       <label class="field"><span>Mikrofon (Name enthält, leer = Standard)</span><input type="text" data-t="kesherAudioIn" value="${esc(tile.kesherAudioIn)}" placeholder="z. B. USB"></label>
       <label class="field"><span>Lautsprecher (Name enthält, leer = Standard)</span><input type="text" data-t="kesherAudioOut" value="${esc(tile.kesherAudioOut)}" placeholder="z. B. HDMI"></label>
       <label class="field"><span>Kesher-Adresse (leer = automatisch)</span><input type="text" data-t="kesherUrl" value="${esc(tile.kesherUrl)}" placeholder="automatisch"></label>
-      <p class="muted">Zeigt Kesher direkt auf dem Monitor, mit Sprechtasten, Kanälen und Chat. Bedienen per Maus oder Touch am Monitor. In der Vorschau hier im Editor ist es nur ein Platzhalter, damit die Rolle nicht zweimal angemeldet wird. Für das Mikrofon muss der Monitor die Seite über <code>127.0.0.1</code> oder <code>https</code> öffnen.</p>`
+      <p class="muted">Zeigt Kesher mit Sprechtasten, Kanälen und Chat in der Multiview-Vorschau, im Vollbild und in der Monitor-Ansicht. Vorschauen melden sich als Zweitgerät an und übernehmen keine laufende Station. Im Layout-Editor bleibt die Kachel zum Anordnen als Platzhalter dargestellt. Für das Mikrofon muss die Seite über <code>127.0.0.1</code> oder <code>https</code> geöffnet und der Mikrofonzugriff im Browser erlaubt sein.</p>`
 }
 
 function tileInspector(tile, layout) {
@@ -1746,6 +1985,7 @@ function tileInspector(tile, layout) {
         <option value="chat" ${kind === 'chat' ? 'selected' : ''}>Kesher-Chat</option>
         <option value="kesher" ${kind === 'kesher' ? 'selected' : ''}>Kesher-Intercom (bedienbar)</option>
         <option value="churchtools" ${kind === 'churchtools' ? 'selected' : ''}>ChurchTools-Ablauf</option>
+        <option value="uplink" ${kind === 'uplink' ? 'selected' : ''}>Upload / Stream (Internet)</option>
         <option value="propresenter" ${kind === 'propresenter' ? 'selected' : ''}>ProPresenter (Folien / Hintergründe)</option>
         <option value="playlist" ${kind === 'playlist' ? 'selected' : ''}>ProPresenter-Playlist</option>
         <option value="preacher" ${kind === 'preacher' ? 'selected' : ''}>ProPresenter-Prediger (Folien steuern)</option>
@@ -1770,7 +2010,8 @@ function tileInspector(tile, layout) {
         ? `
       <label class="field"><span>Datum</span>
         <select data-t="ctDateMode">
-          <option value="today" ${!tile.ctDate ? 'selected' : ''}>Aktuelles Datum</option>
+          <option value="today" ${!tile.ctDate && tile.ctMode !== 'next' ? 'selected' : ''}>Heute</option>
+          <option value="next" ${!tile.ctDate && tile.ctMode === 'next' ? 'selected' : ''}>Nächstes Event</option>
           <option value="fixed" ${tile.ctDate ? 'selected' : ''}>Festes Datum …</option>
         </select>
       </label>
@@ -1778,9 +2019,13 @@ function tileInspector(tile, layout) {
       <label class="field"><span>Event (Name oder Kalender enthält, leer = laufendes/nächstes)</span><input type="text" data-t="ctFilter" value="${esc(tile.ctFilter)}" placeholder="z. B. Gottesdienst"></label>
       <label class="check"><input type="checkbox" data-t="ctResponsible" ${tile.ctResponsible !== false ? 'checked' : ''}> Verantwortliche anzeigen</label>
       <label class="check"><input type="checkbox" data-t="ctNotes" ${tile.ctNotes === true ? 'checked' : ''}> Notizen anzeigen</label>
-      <p class="muted">Zeigt den Ablauf des heutigen Events aus ChurchTools. Gibt es heute keinen, steht der nächste Termin mit Ablauf da (bis 6 Wochen voraus). Mit festem Datum nur dieser Tag. Verbindung unter <a href="#/einstellungen/churchtools">Einstellungen</a>.</p>`
+      <label class="check"><input type="checkbox" data-t="ctSongInfo" ${tile.ctSongInfo !== false ? 'checked' : ''}> Tonart und Arrangement bei Songs</label>
+      <label class="check"><input type="checkbox" data-t="ctCcli" ${tile.ctCcli !== false ? 'checked' : ''}> CCLI-Nummer bei Songs</label>
+      ${agendaLookSection(tile)}
+      <p class="muted">Zeigt den Ablauf eines Events aus ChurchTools. <b>Heute</b>: das laufende, sonst das nächste Event von heute. <b>Nächstes Event</b>: das laufende, sonst das nächste – auch an späteren Tagen (bis 6 Wochen voraus). <b>Festes Datum</b>: nur dieser Tag. Events ohne Ablauf erscheinen mit „Kein Ablauf hinterlegt“. Ein Klick auf einen Punkt klappt die Programmspalten auf. Die CCLI-Nummer braucht im ChurchTools-Benutzer Leserecht auf Songs. Verbindung unter <a href="#/einstellungen/churchtools">Einstellungen</a>.</p>`
         : ''
     }
+    ${kind === 'uplink' ? uplinkSection(tile) : ''}
     ${kind === 'chat' ? chatSection(tile) : ''}
     ${kind === 'kesher' ? kesherSection(tile) : ''}
     ${kind === 'audio' ? bankSection(tile) : ''}
@@ -1830,11 +2075,44 @@ function onInspectorField(e) {
     return
   }
 
+  if (el.dataset.ul) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const key = el.dataset.ul
+    const value = el.type === 'checkbox' ? el.checked : key === 'title' ? el.value : Number(el.value)
+    tile.uplink = { ...uplinkOptions(tile.uplink), [key]: value }
+    const out = el.closest('label').querySelector('output')
+    if (out) out.textContent = key === 'size' ? `${Math.round(value * 100)} %` : `${value} min`
+    renderCanvas()
+    changed()
+    return
+  }
+
+  if (el.dataset.uplink) {
+    const key = el.dataset.uplink
+    config.uplink = { enabled: true, host: '192.168.178.1', ...config.uplink, [key]: el.type === 'checkbox' ? el.checked : el.value.trim() }
+    changed()
+    return
+  }
+
+  if (el.dataset.ag) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const key = el.dataset.ag
+    const value = el.type === 'checkbox' ? el.checked : el.type === 'range' ? Number(el.value) : el.value
+    tile.agendaLook = { ...agendaOptions(tile.agendaLook), [key]: value }
+    const out = el.closest('label').querySelector('output')
+    if (out) out.textContent = `${Math.round(value * 100)} %`
+    renderCanvas()
+    changed()
+    return
+  }
+
   if (el.dataset.chat) {
     const tile = layout.tiles.find((t) => t.id === selectedTileId)
     if (!tile) return
     const key = el.dataset.chat
-    const value = el.type === 'checkbox' ? el.checked : Number(el.value)
+    const value = el.type === 'checkbox' ? el.checked : key === 'newestTop' ? el.value === '1' : Number(el.value)
     tile.chat = { ...chatOptions(tile.chat), [key]: value }
     const out = el.closest('label').querySelector('output')
     if (out) out.textContent = key === 'size' ? `${Math.round(value * 100)} %` : String(value)
@@ -1927,6 +2205,17 @@ function onInspectorField(e) {
     } else if (key === 'lines') {
       layout.lines = el.value !== 'off'
       renderInspector()
+    } else if (key === 'orientation') {
+      // Eigene Größe startet mit der bisherigen Fläche
+      if (el.value === 'custom' && layout.orientation !== 'custom') Object.assign(layout, layoutSize(layout))
+      layout.orientation = el.value
+      renderInspector()
+    } else if (key === 'width' || key === 'height') {
+      if (el.value === '' || !(Number(el.value) >= LAYOUT_MIN_PX)) return // während des Tippens nichts übernehmen
+      layout[key] = clamp(Math.round(Number(el.value)), LAYOUT_MIN_PX, LAYOUT_MAX_PX)
+      const hint = el.closest('.layout-size')?.nextElementSibling
+      if (hint) hint.textContent = `Seitenverhältnis ${ratioText(layoutSize(layout))}. Auf dem Monitor wird die Fläche in diesem Verhältnis eingepasst (schwarze Ränder, nichts verzerrt).`
+      scaleCanvas()
     } else if (key === 'shared') {
       layout.shared = el.checked
     } else if (key === 'owner') {
@@ -1951,6 +2240,8 @@ function onInspectorField(e) {
     key === 'showMeter' ||
     key === 'ctResponsible' ||
     key === 'ctNotes' ||
+    key === 'ctSongInfo' ||
+    key === 'ctCcli' ||
     key === 'kesherTakeover' ||
     key === 'kesherHideControls' ||
     key === 'chatInput'
@@ -1959,6 +2250,8 @@ function onInspectorField(e) {
   else if (key === 'ctDateMode') {
     // Festes Datum beginnt mit heute und lässt sich dann im Kalender ändern
     tile.ctDate = el.value === 'fixed' ? tile.ctDate || localDay() : ''
+    if (el.value === 'next') tile.ctMode = 'next'
+    else delete tile.ctMode
     renderInspector()
   } else if (key === 'ctDate') {
     if (!el.value) return // leeres Datumsfeld: alten Tag behalten
@@ -2207,14 +2500,24 @@ function renderChurchTools() {
   const time = (iso) => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: ct.timeZone })
   const dayLabel = (day) =>
     day === ct.date ? 'Heute' : new Date(`${day}T12:00:00Z`).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', timeZone: 'UTC' })
-  const rows = Object.entries(ct.days || {})
+  // Die nächsten 4 Wochen, dazu fest gewählte Tage der Kacheln außerhalb davon
+  const byDay = {}
+  for (const [day, events] of Object.entries(ct.days || {}))
+    byDay[day] = events.map((e) => ({
+      ...e,
+      points: e.agenda ? e.agenda.items.filter((i) => i.type !== 'header').length : null,
+    }))
+  const overviewDays = {}
+  for (const e of ct.overview || []) (overviewDays[e.day] ||= []).push(e)
+  Object.assign(byDay, overviewDays)
+  const rows = Object.entries(byDay)
     .sort(([a], [b]) => a.localeCompare(b))
     .flatMap(([day, events]) =>
       events.length
         ? events.map(
             (e) =>
               `<tr><td>${esc(dayLabel(day))}, ${esc(time(e.startDate))}</td><td>${esc(e.name)}</td><td>${esc(e.calendar)}</td><td>${
-                e.agenda ? `${e.agenda.items.filter((i) => i.type !== 'header').length} Punkte` : esc(e.agendaError)
+                e.points != null ? `${e.points} ${e.points === 1 ? 'Punkt' : 'Punkte'}` : esc(e.agendaError)
               }</td></tr>`,
           )
         : [`<tr><td>${esc(dayLabel(day))}</td><td colspan="3" class="muted">keine Events</td></tr>`],
@@ -2294,6 +2597,292 @@ for (const id of ['#pp-host', '#pp-port']) {
     changed(0)
   })
 }
+
+// ---------------------------------------------------------------------------
+// Einstellungen: Raspberry Pis (die Launcher auf den Pis holen sich das über /api/raspberry-pis/config)
+// ---------------------------------------------------------------------------
+
+const PI_VIEWS = { standard: 'Wie bei der Rolle eingestellt', station: 'Station', simple: 'Einfach' }
+let piStatus = { seen: [], stations: null, error: '' }
+
+function piSettings() {
+  config.raspberry ??= {}
+  const r = config.raspberry
+  r.managed ??= false
+  r.allowInsecureTls = false
+  r.clients ??= []
+  return r
+}
+
+const splitList = (value) => String(value || '').split(/[\s,;]+/).filter(Boolean)
+const isMac = (v) => /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i.test(v)
+const isIp = (v) => /^(\d{1,3}\.){3}\d{1,3}$/.test(v)
+const piDeviceId = (pi) =>
+  pi.deviceId ||
+  (String(pi.name || '').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '-pi').replace(/^-pi$/, '')
+
+function agoText(ms) {
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `vor ${s} s`
+  if (s < 3600) return `vor ${Math.round(s / 60)} min`
+  return `vor ${Math.round(s / 3600)} h`
+}
+
+/** Was mit dem Eintrag nicht stimmt – ohne Namen, Rolle oder MAC/IP bekommt der Pi ihn nicht. */
+function piProblems(pi, all) {
+  const problems = []
+  if (!pi.name) problems.push('Name fehlt')
+  if (!pi.roleId) problems.push('Rolle fehlt')
+  if (!piDeviceId(pi)) problems.push('Geräte-ID fehlt')
+  const bad = (pi.macAddresses ?? []).filter((m) => !isMac(m))
+  if (bad.length) problems.push(`keine gültige MAC: ${bad.join(', ')}`)
+  if (pi.ipAddress && !isIp(pi.ipAddress)) problems.push('IP-Adresse ungültig')
+  const others = all.filter((o) => o !== pi)
+  const macs = new Set((pi.macAddresses ?? []).map((m) => m.toLowerCase().replace(/-/g, ':')))
+  if (others.some((o) => (o.macAddresses ?? []).some((m) => macs.has(m.toLowerCase().replace(/-/g, ':')))))
+    problems.push('MAC-Adresse steht auch bei einem anderen Pi')
+  if (pi.ipAddress && others.some((o) => o.ipAddress === pi.ipAddress)) problems.push('IP-Adresse steht auch bei einem anderen Pi')
+  if (piDeviceId(pi) && others.some((o) => piDeviceId(o) === piDeviceId(pi))) problems.push('Geräte-ID doppelt')
+  return problems
+}
+
+/** Gehört der Pi, der gefragt hat, zu diesem Eintrag? (wie auf dem Server: MAC, ohne MACs die IP) */
+function piSeenMatches(pi, seen) {
+  const macs = (pi.macAddresses ?? []).map((m) => m.toLowerCase().replace(/-/g, ':'))
+  if (macs.length) return macs.some((m) => seen.macs.includes(m))
+  return Boolean(pi.ipAddress) && seen.ips.includes(pi.ipAddress)
+}
+
+/**
+ * Auswahl für Mikrofon bzw. Kopfhörer mit den Geräten, die der Pi gerade meldet (live über Kesher).
+ * Gespeichert wird der Gerätename; ein gespeichertes, aber gerade nicht eingestecktes Gerät bleibt sichtbar.
+ */
+function piDeviceSelect(pi, key, kind) {
+  const station = piStatus.stations?.find((s) => s.deviceId === piDeviceId(pi))
+  const devices = (kind === 'input' ? station?.audioState?.inputDevices : station?.audioState?.outputDevices) ?? []
+  const labels = [
+    ...new Set(
+      devices
+        .filter((d) => !['default', 'communications'].includes(String(d.deviceId)))
+        .map((d) => String(d.label || '').trim())
+        .filter(Boolean),
+    ),
+  ]
+  const current = String(pi[key] || '')
+  const known = !current || labels.some((label) => label === current || label.toLowerCase().includes(current.toLowerCase()))
+  const options = [
+    `<option value="">${kind === 'input' ? 'Automatisch (erstes Mikrofon)' : 'Standard-Ausgang'}</option>`,
+    ...labels.map((label) => `<option value="${esc(label)}" ${label === current ? 'selected' : ''}>${esc(label)}</option>`),
+    // gespeicherter Teilname (ältere Einträge) passt auf ein Gerät: als eigene Option behalten
+    ...(current && !labels.includes(current) ? [`<option value="${esc(current)}" selected>${esc(current)}${known ? ' (passt)' : ' – nicht eingesteckt'}</option>`] : []),
+  ].join('')
+  const hint = !station?.audioState
+    ? '<small class="muted">Geräte erscheinen, sobald der Pi im Intercom ist.</small>'
+    : !labels.length
+      ? `<small class="muted">Der Pi meldet kein ${kind === 'input' ? 'Mikrofon' : 'Audiogerät'}.</small>`
+      : !known
+        ? '<small class="pi-device-missing">Gespeichertes Gerät ist gerade nicht eingesteckt.</small>'
+        : ''
+  return `<select data-p="${key}">${options}</select>${hint}`
+}
+
+/** Zustand laut Kesher (Heartbeat des Launchers und Intercom-Verbindung). */
+function piStationPill(pi) {
+  if (!piStatus.stations) return ''
+  const station = piStatus.stations.find((s) => s.deviceId === piDeviceId(pi))
+  if (!station) return '<span class="pill">nicht gemeldet</span>'
+  if (station.online && station.intercomConnected) return '<span class="pill ok">im Intercom</span>'
+  if (station.online) return '<span class="pill warn">läuft, nicht im Intercom</span>'
+  return '<span class="pill bad">offline</span>'
+}
+
+function renderRaspberry() {
+  if (!config) return
+  const r = piSettings()
+  const managed = $('#pi-managed')
+  managed.checked = r.managed
+  $('#pi-managed-label').textContent = r.managed ? 'Hier verwaltet' : 'Hier verwalten'
+  $('#pi-managed-note').hidden = r.managed
+  for (const key of ['serverUrl', 'browserBinary', 'audioWaitSeconds', 'displaySettleSeconds', 'connectTimeoutSeconds']) {
+    const input = $(`#pi-${key}`)
+    if (document.activeElement !== input) input.value = r[key] ?? ''
+  }
+  $('#pi-config-line').textContent = `"config_url": "${location.origin}/api/raspberry-pis/config"`
+
+  const list = $('#pi-list')
+  if (!list.contains(document.activeElement) || document.activeElement.tagName === 'BUTTON') {
+    const roles = kesherRoles()
+    list.innerHTML =
+      r.clients
+        .map((pi) => {
+          const roleOptions = [
+            '<option value="">– Rolle wählen –</option>',
+            ...roles.map((role) => `<option value="${esc(role.id)}" ${role.id === pi.roleId ? 'selected' : ''}>${esc(role.name)}</option>`),
+            // Rolle, die Kesher (noch) nicht kennt: trotzdem anzeigen statt still zu verlieren
+            ...(pi.roleId && !roles.some((role) => role.id === pi.roleId) ? [`<option value="${esc(pi.roleId)}" selected>${esc(pi.roleId)} (unbekannt)</option>`] : []),
+          ].join('')
+          const seen = piStatus.seen.find((p) => piSeenMatches(pi, p))
+          const problems = piProblems(pi, r.clients)
+          const remote = r.serverUrl ? `<a class="btn small" href="${esc(r.serverUrl)}/?login=raspberry" target="_blank" rel="noopener">Fernsteuern</a>` : ''
+          return `<div class="pi-item" data-pi="${esc(pi.id)}">
+            <div class="pi-item-head">
+              <h4>${esc(pi.name || 'Neuer Raspberry Pi')}</h4>
+              ${piStationPill(pi)}
+              ${seen ? `<span class="muted">fragt ${esc(agoText(seen.ageMs))}${seen.ips.length ? ` · <code class="ip">${esc(seen.ips.join(', '))}</code>` : ''}</span>` : ''}
+              <span class="pi-spacer"></span>
+              ${remote}
+              <button class="btn small danger" type="button" data-pi-remove>Entfernen</button>
+            </div>
+            <div class="pi-grid">
+              <label class="field"><span>Name in Kesher <small>(ohne Leerzeichen)</small></span>
+                <input type="text" data-p="name" value="${esc(pi.name)}" placeholder="Kamera-1" spellcheck="false"></label>
+              <label class="field"><span>Rolle</span><select data-p="roleId">${roleOptions}</select></label>
+              <label class="field"><span>Ansicht</span><select data-p="view">${Object.entries(PI_VIEWS)
+                .map(([value, label]) => `<option value="${value}" ${value === (pi.view || 'standard') ? 'selected' : ''}>${esc(label)}</option>`)
+                .join('')}</select></label>
+              <label class="field"><span>MAC-Adressen <small>(nur zur Diagnose)</small></span>
+                <input type="text" data-p="macAddresses" value="${esc((pi.macAddresses ?? []).join(', '))}" placeholder="b8:27:eb:12:34:56" spellcheck="false"></label>
+              <label class="field"><span>IP-Adresse <small>(nur zur Diagnose)</small></span>
+                <input type="text" data-p="ipAddress" value="${esc(pi.ipAddress)}" placeholder="192.168.0.157" spellcheck="false"></label>
+              <label class="field"><span>Geräte-ID</span>
+                <input type="text" data-p="deviceId" value="${esc(pi.deviceId)}" placeholder="${esc(piDeviceId({ name: pi.name }) || 'kamera-1-pi')}" spellcheck="false"></label>
+              <label class="field"><span>Mikrofon <small>(live vom Pi)</small></span>
+                ${piDeviceSelect(pi, 'audioInputMatch', 'input')}</label>
+              <label class="field"><span>Kopfhörer <small>(live vom Pi)</small></span>
+                ${piDeviceSelect(pi, 'audioOutputMatch', 'output')}</label>
+              <label class="check pi-check"><input type="checkbox" data-p="lowPowerMode" ${pi.lowPowerMode ? 'checked' : ''}> Sparmodus (schwache Pis)</label>
+            </div>
+            ${problems.length ? `<p class="pi-problem">⚠ ${esc(problems.join(' · '))}</p>` : ''}
+          </div>`
+        })
+        .join('') || '<p class="muted">Noch keine Station eingetragen.</p>'
+  }
+  renderRaspberrySeen()
+}
+
+function renderRaspberrySeen() {
+  const r = piSettings()
+  const box = $('#pi-seen')
+  const rows = piStatus.seen.map((p) => {
+    const client = r.clients.find((c) => piSeenMatches(c, p))
+    const file = p.local ? `${esc(p.local.name)} · ${esc(p.local.roleId)}` : '<span class="muted">–</span>'
+    const action = client
+      ? `<span class="badge accent">${esc(client.name || 'eingetragen')}</span>`
+      : `<button class="btn small primary" type="button" data-pi-adopt="${esc(p.macs.join(',') || p.ips.join(','))}">Übernehmen</button>`
+    return `<tr>
+      <td><b>${esc(p.hostname || 'Raspberry Pi')}</b>${p.launcherVersion ? ` <span class="muted">v${esc(p.launcherVersion)}</span>` : ''}</td>
+      <td><code class="ip">${esc(p.ips.join(', ') || p.remoteIp || '–')}</code></td>
+      <td><code>${esc(p.macs.join(', ') || '–')}</code></td>
+      <td>${file}</td>
+      <td class="muted">${esc(agoText(p.ageMs))}</td>
+      <td style="text-align:right">${action}</td>
+    </tr>`
+  })
+  box.innerHTML =
+    (piStatus.error ? `<p class="muted">${esc(piStatus.error)}</p>` : '') +
+    `<div class="table-wrap"><table class="table pi-seen-table">
+      <thead><tr><th>Pi</th><th>IP-Adresse</th><th>MAC-Adressen</th><th>In seiner Datei</th><th>Zuletzt</th><th></th></tr></thead>
+      <tbody>${rows.join('') || '<tr><td colspan="6" class="muted">Noch kein Pi hat gefragt – erst Pis mit dem neuen Launcher und eingetragener <code>config_url</code> tauchen hier auf.</td></tr>'}</tbody>
+    </table></div>`
+}
+
+async function loadRaspberryStatus() {
+  if (!isAdmin()) return
+  try {
+    const res = await fetch('/api/raspberry-pis/status', { cache: 'no-store' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    piStatus = await res.json()
+  } catch (err) {
+    piStatus = { seen: piStatus.seen, stations: null, error: `Status nicht ladbar (${err.message})` }
+  }
+  renderRaspberry()
+}
+// Online/offline ändert sich laufend – solange der Reiter offen ist, alle 10 s neu laden
+setInterval(() => {
+  if (document.visibilityState === 'visible' && page === 'einstellungen' && !$('#set-raspberry').hidden) loadRaspberryStatus()
+}, 10_000)
+
+$('#pi-managed').addEventListener('change', (e) => {
+  const r = piSettings()
+  if (e.target.checked && !r.clients.some((c) => !piProblems(c, r.clients).length)) {
+    const ok = confirm('Es ist noch keine vollständige Station eingetragen. Eingeschaltet startet ein Pi ohne Eintrag hier nicht mehr. Trotzdem einschalten?')
+    if (!ok) return (e.target.checked = false)
+  }
+  r.managed = e.target.checked
+  renderRaspberry()
+  renderStatusStrip()
+  changed(0)
+})
+
+for (const key of ['serverUrl', 'browserBinary', 'audioWaitSeconds', 'displaySettleSeconds', 'connectTimeoutSeconds']) {
+  $(`#pi-${key}`).addEventListener('change', (e) => {
+    const value = e.target.value.trim()
+    piSettings()[key] = e.target.type === 'number' ? (value === '' ? null : Number(value)) : key === 'serverUrl' ? value.replace(/\/+$/, '') : value
+    renderRaspberry()
+    changed(0)
+  })
+}
+$('#pi-add').addEventListener('click', () => {
+  piSettings().clients.push({ id: uid('pi'), name: '', roleId: '', macAddresses: [], ipAddress: '', view: 'standard', lowPowerMode: false })
+  renderRaspberry()
+  $('#pi-list .pi-item:last-child [data-p="name"]')?.focus()
+})
+
+function onPiField(e) {
+  const el = e.target
+  const key = el.dataset.p
+  if (!key) return
+  const isText = el.type === 'text'
+  if ((e.type === 'input') !== isText) return
+  const pi = piSettings().clients.find((c) => c.id === el.closest('[data-pi]').dataset.pi)
+  if (!pi) return
+  if (key === 'lowPowerMode') pi.lowPowerMode = el.checked
+  else if (key === 'macAddresses') pi.macAddresses = splitList(el.value).map((m) => m.toLowerCase())
+  else if (key === 'name' || key === 'deviceId') pi[key] = el.value.replace(/\s+/g, '-')
+  else pi[key] = el.value.trim()
+  changed(isText ? 600 : 0)
+}
+$('#pi-list').addEventListener('input', onPiField)
+$('#pi-list').addEventListener('change', onPiField)
+// Nach dem Tippen Überschrift und Hinweise nachziehen
+$('#pi-list').addEventListener('focusout', () => setTimeout(() => !$('#pi-list').contains(document.activeElement) && renderRaspberry()))
+
+$('#set-raspberry').addEventListener('click', (e) => {
+  const remove = e.target.closest('[data-pi-remove]')
+  if (remove) {
+    const r = piSettings()
+    const pi = r.clients.find((c) => c.id === remove.closest('[data-pi]').dataset.pi)
+    if (!pi || !confirm(`${pi.name || 'Diesen Pi'} entfernen?${r.managed ? ' Er startet dann nicht mehr als Station.' : ''}`)) return
+    r.clients = r.clients.filter((c) => c !== pi)
+    renderRaspberry()
+    return changed(0)
+  }
+  const adopt = e.target.closest('[data-pi-adopt]')
+  if (adopt) {
+    const p = piStatus.seen.find((s) => (s.macs.join(',') || s.ips.join(',')) === adopt.dataset.piAdopt)
+    if (!p) return
+    const r = piSettings()
+    const local = p.local || {}
+    r.clients.push({
+      id: uid('pi'),
+      name: local.name || '',
+      deviceId: local.deviceId || '',
+      roleId: local.roleId || '',
+      // Alle MACs des Pi (LAN und WLAN) – dann ist egal, welche IP er gerade hat
+      macAddresses: p.macs.length ? p.macs : local.macAddresses || [],
+      ipAddress: p.macs.length ? '' : local.ipAddress || p.ips[0] || '',
+      audioInputMatch: local.audioInputMatch || '',
+      audioOutputMatch: local.audioOutputMatch || '',
+      lowPowerMode: Boolean(local.lowPowerMode),
+      view: local.view || 'standard',
+    })
+    if (!r.serverUrl && p.localServerUrl) r.serverUrl = p.localServerUrl
+    renderRaspberry()
+    changed(0)
+    toast(`${local.name || p.hostname || 'Pi'} übernommen – Angaben prüfen und oben „Hier verwalten“ einschalten`)
+  }
+})
 
 function renderCompanion() {
   // Companion läuft auf demselben Server: dort direkt und ohne Zertifikat über 127.0.0.1
@@ -2386,7 +2975,7 @@ function renderUserCard() {
   if (user?.open) {
     card.innerHTML = `<div class="avatar" style="background:var(--amber)">!</div>
       <div class="user-meta"><b>Zugang offen</b><span>Ohne Anmeldung – alle dürfen alles</span></div>
-      <a class="icon-btn" href="#/zugang/anmeldung" title="Admin-PIN festlegen" aria-label="Admin-PIN festlegen">
+      <a class="icon-btn" href="#/einstellungen/zugang/anmeldung" title="Admin-PIN festlegen" aria-label="Admin-PIN festlegen">
         <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></a>`
     return
   }
@@ -2406,19 +2995,25 @@ function renderUserCard() {
 // --- Suche in der Seitenleiste (wie in den macOS-Systemeinstellungen) --------------
 
 const SEARCH_ENTRIES = [
-  { label: 'Übersicht', href: '#/', words: 'start multiviews status profil qr handy anmelden' },
-  { label: 'Layouts', href: '#/layouts', words: 'editor kacheln raster trennlinien vorlagen' },
+  { label: 'Übersicht', href: '#/', words: 'start status profil qr handy anmelden' },
+  { label: 'Services', href: '#/services', admin: true, words: 'dienste links dashboard intercom companion portainer glances dns router prediger' },
+  { label: 'Dashboard', href: serviceUrl(findService('dashboard')), words: 'zurück startseite technik dashboard' },
+  { label: 'Multiviews', href: '#/multiviews', words: 'vorschau vollbild ausgabe monitor live' },
+  { label: 'Layouts', href: '#/multiviews/layouts', words: 'multiviews editor kacheln raster trennlinien vorlagen' },
   { label: 'Eingänge', href: '#/eingaenge', admin: true, words: 'kamera capture stream video quellen testbild' },
   { label: 'ATEM', href: '#/einstellungen/atem', admin: true, words: 'einstellungen tally mischer ip' },
   { label: 'ProPresenter', href: '#/einstellungen/propresenter', admin: true, words: 'einstellungen folien stage display beamer nachricht' },
   { label: 'Kesher-Chat', href: '#/einstellungen/kesher', admin: true, words: 'einstellungen intercom chat rolle' },
   { label: 'ChurchTools', href: '#/einstellungen/churchtools', admin: true, words: 'einstellungen ablauf agenda gottesdienst' },
+  { label: 'Raspberry Pis', href: '#/einstellungen/raspberry', admin: true, words: 'einstellungen raspberry pi station kiosk intercom rolle mac fernsteuern' },
   { label: 'Companion', href: '#/einstellungen/companion', admin: true, words: 'einstellungen stream deck tasten' },
   { label: 'Bildschirme am Server', href: '#/einstellungen/bildschirme', admin: true, words: 'einstellungen hdmi monitor anschluss' },
   { label: 'Angemeldete Geräte', href: '#/einstellungen/geraete', admin: true, words: 'einstellungen online ip sitzung abmelden' },
-  { label: 'Rollen', href: '#/zugang/rollen', admin: true, words: 'benutzer rechte sehen bearbeiten licht ton' },
-  { label: 'Anmeldung & Admin-PIN', href: '#/zugang/anmeldung', admin: true, words: 'benutzer pin passwort admin' },
-  { label: 'Anmeldung für alle Dienste', href: '#/zugang/dienste', admin: true, words: 'benutzer tagescode qr feste geräte gateway' },
+  { label: 'Rollen', href: '#/einstellungen/zugang/rollen', admin: true, words: 'benutzer rechte sehen bearbeiten licht ton' },
+  { label: 'Anmeldung & Admin-PIN', href: '#/einstellungen/zugang/anmeldung', admin: true, words: 'benutzer pin passwort admin' },
+  { label: 'Anmeldung für alle Dienste', href: '#/einstellungen/zugang/dienste', admin: true, words: 'benutzer tagescode qr feste geräte gateway' },
+  { label: 'Nachrichten-Links (Ordner, ohne Anmeldung)', href: '#/einstellungen/zugang/nachrichten', admin: true, words: 'ordner beamer stage display bühne meldung qr helfer' },
+  { label: 'Zugangsdaten der Dienste (Portainer, Router)', href: '#/einstellungen/zugang/zugangsdaten', admin: true, words: 'passwort portainer router speedport automatisch anmelden' },
   { label: 'Darstellung', open: 'appearance-dialog', words: 'hintergrund hell dunkel farbe wallpaper theme' },
   { label: 'QR-Codes fürs Handy', open: 'qr-dialog', words: 'handy anmelden scannen' },
 ]
@@ -2491,10 +3086,11 @@ document.addEventListener('keydown', (e) => {
 
 // Gefüllte Symbole im Stil der SF Symbols (weiß auf farbigem Squircle)
 const APP_TILES = [
-  { href: '#/layouts', label: 'Layouts', color: 'blue', icon: '<path fill-rule="evenodd" d="M5.5 3h13A3.5 3.5 0 0 1 22 6.5v11a3.5 3.5 0 0 1-3.5 3.5h-13A3.5 3.5 0 0 1 2 17.5v-11A3.5 3.5 0 0 1 5.5 3Zm-1.5 7v7.5c0 .8.7 1.5 1.5 1.5H9v-9H4Zm7 0v9h7.5c.8 0 1.5-.7 1.5-1.5V10h-9Z"/>' },
+  { href: '#/multiviews', label: 'Multiviews', color: 'indigo', icon: '<path fill-rule="evenodd" d="M5.5 3h13A3.5 3.5 0 0 1 22 6.5v11a3.5 3.5 0 0 1-3.5 3.5h-13A3.5 3.5 0 0 1 2 17.5v-11A3.5 3.5 0 0 1 5.5 3ZM4 6.5V11h7V5H5.5C4.7 5 4 5.7 4 6.5ZM13 5v6h7V6.5c0-.8-.7-1.5-1.5-1.5H13Zm7 8h-7v6h5.5c.8 0 1.5-.7 1.5-1.5V13Zm-9 6v-6H4v4.5c0 .8.7 1.5 1.5 1.5H11Z"/>' },
+  { href: '#/multiviews/layouts', label: 'Layouts', color: 'blue', icon: '<path fill-rule="evenodd" d="M5.5 3h13A3.5 3.5 0 0 1 22 6.5v11a3.5 3.5 0 0 1-3.5 3.5h-13A3.5 3.5 0 0 1 2 17.5v-11A3.5 3.5 0 0 1 5.5 3Zm-1.5 7v7.5c0 .8.7 1.5 1.5 1.5H9v-9H4Zm7 0v9h7.5c.8 0 1.5-.7 1.5-1.5V10h-9Z"/>' },
   { href: '#/eingaenge', label: 'Eingänge', color: 'green', admin: true, icon: '<rect x="1.5" y="5.5" width="14.5" height="13" rx="3.2"/><path d="M17.3 10.1 21 7.6c.6-.4 1.5 0 1.5.8v7.2c0 .8-.9 1.2-1.5.8l-3.7-2.5z"/>' },
   { href: '#/einstellungen', label: 'Einstellungen', color: 'gray', admin: true, icon: '<path fill-rule="evenodd" d="M19.60 12.00 L21.42 13.87 L20.87 15.67 L18.32 16.22 L17.37 17.37 L17.33 19.98 L15.67 20.87 L13.48 19.45 L12.00 19.60 L10.13 21.42 L8.33 20.87 L7.78 18.32 L6.63 17.37 L4.02 17.33 L3.13 15.67 L4.55 13.48 L4.40 12.00 L2.58 10.13 L3.13 8.33 L5.68 7.78 L6.63 6.63 L6.67 4.02 L8.33 3.13 L10.52 4.55 L12.00 4.40 L13.87 2.58 L15.67 3.13 L16.22 5.68 L17.37 6.63 L19.98 6.67 L20.87 8.33 L19.45 10.52Z M15.2 12 a3.2 3.2 0 1 0 -6.4 0 a3.2 3.2 0 1 0 6.4 0Z"/>' },
-  { href: '#/zugang', label: 'Benutzer', color: 'orange', admin: true, icon: '<circle cx="9" cy="7.2" r="3.7"/><path d="M1.8 19.3c0-3.8 3.2-6.4 7.2-6.4s7.2 2.6 7.2 6.4c0 .7-.5 1.2-1.2 1.2H3c-.7 0-1.2-.5-1.2-1.2Z"/><circle cx="17.2" cy="8.3" r="2.9"/><path d="M17.6 12.9c2.7.2 4.6 2.1 4.6 4.9 0 .7-.5 1.2-1.2 1.2h-3.2c.2-.6.3-1.1.3-1.7 0-1.7-.7-3.2-1.8-4.4h1.3Z"/>' },
+  { href: '#/einstellungen/zugang', label: 'Benutzer', color: 'orange', admin: true, icon: '<circle cx="9" cy="7.2" r="3.7"/><path d="M1.8 19.3c0-3.8 3.2-6.4 7.2-6.4s7.2 2.6 7.2 6.4c0 .7-.5 1.2-1.2 1.2H3c-.7 0-1.2-.5-1.2-1.2Z"/><circle cx="17.2" cy="8.3" r="2.9"/><path d="M17.6 12.9c2.7.2 4.6 2.1 4.6 4.9 0 .7-.5 1.2-1.2 1.2h-3.2c.2-.6.3-1.1.3-1.7 0-1.7-.7-3.2-1.8-4.4h1.3Z"/>' },
   { href: '/remote.html', label: 'Handy', color: 'purple', icon: '<path fill-rule="evenodd" d="M8.2 1.5h7.6A3.2 3.2 0 0 1 19 4.7v14.6a3.2 3.2 0 0 1-3.2 3.2H8.2A3.2 3.2 0 0 1 5 19.3V4.7a3.2 3.2 0 0 1 3.2-3.2Zm1.6 17.6a.8.8 0 0 0 0 1.6h4.4a.8.8 0 0 0 0-1.6H9.8Z"/>' },
   { open: 'qr-dialog', label: 'QR-Codes', color: 'teal', icon: '<path fill-rule="evenodd" d="M4 2.5h5A1.5 1.5 0 0 1 10.5 4v5A1.5 1.5 0 0 1 9 10.5H4A1.5 1.5 0 0 1 2.5 9V4A1.5 1.5 0 0 1 4 2.5Zm1.5 3v2h2v-2h-2ZM15 2.5h5A1.5 1.5 0 0 1 21.5 4v5a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 13.5 9V4A1.5 1.5 0 0 1 15 2.5Zm1.5 3v2h2v-2h-2ZM4 13.5h5a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 9 21.5H4A1.5 1.5 0 0 1 2.5 20v-5A1.5 1.5 0 0 1 4 13.5Zm1.5 3v2h2v-2h-2Z"/><rect x="13.5" y="13.5" width="3.4" height="3.4" rx=".8"/><rect x="18.1" y="18.1" width="3.4" height="3.4" rx=".8"/><rect x="18.1" y="13.5" width="3.4" height="3.4" rx=".8"/><rect x="13.5" y="18.1" width="3.4" height="3.4" rx=".8"/>' },
   { open: 'appearance-dialog', label: 'Darstellung', color: 'pink', icon: '<path fill-rule="evenodd" d="M12 2C6.5 2 2 6.2 2 11.5S6.3 21.5 11.3 21.5c1.5 0 2.4-1 2.4-2.2 0-.6-.2-1.1-.6-1.5-.3-.4-.5-.8-.5-1.3 0-1.2 1-2.1 2.2-2.1h2.4c3 0 4.8-2 4.8-4.6C22 5.6 17.5 2 12 2Zm-5.4 9.8a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Zm3.5-4.3a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Zm4.8.3a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Z"/>' },
@@ -2514,8 +3110,8 @@ function renderProfileCard() {
   const outputs = myOutputs()
   const live = outputs.filter((o) => o.layoutId).length
   el.innerHTML = `<div class="glass profile-me">
-      ${user?.open ? avatarHtml({ name: 'M V' }, { cls: 'avatar xl' }) : `<button type="button" class="avatar-btn" data-avatar-pick title="Profilbild ändern" aria-label="Profilbild ändern">${avatarHtml(user, { cls: 'avatar xl' })}<span class="avatar-edit" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span></button>`}
-      <h2>${esc(user?.open ? 'Multiview' : user?.name)}</h2>
+      ${user?.open ? avatarHtml({ name: 'J C' }, { cls: 'avatar xl' }) : `<button type="button" class="avatar-btn" data-avatar-pick title="Profilbild ändern" aria-label="Profilbild ändern">${avatarHtml(user, { cls: 'avatar xl' })}<span class="avatar-edit" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span></button>`}
+      <h2>${esc(user?.open ? 'JMS Control' : user?.name)}</h2>
       <p>${esc(user?.open ? 'Zugang offen' : user?.roleName || '')}${isAdmin() && !user?.open && user?.roleName !== 'Admin' ? ' · Admin' : ''}</p>
       ${user?.open ? '' : `<div class="profile-actions">
         <button type="button" class="btn small" data-avatar-pick>${user?.avatar ? 'Bild ändern' : 'Profilbild hinzufügen'}</button>
@@ -2540,7 +3136,11 @@ loginQrCard.innerHTML = `<img alt="QR-Code zum Anmelden am Handy" width="168" he
   <div class="qr-hero-text">
     <h3>Handy anmelden</h3>
     <p class="muted">Mit der Handy-Kamera scannen – das Handy ist dann gleich angemeldet.</p>
-    <button type="button" class="btn small">Neuer Code</button>
+    <div class="qr-hero-code" hidden>
+      <span>Code für Laptops</span>
+      <output class="day-code-digits"></output>
+    </div>
+    <button type="button" class="btn small">Neuer QR-Code</button>
   </div>`
 let heroQrTimer = null
 async function renewHeroQr() {
@@ -2554,6 +3154,12 @@ async function renewHeroQr() {
       if (!data.ok) throw new Error(data.error)
       img.src = qrUrl(`${publicOrigin(server)}/q/${data.token}`)
       img.style.opacity = ''
+      const code = loginQrCard.querySelector('.qr-hero-code')
+      code.hidden = !data.dayCode
+      if (data.dayCode) {
+        code.querySelector('output').textContent = `${data.dayCode.slice(0, 3)} ${data.dayCode.slice(3)}`
+        code.querySelector('output').setAttribute('aria-label', `Code von heute: ${data.dayCode.split('').join(' ')}`)
+      }
     }
   } catch {
     img.style.opacity = '0.25'
@@ -2600,6 +3206,12 @@ $('#admin-form').addEventListener('submit', async (e) => {
     $('#admin-pin').select()
     return
   }
+  // Wie nach der Anmeldeseite: die neue Anmeldung zur zentralen Adresse bringen, sonst fragen
+  // portainer.local, dns.local usw. (eigene Cookies) wieder nach der Anmeldung
+  const sso = await fetch('/api/sso', { cache: 'no-store' })
+    .then((r) => r.json())
+    .catch(() => null)
+  if (sso?.origin && !sso.central) return location.replace(`/.jms-auth/sso/push?next=${encodeURIComponent(location.pathname + location.hash)}`)
   location.reload()
 })
 $('#admin-dialog').addEventListener('close', () => {
@@ -2654,6 +3266,7 @@ function renderStatusStrip() {
     propresenter: !config.propresenter?.host ? 'off' : pp.connected ? 'ok' : 'bad',
     kesher: chat.state === 'connected' ? 'ok' : 'bad',
     churchtools: ct.state === 'unconfigured' ? 'off' : ct.state === 'connected' ? 'ok' : 'bad',
+    raspberry: config.raspberry?.managed ? 'ok' : 'off',
   }
   for (const [section, state] of Object.entries(dots)) {
     const link = document.querySelector(`[data-section-link="${section}"]`)
@@ -2670,8 +3283,69 @@ const pencilIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><pa
 const copyIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>'
 const trashIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>'
 
+// --- Zugangsdaten der Dienste (Portainer, Router): automatische Anmeldung des Admins ---------------
+
+let serviceCreds = null
+
+async function loadServiceCreds() {
+  const res = await fetch('/api/service-credentials', { cache: 'no-store' }).catch(() => null)
+  if (!res?.ok) return
+  serviceCreds = await res.json()
+  renderServiceCreds()
+}
+
+function renderServiceCreds() {
+  const card = $('#service-creds-card')
+  if (!card || !serviceCreds) return
+  if (card.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return
+  card.innerHTML = `
+    <div class="card-head"><div><h2>Zugangsdaten der Dienste</h2>
+      <p class="muted">Portainer und der Router haben eine eigene Anmeldung. Trägst du die Zugangsdaten hier ein, wirst du dort als Admin automatisch angemeldet – ohne dass du sie noch einmal eintippst. Das gilt nur, wenn du über die zentrale Anmeldung als Admin angemeldet bist (IP-Adresse und .local-Namen).</p></div></div>
+    ${Object.entries(serviceCreds)
+      .map(
+        ([id, c]) => `<form class="pin-form service-cred" data-service="${esc(id)}" autocomplete="off">
+          <div class="field" style="grid-column:1/-1"><span><b>${esc(c.label)}</b> – ${c.set ? 'Zugangsdaten hinterlegt' : 'noch keine Zugangsdaten'}</span></div>
+          ${c.username ? `<label class="field"><span>Benutzername</span><input type="text" name="username" value="${esc(c.user)}" autocomplete="off" required></label>` : ''}
+          <label class="field"><span>${c.username ? 'Passwort' : 'Gerätepasswort'}</span><input type="password" name="password" autocomplete="new-password" placeholder="${c.set ? 'neu eingeben zum Ändern' : ''}" required></label>
+          <div class="btn-row" style="grid-column:1/-1"><button class="btn primary" type="submit">Speichern</button>
+            ${c.set ? '<button class="btn danger" type="button" data-cred-remove>Entfernen</button>' : ''}</div>
+          <p class="form-error" data-cred-error></p>
+        </form>`,
+      )
+      .join('')}
+    <p class="muted" style="font-size:12.5px;margin-top:10px">Die Passwörter liegen auf dem Server im Datenordner von JMS Control und werden nur an den angemeldeten Admin ausgeliefert.</p>`
+}
+
+$('#service-creds-card')?.addEventListener('submit', async (e) => {
+  const form = e.target.closest('.service-cred')
+  if (!form) return
+  e.preventDefault()
+  const data = new FormData(form)
+  const error = form.querySelector('[data-cred-error]')
+  const res = await fetch(`/api/service-credentials/${encodeURIComponent(form.dataset.service)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: data.get('username') || '', password: data.get('password') }),
+  }).catch(() => null)
+  const body = await res?.json().catch(() => ({}))
+  if (!res?.ok) return (error.textContent = body?.error || 'Speichern fehlgeschlagen')
+  toast('Zugangsdaten gespeichert')
+  await loadServiceCreds()
+})
+
+$('#service-creds-card')?.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-cred-remove]')
+  if (!btn) return
+  const form = btn.closest('.service-cred')
+  if (!confirm('Gespeicherte Zugangsdaten entfernen?')) return
+  await fetch(`/api/service-credentials/${encodeURIComponent(form.dataset.service)}`, { method: 'DELETE' }).catch(() => null)
+  toast('Zugangsdaten entfernt')
+  await loadServiceCreds()
+})
+
 function renderAccess() {
-  if (!config || !isAdmin() || page !== 'zugang') return
+  if (!config || !isAdmin() || page !== 'einstellungen' || settingsSection !== 'zugang') return
+  if (!serviceCreds) loadServiceCreds()
   // Nicht neu aufbauen, während jemand eine PIN tippt
   if ($('#access-pin-card').contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return
 
@@ -2706,11 +3380,11 @@ function renderAccess() {
       <div class="btn-row" style="grid-column:1/-1"><button class="btn primary" type="submit">${
         enabled ? 'Übernehmen' : source === 'kesher' ? 'Mit Kesher-PIN einschalten' : 'PIN festlegen und einschalten'
       }</button>
-        ${enabled ? '<button class="btn danger" type="button" id="pin-remove">Anmeldung ausschalten</button>' : ''}</div>
+        </div>
     </form>
     <p class="muted" style="font-size:12.5px;margin-top:10px">${
       source === 'kesher'
-        ? 'Der Multiview speichert die PIN nicht – er fragt bei jeder Admin-Anmeldung Kesher. Ändert sich die PIN in Kesher, gilt sie hier sofort mit. Ist Kesher nicht erreichbar, geht die Admin-Anmeldung so lange nicht.'
+        ? 'JMS Control speichert die PIN nicht – es fragt bei jeder Admin-Anmeldung Kesher. Ändert sich die PIN in Kesher, gilt sie hier sofort mit. Ist Kesher nicht erreichbar, geht die Admin-Anmeldung so lange nicht.'
         : 'Die PIN wird nur als Hash auf dem Server gespeichert.'
     }</p>
     <p class="form-error" id="pin-error"></p>`
@@ -2722,7 +3396,7 @@ function renderAccess() {
     $('#access-roles').innerHTML = !roles.length
       ? `<p class="muted">Keine Rollen – ist Kesher verbunden? (Einstellungen → Kesher-Chat)</p>`
       : `<div class="table-wrap"><table class="table role-table">
-          <thead><tr><th>Rolle</th><th>Hört in Kesher (Chat)</th><th>Multiviews <span class="muted" style="font-weight:500">– antippen: aus → sehen → bearbeiten</span></th><th>Neue Layouts anlegen</th></tr></thead>
+          <thead><tr><th>Rolle</th><th>Hört in Kesher (Chat)</th><th>Multiviews <span class="muted" style="font-weight:500">– antippen: aus → sehen → bearbeiten</span></th><th>Neue Layouts anlegen</th><th>Folien steuern</th></tr></thead>
           <tbody>${roles
             .map((r) => {
               const rights = roleRights(config, { roleId: r.id })
@@ -2746,6 +3420,7 @@ function renderAccess() {
                     .join('') || '<span class="muted">Noch keine Multiviews</span>'
                 }</div></td>
                 <td><label class="switch"><input type="checkbox" data-role-edit ${rights.editLayouts ? 'checked' : ''}><span class="switch-track"></span><span class="muted">einrichten</span></label></td>
+                <td><label class="switch"><input type="checkbox" data-role-slides ${rights.controlSlides ? 'checked' : ''}><span class="switch-track"></span><span class="muted">ProPresenter</span></label></td>
               </tr>`
             })
             .join('')}</tbody></table></div>
@@ -2792,13 +3467,15 @@ function suggestRights() {
   toast(added ? `${added} Freigabe(n) ergänzt` : 'Keine passenden Namen gefunden')
 }
 
-$('#page-zugang').addEventListener('change', (e) => {
+$('#settings-access-content').addEventListener('change', (e) => {
   const row = e.target.closest('tr[data-role]')
   if (!row) return
   const roleId = row.dataset.role
-  const current = config.access.roles[roleId] ?? { outputs: [], editLayouts: true }
+  const current = config.access.roles[roleId] ?? { outputs: [], editLayouts: false, controlSlides: false }
   if ('roleEdit' in e.target.dataset) {
     current.editLayouts = e.target.checked
+  } else if ('roleSlides' in e.target.dataset) {
+    current.controlSlides = e.target.checked
   } else return
   config.access.roles[roleId] = current
   accessKey = JSON.stringify([kesherRoles(), config.outputs.map((o) => [o.id, o.name]), config.access.roles])
@@ -2806,7 +3483,7 @@ $('#page-zugang').addEventListener('change', (e) => {
 })
 
 // Multiview-Recht einer Rolle weiterschalten: aus → sehen → bearbeiten → aus
-$('#page-zugang').addEventListener('click', (e) => {
+$('#settings-access-content').addEventListener('click', (e) => {
   const chip = e.target.closest('[data-role-output]')
   const row = chip?.closest('tr[data-role]')
   if (!row) return
@@ -2884,7 +3561,7 @@ $('#role-form').addEventListener('submit', async (e) => {
   }
 })
 
-$('#page-zugang').addEventListener('click', async (e) => {
+$('#settings-access-content').addEventListener('click', async (e) => {
   const button = e.target.closest('[data-role-rename], [data-role-copy], [data-role-delete]')
   const roleId = button?.closest('tr[data-role]')?.dataset.role
   if (!roleId) return
@@ -2900,7 +3577,7 @@ $('#page-zugang').addEventListener('click', async (e) => {
   }
 })
 
-$('#page-zugang').addEventListener('submit', async (e) => {
+$('#settings-access-content').addEventListener('submit', async (e) => {
   if (e.target.id !== 'pin-form') return
   e.preventDefault()
   const form = new FormData(e.target)
@@ -2920,26 +3597,13 @@ $('#page-zugang').addEventListener('submit', async (e) => {
   setTimeout(() => location.reload(), 900)
 })
 
-$('#page-zugang').addEventListener('click', async (e) => {
+$('#settings-access-content').addEventListener('click', async (e) => {
   const choice = e.target.closest('[data-pin-source]')
   if (choice) {
     pinChoice = choice.dataset.pinSource
     return renderAccess()
   }
   if (e.target.closest('#roles-suggest')) return suggestRights()
-  if (e.target.closest('#pin-remove')) {
-    const pin = $('#pin-form [name="currentPin"]').value
-    if (!pin) return ($('#pin-error').textContent = 'Zum Ausschalten die bisherige PIN eingeben.')
-    if (!confirm('Anmeldung ausschalten? Danach kann wieder jeder im Netzwerk alles ändern.')) return
-    const res = await fetch('/api/access/pin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ off: true, currentPin: pin }),
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok || !data.ok) return ($('#pin-error').textContent = data.error || `Fehler (HTTP ${res.status})`)
-    location.reload()
-  }
 })
 
 // Einstellungen > Angemeldete Geräte
@@ -2949,9 +3613,9 @@ $('#set-sessions').addEventListener('click', async (e) => {
     await fetch(`/api/access/sessions/${encodeURIComponent(end.dataset.endSession)}`, { method: 'DELETE' })
     loadSessions()
   }
-  if (e.target.closest('#sessions-refresh')) loadSessions()
 })
-// Online/offline ändert sich laufend – solange die Liste offen ist, alle 15 s neu laden
+// Neu kommt per sessions_changed. „Zuletzt aktiv“ und das Ende von „aktiv“ ohne offene Seite
+// meldet niemand – solange die Liste offen ist, darum zusätzlich alle 15 s neu laden
 setInterval(() => {
   if (document.visibilityState === 'visible' && !$('#set-sessions').hidden && page === 'einstellungen') loadSessions()
 }, 15_000)
@@ -2965,14 +3629,15 @@ async function loadSessions() {
   }
   try {
     const all = await fetch('/api/access/sessions').then((r) => r.json())
-    // Nur Geräte, die gerade online sind (eine Seite offen haben)
-    const list = all.filter((s) => s.live || s.self)
+    // Nur Geräte, die gerade online sind (Multiview oder Kesher offen, oder eben noch aktiv)
+    const list = all.filter((s) => s.online || s.self)
+    const where = (s) => [s.live && 'JMS Control', s.kesher && 'Intercom'].filter(Boolean).join(' + ')
     const when = (ms) => new Date(ms).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     box.innerHTML = `<div class="table-wrap"><table class="table">
       <thead><tr><th>Name</th><th>Rolle</th><th>IP-Adresse</th><th>Zuletzt aktiv</th><th></th></tr></thead>
       <tbody>${list
         .map(
-          (s) => `<tr><td class="session-who">${avatarHtml(s, { cls: 'avatar sm' })}<b>${esc(s.name)}</b>${s.self ? ' <span class="badge accent">dieses Gerät</span>' : ''}${s.live ? ' <span class="pill ok" style="height:22px">online</span>' : ''}</td>
+          (s) => `<tr><td class="session-who">${avatarHtml(s, { cls: 'avatar sm' })}<b>${esc(s.name)}</b>${s.self ? ' <span class="badge accent">dieses Gerät</span>' : ''}${s.online ? ` <span class="pill ok" style="height:22px">online</span>${where(s) ? ` <small class="muted">${where(s)}</small>` : ''}` : ''}</td>
             <td>${esc(s.roleName)}</td><td>${s.ip ? `<code class="ip">${esc(s.ip)}</code>` : '<span class="muted">–</span>'}</td><td class="muted">${esc(when(s.seen))}</td>
             <td style="text-align:right">${s.self ? '' : `<button class="btn small danger" data-end-session="${esc(s.id)}">Abmelden</button>`}</td></tr>`,
         )
@@ -2985,10 +3650,20 @@ async function loadSessions() {
 // --- Anmeldung für alle Dienste: Tagescode und feste Geräte -------------------
 
 let gatewayInfo = null
-const removeIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>'
+let gatewayBusy = false
+let gatewayDirty = false
+const machineServiceLabels = { multiview: 'JMS Control', kesher: 'Intercom (Kesher)', dashboard: 'Dashboard' }
+const machineCapabilityLabels = { display: 'Anzeige', 'day-code': 'Tagescode anzeigen', 'pi-config': 'Eigene Pi-Konfiguration',
+  heartbeat: 'Stationsstatus melden', control: 'Technik steuern', 'pi-manage': 'Pis verwalten', companion: 'Companion-Anbindung',
+  satellite: 'Stream-Deck-Satellite', 'chat-monitor': 'Chat-Monitor', 'image-stream': 'Bildstream' }
+
+function machineExpiryValue(expiresAt = Date.now() + 365 * 24 * 60 * 60 * 1000) {
+  const expiry = new Date(expiresAt)
+  return new Date(expiry.getTime() - expiry.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
+}
 
 async function loadGateway() {
-  if (!isAdmin() || page !== 'zugang') return
+  if (!isAdmin() || page !== 'einstellungen' || settingsSection !== 'zugang' || gatewayBusy) return
   try {
     const res = await fetch('/api/access/gateway', { cache: 'no-store' })
     gatewayInfo = res.ok ? await res.json() : null
@@ -3001,32 +3676,76 @@ async function loadGateway() {
 setInterval(() => document.visibilityState === 'visible' && loadGateway(), 60_000)
 
 /** Adresse im QR-Code: öffnet die Startseite (Dashboard) und übernimmt dabei den Code. */
-const gatewayCodeUrl = (info) => `${info.startUrl || publicOrigin(server)}/.jms-auth/code?c=${info.code}`
+const gatewayCodeUrl = (info) => {
+  const base = (info.startUrl || publicOrigin(server)).replace(/\/+$/, '')
+  return `${base}/.jms-auth/code?c=${encodeURIComponent(info.code)}&next=${encodeURIComponent('/remote.html')}`
+}
 
-function exemptRow(entry = { network: '', label: '' }) {
-  return `<div class="exempt-row">
-    <input type="text" name="network" value="${esc(entry.network)}" placeholder="192.168.0.50" aria-label="Adresse oder Bereich" inputmode="decimal">
-    <input type="text" name="label" value="${esc(entry.label)}" placeholder="z. B. Station Licht" aria-label="Bezeichnung">
-    <button class="icon-btn" type="button" data-exempt-remove aria-label="Entfernen" title="Entfernen">${removeIcon}</button>
+function machineRow(machine) {
+  const status = machine.revokedAt ? 'Widerrufen' : machine.active ? 'Aktiv' : 'Abgelaufen'
+  const role = kesherRoles().find((entry) => entry.id === machine.roleId)?.name || machine.roleId || 'Keine feste Rolle'
+  return `<div class="pi-item">
+    <div class="pi-item-head"><h4>${esc(machine.name)}</h4><span class="pill ${machine.active ? 'ok' : 'bad'}">${status}</span>
+      <span class="pi-spacer"></span>${machine.active ? `<button class="btn small danger" type="button" data-machine-revoke="${esc(machine.id)}">Widerrufen</button>` : ''}</div>
+    <div class="pi-grid">
+      <div class="field"><span>Betriebsart</span><small>${machine.mode === 'station' ? 'Technikstation' : 'Nur ohne Tagescode – Rollenlogin bleibt nötig'}</small></div>
+      <div class="field"><span>Dienste / Rolle</span><small>${esc((machine.services || []).map((service) => machineServiceLabels[service] || service).join(', ') || 'Keine Stationsdienste')} · ${esc(role)}</small></div>
+      <div class="field"><span>Gültig bis</span><small>${esc(new Date(machine.expiresAt).toLocaleString('de-DE'))}</small></div>
+    </div>
+    <details class="disclosure inner"><summary>Berechtigungen und Zertifikat</summary>
+      <p class="muted">${esc((machine.capabilities || []).map((capability) => machineCapabilityLabels[capability] || capability).join(', ') || 'Keine Stationsrechte')}</p>
+      <p class="muted">Pi-Zuordnung: ${esc(machine.raspberryClientId || 'Keine')} · Geräte-ID: ${esc(machine.deviceId || 'Keine')}</p>
+      <label class="field"><span>SHA-256-Fingerprint</span><input readonly value="${esc(machine.fingerprint || 'Nur serverseitiger Dienstschlüssel')}" aria-label="Zertifikatsfingerprint von ${esc(machine.name)}"></label>
+      ${machine.fingerprint && !machine.revokedAt ? `<form class="gateway-form" data-machine-rotate="${esc(machine.id)}" autocomplete="off">
+        <label class="field"><span>Neuer SHA-256-Fingerprint *</span><input name="fingerprint" required maxlength="95" spellcheck="false" autocapitalize="off" placeholder="64 Hex-Zeichen oder durch Doppelpunkte getrennt"></label>
+        <label class="field"><span>Neues Ablaufdatum *</span><input name="expiresAt" type="datetime-local" required value="${machineExpiryValue()}"></label>
+        <small class="muted">Zuerst ein neues Zertifikat ausstellen. Der alte Gerätenachweis und gebundene Anmeldungen werden sofort ungültig.</small>
+        <div class="btn-row"><button class="btn small" type="submit">Zertifikat ersetzen</button></div><p class="form-error" role="alert"></p>
+      </form>` : ''}
+    </details>
   </div>`
+}
+
+function machineCreateForm() {
+  return `<details class="disclosure inner"><summary>Gerät mit Zertifikat registrieren</summary>
+    <form id="machine-form" class="gateway-form" autocomplete="off">
+      <div class="pi-grid">
+        <label class="field"><span>Gerätename *</span><input name="name" required maxlength="80" placeholder="z. B. Regie-Tablet"></label>
+        <label class="field"><span>Betriebsart *</span><select name="mode"><option value="code-bypass">Nur ohne Tagescode</option><option value="station">Technikstation</option></select></label>
+        <label class="field"><span>Gültig bis *</span><input name="expiresAt" type="datetime-local" required value="${machineExpiryValue()}"></label>
+      </div>
+      <label class="field"><span>SHA-256-Fingerprint des ausgestellten Gerätezertifikats *</span><input name="fingerprint" required maxlength="95" spellcheck="false" autocapitalize="off" placeholder="64 Hex-Zeichen oder durch Doppelpunkte getrennt">
+        <small class="muted">Das Zertifikat muss von der Geräte-CA ausgestellt und mit privatem Schlüssel auf dem Gerät installiert sein. Ein Fingerprint allein erteilt keinem fremden Zertifikat Zugriff. IP und MAC spielen für die Anmeldung keine Rolle.</small></label>
+      <details class="disclosure inner"><summary>Stationsdienste und Berechtigungen</summary>
+        <p class="muted">Nur für Technikstationen. So wenig Rechte wie nötig freigeben; Admin-Dienste verlangen weiterhin eine persönliche Admin-Anmeldung.</p>
+        <div class="pi-grid" data-station-fields>
+          <div class="field"><span>Dienste</span>${Object.entries(machineServiceLabels).map(([value, label]) => `<label class="check"><input type="checkbox" name="services" value="${value}" disabled>${label}</label>`).join('')}</div>
+          <div class="field"><span>Berechtigungen</span>${Object.entries(machineCapabilityLabels).map(([value, label]) => `<label class="check"><input type="checkbox" name="capabilities" value="${value}" disabled>${label}</label>`).join('')}</div>
+          <label class="field"><span>Feste Intercom-Rolle</span><select name="roleId" disabled><option value="">Keine</option>${kesherRoles().filter((role) => role.id !== 'admin').map((role) => `<option value="${esc(role.id)}">${esc(role.name)}</option>`).join('')}</select></label>
+          <label class="field"><span>Vorhandener Raspberry Pi</span><select name="raspberryClientId" disabled><option value="">Keiner</option>${(config?.raspberry?.clients || []).map((client) => `<option value="${esc(client.id)}" data-device-id="${esc(piDeviceId(client))}" data-role-id="${esc(client.roleId)}">${esc(client.name || client.id)}</option>`).join('')}</select></label>
+          <label class="field"><span>Geräte-ID</span><input name="deviceId" disabled maxlength="128" placeholder="z. B. kamera-1-pi" spellcheck="false"></label>
+        </div>
+      </details>
+      <div class="btn-row"><button class="btn primary" type="submit">Gerät registrieren</button></div><p class="form-error" role="alert"></p>
+    </form>
+  </details>`
 }
 
 function renderGateway() {
   const card = $('#access-gateway-card')
-  if (!isAdmin() || page !== 'zugang') return
+  if (!isAdmin() || page !== 'einstellungen' || settingsSection !== 'zugang') return
   // Nicht neu aufbauen, während jemand tippt
   const active = document.activeElement
-  if (card.contains(active) && active.tagName === 'INPUT' && active.type !== 'checkbox') return
+  if (gatewayBusy || gatewayDirty || (card.contains(active) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(active.tagName))) return
   const info = gatewayInfo
   const head = `<div class="card-head gateway-head"><div><h2>Anmeldung für alle Dienste</h2>
-    <p class="muted">Intercom (Kesher), Dashboard, Companion, Portainer und Glances fragen dann zuerst nach Name und Rolle – einmal für alle, wie hier im Multiview. Geräte im WLAN brauchen dazu einmal am Tag den Code. Companion, Portainer und Glances sind nur für den Admin. Der Multiview selbst bleibt ohne Code erreichbar.</p></div>`
+    <p class="muted">Intercom (Kesher), Dashboard und JMS Control verwenden dieselbe Anmeldung und Gerätefreigabe. Companion, Portainer und Glances sind nur für den Admin. Admins können sich mit ihrer PIN ohne Tagescode anmelden. Alle persönlichen Sitzungen enden spätestens um 05:00 Uhr deutscher Zeit.</p></div>`
   if (!info) {
     card.innerHTML = `${head}</div><p class="muted">Konnte die Einstellungen nicht laden.</p>`
     return
   }
   const pinReady = me.access?.enabled
   const digits = `${info.code.slice(0, 3)} ${info.code.slice(3)}`
-  const exempt = info.exempt.length ? info.exempt : []
   card.innerHTML = `${head}
       <label class="switch"><input type="checkbox" id="gateway-enabled" ${info.enabled ? 'checked' : ''} ${pinReady ? '' : 'disabled'}><span class="switch-track"></span><span>${info.enabled ? 'Eingeschaltet' : 'Ausgeschaltet'}</span></label>
     </div>
@@ -3040,38 +3759,23 @@ function renderGateway() {
       <div class="day-code-info">
         <span class="field"><span>Code für Laptops</span></span>
         <output class="day-code-digits" aria-label="Code von heute: ${esc(info.code.split('').join(' '))}">${esc(digits)}</output>
-        <p class="muted">Neu um Mitternacht. Wer ihn heute eingegeben hat, bleibt bis morgen 5 Uhr freigeschaltet.
+        <p class="muted">Neu um Mitternacht. Die Freigabe endet um 05:00 Uhr am nächsten Morgen; zwischen Mitternacht und 05:00 Uhr noch am selben Morgen.
           <b>${info.devicesToday}</b> ${info.devicesToday === 1 ? 'Gerät ist' : 'Geräte sind'} gerade freigeschaltet.</p>
         <button class="btn small" type="button" id="gateway-renew">Neuen Code erzeugen</button>
-        <div class="day-qr-monitor">
-          <label class="check"><input type="checkbox" data-dayqr="show" ${config?.dayQr?.show !== false ? 'checked' : ''}> Klein auf den Monitoren zeigen</label>
-          <select data-dayqr="corner" aria-label="Ecke" ${config?.dayQr?.show === false ? 'disabled' : ''}>
-            ${[['br', 'unten rechts'], ['bl', 'unten links'], ['tr', 'oben rechts'], ['tl', 'oben links']]
-              .map(([v, l]) => `<option value="${v}" ${(config?.dayQr?.corner || 'br') === v ? 'selected' : ''}>${l}</option>`)
-              .join('')}
-          </select>
-          <select data-dayqr="size" aria-label="Größe" ${config?.dayQr?.show === false ? 'disabled' : ''}>
-            ${[['s', 'klein'], ['m', 'mittel'], ['l', 'groß']]
-              .map(([v, l]) => `<option value="${v}" ${(config?.dayQr?.size || 'm') === v ? 'selected' : ''}>${l}</option>`)
-              .join('')}
-          </select>
-          <small class="muted">Immer der aktuelle Code – nur auf den Monitoren am Server und festen Geräten, nie in der Vorschau.</small>
-        </div>
       </div>
     </div>
     <form id="gateway-form" class="gateway-form" autocomplete="off">
       <label class="field"><span>Startseite nach dem Scannen</span>
         <input type="url" name="startUrl" value="${esc(info.startUrl)}" placeholder="${esc(publicOrigin(server))}">
-        <small class="muted">Am besten das Dashboard, z. B. https://192.168.0.21:3000. Leer = dieser Multiview.</small>
+        <small class="muted">Das ist die Basisadresse des JMS-Control-Servers. Nach dem Scan öffnet sich die Handyansicht.</small>
       </label>
-      <div class="field"><span>Feste Geräte ohne Code</span>
-        <small class="muted">Stationen, Raspberry Pis, Kesher-App, Rechner im LAN: eine Adresse (192.168.0.50) oder ein Bereich (192.168.0.0/24). Sie kommen ohne Code und Anmeldung an Intercom und Dashboard, an die Admin-Dienste nur mit Admin-Anmeldung. Der Server selbst ist immer frei.</small>
-        <div class="exempt-list" id="exempt-list">${exempt.map(exemptRow).join('')}</div>
-        <div><button class="btn small" type="button" id="exempt-add">Gerät hinzufügen</button></div>
-      </div>
       <div class="btn-row"><button class="btn primary" type="submit">Speichern</button></div>
       <p class="form-error" id="gateway-error" role="alert"></p>
-    </form>`
+    </form>
+    <div class="section-head"><div><h3>Registrierte Geräte</h3><p class="muted">Zertifikate ersetzen alle IP-Ausnahmen. Ein Widerruf sperrt das Gerät und beendet seine gebundenen Verbindungen. Dienstschlüssel werden ausschließlich direkt auf dem Server eingerichtet.</p></div></div>
+    <p class="form-error" id="machine-list-error" role="alert"></p>
+    <div class="pi-list">${info.machines?.length ? info.machines.map(machineRow).join('') : '<p class="muted">Noch keine Geräte registriert. Stelle ein Gerätezertifikat aus und registriere anschließend seinen Fingerprint.</p>'}</div>
+    ${machineCreateForm()}`
 }
 
 async function saveGateway(changes) {
@@ -3092,7 +3796,7 @@ $('#access-gateway-card').addEventListener('change', async (e) => {
   if (
     on &&
     !confirm(
-      'Anmeldung für alle Dienste einschalten?\n\nDanach brauchen alle Geräte, die nicht unter „Feste Geräte ohne Code“ stehen, den Tagescode – auch Raspberry Pis, Stationen und die Kesher-App. Diese vorher eintragen.',
+      'Anmeldung für alle Dienste einschalten?\n\nGeräte ohne registrierten kryptografischen Nachweis brauchen den Tagescode und eine Anmeldung. Technikstationen vorher mit gültigem Zertifikat einrichten. Admins können sich weiterhin mit ihrer PIN anmelden.',
     )
   ) {
     e.target.checked = false
@@ -3108,23 +3812,62 @@ $('#access-gateway-card').addEventListener('change', async (e) => {
   renderGateway()
 })
 
-// Tages-QR-Code auf den Monitoren: normale Einstellung (config.dayQr)
+// Änderungen in der Geräteverwaltung
 $('#access-gateway-card').addEventListener('change', (e) => {
-  const key = e.target.dataset.dayqr
-  if (!key) return
-  config.dayQr = { show: true, corner: 'br', size: 'm', ...config.dayQr, [key]: key === 'show' ? e.target.checked : e.target.value }
-  changed(0)
-  renderGateway()
-})
-
-$('#access-gateway-card').addEventListener('click', async (e) => {
-  if (e.target.closest('#exempt-add')) {
-    $('#exempt-list').insertAdjacentHTML('beforeend', exemptRow())
-    $('#exempt-list .exempt-row:last-child input').focus()
+  if (e.target.closest('form')) gatewayDirty = true
+  if (e.target.name === 'mode' && e.target.closest('#machine-form')) {
+    const station = e.target.value === 'station'
+    for (const input of $('#machine-form').querySelectorAll('[data-station-fields] input, [data-station-fields] select')) input.disabled = !station
     return
   }
-  const remove = e.target.closest('[data-exempt-remove]')
-  if (remove) return remove.closest('.exempt-row').remove()
+  if (e.target.name === 'raspberryClientId' && e.target.closest('#machine-form')) {
+    const selected = e.target.selectedOptions[0]
+    const form = e.target.form
+    form.elements.deviceId.value = selected?.dataset.deviceId || ''
+    form.elements.roleId.value = selected?.dataset.roleId || ''
+    return
+  }
+
+})
+
+$('#access-gateway-card').addEventListener('input', (e) => {
+  if (e.target.closest('form')) gatewayDirty = true
+})
+
+async function changeRegisteredMachine(suffix, method, body) {
+  const res = await fetch('/api/access/machines' + suffix, {
+    method, headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  }).catch(() => null)
+  const { ok, error, machine } = (await res?.json().catch(() => ({}))) || {}
+  if (!res?.ok || !ok) throw new Error(error || 'Geräteverwaltung nicht erreichbar')
+  return machine
+}
+
+$('#access-gateway-card').addEventListener('click', async (e) => {
+  const revoke = e.target.closest('[data-machine-revoke]')
+  if (revoke) {
+    if (gatewayBusy) return
+    const machine = gatewayInfo?.machines?.find((entry) => entry.id === revoke.dataset.machineRevoke)
+    if (!machine || !confirm(`Gerät „${machine.name}“ widerrufen?\n\nSein Zertifikat, Dienstschlüssel und gebundene Anmeldungen werden sofort gesperrt. Laufende Verbindungen werden beendet.`)) return
+    gatewayBusy = true
+    revoke.disabled = true
+    $('#machine-list-error').textContent = ''
+    try {
+      await changeRegisteredMachine('/' + encodeURIComponent(machine.id), 'DELETE')
+      gatewayDirty = false
+      document.activeElement?.blur()
+      toast('Gerät widerrufen')
+    } catch (error) {
+      $('#machine-list-error').textContent = error.message
+      return
+    } finally {
+      gatewayBusy = false
+      revoke.disabled = false
+    }
+    await loadGateway()
+    return
+  }
   if (e.target.closest('#gateway-renew')) {
     if (!confirm('Neuen Code erzeugen? Alle Geräte, die heute schon freigeschaltet sind, müssen den neuen Code eingeben.')) return
     const res = await fetch('/api/access/code/renew', { method: 'POST' }).catch(() => null)
@@ -3135,20 +3878,53 @@ $('#access-gateway-card').addEventListener('click', async (e) => {
 })
 
 $('#access-gateway-card').addEventListener('submit', async (e) => {
-  if (e.target.id !== 'gateway-form') return
-  e.preventDefault()
   const form = e.target
-  const exempt = [...form.querySelectorAll('.exempt-row')]
-    .map((row) => ({ network: row.querySelector('[name="network"]').value.trim(), label: row.querySelector('[name="label"]').value.trim() }))
-    .filter((entry) => entry.network)
+  if (form.id !== 'gateway-form' && form.id !== 'machine-form' && !form.dataset.machineRotate) return
+  e.preventDefault()
+  if (gatewayBusy) return
+  const errorOutput = form.querySelector('.form-error')
+  errorOutput.textContent = ''
+  const button = form.querySelector('button[type="submit"]')
+  const previousLabel = button.textContent
+  let body
   try {
-    await saveGateway({ exempt, startUrl: form.startUrl.value.trim() })
+    if (form.id !== 'gateway-form') {
+      const fingerprint = form.elements.fingerprint.value.trim().replace(/:/g, '').toLowerCase()
+      const expiresAt = new Date(form.elements.expiresAt.value).getTime()
+      if (!/^[a-f0-9]{64}$/.test(fingerprint)) throw new Error('Der SHA-256-Fingerprint muss 64 Hex-Zeichen enthalten.')
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) throw new Error('Bitte ein gültiges Ablaufdatum in der Zukunft wählen.')
+      body = { fingerprint, expiresAt }
+      if (form.id === 'machine-form') {
+        const station = form.elements.mode.value === 'station'
+        body = { ...body, name: form.elements.name.value.trim(), mode: form.elements.mode.value,
+          services: station ? [...form.querySelectorAll('[name="services"]:checked')].map((input) => input.value) : [],
+          capabilities: station ? [...form.querySelectorAll('[name="capabilities"]:checked')].map((input) => input.value) : [],
+          roleId: station ? form.elements.roleId.value : '', raspberryClientId: station ? form.elements.raspberryClientId.value : '',
+          deviceId: station ? form.elements.deviceId.value.trim() : '' }
+      } else {
+        const machine = gatewayInfo?.machines?.find((entry) => entry.id === form.dataset.machineRotate)
+        if (!machine) throw new Error('Gerät nicht mehr vorhanden. Bitte die Seite neu laden.')
+        if (fingerprint === machine.fingerprint) throw new Error('Bitte den Fingerprint eines neuen Zertifikats eingeben.')
+        if (!confirm(`Zertifikat von „${machine.name}“ ersetzen?\n\nDer alte Gerätenachweis und gebundene Sitzungen werden sofort ungültig. Das neue Zertifikat muss anschließend auf dem Gerät verwendet werden.`)) return
+      }
+    }
+    gatewayBusy = true
+    button.disabled = true
+    button.textContent = 'Wird gespeichert …'
+    if (form.id === 'gateway-form') await saveGateway({ startUrl: form.elements.startUrl.value.trim() })
+    else await changeRegisteredMachine(form.id === 'machine-form' ? '' : '/' + encodeURIComponent(form.dataset.machineRotate) + '/rotate', 'POST', body)
+    gatewayDirty = false
     document.activeElement?.blur()
-    renderGateway()
-    toast('Gespeichert')
+    toast(form.id === 'machine-form' ? 'Gerät registriert' : form.dataset.machineRotate ? 'Zertifikat ersetzt' : 'Gespeichert')
   } catch (err) {
-    $('#gateway-error').textContent = err.message
+    errorOutput.textContent = err.message
+    return
+  } finally {
+    gatewayBusy = false
+    button.disabled = false
+    button.textContent = previousLabel
   }
+  await loadGateway()
 })
 
 // --- Darstellung, QR-Codes, Menü ---------------------------------------------
@@ -3239,3 +4015,113 @@ async function start() {
 }
 
 start()
+
+// ---------------------------------------------------------------------------
+// Nachrichten-Links: Ordner & Co. schicken ohne Anmeldung eine Meldung auf Beamer oder Stage
+// Display (nachricht.html, Server: message-links.js). Der Admin legt je Gruppe einen Link an.
+// ---------------------------------------------------------------------------
+let messageLinks = null
+const messageLinkUrl = (link) => `${publicOrigin(server)}/nachricht.html?k=${encodeURIComponent(link.token)}`
+
+async function loadMessageLinks() {
+  if (!isAdmin()) return
+  try {
+    const res = await fetch('/api/message-links', { cache: 'no-store' })
+    const data = await res.json()
+    messageLinks = data.ok ? data.links : []
+  } catch {
+    messageLinks = []
+  }
+  renderMessageLinks()
+}
+
+function renderMessageLinks() {
+  const card = $('#message-links-card')
+  // Nicht neu aufbauen, während jemand einen Namen ändert
+  if (card.contains(document.activeElement) && document.activeElement.matches('[data-link-name]')) return
+  const when = (t) => (t ? new Date(t).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : 'noch nie')
+  const rows = (messageLinks ?? [])
+    .map(
+      (l) => `<div class="msg-link ${l.enabled ? '' : 'off'}" data-link="${esc(l.id)}">
+        <a class="qr-frame msg-link-qr" href="${esc(qrUrl(messageLinkUrl(l)))}" target="_blank" rel="noopener" title="QR-Code groß öffnen (zum Drucken)">
+          <img src="${esc(qrUrl(messageLinkUrl(l)))}" alt="QR-Code für ${esc(l.name)}" width="112" height="112">
+        </a>
+        <div class="msg-link-body">
+          <div class="msg-link-head">
+            <input type="text" data-link-name value="${esc(l.name)}" maxlength="40" aria-label="Name des Links">
+            <label class="switch"><input type="checkbox" data-link-field="enabled" ${l.enabled ? 'checked' : ''}><span class="switch-track"></span><span>${l.enabled ? 'Aktiv' : 'Gesperrt'}</span></label>
+          </div>
+          <div class="btn-row">
+            <label class="check"><input type="checkbox" data-link-field="beamer" ${l.beamer ? 'checked' : ''}> Beamer (Freigabe durch ProPresenter)</label>
+            <label class="check"><input type="checkbox" data-link-field="stage" ${l.stage ? 'checked' : ''}> Stage Display (sofort)</label>
+          </div>
+          <p class="muted small">${l.used || 0}× benutzt · zuletzt ${esc(when(l.lastUsed))}</p>
+          <div class="btn-row">
+            <button class="btn small" type="button" data-link-copy>Link kopieren</button>
+            <a class="btn small" href="${esc(messageLinkUrl(l))}" target="_blank" rel="noopener">Öffnen</a>
+            <button class="btn small" type="button" data-link-renew title="Der alte Link und gedruckte QR-Codes gelten dann nicht mehr">Neuen Link erzeugen</button>
+            <button class="btn small danger" type="button" data-link-remove>Löschen</button>
+          </div>
+        </div>
+      </div>`,
+    )
+    .join('')
+  card.innerHTML = `<div class="card-head">
+      <div>
+        <h2>Nachrichten-Links</h2>
+        <p class="muted">Für Ordner und andere Helfer ohne Anmeldung: Wer den Link oder QR-Code hat, gibt nur seinen Namen ein und schickt eine Meldung auf den <b>Beamer</b> (die Technik gibt sie in ProPresenter frei) oder das <b>Stage Display</b> (erscheint sofort). Jede Nachricht kommt mit Namen in den Kesher-Chat. Pro Link höchstens eine Nachricht alle 10 Sekunden.</p>
+        <p class="muted">Gibt jemand den Link weiter, einfach <b>Neuen Link erzeugen</b> oder sperren.</p>
+      </div>
+    </div>
+    <form class="msg-link-new" id="msg-link-new">
+      <input type="text" name="name" maxlength="40" placeholder="Name, z. B. Ordner" aria-label="Name des neuen Links" required>
+      <label class="check"><input type="checkbox" name="beamer" checked> Beamer</label>
+      <label class="check"><input type="checkbox" name="stage"> Stage Display</label>
+      <button class="btn primary small" type="submit">+ Link anlegen</button>
+    </form>
+    ${messageLinks === null ? '<p class="muted">Lädt …</p>' : rows || '<p class="muted">Noch keine Nachrichten-Links.</p>'}`
+}
+
+async function messageLinkRequest(method, url, body) {
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }).catch(() => null)
+  const data = await res?.json().catch(() => null)
+  if (!data?.ok) toast(data?.error || 'Speichern fehlgeschlagen')
+  await loadMessageLinks()
+  return data?.ok
+}
+
+$('#message-links-card').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const form = e.target
+  const data = new FormData(form)
+  if (await messageLinkRequest('POST', '/api/message-links', { name: data.get('name'), beamer: data.has('beamer'), stage: data.has('stage') })) toast('Link angelegt')
+})
+
+$('#message-links-card').addEventListener('change', (e) => {
+  const row = e.target.closest('[data-link]')
+  if (!row) return
+  const id = row.dataset.link
+  if (e.target.matches('[data-link-name]')) return messageLinkRequest('PUT', `/api/message-links/${id}`, { name: e.target.value })
+  const field = e.target.dataset.linkField
+  if (field) messageLinkRequest('PUT', `/api/message-links/${id}`, { [field]: e.target.checked })
+})
+
+$('#message-links-card').addEventListener('click', async (e) => {
+  const row = e.target.closest('[data-link]')
+  if (!row) return
+  const link = messageLinks?.find((l) => l.id === row.dataset.link)
+  if (!link) return
+  if (e.target.closest('[data-link-copy]')) {
+    try {
+      await navigator.clipboard.writeText(messageLinkUrl(link))
+      toast('Link kopiert')
+    } catch {
+      prompt('Link zum Kopieren:', messageLinkUrl(link))
+    }
+  } else if (e.target.closest('[data-link-renew]')) {
+    if (confirm(`Neuen Link für „${link.name}“ erzeugen? Der alte Link und gedruckte QR-Codes gelten dann nicht mehr.`))
+      (await messageLinkRequest('PUT', `/api/message-links/${link.id}`, { renew: true })) && toast('Neuer Link erzeugt')
+  } else if (e.target.closest('[data-link-remove]')) {
+    if (confirm(`Link „${link.name}“ löschen?`)) (await messageLinkRequest('DELETE', `/api/message-links/${link.id}`)) && toast('Gelöscht')
+  }
+})

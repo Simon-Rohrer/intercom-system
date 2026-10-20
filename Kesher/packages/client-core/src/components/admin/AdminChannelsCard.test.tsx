@@ -46,15 +46,15 @@ describe("AdminChannelsCard", () => {
 
     await user.click(screen.getByRole("button", { name: "Einblenden" }));
     await user.click(screen.getByRole("button", { name: "+ Neuer Kanal" }));
-    const createButton = screen.getByRole("button", { name: "Create channel" });
+    const createButton = screen.getByRole("button", { name: "Kanal anlegen" });
     expect(createButton).toBeDisabled();
 
     await user.type(
-      screen.getByPlaceholderText("broadcast-channel-id"),
+      screen.getByPlaceholderText("kennung-des-kanals"),
       "program",
     );
     await user.type(
-      screen.getByPlaceholderText("Broadcast channel name"),
+      screen.getByPlaceholderText("Name des Durchsage-Kanals"),
       "Program",
     );
 
@@ -78,7 +78,7 @@ describe("AdminChannelsCard", () => {
     const channelNameInput = screen.getByDisplayValue("All Call");
     await user.clear(channelNameInput);
     await user.type(channelNameInput, "Stage Call");
-    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await user.click(screen.getByRole("button", { name: "Änderungen speichern" }));
 
     await waitFor(() => {
       expect(updateBroadcastGroup).toHaveBeenCalledWith(

@@ -21,11 +21,19 @@ const isPhone = matchMedia('(max-width: 700px)').matches
 const nextParam = params.get('next') || ''
 const fallback = gateway ? '/' : isPhone ? '/remote.html' : '/'
 const next = nextParam.startsWith('/') && !nextParam.startsWith('//') && !nextParam.startsWith('/\\') ? nextParam : fallback
+// Dienst nur für den Admin (Companion, Portainer …): nur die Admin-Anmeldung anbieten
+const adminOnly = params.get('admin') === '1' || (gateway && params.get('nur') === 'admin')
+const SERVICE_NAMES = { companion: 'Companion', portainer: 'Portainer', glances: 'Glances', dns: 'DNS (AdGuard)' }
+const serviceName = SERVICE_NAMES[params.get('dienst')] || 'Dieser Bereich'
 $('#qr-note').hidden = params.get('qr') !== 'abgelaufen'
 $('#revoked-note').hidden = !params.has('abgemeldet')
 if (gateway) {
   $('#brand-text').innerHTML = 'Technik<small>Anmeldung</small>'
-  $('#login-lead').textContent = 'Name eingeben und deine Rolle wählen – das gilt dann für alle Dienste (Intercom, Multiview, Dashboard).'
+  $('#login-lead').textContent = adminOnly
+    ? `${serviceName} ist nur für den Admin – Name und Admin-PIN eingeben.`
+    : 'Name eingeben und deine Rolle wählen – das gilt dann für alle Dienste (Intercom, JMS Control, Dashboard).'
+} else if (adminOnly) {
+  $('#login-lead').textContent = 'Als Admin anmelden – Name und Admin-PIN eingeben. Ein Tagescode ist dafür nicht erforderlich.'
 }
 
 function remembered(key) {
@@ -59,21 +67,88 @@ const postJson = async (path, body) => {
   return { res, data: (await res?.json().catch(() => ({}))) ?? {} }
 }
 
+// --- Abgleich mit der zentralen Adresse ----------------------------------------
+// Jeder Name (192.168.0.21, intercom.local, jmscontrol.local …) hat im Browser ein eigenes Cookie.
+// Ist man hier nicht angemeldet, holt die Seite die Anmeldung von der zentralen Adresse (eine
+// kurze Weiterleitung); nach dem Anmelden hier bringt sie sie dorthin.
+
+const ssoInfo = getJson('/api/sso')
+
+// Der Rollenwechsel kann aus einer Admin-Sitzung kommen. Diese Sitzung ist selbst
+// vom Tagescode befreit, eine neue Bedienerrolle braucht die Gerätefreigabe aber
+// trotzdem. Den begonnenen Rollenwechsel halten wir beim Code-Schritt fest.
+let pendingLogin = null
+let codeStepReady = false
+
+async function pullFromCentral() {
+  if (params.has('wechseln')) return false
+  const sso = await ssoInfo
+  if (!sso?.origin || sso.central) return false
+  const me = await getJson('/api/me')
+  if (me?.user && !me.user.open) {
+    location.replace(next)
+    return true
+  }
+  const back = location.pathname + location.search.replace(/[?&]sso=0/, '').replace(/^&/, '?')
+  const q = new URLSearchParams({ next, back })
+  location.replace(`/.jms-auth/sso/start?${q}`)
+  return true
+}
+
+/** Nach dem Anmelden weiter – an einer anderen Adresse über die zentrale, damit es dort auch gilt. */
+async function continueAfterLogin() {
+  const sso = await ssoInfo
+  if (sso?.origin && !sso.central) return location.replace(`/.jms-auth/sso/push?next=${encodeURIComponent(next)}`)
+  location.replace(next)
+}
+
+// In einem anderen Tab (z. B. über die IP) angemeldet: beim Zurückwechseln nachsehen – nicht bei
+// jedem kurzen Wechsel, sonst springt die Seite ständig einmal über die zentrale Adresse
+let hiddenAt = 0
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') hiddenAt = Date.now()
+  else if (params.has('sso') && Date.now() - hiddenAt > 3000) pullFromCentral()
+})
+
 main()
 
 async function main() {
-  if (gateway) {
-    const device = await getJson('/api/device')
-    if (device?.required && !device.approved) return showCodeStep()
+  if (!params.has('sso') && (await pullFromCentral())) return
+  const me = await getJson('/api/me')
+  if (!params.has('wechseln') && me?.user && !me.user.open) return continueAfterLogin()
+  if (!params.has('wechseln')) {
+    watchLogin('', { url: api('/api/me'), onChange: (state) => state.user && !state.user.open && continueAfterLogin() })
   }
+  const device = await getJson('/api/device')
+  const roleSwitchNeedsCode =
+    !adminOnly &&
+    params.has('wechseln') &&
+    me?.user?.admin &&
+    device?.hasGrant === false
+  if (!adminOnly && ((device?.required && !device.approved) || roleSwitchNeedsCode)) return showCodeStep()
   showLoginStep()
 }
 
 // --- Schritt 1: Tagescode ----------------------------------------------------
 
-function showCodeStep() {
+function showCodeStep(message = '') {
   $('#login-step').hidden = true
   $('#code-form').hidden = false
+  if (message) {
+    $('#code-note').textContent = message
+    $('#code-note').hidden = false
+  }
+  const input = $('#day-code')
+  if (codeStepReady) {
+    input.focus()
+    return
+  }
+  codeStepReady = true
+  $('#admin-login').onclick = () => {
+    const query = new URLSearchParams(location.search)
+    query.set('admin', '1')
+    location.assign(`${location.pathname}?${query}`)
+  }
   const reason = params.get('code')
   if (reason) {
     $('#code-note').textContent =
@@ -82,7 +157,6 @@ function showCodeStep() {
         : 'Der QR-Code ist nicht mehr gültig. Es gilt immer nur der Code von heute – lass dir den aktuellen zeigen.'
     $('#code-note').hidden = false
   }
-  const input = $('#day-code')
   input.focus()
   // Nur Ziffern; mit der sechsten geht es von selbst weiter
   input.addEventListener('input', () => {
@@ -180,28 +254,63 @@ function setupScanner(onCode) {
     start.hidden = true
     $('#scan-view').hidden = false
 
-    let detect
-    if ('BarcodeDetector' in window) {
-      const detector = new window.BarcodeDetector({ formats: ['qr_code'] })
-      detect = async () => (await detector.detect(video))[0]?.rawValue
-    } else {
+    // Safari kann BarcodeDetector teilweise anbieten, obwohl QR-Erkennung nicht
+    // verfügbar ist. Deshalb wird die native Erkennung geprüft und bei jedem
+    // Laufzeitfehler zuverlässig auf jsQR zurückgefallen.
+    if (video.readyState < 2) {
+      await new Promise((resolve) => {
+        const done = () => resolve()
+        video.addEventListener('loadeddata', done, { once: true })
+        setTimeout(done, 1500)
+      })
+    }
+
+    let fallbackPromise
+    const createJsQrDetector = async () => {
       const jsQR = await loadJsQr().catch(() => null)
-      if (!jsQR) {
-        hint.textContent = 'Scannen geht hier nicht – bitte den Code eintippen.'
-        return
-      }
+      if (!jsQR) return null
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d', { willReadFrequently: true })
-      detect = async () => {
+      if (!ctx) return null
+      return () => {
         const w = video.videoWidth
         const h = video.videoHeight
         if (!w || !h) return null
-        const scale = Math.min(1, 640 / Math.max(w, h))
-        canvas.width = Math.round(w * scale)
-        canvas.height = Math.round(h * scale)
+        const scale = Math.min(1, 800 / Math.max(w, h))
+        canvas.width = Math.max(1, Math.round(w * scale))
+        canvas.height = Math.max(1, Math.round(h * scale))
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
         const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
-        return jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' })?.data
+        return jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' })?.data
+      }
+    }
+    const fallbackDetect = async () => {
+      fallbackPromise ||= createJsQrDetector()
+      const fallback = await fallbackPromise
+      return fallback?.() || null
+    }
+
+    let detect = fallbackDetect
+    if ('BarcodeDetector' in window) {
+      try {
+        const supported = await window.BarcodeDetector.getSupportedFormats?.()
+        if (supported?.length && !supported.includes('qr_code')) throw new Error('QR nicht unterstützt')
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] })
+        let failures = 0
+        detect = async () => {
+          try {
+            const value = (await detector.detect(video))[0]?.rawValue
+            failures = 0
+            return value
+          } catch {
+            failures += 1
+            // Defekte native Implementierungen nicht dauerhaft pollen.
+            if (failures >= 2) detect = fallbackDetect
+            return fallbackDetect()
+          }
+        }
+      } catch {
+        detect = fallbackDetect
       }
     }
     const tick = async () => {
@@ -226,7 +335,7 @@ function setupScanner(onCode) {
 
 async function showLoginStep() {
   $('#code-form').hidden = true
-  const { enabled, roles = [], occupied = {} } = (await getJson('/api/login/roles')) ?? { enabled: true, roles: [] }
+  const { enabled, roles = [], occupied = {}, mine = null } = (await getJson('/api/login/roles')) ?? { enabled: true, roles: [] }
   if (!enabled) return location.replace(next) // Zugang offen: keine Anmeldung nötig
 
   // Schon angemeldet: auf einem anderen Dienst direkt weiter, sonst zeigen, als wer
@@ -236,24 +345,48 @@ async function showLoginStep() {
     $('#current-text').textContent = `Angemeldet als ${me.user.name} (${me.user.roleName}). Hier wechselst du zu einem anderen Konto oder einer anderen Rolle.`
     $('#current-back').href = next
     $('#current-note').hidden = false
-  } else if (!params.has('wechseln')) {
-    // In einem anderen Tab oder Dienst angemeldet: von selbst weiter
-    watchLogin('', { url: api('/api/me'), onChange: (m) => m.user && !m.user.open && location.replace(next) })
   }
   $('#login-step').hidden = false
 
-  const lastRole = remembered('role')
-  $('#role').innerHTML = [
+  const pending = pendingLogin
+  pendingLogin = null
+  const lastRole = adminOnly ? 'admin' : pending?.roleId || remembered('role')
+  $('#role').innerHTML = adminOnly ? '<option value="admin" selected>Admin (mit PIN)</option>' : [
     `<option value="" disabled ${lastRole ? '' : 'selected'}>Rolle wählen …</option>`,
-    // Belegte Rollen markieren – eine Rolle kann nur einmal angemeldet sein (wie bei Kesher)
-    ...roles.map(
-      (r) =>
-        `<option value="${esc(r.id)}" ${r.id === lastRole ? 'selected' : ''}>${esc(r.name)}${occupied[r.id] ? ` – angemeldet: ${esc(occupied[r.id])}` : ''}</option>`,
-    ),
+    ...roles.map((r) => `<option value="${esc(r.id)}" ${r.id === lastRole ? 'selected' : ''}>${esc(r.name)}</option>`),
     `<option value="admin" ${lastRole === 'admin' ? 'selected' : ''}>Admin (mit PIN)</option>`,
   ].join('')
-  if (!roles.length) $('#error').textContent = 'Kesher ist gerade nicht erreichbar – nur die Admin-Anmeldung geht.'
-  $('#name').value = remembered('name')
+
+  // Belegte Rollen markieren und sperren – eine Rolle kann nur einmal angemeldet sein, wegnehmen
+  // geht nicht. Die Liste bleibt aktuell, ohne die Seite neu zu laden.
+  const roleNames = new Map(roles.map((r) => [r.id, r.name]))
+  function showOccupied(taken, ownRole) {
+    for (const option of $('#role').options) {
+      if (!roleNames.has(option.value)) continue
+      const holder = option.value !== ownRole ? taken[option.value] : null
+      option.textContent = holder ? `${roleNames.get(option.value)} – angemeldet: ${holder}` : roleNames.get(option.value)
+      option.disabled = Boolean(holder)
+    }
+    const selected = $('#role').selectedOptions[0]
+    if (selected?.disabled && selected.value) {
+      $('#role').value = ''
+      $('#error').textContent = `${roleNames.get(selected.value)} ist gerade angemeldet – bitte eine andere Rolle wählen.`
+    }
+  }
+  showOccupied(occupied, mine)
+  const refreshOccupied = async () => {
+    if (document.visibilityState === 'hidden') return
+    const data = await getJson('/api/login/roles')
+    if (data?.occupied) showOccupied(data.occupied, data.mine)
+  }
+  setInterval(refreshOccupied, 3000)
+  document.addEventListener('visibilitychange', refreshOccupied)
+  // Nur Admin: keine Rollenauswahl, gleich die PIN
+  $('#role').closest('.field').hidden = adminOnly
+  if (!roles.length && !adminOnly) $('#error').textContent = 'Kesher ist gerade nicht erreichbar – nur die Admin-Anmeldung geht.'
+  $('#name').value = pending?.name || remembered('name')
+  if (pending?.roleId && [...$('#role').options].some((option) => option.value === pending.roleId))
+    $('#role').value = pending.roleId
   // Großer Avatar über dem Formular, wächst beim Tippen des Namens mit
   const showAvatar = () => ($('#auth-avatar').innerHTML = avatarHtml({ name: $('#name').value.trim() || '?' }))
   $('#name').addEventListener('input', showAvatar)
@@ -266,26 +399,30 @@ async function showLoginStep() {
   }
   syncPin()
   $('#role').addEventListener('change', syncPin)
-  ;($('#name').value ? $('#role') : $('#name')).focus()
+  ;($('#name').value ? (adminOnly ? $('#pin') : $('#role')) : $('#name')).focus()
 
-  $('#role').addEventListener('change', () => ($('#takeover').hidden = true))
-  $('#takeover-btn').addEventListener('click', () => submit(true))
+  $('#role').addEventListener('change', () => ($('#error').textContent = ''))
   $('#login-form').addEventListener('submit', (e) => {
     e.preventDefault()
-    submit(false)
+    submit()
   })
 
-  async function submit(takeover) {
-    const body = { name: $('#name').value.trim(), roleId: $('#role').value, pin: $('#pin').value, takeover }
+  async function submit() {
+    const body = { name: $('#name').value.trim(), roleId: $('#role').value, pin: $('#pin').value }
     $('#error').textContent = ''
-    $('#takeover').hidden = true
     const { res, data } = await postJson('/api/login', body)
-    if (res?.status === 409 && data?.holder) {
-      // Rolle schon angemeldet: wie bei Kesher übernehmen lassen
-      const role = $('#role').selectedOptions[0]?.textContent.replace(/ – angemeldet:.*$/, '')
-      const who = data.holder.kesher ? 'direkt in Kesher (z. B. an einer Station)' : `von ${data.holder.name}`
-      $('#takeover-text').textContent = `${role} ist schon angemeldet – ${who}. Übernehmen meldet das andere Gerät ab.`
-      $('#takeover').hidden = false
+    if (res?.status === 403 && /Tagescode/i.test(data?.error || '')) {
+      // Die Gerätefreigabe kann zwischen Seitenaufruf und Absenden ablaufen.
+      // In diesem Fall den Code-Schritt öffnen, statt die Fehlermeldung unten
+      // im Rollenformular stehen zu lassen. Die Auswahl bleibt erhalten.
+      pendingLogin = body
+      showCodeStep('Für den Rollenwechsel ist einmal der Tagescode von heute nötig.')
+      return
+    }
+    if (res?.status === 409) {
+      // Rolle inzwischen belegt: Hinweis zeigen und die Liste gleich auffrischen
+      $('#error').textContent = data?.error || 'Die Rolle ist schon angemeldet – bitte eine andere wählen.'
+      refreshOccupied()
       return
     }
     if (!res?.ok || !data?.ok) {
@@ -294,7 +431,8 @@ async function showLoginStep() {
       return
     }
     remember('name', body.name)
-    remember('role', body.roleId)
-    location.replace(next)
+    // Die Admin-Anmeldung für Companion & Co. soll nicht die gewohnte Rolle für Kesher verdrängen
+    if (!adminOnly) remember('role', body.roleId)
+    continueAfterLogin()
   }
 }

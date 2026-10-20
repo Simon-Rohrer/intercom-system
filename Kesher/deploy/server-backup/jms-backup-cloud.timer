@@ -1,9 +1,10 @@
 [Unit]
-Description=JMS-Server: Cloud-Sicherung jede Nacht um 3:30 Uhr
+Description=JMS-Server: Sicherung jeden Montag um 3:30 Uhr
 
 [Timer]
 # Deutsche Zeit (der Server läuft auf UTC), Sommer- und Winterzeit inklusive
-OnCalendar=*-*-* 03:30:00 Europe/Berlin
+# Montag früh: direkt nach dem Sonntag, an dem die Systeme am meisten genutzt werden
+OnCalendar=Mon *-*-* 03:30:00 Europe/Berlin
 # Bewusst nicht nachholen (kein Persistent=true): Die Sicherung hält Kesher
 # kurz an und darf nicht nach einem Einschalten mitten in einer Veranstaltung laufen.
 

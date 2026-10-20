@@ -252,3 +252,18 @@ body {
 .day-qr[data-size="s"] figcaption { font-size: clamp(9px, 1.2vh, 15px); }
 .day-qr[data-size="l"] { width: clamp(170px, 22vh, 320px); padding: 9px 9px 5px; border-radius: 14px; }
 .day-qr[data-size="l"] figcaption { font-size: clamp(16px, 2.8vh, 32px); }
+
+/* Monitor hochkant aufgehängt (Bildschirme am Server → Drehung): das ganze Bild drehen.
+   Der body wird zur gedrehten Fläche; alles darin (Kacheln, Kesher, QR-Code, Hinweise) dreht mit. */
+body[data-rotate] {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vh;
+  height: 100vw;
+  overflow: hidden;
+  transform-origin: top left;
+}
+body[data-rotate="90"] { transform: rotate(90deg) translateY(-100%); }
+body[data-rotate="270"] { transform: rotate(-90deg) translateX(-100%); }
+body[data-rotate] #stage, body[data-rotate] #frames { position: absolute; }

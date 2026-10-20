@@ -62,7 +62,7 @@ export function AdminLogsCard({ token, adminPin }: AdminLogsCardProps) {
       setTotal(response.total);
       setOffset(nextOffset);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "failed to load logs");
+      setError(loadError instanceof Error ? loadError.message : "Logs konnten nicht geladen werden");
     } finally {
       setLoading(false);
     }
@@ -107,7 +107,7 @@ export function AdminLogsCard({ token, adminPin }: AdminLogsCardProps) {
       anchor.remove();
       window.URL.revokeObjectURL(url);
     } catch (downloadError) {
-      setError(downloadError instanceof Error ? downloadError.message : "export failed");
+      setError(downloadError instanceof Error ? downloadError.message : "Export fehlgeschlagen");
     } finally {
       setDownloading(false);
     }
@@ -127,33 +127,33 @@ export function AdminLogsCard({ token, adminPin }: AdminLogsCardProps) {
         <div className="admin-card-body">
           <div className="admin-logs-filters">
             <label>
-              <span>Level</span>
+              <span>Stufe</span>
               <select value={level} onChange={(event) => setLevel(event.target.value)}>
-                <option value="">All</option>
+                <option value="">Alle</option>
                 <option value="INFO">INFO</option>
                 <option value="WARN">WARN</option>
                 <option value="ERROR">ERROR</option>
               </select>
             </label>
             <label>
-              <span>Category</span>
+              <span>Bereich</span>
               <select value={category} onChange={(event) => setCategory(event.target.value)}>
-                <option value="">All</option>
+                <option value="">Alle</option>
                 <option value="request">request</option>
                 <option value="audit">audit</option>
                 <option value="error">error</option>
               </select>
             </label>
             <label>
-              <span>Search</span>
+              <span>Suche</span>
               <input
                 value={queryText}
                 onChange={(event) => setQueryText(event.target.value)}
-                placeholder="message, path, user..."
+                placeholder="Nachricht, Pfad, Benutzer …"
               />
             </label>
             <label>
-              <span>From</span>
+              <span>Von</span>
               <input
                 type="datetime-local"
                 value={fromLocal}
@@ -161,7 +161,7 @@ export function AdminLogsCard({ token, adminPin }: AdminLogsCardProps) {
               />
             </label>
             <label>
-              <span>To</span>
+              <span>Bis</span>
               <input
                 type="datetime-local"
                 value={toLocal}
@@ -172,17 +172,17 @@ export function AdminLogsCard({ token, adminPin }: AdminLogsCardProps) {
 
           <div className="admin-form-actions">
             <button onClick={() => void handleApplyFilters()} disabled={loading}>
-              {loading ? "Loading..." : "Apply filters"}
+              {loading ? "Lädt …" : "Filter anwenden"}
             </button>
             <button
               className="secondary"
               onClick={handleResetFilters}
               disabled={loading || downloading}
             >
-              Reset filters
+              Filter zurücksetzen
             </button>
             <button onClick={() => void handleDownload()} disabled={downloading}>
-              {downloading ? "Exporting..." : "Download TXT"}
+              {downloading ? "Exportiere …" : "Als TXT herunterladen"}
             </button>
           </div>
 
@@ -196,19 +196,19 @@ export function AdminLogsCard({ token, adminPin }: AdminLogsCardProps) {
             <table className="admin-logs-table">
               <thead>
                 <tr>
-                  <th>Time</th>
-                  <th>Level</th>
-                  <th>Category</th>
-                  <th>Request</th>
-                  <th>User</th>
-                  <th>Message</th>
+                  <th>Zeit</th>
+                  <th>Stufe</th>
+                  <th>Bereich</th>
+                  <th>Anfrage</th>
+                  <th>Benutzer</th>
+                  <th>Nachricht</th>
                 </tr>
               </thead>
               <tbody>
                 {entries.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="admin-logs-empty">
-                      No log entries found.
+                      Keine Log-Einträge gefunden.
                     </td>
                   </tr>
                 ) : (
@@ -243,17 +243,17 @@ export function AdminLogsCard({ token, adminPin }: AdminLogsCardProps) {
               onClick={() => void loadLogs(Math.max(0, offset - defaultPageSize))}
               disabled={!canPrev || loading}
             >
-              Previous
+              Zurück
             </button>
             <button
               className="secondary"
               onClick={() => void loadLogs(offset + defaultPageSize)}
               disabled={!canNext || loading}
             >
-              Next
+              Weiter
             </button>
             <button className="secondary" onClick={() => void loadLogs(offset)} disabled={loading}>
-              Refresh
+              Aktualisieren
             </button>
           </div>
 

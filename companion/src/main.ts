@@ -4,12 +4,7 @@ import {
   runEntrypoint,
   type SomeCompanionConfigField,
 } from "@companion-module/base";
-import {
-  Agent as UndiciAgent,
-  WebSocket as UndiciWebSocket,
-  fetch as undiciFetch,
-  type Dispatcher,
-} from "undici";
+import { deviceFetch, deviceWebSocket } from "./deviceTransport.js";
 import { GetConfigFields, type ModuleConfig } from "./config.js";
 import { UpdateActions } from "./actions.js";
 import { UpdateFeedbacks } from "./feedbacks.js";
@@ -197,7 +192,6 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
   private discoveryRefreshInFlight = false;
   private reconnectAttempts = 0;
   private lastConnectionError = "";
-  private insecureTlsDispatcher: Dispatcher | null = null;
   private presetSignature = "";
   private commandSeq = 0;
   private imageBridge: ImageBridge | null = null;
@@ -285,10 +279,6 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
     if (this.imageBridge) {
       this.imageBridge.disconnect();
       this.imageBridge = null;
-    }
-    if (this.insecureTlsDispatcher) {
-      await this.insecureTlsDispatcher.close();
-      this.insecureTlsDispatcher = null;
     }
   }
 
@@ -818,22 +808,6 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
     return !Boolean(this.config.useTls) && (port === 443 || port === 8443);
   }
 
-  private allowSelfSignedTls(): boolean {
-    return this.effectiveUseTls() && this.config.allowSelfSignedTls !== false;
-  }
-
-  private transportDispatcher(): Dispatcher | undefined {
-    if (!this.allowSelfSignedTls()) return undefined;
-    if (!this.insecureTlsDispatcher) {
-      this.insecureTlsDispatcher = new UndiciAgent({
-        connect: {
-          rejectUnauthorized: false,
-        },
-      });
-    }
-    return this.insecureTlsDispatcher;
-  }
-
   private baseHttpURL(): string {
     const protocol = this.effectiveUseTls() ? "https" : "http";
     return `${protocol}://${this.config.host}:${this.config.port}`;
@@ -845,9 +819,7 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
   }
 
   private async fetchJson<T>(url: string, label: string): Promise<T> {
-    const res = await undiciFetch(url, {
-      dispatcher: this.transportDispatcher(),
-    });
+    const res = await deviceFetch(url);
     if (!res.ok) {
       let body = "";
       try {
@@ -876,11 +848,7 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
   }
 
   private createWebSocket(url: string): WebSocket {
-    const dispatcher = this.transportDispatcher();
-    if (dispatcher) {
-      return new UndiciWebSocket(url, { dispatcher }) as unknown as WebSocket;
-    }
-    return new UndiciWebSocket(url) as unknown as WebSocket;
+    return deviceWebSocket(url);
   }
 
   private companionSecretQuery(): string {
@@ -930,7 +898,7 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
         `target=${this.companionTargetLabel()}`,
         `transport=${this.effectiveUseTls() ? "https/wss" : "http/ws"}`,
         `autoTls=${this.autoTlsEnabled()}`,
-        `selfSignedTls=${this.allowSelfSignedTls()}`,
+        "tlsVerification=required",
         `bridgeConnected=${this.bridgeConnected}`,
         `bridgeWsState=${bridgeState}`,
         `bound=${this.bound}`,
@@ -1331,7 +1299,15 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
     if (!targetQuery && (this.config.username || "").trim()) {
       this.log("warn", "Target username is deprecated and ignored; set target role ID");
     }
-    const ws = this.createWebSocket(url);
+    let ws: WebSocket;
+    try {
+      ws = this.createWebSocket(url);
+    } catch (error) {
+      this.lastConnectionError = this.formatConnectionError(error, "device authentication unavailable");
+      this.updateStatus(InstanceStatus.BadConfig, this.lastConnectionError);
+      this.scheduleReconnect();
+      return;
+    }
     this.ws = ws;
     this.startConnectWatchdog(ws);
 
@@ -1667,7 +1643,6 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
       this,
       baseUrl,
       targetQuery,
-      this.transportDispatcher(),
     );
     this.imageBridge.connect();
   }

@@ -9,13 +9,13 @@ type RaspberryPiStationsPanelProps = {
 };
 
 function formatSecondsSinceSeen(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return "n/a";
-  if (seconds < 1) return "now";
-  if (seconds < 60) return `${Math.round(seconds)}s ago`;
+  if (!Number.isFinite(seconds) || seconds < 0) return "–";
+  if (seconds < 1) return "gerade eben";
+  if (seconds < 60) return `vor ${Math.round(seconds)} s`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return `vor ${minutes} min`;
   const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
+  return `vor ${hours} h`;
 }
 
 function formatMachineStatus(value: string): string {
@@ -26,24 +26,24 @@ function formatMachineStatus(value: string): string {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  browser_exited: "Browser exited",
-  diagnostic: "Diagnostic",
-  exited: "Browser exited",
-  intercom_connected: "Intercom connected",
+  browser_exited: "Browser beendet",
+  diagnostic: "Diagnose",
+  exited: "Browser beendet",
+  intercom_connected: "Intercom verbunden",
   launcher_online: "Launcher online",
-  login_error: "Login error",
-  login_pending: "Logging in",
-  login_attempting: "Logging in",
-  logging_in: "Logging in",
-  not_started: "Not started",
+  login_error: "Anmeldefehler",
+  login_pending: "Meldet sich an",
+  login_attempting: "Meldet sich an",
+  logging_in: "Meldet sich an",
+  not_started: "Nicht gestartet",
   offline: "Offline",
-  running: "Running",
-  starting: "Starting",
-  starting_browser: "Starting browser",
-  unknown: "unknown",
-  waiting_for_audio: "Waiting for audio",
-  waiting_for_intercom: "Waiting for intercom",
-  waiting_for_server: "Connecting to server",
+  running: "Läuft",
+  starting: "Startet",
+  starting_browser: "Browser startet",
+  unknown: "unbekannt",
+  waiting_for_audio: "Wartet auf Ton",
+  waiting_for_intercom: "Wartet auf Intercom",
+  waiting_for_server: "Verbindet mit Server",
 };
 
 function normalizedStatus(value: string): string {
@@ -52,7 +52,7 @@ function normalizedStatus(value: string): string {
 
 function statusValue(value: string): string {
   const normalized = normalizedStatus(value);
-  return STATUS_LABELS[normalized] ?? (formatMachineStatus(value) || "unknown");
+  return STATUS_LABELS[normalized] ?? (formatMachineStatus(value) || "unbekannt");
 }
 
 function isFailureStatus(value: string): boolean {
@@ -65,34 +65,34 @@ function isFailureStatus(value: string): boolean {
 }
 
 function stationStatusLabel(station: RaspberryPiStationStatus): string {
-  if (!station.online) return "Raspberry not connected";
-  if (station.intercomConnected) return "Intercom connected";
+  if (!station.online) return "Raspberry nicht verbunden";
+  if (station.intercomConnected) return "Intercom verbunden";
   const effectiveStatus = normalizedStatus(station.effectiveStatus);
   if (effectiveStatus && effectiveStatus !== "unknown") {
-    if (effectiveStatus === "running") return "Waiting for intercom";
+    if (effectiveStatus === "running") return "Wartet auf Intercom";
     if (effectiveStatus !== "launcher_online") {
       return statusValue(station.effectiveStatus);
     }
   }
   if (normalizedStatus(station.browserStatus) === "running") {
-    return "Waiting for intercom";
+    return "Wartet auf Intercom";
   }
-  return statusValue(station.effectiveStatus) || "Raspberry connected";
+  return statusValue(station.effectiveStatus) || "Raspberry verbunden";
 }
 
 function stationDetailLabel(station: RaspberryPiStationStatus): string {
   const details = [
-    station.online ? "Raspberry connected" : "Raspberry not connected",
+    station.online ? "Raspberry verbunden" : "Raspberry nicht verbunden",
   ];
   const browserStatus = formatMachineStatus(station.browserStatus);
   if (browserStatus && browserStatus !== "unknown") {
-    details.push(`browser ${browserStatus}`);
+    details.push(`Browser ${browserStatus}`);
   }
   const loginStatus = formatMachineStatus(station.loginStatus);
   if (loginStatus && loginStatus !== "unknown") {
     details.push(loginStatus);
   }
-  details.push(`seen ${formatSecondsSinceSeen(station.secondsSinceSeen)}`);
+  details.push(`zuletzt gesehen ${formatSecondsSinceSeen(station.secondsSinceSeen)}`);
   return details.join(" | ");
 }
 
@@ -150,11 +150,11 @@ function hasMetricValue(value: number | undefined): value is number {
 }
 
 function formatPercent(value: number | undefined): string {
-  return hasMetricValue(value) ? `${Math.round(value)}%` : "n/a";
+  return hasMetricValue(value) ? `${Math.round(value)}%` : "–";
 }
 
 function formatTemperature(value: number | undefined): string {
-  return hasMetricValue(value) ? `${Math.round(value)} C` : "n/a";
+  return hasMetricValue(value) ? `${Math.round(value)} °C` : "–";
 }
 
 function metricTone(
@@ -192,17 +192,17 @@ function DetailIcon() {
 
 export function RaspberryPiStationsPanel({
   stations,
-  title = "Raspberry stations",
-  emptyText = "No Raspberry heartbeat received.",
-  loadingText = "Loading",
+  title = "Raspberry-Stationen",
+  emptyText = "Noch kein Lebenszeichen von einem Raspberry.",
+  loadingText = "Lädt",
   className = "",
 }: RaspberryPiStationsPanelProps) {
-  const countLabel = stations ? `${stations.length} known` : loadingText;
+  const countLabel = stations ? `${stations.length} bekannt` : loadingText;
 
   return (
     <div
       className={`admin-pi-stations ${className}`.trim()}
-      aria-label="Raspberry Pi stations"
+      aria-label="Raspberry-Pi-Stationen"
     >
       <div className="admin-pi-stations-header">
         <span>{title}</span>
@@ -237,10 +237,10 @@ export function RaspberryPiStationsPanel({
                   <DetailIcon />
                   {station.ipAddress || station.deviceId}
                 </span>
-                {station.lowPowerMode ? <span>Low power</span> : null}
+                {station.lowPowerMode ? <span>Stromsparen</span> : null}
                 {launcherLabel ? <span>{launcherLabel}</span> : null}
                 <span>
-                  Seen {formatSecondsSinceSeen(station.secondsSinceSeen)}
+                  Zuletzt gesehen {formatSecondsSinceSeen(station.secondsSinceSeen)}
                 </span>
               </div>
               <div className="admin-pi-station-checks">
@@ -248,7 +248,7 @@ export function RaspberryPiStationsPanel({
                   className={statusToneClass(station.online ? "ok" : "warn")}
                 >
                   <small>Pi</small>
-                  <strong>{station.online ? "Connected" : "Offline"}</strong>
+                  <strong>{station.online ? "Verbunden" : "Offline"}</strong>
                 </span>
                 <span className={statusToneClass(browserStatusTone(station))}>
                   <small>Browser</small>
@@ -258,7 +258,7 @@ export function RaspberryPiStationsPanel({
                   <small>Intercom</small>
                   <strong>
                     {station.intercomConnected
-                      ? station.intercomUsername || "Connected"
+                      ? station.intercomUsername || "Verbunden"
                       : statusValue(station.loginStatus)}
                   </strong>
                 </span>

@@ -338,7 +338,7 @@ input[type="text"], input[type="number"], input[type="password"], input[type="da
 }
 textarea { height: auto; padding: 9px 11px; }
 select { padding-right: 30px; }
-input:focus-visible, select:focus-visible, textarea:focus-visible, .btn:focus-visible, .icon-btn:focus-visible, .site-nav a:focus-visible {
+input:focus-visible, select:focus-visible, textarea:focus-visible, .btn:focus-visible, .icon-btn:focus-visible, .site-nav a:focus-visible, .subnav a:focus-visible {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
@@ -558,40 +558,49 @@ details.card.disclosure { padding: 16px 20px; }
 details.disclosure.inner { margin-top: 4px; }
 details.disclosure.inner > summary { font-size: 13.5px; color: var(--text-2); }
 
-/* Abschnitts-Navigation der Einstellungen */
+/* Abschnitts-Navigation: übersichtliche Karten statt einer gedrängten Button-Reihe */
 .subnav {
   position: sticky;
   top: 60px;
   z-index: 10;
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding: 10px 0 14px;
-  margin-bottom: 6px;
-  background: linear-gradient(var(--bg) 75%, transparent);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 18px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--bg));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
 }
 .subnav a {
-  flex: none;
-  height: 32px;
-  display: inline-flex;
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
   align-items: center;
-  padding: 0 13px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--surface);
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--text-2);
   text-decoration: none;
   font-size: 13px;
   font-weight: 600;
+  line-height: 1.25;
 }
-.subnav a { gap: 8px; }
-.subnav a:hover { border-color: var(--accent-line); color: var(--accent-text); }
-.subnav a.active { background: var(--text); border-color: var(--text); color: var(--bg); }
+.subnav a:hover { background: var(--surface-2); border-color: var(--line-strong); color: var(--text); }
+.subnav a.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-text); }
 .subnav .status-dot { width: 7px; height: 7px; box-shadow: none; }
 .subnav a[data-state="ok"] .status-dot { background: var(--green); }
 .subnav a[data-state="bad"] .status-dot { background: var(--red); }
 .subnav a[data-state="off"] .status-dot { background: var(--line-strong); }
+.subnav-nested {
+  position: static;
+  margin-top: -4px;
+  background: transparent;
+  box-shadow: none;
+}
 
 /* ------------------------------------------------------------------ Übersicht */
 
@@ -847,6 +856,26 @@ a.status-tile:hover { border-color: var(--accent-line); }
 #ct-form { grid-template-columns: 1fr 1fr; }
 #ct-form .btn-row { grid-column: 1 / -1; }
 
+/* Raspberry Pis */
+.pi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; align-items: end; margin-bottom: 18px; }
+.pi-check { padding-bottom: 10px; }
+#set-raspberry > .card-head .switch { flex-shrink: 0; white-space: nowrap; }
+#set-raspberry .section-head { margin-top: 26px; }
+#set-raspberry .section-head h3 { margin: 0; }
+.pi-list { display: grid; gap: 12px; }
+.pi-item { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); padding: 14px 16px; }
+.pi-item-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.pi-item-head h4 { margin: 0; font-size: 15px; }
+.pi-item-head .pi-spacer { flex: 1; }
+.pi-item .pi-grid { margin-bottom: 0; }
+.pi-item .field small { font-weight: 400; color: var(--muted); }
+.pi-item .field input.invalid { border-color: var(--red); }
+.pi-problem { margin: 10px 0 0; color: var(--amber); font-size: 13px; }
+/* Mikrofon/Kopfhörer-Auswahl: Hinweis unter dem Feld */
+.pi-grid .field small.muted, .pi-device-missing { font-size: 12px; margin-top: 2px; }
+.pi-device-missing { color: var(--amber); }
+.pi-seen-table td { vertical-align: middle; }
+
 /* ------------------------------------------------------------------ Benutzer & Rechte */
 
 .role-table td { vertical-align: top; }
@@ -1004,15 +1033,32 @@ a.status-tile:hover { border-color: var(--accent-line); }
   .layout-editor { grid-template-columns: 200px minmax(0, 1fr); }
   .inspector { grid-column: 1 / -1; position: static; max-height: none; }
 }
+@media (max-width: 700px) {
+  .subnav { position: static; grid-template-columns: 1fr; margin-bottom: 16px; }
+  .subnav a { min-height: 44px; padding: 11px 13px; }
+}
 @media (max-width: 980px) {
   .sidebar {
     position: fixed;
     left: 0;
     top: 0;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
     transform: translateX(-100%);
     transition: transform 0.2s ease;
     box-shadow: var(--shadow-lg);
   }
+  .sidebar > .sidebar-head,
+  .sidebar > .side-search,
+  .sidebar > .site-nav,
+  .sidebar > .sidebar-foot { flex-shrink: 0; }
+  body.nav-open { overflow: hidden; }
   body.nav-open .sidebar { transform: none; }
   .sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(10, 12, 16, 0.45); z-index: 35; }
   body.nav-open .sidebar-backdrop { display: block; }
@@ -1071,16 +1117,10 @@ a.status-tile:hover { border-color: var(--accent-line); }
 }
 .gateway-form { display: flex; flex-direction: column; gap: 16px; }
 .gateway-form small { font-size: 12.5px; font-weight: 400; }
-.exempt-list { display: flex; flex-direction: column; gap: 8px; }
-.exempt-list:empty { display: none; }
-.exempt-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto; gap: 8px; align-items: center; }
 @media (max-width: 700px) {
   .gateway-head { flex-direction: column; }
   .day-code { grid-template-columns: 1fr; justify-items: center; text-align: center; }
   .day-code-info { align-items: center; }
-  .exempt-row { grid-template-columns: minmax(0, 1fr) auto; }
-  .exempt-row [name="label"] { grid-column: 1; grid-row: 2; }
-  .exempt-row .icon-btn { grid-row: 1 / span 2; grid-column: 2; }
 }
 
 /* ---- Layout-Editor 1:1 wie auf dem Monitor ----------------------------------------
@@ -1262,9 +1302,6 @@ h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
 }
 
 /* Tages-QR-Code auf den Monitoren (Schalter in „Anmeldung für alle Dienste“) */
-.day-qr-monitor { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 14px; }
-.day-qr-monitor select { width: auto; }
-.day-qr-monitor small { flex-basis: 100%; }
 
 /* Anmeldung: Tagescode mit der Kamera scannen */
 .scan-btn { margin-top: 8px; gap: 8px; }
@@ -1290,7 +1327,6 @@ h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
 .day-code .qr-card { width: 100%; max-width: 320px; }
 .day-code-info { align-items: center; }
 .day-code-info .muted { max-width: 40ch; }
-.day-qr-monitor { justify-content: center; }
 
 /* ==================================================================
    iCloud-Stil: blaues Wellen-Wallpaper, Karten aus mattem Glas mit großem
@@ -1471,6 +1507,7 @@ input, select, textarea { background-color: var(--surface-2); }
 .app-icon.purple { background: linear-gradient(160deg, #c38bff, #8e44ec); }
 .app-icon.teal { background: linear-gradient(160deg, #6be0e8, #12a3b8); }
 .app-icon.pink { background: linear-gradient(160deg, #ff8fb1, #ff2d6f); }
+.app-icon.indigo { background: linear-gradient(160deg, #8e8cff, #5856d6); }
 .app-label { font-size: 13px; font-weight: 500; }
 @media (max-width: 760px) {
   .profile-hero { grid-template-columns: 1fr; }
@@ -1585,6 +1622,10 @@ body::before {
 .qr-hero p { margin: 0; font-size: 13px; line-height: 1.4; }
 .qr-hero .btn { margin-top: 10px; }
 .qr-hero-text { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.qr-hero-code { display: flex; flex-direction: column; align-items: inherit; gap: 2px; margin-top: 8px; }
+.qr-hero-code[hidden] { display: none; }
+.qr-hero-code span { font-size: 12px; font-weight: 600; color: var(--muted, inherit); opacity: 0.8; }
+.qr-hero-code .day-code-digits { font-size: 26px; letter-spacing: 0.08em; }
 @media (max-width: 1180px) {
   .profile-hero.with-qr { grid-template-columns: minmax(240px, 300px) 1fr; }
   .profile-hero.with-qr .qr-hero { grid-column: 1 / -1; flex-direction: row; text-align: left; gap: 18px; }
@@ -1839,6 +1880,7 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 .app-icon.purple { background: linear-gradient(180deg, #c98bff 0%, #a35cf7 55%, #7d36e6 100%); --icon-shadow: rgba(125, 54, 230, 0.5); }
 .app-icon.teal { background: linear-gradient(180deg, #5fe3ef 0%, #22bfd3 55%, #0e97b0 100%); --icon-shadow: rgba(14, 151, 176, 0.5); }
 .app-icon.pink { background: linear-gradient(180deg, #ff86ac 0%, #ff4d82 55%, #e8285f 100%); --icon-shadow: rgba(232, 40, 95, 0.5); }
+.app-icon.indigo { background: linear-gradient(180deg, #9a98ff 0%, #6e6cf0 55%, #4a48c8 100%); --icon-shadow: rgba(74, 72, 200, 0.5); }
 .app-tile { gap: 10px; }
 .app-tile:hover .app-icon { transform: translateY(-2px) scale(1.03); }
 .app-icon { transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1); }
@@ -1848,3 +1890,64 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
   .app-icon { width: 58px; height: 58px; border-radius: 13.5px; }
   .app-icon svg { width: 31px; height: 31px; }
 }
+
+/* Zurück zum Dashboard (erster Eintrag der Seitenleiste) und Seite „Services“ */
+.site-nav a.nav-dashboard .icon { background: linear-gradient(180deg, #8e8e96, #5c5c64); }
+.site-nav a.nav-dashboard { margin-bottom: 6px; }
+.site-nav a[data-page="services"] .icon { background: linear-gradient(180deg, #ff8fb1, #ff2d6f); }
+.app-icon.red { background: linear-gradient(180deg, #ff7a7a 0%, #ff453a 55%, #d70015 100%); --icon-shadow: rgba(215, 0, 21, 0.5); }
+.services-list { display: flex; flex-direction: column; gap: 22px; }
+.services-group h2 { font-size: 15px; margin: 0 0 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.services-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.service-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border-radius: var(--radius);
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.15s ease;
+}
+.service-card:hover { transform: translateY(-2px); }
+.service-card:active { transform: scale(0.98); }
+.service-card .app-icon { width: 46px; height: 46px; border-radius: 12px; flex: none; }
+.service-card .app-icon svg { width: 26px; height: 26px; fill: #fff; stroke: none; }
+.service-card b { display: block; font-size: 15px; }
+.service-card span.desc { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.service-card code { display: block; font-size: 11.5px; color: var(--muted); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.service-card .service-text { min-width: 0; }
+
+/* Benutzer & Rechte → Nachrichten-Links */
+.msg-link-new { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+.msg-link-new input[type="text"] { flex: 1 1 200px; }
+.msg-link { display: flex; gap: 16px; padding: 14px 0; border-top: 1px solid var(--line); }
+.msg-link.off { opacity: 0.6; }
+.msg-link-qr.qr-frame { flex: none; display: block; width: 132px; height: 132px; }
+.msg-link-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.msg-link-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.msg-link-head input[type="text"] { flex: 1 1 160px; font-weight: 600; }
+.msg-link .muted.small { margin: 0; font-size: 12px; }
+@media (max-width: 560px) {
+  .msg-link { flex-direction: column; }
+}
+
+/* Hochformat (Monitor hochkant): Arbeitsfläche 1080×1920, Vorschau hochkant mittig */
+/* Eigene Größe: Seitenverhältnis und Pixel kommen aus --cw/--ch (scaleCanvas) */
+.canvas-frame.sized {
+  aspect-ratio: var(--cw-n) / var(--ch-n);
+  width: min(100%, calc(78vh * var(--cw-n) / var(--ch-n)));
+  margin: 0 auto;
+}
+.canvas-frame.sized > .canvas { width: var(--cw); height: var(--ch); }
+.output-preview iframe { width: var(--pw, 1920px); height: var(--ph, 1080px); left: var(--preview-left, 0px); top: var(--preview-top, 0px); }
+.layout-size { display: flex; align-items: flex-end; gap: 8px; }
+.layout-size .field { flex: 1; min-width: 0; }
+.layout-size .times { padding-bottom: 12px; color: var(--muted, #8a8f98); }
+
+/* QR-Anzeige gehört zum jeweiligen Multiview; dieselben Formular- und Check-Stile. */
+.output-foot > .btn-row { align-items: center; min-width: 0; }
+.output-qr-controls, .output-qr-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.output-qr-controls .check { min-height: 44px; }
+.output-qr-options[hidden] { display: none; }
+.output-qr-options select { width: auto; min-height: 44px; max-width: 100%; }

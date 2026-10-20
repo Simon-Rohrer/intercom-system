@@ -1,15 +1,16 @@
 <!doctype html>
-<html lang="de" data-theme="system">
+<html lang="de" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f5f5f7">
-  <title>Multiview</title>
+  <meta name="theme-color" content="#0a0a0b">
+  <title>JMS - Control</title>
   <script src="theme-boot.js"></script>
   <link rel="stylesheet" href="admin.css">
   <link rel="stylesheet" href="meters.css">
   <link rel="stylesheet" href="chat.css">
   <link rel="stylesheet" href="agenda.css">
+  <link rel="stylesheet" href="uplink.css">
   <link rel="stylesheet" href="propresenter.css">
   <link rel="stylesheet" href="stage.css">
 </head>
@@ -20,7 +21,7 @@
       <div class="sidebar-head">
         <a href="#/" class="brand">
           <span class="brand-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-          <span class="brand-text">Multiview<small>Technik</small></span>
+          <span class="brand-text">JMS Control<small>Technik</small></span>
         </a>
         <button type="button" class="icon-btn sidebar-btn sidebar-collapse" aria-label="Seitenleiste ausblenden" title="Seitenleiste ausblenden">
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></svg>
@@ -35,13 +36,17 @@
       </div>
 
       <nav class="site-nav" aria-label="Bereiche">
+        <a href="https://technik.local/" class="nav-dashboard" id="nav-dashboard" title="Zurück zum Dashboard">
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+          <span>Dashboard</span>
+        </a>
         <a href="#/" data-page="uebersicht">
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>
           <span>Übersicht</span>
         </a>
-        <a href="#/layouts" data-page="layouts">
+        <a href="#/multiviews" data-page="multiviews">
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 10h18M10 10v10"/></svg>
-          <span>Layouts</span>
+          <span>Multiviews</span>
         </a>
         <a href="#/eingaenge" data-page="eingaenge" data-admin>
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="2.5" y="6" width="13" height="12" rx="2.5"/><path d="M15.5 10.5 21 7.5v9l-5.5-3"/></svg>
@@ -51,9 +56,9 @@
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
           <span>Einstellungen</span>
         </a>
-        <a href="#/zugang" data-page="zugang" data-admin>
-          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16.5 14.2a5 5 0 0 1 5 5.3"/></svg>
-          <span>Benutzer &amp; Rechte</span>
+        <a href="#/services" data-page="services" data-admin>
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><path d="M17.5 14v7M14 17.5h7"/></svg>
+          <span>Services</span>
         </a>
       </nav>
 
@@ -100,6 +105,31 @@
           <div class="page-head">
             <div>
               <h1>Übersicht</h1>
+              <p class="lead">Dein Profil und der Stand der Technik auf einen Blick.</p>
+            </div>
+          </div>
+
+          <div id="profile-card" class="profile-hero"></div>
+
+          <div id="status-strip" class="status-strip"></div>
+        </section>
+
+        <!-- Services: alle Dienste auf einen Blick (nur Admin) -->
+        <section id="page-services" class="page" hidden>
+          <div class="page-head">
+            <div>
+              <h1>Services</h1>
+              <p class="lead">Alle Dienste auf dem Technik-Server. Ein Klick öffnet den Dienst – angemeldet bist du dort schon.</p>
+            </div>
+          </div>
+          <div id="services-list" class="services-list"></div>
+        </section>
+
+        <!-- Multiviews (Unterseiten: Multiviews und Layouts) -->
+        <section id="page-multiviews" class="page" hidden>
+          <div class="page-head">
+            <div>
+              <h1>Multiviews</h1>
               <p class="lead">Deine Multiviews live. <b>Vollbild</b> zeigt einen Multiview bildschirmfüllend – zurück mit <kbd>Esc</kbd>.</p>
             </div>
             <button id="output-add" class="btn primary" data-admin>
@@ -107,12 +137,12 @@
             </button>
           </div>
 
-          <div id="profile-card" class="profile-hero"></div>
-
-          <div id="status-strip" class="status-strip"></div>
+          <nav class="subnav" aria-label="Bereiche der Multiviews">
+            <a href="#/multiviews" class="active" aria-current="page">Multiviews</a>
+            <a href="#/multiviews/layouts">Layouts</a>
+          </nav>
 
           <div id="output-cards" class="output-grid"></div>
-
         </section>
 
         <!-- Eingänge -->
@@ -201,6 +231,11 @@
               <span>Live-Bilder im Editor</span>
             </label>
           </div>
+
+          <nav class="subnav" aria-label="Bereiche der Multiviews">
+            <a href="#/multiviews">Multiviews</a>
+            <a href="#/multiviews/layouts" class="active" aria-current="page">Layouts</a>
+          </nav>
           <div class="layout-editor">
             <div class="side-stack">
               <aside class="card list-panel">
@@ -243,7 +278,7 @@
           <div class="page-head">
             <div>
               <h1>Einstellungen</h1>
-              <p class="lead">Verbindungen zu ATEM, ProPresenter, Kesher und ChurchTools, die Steuerung über Companion und die Bildschirme am Server.</p>
+              <p class="lead">Verbindungen zu ATEM, ProPresenter, Kesher und ChurchTools, die Raspberry-Pi-Stationen, die Steuerung über Companion und die Bildschirme am Server.</p>
             </div>
           </div>
 
@@ -252,19 +287,20 @@
             <a href="#/einstellungen/propresenter" data-section-link="propresenter"><span class="status-dot"></span>ProPresenter</a>
             <a href="#/einstellungen/kesher" data-section-link="kesher"><span class="status-dot"></span>Kesher-Chat</a>
             <a href="#/einstellungen/churchtools" data-section-link="churchtools"><span class="status-dot"></span>ChurchTools</a>
+            <a href="#/einstellungen/raspberry" data-section-link="raspberry"><span class="status-dot"></span>Raspberry Pis</a>
             <a href="#/einstellungen/companion" data-section-link="companion">Companion</a>
             <a href="#/einstellungen/bildschirme" data-section-link="bildschirme">Bildschirme am Server</a>
             <a href="#/einstellungen/geraete" data-section-link="geraete" data-admin>Angemeldete Geräte</a>
+            <a href="#/einstellungen/zugang" data-section-link="zugang" data-admin>Benutzer &amp; Rechte</a>
           </nav>
 
-          <div class="settings-stack">
+          <div id="settings-config-content" class="settings-stack">
             <div class="card" id="set-sessions" data-section="geraete">
               <div class="card-head">
                 <div>
                   <h2>Angemeldete Geräte</h2>
-                  <p class="muted">Rechner und Handys, die gerade online sind (eine Seite offen haben). „Abmelden“ beendet die Sitzung auf dem Gerät.</p>
+                  <p class="muted">Rechner und Handys, die gerade online sind – mit offenem JMS Control oder Intercom, auch im WLAN. Die Liste aktualisiert sich von selbst. „Abmelden“ beendet die Sitzung auf dem Gerät.</p>
                 </div>
-                <button class="btn small" id="sessions-refresh" type="button">Aktualisieren</button>
               </div>
               <div id="access-sessions"></div>
             </div>
@@ -277,7 +313,7 @@
               </div>
               <div class="table-wrap">
                 <table class="table">
-                  <thead><tr><th>Anschluss</th><th>Name</th><th>Multiview</th><th>Monitor</th></tr></thead>
+                  <thead><tr><th>Anschluss</th><th>Name</th><th>Multiview</th><th>Drehung</th><th>Monitor</th></tr></thead>
                   <tbody id="screen-rows"></tbody>
                 </table>
               </div>
@@ -343,7 +379,7 @@
               <div class="card-head">
                 <div>
                   <h2>Kesher-Chat</h2>
-                  <p class="muted">Der Multiview-Server meldet sich einmal mit dieser Rolle an und verteilt den Chat an alle Monitore. Über diese Verbindung kommen auch die Rollen für die Anmeldung – angelegt werden sie unter <a href="#/zugang/rollen">Benutzer &amp; Rechte</a> und dann in Kesher gespeichert.</p>
+                  <p class="muted">JMS Control meldet sich einmal mit dieser Rolle an und verteilt den Chat an alle Monitore. Über diese Verbindung kommen auch die Rollen für die Anmeldung – angelegt werden sie unter <a href="#/einstellungen/zugang/rollen">Benutzer &amp; Rechte</a> und dann in Kesher gespeichert.</p>
                 </div>
               </div>
               <div class="form-grid">
@@ -390,35 +426,99 @@
               <div id="ct-events"></div>
             </div>
 
+            <div class="card" id="set-raspberry" data-section="raspberry">
+              <div class="card-head">
+                <div>
+                  <h2>Raspberry Pis</h2>
+                  <p class="muted">Die festen Intercom-Stationen. Bisher stand das in der Datei <code>/etc/kesher/raspberry-pis.json</code> auf jedem Pi – eingeschaltet holt sich jeder Pi seine Einstellungen von hier und übernimmt Änderungen nach wenigen Sekunden (der Browser auf dem Pi startet dafür neu). Fernsteuern geht in Kesher unter <b>Anmelden → Raspberry</b>.</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="pi-managed">
+                  <span class="switch-track" aria-hidden="true"></span>
+                  <span id="pi-managed-label">Hier verwalten</span>
+                </label>
+              </div>
+              <div id="pi-managed-note" class="notice warn" hidden>Ausgeschaltet: Die Pis nehmen weiter ihre Datei. Trag die Stationen hier ein (oder übernimm sie unten aus „Pis im Netz“) und schalte dann oben ein.</div>
+
+              <div class="pi-grid">
+                <label class="field"><span>Kesher-Adresse für die Pis</span>
+                  <input id="pi-serverUrl" type="text" placeholder="leer = wie in der Datei auf dem Pi" spellcheck="false">
+                </label>
+                <label class="field"><span>Browser auf dem Pi</span>
+                  <input id="pi-browserBinary" type="text" placeholder="chromium" spellcheck="false">
+                </label>
+                <p class="muted">TLS-Prüfung ist verpflichtend. Die Server-CA und das persönliche Gerätezertifikat müssen auf dem Pi installiert sein.</p>
+              </div>
+              <details class="disclosure inner">
+                <summary>Wartezeiten beim Start</summary>
+                <div class="pi-grid">
+                  <label class="field"><span>Auf Audio warten (s)</span>
+                    <input id="pi-audioWaitSeconds" type="number" min="0" max="600" placeholder="3">
+                  </label>
+                  <label class="field"><span>Nach Desktop-Start warten (s)</span>
+                    <input id="pi-displaySettleSeconds" type="number" min="0" max="600" placeholder="8">
+                  </label>
+                  <label class="field"><span>Browser neu starten nach (s ohne Verbindung)</span>
+                    <input id="pi-connectTimeoutSeconds" type="number" min="0" max="600" placeholder="25">
+                  </label>
+                </div>
+              </details>
+
+              <div class="section-head">
+                <div>
+                  <h3>Stationen</h3>
+                  <p class="muted">Ein registriertes Gerätezertifikat ordnet den Pi seinem Eintrag zu. IP- und MAC-Adressen dienen nur zur Diagnose und erteilen keinen Zugriff. Die Zertifikatzuordnung verwaltest du unter „Benutzer &amp; Rechte → Anmeldung für alle Dienste“.</p>
+                </div>
+                <button class="btn primary" type="button" id="pi-add">+ Raspberry Pi</button>
+              </div>
+              <div id="pi-list" class="pi-list"></div>
+
+              <div class="section-head">
+                <div>
+                  <h3>Pis im Netz</h3>
+                  <p class="muted">Registrierte Pis, die zuletzt mit gültigem Gerätenachweis nach ihren Einstellungen gefragt haben. Übernommene Einstellungen ersetzen keine Zertifikatregistrierung.</p>
+                </div>
+              </div>
+              <div id="pi-seen"></div>
+
+              <div class="callout">
+                <b>Einmal auf jedem Pi:</b> In <code>/etc/kesher/raspberry-pis.json</code> die Zeile
+                <code id="pi-config-line">"config_url": "…/api/raspberry-pis/config"</code> eintragen und den Launcher aktualisieren
+                (<code>sudo ./install.sh &lt;user&gt; --update-config</code>, siehe Dokumentation). Zusätzlich Server-CA, Gerätezertifikat und privaten Schlüssel nach der Betriebsdokumentation installieren. Eine lokale Reservekonfiguration umgeht die Geräteprüfung nicht.
+              </div>
+            </div>
+
             <div class="card" id="set-companion" data-section="companion">
               <div class="card-head">
                 <div>
                   <h2>Companion</h2>
-                  <p class="muted">Im Companion-Modul <b>Generic HTTP</b> eine GET-Anfrage auf diese Adressen legen. Multiviews, Layouts und Quellen gehen per Nummer, Name oder ID. Läuft Companion auf diesem Server, gilt die Adresse mit <code>127.0.0.1</code>.</p>
+                  <p class="muted">Im Companion-Modul <b>Generic HTTP</b> eine Anfrage mit dem eingerichteten Dienstnachweis auf diese Adressen legen. Multiviews, Layouts und Quellen gehen per Nummer, Name oder ID. Auch Aufrufe über <code>127.0.0.1</code> benötigen einen gültigen Dienstnachweis; Schlüssel werden nur direkt auf dem Server eingerichtet.</p>
                 </div>
               </div>
               <div id="companion-help"></div>
             </div>
           </div>
-        </section>
 
-        <!-- Benutzer & Rechte -->
-        <section id="page-zugang" class="page" hidden>
-          <div class="page-head">
+        <div id="settings-access-content" class="settings-stack" hidden>
+          <div class="section-head access-section-head">
             <div>
-              <h1>Benutzer &amp; Rechte</h1>
-              <p class="lead">Wie bei Kesher: Man meldet sich mit Namen und Rolle an. Pro Rolle legst du fest, welche Multiviews sie sieht und ob sie ihre Layouts selbst einrichten darf.</p>
+              <h2>Benutzer &amp; Rechte</h2>
+              <p class="muted">Rollen, Anmeldung und Dienstzugänge werden hier zentral verwaltet. Die Auswahl bleibt als eigene Unterseite der Einstellungen erreichbar.</p>
             </div>
           </div>
-          <nav class="subnav" aria-label="Bereiche von Benutzer &amp; Rechte">
-            <a href="#/zugang/rollen" data-section-link="rollen">Rollen</a>
-            <a href="#/zugang/anmeldung" data-section-link="anmeldung">Anmeldung &amp; Admin-PIN</a>
-            <a href="#/zugang/dienste" data-section-link="dienste">Anmeldung für alle Dienste</a>
+          <nav class="subnav subnav-nested" aria-label="Bereiche von Benutzer &amp; Rechte">
+            <a href="#/einstellungen/zugang/rollen" data-access-section-link="rollen">Rollen</a>
+            <a href="#/einstellungen/zugang/anmeldung" data-access-section-link="anmeldung">Anmeldung &amp; Admin-PIN</a>
+            <a href="#/einstellungen/zugang/dienste" data-access-section-link="dienste">Anmeldung für alle Dienste</a>
+            <a href="#/einstellungen/zugang/zugangsdaten" data-access-section-link="zugangsdaten">Zugangsdaten der Dienste</a>
+            <a href="#/einstellungen/zugang/nachrichten" data-access-section-link="nachrichten">Nachrichten-Links</a>
           </nav>
-          <div class="settings-stack">
-            <div class="card" id="access-pin-card" data-section="anmeldung"></div>
-            <div class="card" id="access-gateway-card" data-section="dienste"></div>
-            <div class="card" data-section="rollen">
+          <div class="settings-stack access-section-stack">
+            <div class="card" id="access-pin-card" data-access-section="anmeldung"></div>
+            <div class="card" id="access-gateway-card" data-access-section="dienste"></div>
+            <div class="card" id="service-creds-card" data-access-section="zugangsdaten"></div>
+            <div class="card" id="message-links-card" data-access-section="nachrichten"></div>
+            <div class="card" data-access-section="rollen">
               <div class="card-head">
                 <div>
                   <h2>Rollen</h2>
@@ -430,6 +530,7 @@
               <div id="access-roles"></div>
             </div>
           </div>
+        </div>
         </section>
       </main>
     </div>

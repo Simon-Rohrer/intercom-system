@@ -14,7 +14,7 @@ type StreamDeckLabelLookup = {
 
 function resolveReplyTargetLabel(lookup: StreamDeckLabelLookup): string {
   if (!lookup.lastDirectCallerUserId) {
-    return "No active caller";
+    return "Kein Anrufer";
   }
 
   const activeUser = lookup.activeUsers?.find(
@@ -31,7 +31,7 @@ function resolveReplyTargetLabel(lookup: StreamDeckLabelLookup): string {
     return knownUser.username;
   }
 
-  return "Unknown caller";
+  return "Unbekannter Anrufer";
 }
 
 function resolveActionLabel(
@@ -57,7 +57,7 @@ function resolveActionLabel(
         action.roomId
       );
     case "ptt_selected":
-      return "PTT";
+      return "Sprechen";
     case "listen_room":
       return (
         lookup.rooms.find((room) => room.id === action.roomId)?.name ||
@@ -99,25 +99,25 @@ function resolveActionLabel(
           ?.name || action.broadcastGroupId
       );
     case "raspberry_status":
-      return action.raspberryPiId || "PI Status";
+      return action.raspberryPiId || "Pi-Status";
     case "reply_to_caller":
-      return `Reply\n${resolveReplyTargetLabel(lookup)}`;
+      return `Antworten\n${resolveReplyTargetLabel(lookup)}`;
     case "incoming_call_indicator":
-      return "Incoming\nCall";
+      return "Eingehender\nRuf";
     case "mute_toggle":
-      return "Mute";
+      return "Stumm";
     case "volume_delta":
-      return "Volume";
+      return "Lautstärke";
     case "chat_message":
       return action.message?.trim() ? `${action.message.trim()}\nChat` : "Chat";
     case "page_up":
-      return "Page +";
+      return "Seite +";
     case "page_down":
-      return "Page -";
+      return "Seite −";
     case "page_home":
-      return "Home";
+      return "Start";
     case "page_jump":
-      return action.targetPage !== undefined ? `Page ${action.targetPage + 1}` : "Jump";
+      return action.targetPage !== undefined ? `Seite ${action.targetPage + 1}` : "Springen";
     case "none":
     default:
       return undefined;
@@ -132,7 +132,7 @@ export function withResolvedStreamDeckButtonLabel(
     const existingLabel = button.label?.trim() ?? "";
     const primaryLabel =
       existingLabel.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ||
-      "Reply";
+      "Antworten";
     return {
       ...button,
       label: `${primaryLabel}\n${resolveReplyTargetLabel(lookup)}`,

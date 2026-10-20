@@ -3,7 +3,7 @@
 # Adressen (*.jms.de, *.local) bleiben erhalten. Neu:
 #   - jede Weboberfläche zusätzlich als https://192.168.0.21:<gewohnter Port>
 #   - http://192.168.0.21:<port> wird auf demselben Port auf https umgeleitet
-#   - Multiview auch als multiview.jms.de / multiview.local
+#   - Multiview (JMS Control) auch als multiview.jms.de / jmscontrol.local (multiview.local seit 15.10.2026 entfernt)
 #   - zentrale Anmeldung vor allen Diensten außer dem Multiview (Baustein jms_auth)
 # Die Dienste lauschen danach nur noch auf 127.0.0.1 (Caddy nur auf der LAN-Adresse),
 # darum passen beide auf denselben Port. Auf dem Server selbst (Kiosk, Companion)
@@ -19,9 +19,18 @@
 #   sudo systemctl reload caddy
 
 {
+	default_sni 192.168.0.21
+	order request_header before forward_auth
+	# Kein HTTP/3 für die Namens-Adressen (443): Safari hängt bei Caddys interner CA im QUIC-Aufbau
+	# (weißer Bildschirm bei intercom.local, bis man neu lädt) – dann bleibt es bei h1/h2.
+	servers {
+		protocols h1 h2
+	}
+
 	# Klartext-Anfragen auf den HTTPS-Ports auf https umleiten (Caddy ≥ 2.6).
 	# Nur für die Port-Adressen, nicht für Port 80 (setup.local) und 443.
 	servers 192.168.0.21:8443 {
+		strict_sni_host insecure_off
 		listener_wrappers {
 			http_redirect
 			tls
@@ -30,6 +39,7 @@
 		protocols h1 h2
 	}
 	servers 192.168.0.21:8090 {
+		strict_sni_host insecure_off
 		listener_wrappers {
 			http_redirect
 			tls
@@ -38,6 +48,7 @@
 		protocols h1 h2
 	}
 	servers 192.168.0.21:8000 {
+		strict_sni_host insecure_off
 		listener_wrappers {
 			http_redirect
 			tls
@@ -46,6 +57,7 @@
 		protocols h1 h2
 	}
 	servers 192.168.0.21:3000 {
+		strict_sni_host insecure_off
 		listener_wrappers {
 			http_redirect
 			tls
@@ -54,6 +66,7 @@
 		protocols h1 h2
 	}
 	servers 192.168.0.21:61208 {
+		strict_sni_host insecure_off
 		listener_wrappers {
 			http_redirect
 			tls
@@ -62,6 +75,7 @@
 		protocols h1 h2
 	}
 	servers 192.168.0.21:9443 {
+		strict_sni_host insecure_off
 		listener_wrappers {
 			http_redirect
 			tls
@@ -69,11 +83,42 @@
 		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
 		protocols h1 h2
 	}
+	servers 192.168.0.21:8250 {
+		strict_sni_host insecure_off
+		protocols h1 h2
+	}
 }
 
 (lan_port) {
 	bind 192.168.0.21
-	tls internal
+	import jms_tls
+}
+
+(jms_tls) {
+	tls internal {
+		client_auth {
+			mode verify_if_given
+			trusted_ca_cert_file /etc/jms-auth/device-ca.crt
+		}
+	}
+	map {tls_client_fingerprint} {jms_device_fingerprint} {
+		default ""
+		~^([a-fA-F0-9]{64})$ ${1}
+	}
+	request_header -X-JMS-Device-Assertion
+	request_header -X-JMS-Device-Proxy
+	request_header X-JMS-Device-Fingerprint {jms_device_fingerprint}
+}
+
+(jms_node) {
+	header_up X-JMS-Device-Fingerprint {jms_device_fingerprint}
+	import /etc/jms-auth/caddy-device-proxy.caddy
+}
+
+(jms_clean) {
+	header_up -X-JMS-Device-Key
+	header_up -X-JMS-Device-Proxy
+	header_up -X-JMS-Device-Fingerprint
 }
 
 # Zentrale Anmeldung (im Multiview, siehe BETRIEB.md „Anmeldung für alle Dienste“):
@@ -83,16 +128,110 @@
 # companion, portainer, glances und dns nur der Admin. Solange die Anmeldung im
 # Multiview ausgeschaltet ist, lässt die Prüfung alles durch.
 (jms_auth) {
+	request_header -X-JMS-Gateway
+	request_header -X-JMS-Session-Id
 	@jms_gated not path /.jms-auth/*
 	forward_auth @jms_gated 127.0.0.1:8090 {
+		import jms_node
 		uri /.jms-auth/check?service={args.0}
+		copy_headers X-JMS-Gateway X-JMS-Session-Id X-JMS-Device-Assertion
 		# Die Prüfung selbst ist eine normale Anfrage – auch wenn das Gerät gerade
 		# einen WebSocket öffnet (sonst nimmt der Multiview sie als eigenen WebSocket an)
 		header_up -Connection
 		header_up -Upgrade
 	}
+	@jms_websocket {
+		header Upgrade *
+		not path /.jms-auth/*
+	}
+	handle @jms_websocket {
+		rewrite * /.jms-auth/ws/{args.0}{uri}
+		reverse_proxy 127.0.0.1:8090 {
+			import jms_node
+		}
+	}
 	handle /.jms-auth/* {
-		reverse_proxy 127.0.0.1:8090
+		reverse_proxy 127.0.0.1:8090 {
+			import jms_node
+		}
+	}
+}
+
+# Der bereinigende Service Worker muss auch nach Ablauf der Anmeldung erreichbar
+# bleiben, damit ein alter Offline-Cache die Anmeldung nicht festhalten kann.
+# Nur diese öffentliche Skriptdatei ist ausgenommen; App, API und WebSockets
+# behalten unverändert die zentrale Anmeldung und deren Rechteprüfung.
+(kesher_web) {
+	@kesher_worker {
+		path /sw.js
+		method GET HEAD
+	}
+	handle @kesher_worker {
+		reverse_proxy 127.0.0.1:8080 {
+			import jms_clean
+		}
+	}
+	handle {
+		import jms_auth kesher
+		reverse_proxy 127.0.0.1:8080 {
+			import jms_clean
+		}
+	}
+}
+
+# Fremde Oberflächen (Companion) merken An- und Abmeldung in anderen Tabs nicht selbst: Ihre
+# Seitenaufrufe holt der Multiview vom Dienst und hängt einen kleinen Wächter ein, der dann neu
+# lädt (multiview/public/watch-login.js). Nach „import jms_auth“ einbinden – das rewrite steht in
+# handle, läuft also erst nach der Anmeldeprüfung auf dem ursprünglichen Pfad.
+(jms_watch) {
+	@jms_page {
+		method GET
+		header Accept *text/html*
+		not path /.jms-auth/*
+	}
+	handle @jms_page {
+		rewrite * /.jms-auth/page/{args.0}{uri}
+		reverse_proxy 127.0.0.1:8090 {
+			import jms_node
+		}
+	}
+}
+
+# Router (Speedport Smart 2, nur Admin): Der Router hat eine eigene Anmeldung mit Geräte-Passwort.
+# Seitenaufrufe (HTML) holt der Multiview vom Router (mit dem Cookie des Browsers) und hängt
+# watch-login.js und autologin.js ein: Wechselt die Anmeldung, lädt die Seite neu; autologin.js
+# meldet den Admin mit dem in JMS Control hinterlegten Passwort an. Alles andere geht direkt zum Router.
+# „Location“ des Routers zeigt auf seine IP – das wird auf diese Adresse zurückgebogen.
+(jms_router) {
+	@router_page {
+		method GET
+		header Accept *text/html*
+		not path /.jms-auth/*
+	}
+	handle @router_page {
+		rewrite * /.jms-auth/page/router{uri}
+		reverse_proxy 127.0.0.1:8090 {
+			import jms_node
+		}
+	}
+	reverse_proxy http://192.168.0.250 {
+		import jms_clean
+		header_up Host {upstream_hostport}
+		header_down Location ^http://192\.168\.0\.250(.*)$ $1
+	}
+}
+
+# Dashboard (Homepage): Seiten nicht aus dem Browser-Zwischenspeicher zeigen. Homepage schickt nur
+# „s-maxage“, Safari hält die Seite dann auf eigene Faust fest – nach einem Neustart des Containers
+# blieb so unter technik.local eine Fassung ohne settings.yaml hängen (keine Reiter, alle Gruppen).
+# „no-cache“ heißt: jedes Mal beim Server nachfragen. Die Dateien unter /_next/static tragen eine
+# Prüfsumme im Namen und dürfen weiter zwischengespeichert werden. „defer“, weil Homepage selbst
+# einen Cache-Control-Kopf schickt, der sonst gewinnt.
+(dashboard_no_cache) {
+	@dashboard_page not path /_next/static/* /.jms-auth/*
+	header @dashboard_page {
+		Cache-Control "no-cache"
+		defer
 	}
 }
 
@@ -101,107 +240,163 @@
 # ---------------------------------------------------------------------------
 
 # Kesher (Container auf 127.0.0.1:8080)
+https://:8090, https://:8443, https://:8000, https://:3000, https://:61208, https://:9443, https://:8250 {
+	bind 192.168.0.21
+	tls internal {
+		client_auth {
+			mode verify_if_given
+			trusted_ca_cert_file /etc/jms-auth/device-ca.crt
+		}
+	}
+	respond 404
+}
+
 https://192.168.0.21:8443 {
 	import lan_port
-	import jms_auth kesher
-	reverse_proxy 127.0.0.1:8080
+	import kesher_web
 }
 
 # Multiview (Container mit HOST=127.0.0.1)
 https://192.168.0.21:8090 {
 	import lan_port
-	reverse_proxy 127.0.0.1:8090
+	reverse_proxy 127.0.0.1:8090 {
+		import jms_node
+	}
 }
 
 # Bitfocus Companion – vorher die Admin-Oberfläche auf 127.0.0.1:8000 umstellen
 https://192.168.0.21:8000 {
 	import lan_port
 	import jms_auth companion
-	reverse_proxy 127.0.0.1:8000
+	import jms_watch companion
+	reverse_proxy 127.0.0.1:8000 {
+		import jms_clean
+	}
 }
 
 # Dashboard (Homepage) – Compose-Port vorher auf "127.0.0.1:3000:3000"
 https://192.168.0.21:3000 {
 	import lan_port
 	import jms_auth dashboard
-	reverse_proxy 127.0.0.1:3000
+	import dashboard_no_cache
+	reverse_proxy 127.0.0.1:3000 {
+		import jms_clean
+	}
 }
 
 # Glances – vorher nur auf 127.0.0.1 lauschen lassen
 https://192.168.0.21:61208 {
 	import lan_port
 	import jms_auth glances
-	reverse_proxy 127.0.0.1:61208
+	import jms_watch glances
+	reverse_proxy 127.0.0.1:61208 {
+		import jms_clean
+	}
 }
 
 # Portainer – Compose-Port vorher auf "127.0.0.1:9443:9443" (Portainer hat eigenes HTTPS)
 https://192.168.0.21:9443 {
 	import lan_port
 	import jms_auth portainer
+	import jms_watch portainer
 	reverse_proxy https://127.0.0.1:9443 {
+		import jms_clean
 		transport http {
 			tls_insecure_skip_verify
 		}
 	}
+}
+
+# Router (Speedport) – nur Admin, automatische Anmeldung (siehe jms_router)
+https://192.168.0.21:8250 {
+	import lan_port
+	import jms_auth router
+	import jms_router
 }
 
 # ---------------------------------------------------------------------------
 # Namens-Adressen (bisher schon vorhanden, Ziele jetzt über 127.0.0.1)
 # ---------------------------------------------------------------------------
 
-https://intercom.jms.de, https://kesher.jms.de, https://intercom.local, https://kesher.local {
-	tls internal
-	import jms_auth kesher
-	reverse_proxy 127.0.0.1:8080
+https://intercom.internal, https://kesher.internal, https://intercom.jms.de, https://kesher.jms.de, https://intercom.local, https://kesher.local {
+	import jms_tls
+	import kesher_web
 }
 
-https://multiview.jms.de, https://multiview.local {
-	tls internal
-	reverse_proxy 127.0.0.1:8090
+https://jmscontrol.internal, https://multiview.internal, https://multiview.jms.de, https://jmscontrol.local {
+	import jms_tls
+	reverse_proxy 127.0.0.1:8090 {
+		import jms_node
+	}
 }
 
-https://dashboard.jms.de, https://dashboard.local {
-	tls internal
+https://technik.internal, https://dashboard.internal, https://dashboard.jms.de, https://dashboard.local, https://technik.local {
+	import jms_tls
 	import jms_auth dashboard
-	reverse_proxy 127.0.0.1:3000
+	import dashboard_no_cache
+	reverse_proxy 127.0.0.1:3000 {
+		import jms_clean
+	}
 }
 
-https://companion.jms.de, https://companion.local {
-	tls internal
+https://companion.internal, https://companion.jms.de, https://companion.local {
+	import jms_tls
 	import jms_auth companion
-	reverse_proxy 127.0.0.1:8000
+	import jms_watch companion
+	reverse_proxy 127.0.0.1:8000 {
+		import jms_clean
+	}
 }
 
-https://glances.jms.de, https://glances.local {
-	tls internal
+https://glances.internal, https://glances.jms.de, https://glances.local {
+	import jms_tls
 	import jms_auth glances
-	reverse_proxy 127.0.0.1:61208
+	import jms_watch glances
+	reverse_proxy 127.0.0.1:61208 {
+		import jms_clean
+	}
 }
 
-https://portainer.jms.de, https://portainer.local {
-	tls internal
+https://portainer.internal, https://portainer.jms.de, https://portainer.local {
+	import jms_tls
 	import jms_auth portainer
+	import jms_watch portainer
 	reverse_proxy https://127.0.0.1:9443 {
+		import jms_clean
 		transport http {
 			tls_insecure_skip_verify
 		}
 	}
 }
 
-https://dns.jms.de, https://dns.local {
-	tls internal
+https://dns.internal, https://dns.jms.de, https://dns.local {
+	import jms_tls
 	import jms_auth dns
-	reverse_proxy 127.0.0.1:8083
+	import jms_watch dns
+	reverse_proxy 127.0.0.1:8083 {
+		import jms_clean
+	}
 }
 
-http://setup.local {
+https://router.internal, https://router.jms.de, https://router.local {
+	import jms_tls
+	import jms_auth router
+	import jms_router
+}
+
+http://setup.internal, http://setup.local {
+	root * /srv/homelab-setup
+	file_server
+}
+
+https://setup.internal {
+	import jms_tls
 	root * /srv/homelab-setup
 	file_server
 }
 
 # Aus der früheren Installation (Heimnetz-Adresse), unverändert übernommen
 https://192.168.178.185 {
-	tls internal
-	import jms_auth kesher
-	reverse_proxy 127.0.0.1:8080
+	import jms_tls
+	import kesher_web
 }

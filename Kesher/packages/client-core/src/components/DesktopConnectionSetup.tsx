@@ -81,7 +81,7 @@ export function DesktopConnectionSetup({
     setIsChecking(false);
 
     if (!ok) {
-      setError("Verbindungstest fehlgeschlagen. Adresse pruefen oder trotzdem starten.");
+      setError("Verbindungstest fehlgeschlagen. Adresse prüfen oder trotzdem starten.");
       return;
     }
 
@@ -98,10 +98,10 @@ export function DesktopConnectionSetup({
 
   return (
     <div className={`desktop-connection-root${compact ? " compact" : ""}`}>
-      <section className="desktop-connection-card" aria-label="Desktop connection setup">
+      <section className="desktop-connection-card" aria-label="Server-Verbindung einrichten">
         <h1 className="desktop-connection-title">Server-Verbindung einrichten</h1>
         <p className="desktop-connection-subtitle">
-          Die Adresse wird lokal gespeichert. Erlaubt sind IP, DNS oder volle URL inklusive frei waehlbarem Port.
+          Die Adresse wird lokal gespeichert. Erlaubt sind IP, DNS oder volle URL inklusive frei wählbarem Port.
         </p>
 
         <label className="desktop-connection-label" htmlFor="desktop-server-address">
@@ -111,7 +111,7 @@ export function DesktopConnectionSetup({
           id="desktop-server-address"
           className="desktop-connection-input"
           type="text"
-          placeholder="z.B. 192.168.1.50:8090  |  server.local:3000  |  https://intercom.example.org:8443"
+          placeholder="z. B. 192.168.1.50:8090  |  server.local:3000  |  https://intercom.example.org:8443"
           value={input}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => {
@@ -133,7 +133,7 @@ export function DesktopConnectionSetup({
           </button>
           <button type="button" onClick={handleContinueWithoutCheck}>Ohne Test starten</button>
           <button type="button" onClick={() => setInput(baseUrl)}>Letzte Adresse laden</button>
-          {onCancel ? <button type="button" onClick={onCancel}>Schliessen</button> : null}
+          {onCancel ? <button type="button" onClick={onCancel}>Schließen</button> : null}
         </div>
 
         {error ? <p className="desktop-connection-status error">{error}</p> : null}
