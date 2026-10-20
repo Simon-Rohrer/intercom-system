@@ -69,21 +69,26 @@ import { withResolvedStreamDeckButtonLabel } from "./lib/streamDeckLabels";
 import { sortDirectUsersByRoleAndUsername } from "./lib/users";
 import { resolveAutoLoginConfiguration } from "./lib/autoLogin";
 import {
-  centralAdminLogin,
+  centralSessionLogin,
   centralIdentityKey,
   centralLoginAvailable,
   centralLoginUrl,
   centralLogout,
   fetchCentralIdentity,
+  redirectToCentralLoginOnUnauthorized,
+  resolveStoredTokenRestore,
   storeSessionToken,
   storedSessionIdentityKey,
   type CentralIdentity,
 } from "./lib/centralLogin";
 import {
+  resolveBareMode,
   resolveLowPowerMode,
   resolveRaspberryRemoteLogin,
   resolveViewModeOverride,
 } from "./lib/runtimeMode";
+import { switchAccountUrl } from "./components/shell/shellLinks";
+import type { ShellUser } from "./components/shell/AppShell";
 import { resolveInputDeviceChannelCount } from "./lib/audioDeviceChannels";
 import type {
   Bootstrap,
@@ -185,7 +190,7 @@ function remoteAudioDeviceToMediaDevice(
 ): RemoteMediaDeviceInfo {
   const label =
     device.label ||
-    (device.kind === "audioinput" ? "Remote microphone" : "Remote output");
+    (device.kind === "audioinput" ? "Mikrofon am Raspberry" : "Ausgang am Raspberry");
   return {
     deviceId: device.deviceId,
     groupId: "",
@@ -320,7 +325,7 @@ async function fillStreamDeckControlFromDataUrl(
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Failed to decode Stream Deck button image."));
+    img.onerror = () => reject(new Error("Stream-Deck-Tastenbild konnte nicht gelesen werden."));
     img.src = imageDataUrl;
   });
 
@@ -353,6 +358,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     console.debug("[App] Initial token from session storage:", t ? "exists" : "empty");
     // With central login the stored token is only taken over once the central
     // identity is checked (see below) – it may belong to another identity.
+    // Opened to remote-control a Raspberry Pi: always the station selection.
+    if (resolveRaspberryRemoteLogin(window.location.search)) return null;
     return centralLoginAvailable() ? null : t;
   });
   const restoreStoredMatrixOnInitialBootstrapRef = useRef(
@@ -435,9 +442,14 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       // central identity; otherwise sign it out (frees the role) and log in
       // again as whoever is signed in centrally now.
       const storedToken = sessionStorage.getItem(tokenStorageKey);
-      let keepToken = false;
+      const keepToken =
+        resolveStoredTokenRestore({
+          storedToken,
+          storedIdentityKey: storedSessionIdentityKey(),
+          identity,
+          raspberryRemoteLogin: resolveRaspberryRemoteLogin(window.location.search),
+        }) === "keep";
       if (storedToken) {
-        keepToken = storedSessionIdentityKey() === centralIdentityKey(identity);
         if (!keepToken) {
           sessionStorage.removeItem(tokenStorageKey);
           restoreStoredMatrixOnInitialBootstrapRef.current = false;
@@ -464,7 +476,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     if (!centralChecked || !centralLoginAvailable()) return;
     let busy = false;
     const check = async () => {
-      if (busy || document.visibilityState === "hidden") return;
+      if (busy) return;
       busy = true;
       try {
         // Only act on a real answer – a network hiccup must not look like a logout
@@ -475,13 +487,13 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         if (!res.ok || !res.headers.get("content-type")?.includes("json")) return;
         const data = (await res.json()) as {
           access?: { enabled?: boolean };
-          user?: { name?: string; roleId?: string; admin?: boolean; open?: boolean } | null;
+          user?: Partial<CentralIdentity> & { open?: boolean } | null;
         };
         if (!data?.access?.enabled) return;
         const user = data.user;
         const identity =
-          user && !user.open && user.name && user.roleId
-            ? { name: user.name, roleId: user.roleId, admin: Boolean(user.admin) }
+          user && !user.open && user.name && user.roleId && user.sessionId && user.version && user.expiresAt && user.expiresAt > Date.now()
+            ? { name: user.name, roleId: user.roleId, admin: Boolean(user.admin), sessionId: user.sessionId, version: user.version, expiresAt: user.expiresAt }
             : null;
         if (centralIdentityKey(identity) !== centralIdentityKey(centralIdentityRef.current)) {
           window.location.reload();
@@ -494,7 +506,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     };
     document.addEventListener("visibilitychange", check);
     window.addEventListener("focus", check);
-    const timer = window.setInterval(check, 15000);
+    const timer = window.setInterval(check, 5000);
     return () => {
       document.removeEventListener("visibilitychange", check);
       window.removeEventListener("focus", check);
@@ -513,6 +525,18 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     () => resolveRaspberryRemoteLogin(window.location.search),
     [],
   );
+  // Without central login the tab's own stored session is signed out as well
+  // (frees its role) – this tab is now used to remote-control a station.
+  useEffect(() => {
+    if (!raspberryRemoteLogin || centralLoginAvailable()) return;
+    const storedToken = sessionStorage.getItem(tokenStorageKey);
+    if (!storedToken) return;
+    sessionStorage.removeItem(tokenStorageKey);
+    restoreStoredMatrixOnInitialBootstrapRef.current = false;
+    void logout(storedToken).catch(() => undefined);
+  }, [raspberryRemoteLogin]);
+  // Kiosk stations and embedded tiles keep the bare full-screen view
+  const bareMode = useMemo(() => resolveBareMode(window.location.search), []);
 
   const showDebug = (() => {
     const params = new URLSearchParams(window.location.search);
@@ -615,12 +639,12 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           setToken(null);
           setAppData(null);
           setOperatorLoginError(
-            "Verbindung verloren. Bitte Namen und Rolle erneut auswaehlen.",
+            "Verbindung verloren. Bitte Namen und Rolle erneut auswählen.",
           );
           return;
         }
 
-        let res = await login(
+        let res = centralIdentityRef.current ? await centralSessionLogin() : await login(
           useUsername,
           useRoleId,
           autoLoginConfig.enabled && autoLoginConfig.secondary,
@@ -808,7 +832,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     () =>
       audioDevices.inputDevices.find(
         (d) => d.deviceId === settings.selectedInputDeviceId,
-      )?.label || "Select microphone",
+      )?.label || "Mikrofon wählen",
     [audioDevices.inputDevices, settings.selectedInputDeviceId],
   );
 
@@ -829,11 +853,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   }, []);
 
   const selectedOutputLabel = useMemo(() => {
-    if (!settings.selectedOutputDeviceId) return "System default";
+    if (!settings.selectedOutputDeviceId) return "Standard des Systems";
     return (
       audioDevices.outputDevices.find(
         (d) => d.deviceId === settings.selectedOutputDeviceId,
-      )?.label || "System default"
+      )?.label || "Standard des Systems"
     );
   }, [audioDevices.outputDevices, settings.selectedOutputDeviceId]);
 
@@ -883,9 +907,9 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   const createChannelAudioFeedRoom = useCallback(
     async (payload: ChannelAudioFeedRoomPayload) => {
       if (!token || !appData) {
-        throw new Error("No active session.");
+        throw new Error("Keine aktive Sitzung.");
       }
-      const trimmedName = payload.name.trim() || "Music feed";
+      const trimmedName = payload.name.trim() || "Musik-Zuspielung";
       const slug =
         (payload.id || trimmedName)
           .toLowerCase()
@@ -916,10 +940,10 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   const updateChannelAudioFeedRoom = useCallback(
     async (roomId: string, payload: ChannelAudioFeedRoomPayload) => {
       if (!token || !appData) {
-        throw new Error("No active session.");
+        throw new Error("Keine aktive Sitzung.");
       }
       await updateRoom(token, settings.adminPinGuard, roomId, {
-        name: payload.name.trim() || "Music feed",
+        name: payload.name.trim() || "Musik-Zuspielung",
         priorityLevel: payload.priorityLevel,
         senderRoleIds: payload.senderRoleIds,
         receiverRoleIds: payload.receiverRoleIds,
@@ -1146,7 +1170,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         setStreamDeckError(
           error instanceof Error
             ? error.message
-            : "Failed to update Stream Deck display.",
+            : "Stream-Deck-Anzeige konnte nicht aktualisiert werden.",
         );
       } finally {
         streamDeckRenderInFlightRef.current = false;
@@ -1228,7 +1252,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
   const connectStreamDeckWebHid = useCallback(async () => {
     if (!streamDeckWebHidSupported) {
-      setStreamDeckError("WebHID is not available in this browser.");
+      setStreamDeckError("Dieser Browser kann kein Stream Deck per USB (WebHID) ansprechen.");
       return;
     }
     setStreamDeckWebHidBusy(true);
@@ -1243,7 +1267,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       const deck = grantedDecks[0] ?? (await requestStreamDecks())[0];
       if (!deck) {
         setStreamDeckError(
-          "No Stream Deck device was selected. Close Elgato Stream Deck or other apps that may be holding the device, then try again.",
+          "Kein Stream Deck ausgewählt. Schließe die Elgato-Stream-Deck-Software und andere Programme, die das Gerät belegen könnten, und versuche es erneut.",
         );
         return;
       }
@@ -1286,7 +1310,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         setStreamDeckError(
           error instanceof Error
             ? error.message
-            : "Stream Deck connection error.",
+            : "Verbindungsfehler zum Stream Deck.",
         );
       };
 
@@ -1309,7 +1333,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       setStreamDeckError(
         error instanceof Error
           ? error.message
-          : "Failed to connect to Stream Deck via WebHID.",
+          : "Verbindung zum Stream Deck über WebHID fehlgeschlagen.",
       );
       setStreamDeckWebHidActive(false);
     } finally {
@@ -1382,11 +1406,12 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       const data = await getPublicBootstrap();
       setPublicData(data);
     } catch (error) {
+      if (redirectToCentralLoginOnUnauthorized(error)) return;
       setPublicData(null);
       setPublicBootstrapError(
         error instanceof Error
           ? error.message
-          : "Server nicht erreichbar. Bitte Adresse pruefen oder erneut versuchen.",
+          : "Server nicht erreichbar. Bitte Adresse prüfen oder erneut versuchen.",
       );
     } finally {
       setIsPublicBootstrapLoading(false);
@@ -1411,7 +1436,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         if (!cancelled) {
           setPublicData(data);
         }
-      } catch {
+      } catch (error) {
+        if (!cancelled && redirectToCentralLoginOnUnauthorized(error)) return;
         // Keep the last usable login configuration during a short outage.
       }
     };
@@ -1461,7 +1487,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
       void (async () => {
         try {
-          let res = await login(
+          let res = centralIdentityRef.current ? await centralSessionLogin() : await login(
             paramUsername,
             targetRoleId,
             autoLoginConfig.secondary,
@@ -1481,7 +1507,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
               setOperatorLoginError(
                 autoLoginConfig.central
                   ? roleOccupiedMessage(res)
-                  : "Auto-login failed: Role is already active.",
+                  : "Automatische Anmeldung fehlgeschlagen: Die Rolle ist schon angemeldet.",
               );
               return;
             }
@@ -1493,7 +1519,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           setToken(res.token);
         } catch (e) {
           setOperatorLoginError(
-            e instanceof Error ? e.message : "Auto-login failed.",
+            e instanceof Error ? e.message : "Automatische Anmeldung fehlgeschlagen.",
           );
         } finally {
           autoLoginInFlightRef.current = false;
@@ -1504,7 +1530,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       // A centrally chosen role that Kesher no longer has: just the normal login form
       if (autoLoginConfig.requestedRole && !targetRoleId && !autoLoginConfig.central) {
         setOperatorLoginError(
-          `Auto-login failed: Role "${autoLoginConfig.requestedRole}" not found.`,
+          `Automatische Anmeldung fehlgeschlagen: Rolle „${autoLoginConfig.requestedRole}“ nicht gefunden.`,
         );
       }
     }
@@ -1532,7 +1558,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     centralAdminTriedRef.current = true;
     void (async () => {
       try {
-        const res = await centralAdminLogin();
+        const res = await centralSessionLogin();
         setAuthMode("admin");
         setAdminLoginError("");
         setOperatorLoginError("");
@@ -1544,7 +1570,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         setAdminOverrideActive(true);
       } catch (error) {
         setAdminLoginError(
-          error instanceof Error ? error.message : "Admin login failed.",
+          error instanceof Error ? error.message : "Admin-Anmeldung fehlgeschlagen.",
         );
       }
     })();
@@ -1600,7 +1626,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           setStreamDeckError(
             err instanceof Error
               ? err.message
-              : "Failed to load Stream Deck settings.",
+              : "Stream-Deck-Einstellungen konnten nicht geladen werden.",
           );
         }
       })
@@ -1710,7 +1736,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         setRaspberryPiStationsError(
           error instanceof Error
             ? error.message
-            : "failed to load Raspberry Pi stations",
+            : "Raspberry-Pi-Stationen konnten nicht geladen werden.",
         );
       } finally {
         window.clearTimeout(timeoutId);
@@ -1774,7 +1800,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         setRaspberryRemoteError(
           error instanceof Error
             ? error.message
-            : "failed to load Raspberry Pi remote stations",
+            : "Raspberry-Pi-Stationen konnten nicht geladen werden.",
         );
       } finally {
         inFlight = false;
@@ -1915,7 +1941,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         : settings.username.trim();
     const useRoleId =
       typeof overrideRoleId === "string" ? overrideRoleId : settings.roleId;
-    const res = await login(useUsername, useRoleId);
+    const res = centralIdentityRef.current ? await centralSessionLogin() : await login(useUsername, useRoleId);
     if ("requiresTakeover" in res) {
       // Occupied roles cannot be taken over by hand; only fixed devices
       // (auto-login URL with autoTakeover) reclaim their own role.
@@ -1944,14 +1970,14 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       await doLogin(undefined, undefined, "operator");
     } catch (error) {
       setOperatorLoginError(
-        error instanceof Error ? error.message : "Login failed.",
+        error instanceof Error ? error.message : "Anmeldung fehlgeschlagen.",
       );
     }
   }
 
   async function handleAdminLogin() {
     if (adminPinInput.trim() !== settings.adminPinGuard) {
-      setAdminLoginError("Incorrect admin PIN.");
+      setAdminLoginError("Falsche Admin-PIN.");
       return;
     }
     setAdminLoginError("");
@@ -1968,7 +1994,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     } catch (error) {
       setAuthMode("operator");
       setAdminLoginError(
-        error instanceof Error ? error.message : "Admin login failed.",
+        error instanceof Error ? error.message : "Admin-Anmeldung fehlgeschlagen.",
       );
     }
   }
@@ -1981,7 +2007,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     localStorage.removeItem(sessionSettingsStorageKey);
     // Signed in centrally: sign out on all services and open the central login page
     if (centralIdentityRef.current) {
-      await centralLogout("/");
+      await centralLogout();
       return;
     }
     setAuthMode("operator");
@@ -2000,22 +2026,22 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   ): Promise<boolean> {
     setRaspberryRemoteCommandBusy(true);
     setRaspberryRemoteCommandError("");
-    setRaspberryRemoteCommandStatus("Sending command...");
+    setRaspberryRemoteCommandStatus("Befehl wird gesendet …");
     try {
       const result = await sendRaspberryPiRemoteCommand(command);
       setRaspberryRemoteCommandStatus(
         result.ok
-          ? `${result.command || command.command} ${result.status || "queued"}`
-          : result.error || "Command failed.",
+          ? `${result.command || command.command}: ${result.status || "in Warteschlange"}`
+          : result.error || "Befehl fehlgeschlagen.",
       );
       if (!result.ok) {
-        setRaspberryRemoteCommandError(result.error || "Command failed.");
+        setRaspberryRemoteCommandError(result.error || "Befehl fehlgeschlagen.");
       }
       return result.ok;
     } catch (error) {
       setRaspberryRemoteCommandStatus("");
       setRaspberryRemoteCommandError(
-        error instanceof Error ? error.message : "Command failed.",
+        error instanceof Error ? error.message : "Befehl fehlgeschlagen.",
       );
       return false;
     } finally {
@@ -2613,7 +2639,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       setStreamDeckSettings(saved);
     } catch (err) {
       setStreamDeckError(
-        err instanceof Error ? err.message : "Failed to save Stream Deck settings.",
+        err instanceof Error ? err.message : "Stream-Deck-Einstellungen konnten nicht gespeichert werden.",
       );
       throw err;
     } finally {
@@ -2630,7 +2656,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       setStreamDeckSettings(reset);
     } catch (err) {
       setStreamDeckError(
-        err instanceof Error ? err.message : "Failed to reset Stream Deck settings.",
+        err instanceof Error ? err.message : "Stream-Deck-Einstellungen konnten nicht zurückgesetzt werden.",
       );
     } finally {
       setStreamDeckBusy(false);
@@ -2639,7 +2665,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
   const handlePublishUserCompanionProfile = useCallback(async (next?: StreamDeckSettings) => {
     if (!token) {
-      throw new Error("Not authenticated.");
+      throw new Error("Nicht angemeldet.");
     }
     const published = await publishUserCompanionProfile(token, next);
     if (next) {
@@ -2650,21 +2676,21 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
   // ── Early returns ──
   if (!centralChecked && !publicBootstrapError) {
-    return <div className="root">Loading configuration...</div>;
+    return <div className="root">Konfiguration wird geladen …</div>;
   }
   if (!publicData) {
     if (isPublicBootstrapLoading && !publicBootstrapError) {
-      return <div className="root">Loading configuration...</div>;
+      return <div className="root">Konfiguration wird geladen …</div>;
     }
 
     return (
       <div className="root">
         <div className="birthday-gate-card">
-          <p className="birthday-gate-kicker">Server offline</p>
-          <h1>Keine Verbindung zum Backend</h1>
+          <p className="birthday-gate-kicker">Server nicht erreichbar</p>
+          <h1>Keine Verbindung zum Server</h1>
           <p>
-            Die App kann ohne Backend keine Rollen, Rooms oder Login-Daten laden.
-            Pruefe die Server-Adresse oder versuche es erneut.
+            Ohne Server kann die App keine Rollen, Party Lines oder Anmeldedaten
+            laden. Prüfe die Server-Adresse oder versuche es erneut.
           </p>
           {publicBootstrapError ? <p>{publicBootstrapError}</p> : null}
           <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
@@ -2673,7 +2699,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
             </button>
             {onRequestNetworkSettings ? (
               <button type="button" onClick={onRequestNetworkSettings}>
-                Server-Adresse aendern
+                Server-Adresse ändern
               </button>
             ) : null}
           </div>
@@ -2733,14 +2759,14 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     const remoteSelectedMicLabel =
       remoteSelectedInputDevice?.label ||
       (remoteInputDevices.length === 0
-        ? "No microphone reported"
-        : "Select remote microphone");
+        ? "Kein Mikrofon gemeldet"
+        : "Mikrofon am Raspberry wählen");
     const remoteSelectedOutputLabel =
       !remoteSelectedOutputDeviceId
-        ? "System default"
+        ? "Standard des Systems"
         : remoteOutputDevices.find(
             (device) => device.deviceId === remoteSelectedOutputDeviceId,
-          )?.label || "Remote output unavailable";
+          )?.label || "Ausgang am Raspberry nicht verfügbar";
     const remoteSelectedInputGain =
       typeof remoteAudioState?.selectedInputGain === "number" &&
       Number.isFinite(remoteAudioState.selectedInputGain)
@@ -3105,10 +3131,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         onLogin={() => void handleOperatorLogin()}
         adminPin={adminPinInput}
         initialMode={
-          authMode === "admin"
-            ? "admin"
-            : raspberryRemoteLogin
-              ? "raspberry"
+          // „Raspberry fernsteuern“ vom Dashboard zeigt nur die Stationen – auch für den Admin
+          raspberryRemoteLogin
+            ? "raspberry"
+            : authMode === "admin"
+              ? "admin"
               : "operator"
         }
         onAdminPinChange={setAdminPinInput}
@@ -3122,25 +3149,45 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     );
   }
 
-  if (!appData) return <div className="root">Loading data...</div>;
+  if (!appData) return <div className="root">Daten werden geladen …</div>;
 
   if (authMode === "operator" && showBirthdayGreeting) {
     const displayName = birthdayGreetingUsername || appData.self.username;
     return (
       <div className="root birthday-gate" role="dialog" aria-modal="true">
         <div className="birthday-gate-card">
-          <p className="birthday-gate-kicker">Today in focus</p>
-          <h1>Happy Birthday, {displayName}!</h1>
+          <p className="birthday-gate-kicker">Heute im Mittelpunkt</p>
+          <h1>Alles Gute zum Geburtstag, {displayName}!</h1>
           <p>
-            We wish you a great day and smooth comms for every party line.
+            Wir wünschen dir einen schönen Tag und eine reibungslose
+            Verständigung auf allen Party Lines.
           </p>
           <button type="button" onClick={() => setShowBirthdayGreeting(false)}>
-            Continue to intercom
+            Weiter zum Intercom
           </button>
         </div>
       </div>
     );
   }
+
+  // ── Sidebar frame (user card bottom left, like JMS Control) ──
+  const handleSwitchAccount = () => {
+    // Signed in centrally: choose another account/role on the central login page
+    if (centralIdentityRef.current) {
+      window.location.assign(switchAccountUrl(window.location.pathname));
+      return;
+    }
+    void doLogout();
+  };
+  const shellUserFor = (name: string, role: string): ShellUser => ({
+    name,
+    role,
+    switchAccountHref: centralIdentity
+      ? switchAccountUrl(window.location.pathname)
+      : undefined,
+    onSwitchAccount: handleSwitchAccount,
+    onLogout: () => void doLogout(),
+  });
 
   // ── Admin view ──
   if (authMode === "admin" && isAdminToken(token)) {
@@ -3165,11 +3212,23 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         adminRoleLabel={adminRoleLabel}
         onRefresh={refreshBootstrapData}
         onLogout={doLogout}
+        shellUser={shellUserFor(
+          centralIdentity?.name || displayUsername,
+          adminRoleLabel,
+        )}
       />
     );
   }
 
   // ── Operator view ──
+  const operatorShell = bareMode
+    ? undefined
+    : {
+        user: shellUserFor(
+          centralIdentity?.name || appData.self.username,
+          roleNameById.get(appData.self.roleId) || appData.self.roleId,
+        ),
+      };
   const activeUsersForChat = Array.from(
     new Map(
       [
@@ -3363,6 +3422,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           hasVoiceTarget={simpleVoiceTargetId !== ""}
           hasListenTarget={session.listenRoomIds.length > 0}
           doLogout={() => void doLogout()}
+          shell={operatorShell}
         />
         {attentionFlashOverlay}
       </>
@@ -3502,6 +3562,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         streamDeckBridgeConnected={streamDeckConnected}
         streamDeckBridgeLastEvent={streamDeckLastEvent}
         onStreamDeckTestButtonEvent={handleStreamDeckTestButtonEvent}
+        shell={operatorShell}
       />
       {attentionFlashOverlay}
     </>

@@ -22,7 +22,7 @@ const nextParam = params.get('next') || ''
 const fallback = gateway ? '/' : isPhone ? '/remote.html' : '/'
 const next = nextParam.startsWith('/') && !nextParam.startsWith('//') && !nextParam.startsWith('/\\') ? nextParam : fallback
 // Dienst nur für den Admin (Companion, Portainer …): nur die Admin-Anmeldung anbieten
-const adminOnly = gateway && params.get('nur') === 'admin'
+const adminOnly = params.get('admin') === '1' || (gateway && params.get('nur') === 'admin')
 const SERVICE_NAMES = { companion: 'Companion', portainer: 'Portainer', glances: 'Glances', dns: 'DNS (AdGuard)' }
 const serviceName = SERVICE_NAMES[params.get('dienst')] || 'Dieser Bereich'
 $('#qr-note').hidden = params.get('qr') !== 'abgelaufen'
@@ -32,6 +32,8 @@ if (gateway) {
   $('#login-lead').textContent = adminOnly
     ? `${serviceName} ist nur für den Admin – Name und Admin-PIN eingeben.`
     : 'Name eingeben und deine Rolle wählen – das gilt dann für alle Dienste (Intercom, JMS Control, Dashboard).'
+} else if (adminOnly) {
+  $('#login-lead').textContent = 'Als Admin anmelden – Name und Admin-PIN eingeben. Ein Tagescode ist dafür nicht erforderlich.'
 }
 
 function remembered(key) {
@@ -77,10 +79,13 @@ async function pullFromCentral() {
   const sso = await ssoInfo
   if (!sso?.origin || sso.central) return false
   const me = await getJson('/api/me')
-  if (me?.user && !me.user.open) return false
+  if (me?.user && !me.user.open) {
+    location.replace(next)
+    return true
+  }
   const back = location.pathname + location.search.replace(/[?&]sso=0/, '').replace(/^&/, '?')
-  const q = new URLSearchParams({ host: location.host, next, back })
-  location.replace(`${sso.origin}/.jms-auth/sso/issue?${q}`)
+  const q = new URLSearchParams({ next, back })
+  location.replace(`/.jms-auth/sso/start?${q}`)
   return true
 }
 
@@ -103,10 +108,13 @@ main()
 
 async function main() {
   if (!params.has('sso') && (await pullFromCentral())) return
-  if (gateway) {
-    const device = await getJson('/api/device')
-    if (device?.required && !device.approved) return showCodeStep()
+  const me = await getJson('/api/me')
+  if (!params.has('wechseln') && me?.user && !me.user.open) return continueAfterLogin()
+  if (!params.has('wechseln')) {
+    watchLogin('', { url: api('/api/me'), onChange: (state) => state.user && !state.user.open && continueAfterLogin() })
   }
+  const device = await getJson('/api/device')
+  if (!adminOnly && device?.required && !device.approved) return showCodeStep()
   showLoginStep()
 }
 
@@ -115,6 +123,11 @@ async function main() {
 function showCodeStep() {
   $('#login-step').hidden = true
   $('#code-form').hidden = false
+  $('#admin-login').onclick = () => {
+    const query = new URLSearchParams(location.search)
+    query.set('admin', '1')
+    location.assign(`${location.pathname}?${query}`)
+  }
   const reason = params.get('code')
   if (reason) {
     $('#code-note').textContent =
@@ -277,9 +290,6 @@ async function showLoginStep() {
     $('#current-text').textContent = `Angemeldet als ${me.user.name} (${me.user.roleName}). Hier wechselst du zu einem anderen Konto oder einer anderen Rolle.`
     $('#current-back').href = next
     $('#current-note').hidden = false
-  } else if (!params.has('wechseln')) {
-    // In einem anderen Tab oder Dienst angemeldet: von selbst weiter
-    watchLogin('', { url: api('/api/me'), onChange: (m) => m.user && !m.user.open && location.replace(next) })
   }
   $('#login-step').hidden = false
 

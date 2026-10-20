@@ -15,14 +15,23 @@ type AdminRolesCardProps = {
 type RoleEditorMode = "create" | "edit" | "duplicate";
 
 /**
- * Address of the Multiview's "Benutzer & Rechte" page, where roles are managed centrally.
- * Kesher runs on :8443 (or under a kesher. or intercom. name), the Multiview on :8090 (multiview. name).
+ * Roles page of JMS Control ("Benutzer & Rechte" → Rollen), where roles are
+ * managed centrally:
+ *   intercom.local / kesher.local → https://jmscontrol.local/
+ *   *.jms.de                      → https://multiview.jms.de/
+ *   IP address or other name      → https://<hostname>:8090/
  */
-export function multiviewRolesUrl(loc: Pick<Location, "protocol" | "hostname"> = window.location): string {
-  const host = loc.hostname;
-  const named = /^(kesher|intercom)\./i.test(host);
-  const target = named ? host.replace(/^(kesher|intercom)\./i, "multiview.") : `${host}:8090`;
-  return `${loc.protocol}//${target}/#/zugang`;
+export function multiviewRolesUrl(loc: Pick<Location, "hostname"> = window.location): string {
+  const host = loc.hostname.toLowerCase();
+  let base: string;
+  if (host === "intercom.local" || host === "kesher.local") {
+    base = "https://jmscontrol.local/";
+  } else if (host.endsWith(".jms.de")) {
+    base = "https://multiview.jms.de/";
+  } else {
+    base = `https://${loc.hostname}:8090/`;
+  }
+  return `${base}#/zugang/rollen`;
 }
 
 type RoleEditorState = {
@@ -85,8 +94,8 @@ export function AdminRolesCard({
   refreshBootstrapData,
 }: AdminRolesCardProps) {
   const [isOpen, setIsOpen] = useAdminCardOpenState();
-  // JMS server: roles are created, renamed and deleted in the Multiview
-  // (Benutzer & Rechte); here only their Kesher defaults are edited
+  // JMS server: roles are created, renamed and deleted in JMS Control
+  // (Benutzer & Rechte); here they are only shown, greyed out
   const central = !!appData.centralRoles;
   const [roleEditor, setRoleEditor] = useState<RoleEditorState | null>(null);
   const roleEditorTrigger = useRef<HTMLElement | null>(null);
@@ -207,16 +216,16 @@ export function AdminRolesCard({
 
   const roleEditorTitle =
     roleEditor?.mode === "create"
-      ? "Create role"
+      ? "Rolle anlegen"
       : roleEditor?.mode === "duplicate"
-        ? "Duplicate role"
-        : "Edit role";
+        ? "Rolle duplizieren"
+        : "Rolle bearbeiten";
   const roleEditorDescription =
     roleEditor?.mode === "duplicate"
-      ? "Review the copied role settings and adjust them before saving."
+      ? "Prüfe die kopierten Einstellungen und passe sie vor dem Speichern an."
       : roleEditor?.mode === "create"
-        ? "Enter the role details and defaults."
-        : "Update the role details and defaults.";
+        ? "Gib Kennung, Namen und Standardwerte der Rolle ein."
+        : "Ändere Namen und Standardwerte der Rolle.";
 
   return (
     <div className="admin-card">
@@ -241,30 +250,14 @@ export function AdminRolesCard({
                 </button>
               )}
             </div>
-            {central ? (
-              <div className="admin-central-roles" role="note">
-                <div>
-                  <strong>Zentrale Rollenverwaltung im Multiview</strong>
-                  <p>
-                    Rollen werden im Multiview unter „Benutzer &amp; Rechte“
-                    angelegt, umbenannt und gelöscht – für alle Dienste. Hier
-                    stellst du nur ihre Standardwerte in Kesher ein.
-                  </p>
-                </div>
-                <a
-                  className="button primary admin-central-roles-link"
-                  href={multiviewRolesUrl()}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Zur Rollenverwaltung
-                </a>
-              </div>
-            ) : null}
             {adminError && !roleEditor ? (
               <p className="admin-error">{adminError}</p>
             ) : null}
-            <ul className={central ? "admin-list admin-roles-central" : "admin-list"}>
+            <div className={central ? "admin-roles-locked" : undefined}>
+            <ul
+              className={central ? "admin-list admin-roles-central" : "admin-list"}
+              aria-disabled={central ? "true" : undefined}
+            >
               {appData.roles.map((role) => (
                 <li key={role.id} className="admin-role-list-item">
                   <span>
@@ -275,8 +268,8 @@ export function AdminRolesCard({
                       <button
                         type="button"
                         className="secondary admin-role-duplicate"
-                        aria-label={`Duplicate role ${role.name}`}
-                        title={`Duplicate ${role.name}`}
+                        aria-label={`Rolle ${role.name} duplizieren`}
+                        title={`${role.name} duplizieren`}
                         disabled={adminBusy}
                         onClick={() => openDuplicateRole(role)}
                       >
@@ -289,11 +282,10 @@ export function AdminRolesCard({
                     )}
                     <button
                       type="button"
-                      disabled={adminBusy}
+                      disabled={adminBusy || central}
                       onClick={() => openEditRole(role)}
-                      title={central ? "Standardwerte in Kesher (Kanal, Sprechmodus, Ansicht)" : undefined}
                     >
-                      {central ? "Standardwerte" : "Bearbeiten"}
+                      Bearbeiten
                     </button>
                     {central ? null : (
                       <button
@@ -309,6 +301,34 @@ export function AdminRolesCard({
                 </li>
               ))}
             </ul>
+            {central ? (
+              <div
+                className="admin-roles-overlay"
+                role="dialog"
+                aria-modal="false"
+                aria-labelledby="admin-roles-overlay-title"
+              >
+                <div className="admin-roles-overlay-card">
+                  <h3 id="admin-roles-overlay-title">
+                    Rollen werden in JMS Control verwaltet
+                  </h3>
+                  <p>
+                    Rollen legst du in JMS Control unter Benutzer &amp; Rechte
+                    an, benennst sie um oder löschst sie. Die Änderungen werden
+                    automatisch nach Kesher übertragen.
+                  </p>
+                  <a
+                    className="button primary admin-roles-overlay-link"
+                    href={multiviewRolesUrl()}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Rechte in JMS Control anpassen
+                  </a>
+                </div>
+              </div>
+            ) : null}
+            </div>
           </div>
         </div>
       ) : null}
@@ -335,8 +355,8 @@ export function AdminRolesCard({
               <button
                 type="button"
                 className="admin-role-modal-close"
-                aria-label="Close role dialog"
-                title="Close"
+                aria-label="Fenster schließen"
+                title="Schließen"
                 disabled={adminBusy}
                 onClick={closeRoleEditor}
               >
@@ -355,45 +375,45 @@ export function AdminRolesCard({
             >
               <div className="admin-role-modal-fields">
                 <label>
-                  <span>Role ID</span>
+                  <span>Kennung der Rolle</span>
                   <input
                     value={roleEditor.id}
                     onChange={(event) =>
                       updateRoleEditor({ id: event.target.value })
                     }
-                    placeholder="role-id"
+                    placeholder="z. B. licht-2"
                     readOnly={roleEditor.mode === "edit"}
                     autoFocus={roleEditor.mode !== "edit"}
                     required
                   />
                 </label>
                 <label>
-                  <span>Role name</span>
+                  <span>Name der Rolle</span>
                   <input
                     value={roleEditor.name}
                     onChange={(event) =>
                       updateRoleEditor({ name: event.target.value })
                     }
-                    placeholder="Role name"
+                    placeholder="z. B. Licht 2"
                     autoFocus={roleEditor.mode === "edit" && !central}
                     readOnly={central && roleEditor.mode === "edit"}
                     title={
                       central
-                        ? "Umbenennen im Multiview unter „Benutzer & Rechte“"
+                        ? "Umbenennen in JMS Control unter „Benutzer & Rechte“"
                         : undefined
                     }
                     required
                   />
                 </label>
                 <label>
-                  <span>Default Talk party line</span>
+                  <span>Standard-Party-Line zum Sprechen</span>
                   <select
                     value={roleEditor.defaultRoomId}
                     onChange={(event) =>
                       updateRoleEditor({ defaultRoomId: event.target.value })
                     }
                   >
-                    <option value="">No default party line</option>
+                    <option value="">Keine Standard-Party-Line</option>
                     {appData.rooms.map((room) => (
                       <option key={`role-room-${room.id}`} value={room.id}>
                         {room.name}
@@ -402,7 +422,7 @@ export function AdminRolesCard({
                   </select>
                 </label>
                 <label>
-                  <span>Default audio mode</span>
+                  <span>Standard-Sprechmodus</span>
                   <select
                     value={roleEditor.defaultVoiceMode}
                     onChange={(event) =>
@@ -412,9 +432,9 @@ export function AdminRolesCard({
                       })
                     }
                   >
-                    <option value="">No default audio mode</option>
-                    <option value="always_on">Always on</option>
-                    <option value="ptt">PTT</option>
+                    <option value="">Kein Standard-Sprechmodus</option>
+                    <option value="always_on">Dauerhaft an</option>
+                    <option value="ptt">Gedrückt halten zum Sprechen</option>
                   </select>
                 </label>
                 <label className="admin-checkbox admin-role-modal-checkbox">
@@ -427,7 +447,7 @@ export function AdminRolesCard({
                       })
                     }
                   />
-                  <span>Default to simple mobile view</span>
+                  <span>Standardmäßig die einfache Handy-Ansicht zeigen</span>
                 </label>
               </div>
 
@@ -444,7 +464,7 @@ export function AdminRolesCard({
                   disabled={adminBusy}
                   onClick={closeRoleEditor}
                 >
-                  Cancel
+                  Abbrechen
                 </button>
                 <button
                   type="submit"
@@ -455,7 +475,7 @@ export function AdminRolesCard({
                     !roleEditor.name.trim()
                   }
                 >
-                  {adminBusy ? "Saving…" : "Save"}
+                  {adminBusy ? "Speichere …" : "Speichern"}
                 </button>
               </footer>
             </form>

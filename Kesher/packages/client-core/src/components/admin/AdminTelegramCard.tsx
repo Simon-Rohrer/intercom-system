@@ -33,7 +33,7 @@ export function AdminTelegramCard({
     run: runAction,
   } = useAdminAction({
     onSuccess: loadStatus,
-    defaultErrorMessage: "operation failed",
+    defaultErrorMessage: "Aktion fehlgeschlagen",
   });
 
   const [createChatId, setCreateChatId] = useState("");
@@ -125,22 +125,22 @@ export function AdminTelegramCard({
         <div className="admin-card-body">
           <div className="admin-block">
             <p>
-              <strong>Bot status:</strong>{" "}
+              <strong>Bot-Status:</strong>{" "}
               {botConfigured ? (
-                <span className="admin-status-ok">✓ Configured</span>
+                <span className="admin-status-ok">✓ Eingerichtet</span>
               ) : (
                 <span className="admin-status-warn">
-                  ✗ Not configured (set TELEGRAM_BOT_TOKEN env var)
+                  ✗ Nicht eingerichtet (TELEGRAM_BOT_TOKEN auf dem Server setzen)
                 </span>
               )}
             </p>
             {botConfigured ? (
               <>
                 <p>
-                  <strong>Mode:</strong>{" "}
+                  <strong>Modus:</strong>{" "}
                   {mode === "polling" ? (
                     <span className="admin-status-ok">
-                      Polling (server fetches updates from Telegram)
+                      Polling (der Server holt neue Nachrichten bei Telegram ab)
                     </span>
                   ) : (
                     <span>Webhook</span>
@@ -148,18 +148,18 @@ export function AdminTelegramCard({
                 </p>
                 {mode === "webhook" ? (
                   <p>
-                    <strong>Webhook URL:</strong>{" "}
+                    <strong>Webhook-Adresse:</strong>{" "}
                     <code className="admin-code">{webhookUrl}</code>
                     <br />
                     <small>
-                      Set this URL in BotFather via <code>/setwebhook</code>.
+                      Diese Adresse im BotFather mit <code>/setwebhook</code> eintragen.
                     </small>
                   </p>
                 ) : (
                   <p>
                     <small>
-                      The server polls the Telegram API for new messages. No
-                      public IP or webhook URL required.
+                      Der Server fragt Telegram regelmäßig nach neuen Nachrichten.
+                      Eine öffentliche IP oder Webhook-Adresse ist nicht nötig.
                     </small>
                   </p>
                 )}
@@ -168,7 +168,7 @@ export function AdminTelegramCard({
           </div>
           <div className="admin-block">
             <div className="admin-block-header">
-              <h4>Chat–Room Mappings</h4>
+              <h4>Zuordnung Chat – Party Line</h4>
               {!editId ? (
                 <button
                   type="button"
@@ -186,24 +186,24 @@ export function AdminTelegramCard({
             {error ? <p className="admin-error">{error}</p> : null}
             {showCreateForm && !editId ? (
               <div className="admin-edit-panel">
-                <div className="admin-edit-title">New mapping</div>
+                <div className="admin-edit-title">Neue Zuordnung</div>
                 <div className="admin-grid">
                   <input
                     value={createChatId}
                     onChange={(e) => setCreateChatId(e.target.value)}
-                    placeholder="Telegram chat ID (e.g. -100123456)"
+                    placeholder="Telegram-Chat-ID (z. B. -100123456)"
                   />
                   <input
                     value={createLabel}
                     onChange={(e) => setCreateLabel(e.target.value)}
-                    placeholder="Label"
+                    placeholder="Bezeichnung"
                   />
                   <select
                     value={createRoomId}
                     onChange={(e) => setCreateRoomId(e.target.value)}
-                    aria-label="Party line"
+                    aria-label="Party Line"
                   >
-                    <option value="">Select party line…</option>
+                    <option value="">Party Line wählen …</option>
                     <option value="global">Globaler Chat (alle)</option>
                     {appData.rooms.map((room) => (
                       <option key={room.id} value={room.id}>
@@ -222,7 +222,7 @@ export function AdminTelegramCard({
                       !createRoomId.trim()
                     }
                   >
-                    Add mapping
+                    Zuordnung hinzufügen
                   </button>
                   <button
                     type="button"
@@ -233,31 +233,31 @@ export function AdminTelegramCard({
                     disabled={busy}
                     className="secondary"
                   >
-                    Cancel
+                    Abbrechen
                   </button>
                 </div>
               </div>
             ) : null}
             {editId ? (
               <div className="admin-edit-panel">
-                <div className="admin-edit-title">Editing mapping</div>
+                <div className="admin-edit-title">Zuordnung bearbeiten</div>
                 <div className="admin-grid">
                   <input
                     value={editChatId}
                     onChange={(e) => setEditChatId(e.target.value)}
-                    placeholder="Telegram chat ID"
+                    placeholder="Telegram-Chat-ID"
                   />
                   <input
                     value={editLabel}
                     onChange={(e) => setEditLabel(e.target.value)}
-                    placeholder="Label"
+                    placeholder="Bezeichnung"
                   />
                   <select
                     value={editRoomId}
                     onChange={(e) => setEditRoomId(e.target.value)}
-                    aria-label="Party line"
+                    aria-label="Party Line"
                   >
-                    <option value="">Select party line…</option>
+                    <option value="">Party Line wählen …</option>
                     <option value="global">Globaler Chat (alle)</option>
                     {appData.rooms.map((room) => (
                       <option key={room.id} value={room.id}>
@@ -276,14 +276,14 @@ export function AdminTelegramCard({
                       !editRoomId.trim()
                     }
                   >
-                    Save changes
+                    Änderungen speichern
                   </button>
                   <button
                     onClick={resetEditForm}
                     disabled={busy}
                     className="secondary"
                   >
-                    Cancel
+                    Abbrechen
                   </button>
                 </div>
               </div>
@@ -291,7 +291,7 @@ export function AdminTelegramCard({
             <ul className="admin-list">
               {mappings.length === 0 ? (
                 <li>
-                  <span className="admin-empty">No mappings configured.</span>
+                  <span className="admin-empty">Noch keine Zuordnungen.</span>
                 </li>
               ) : (
                 mappings.map((m) => (

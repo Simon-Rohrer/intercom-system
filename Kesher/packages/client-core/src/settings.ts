@@ -18,8 +18,8 @@ export const shortcutActionMeta: Record<
   ShortcutAction,
   { label: string; type: "hold" | "toggle" }
 > = {
-  ptt: { label: "Push to Talk (room)", type: "hold" },
-  toggleAlwaysOn: { label: "Toggle Always On", type: "toggle" },
+  ptt: { label: "Sprechen (Party Line, gedrückt halten)", type: "hold" },
+  toggleAlwaysOn: { label: "„Dauerhaft an“ ein/aus", type: "toggle" },
 };
 
 export const allShortcutActions: ShortcutAction[] = Object.keys(
@@ -45,7 +45,7 @@ export const defaultShortcuts: KeyboardShortcutSettings = {
 
 /** Human-readable label for a binding. */
 export function formatBinding(binding: ShortcutBinding | null): string {
-  if (!binding) return "Not set";
+  if (!binding) return "Nicht belegt";
   const parts: string[] = [];
   if (binding.ctrl) parts.push("Ctrl");
   if (binding.alt) parts.push("Alt");

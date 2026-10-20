@@ -18,10 +18,13 @@ import time
 from typing import Any, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit, urlunsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPSHandler, HTTPRedirectHandler, Request, build_opener
 
 
-LAUNCHER_VERSION = "10"
+LAUNCHER_VERSION = "11"
+DEVICE_CERTIFICATE = Path("/etc/jms-device/client.crt")
+DEVICE_PRIVATE_KEY = Path("/etc/jms-device/client.key")
+SERVER_CA_CERTIFICATE = Path("/etc/jms-device/server-ca.crt")
 HEARTBEAT_INTERVAL_SECONDS = 4
 AUDIO_RUNTIME_WAIT_SECONDS = 3
 DISPLAY_RUNTIME_WAIT_SECONDS = 15
@@ -55,8 +58,8 @@ def require_text(value: Any, field: str) -> str:
 def normalize_server_url(value: Any) -> str:
     server_url = require_text(value, "server_url").rstrip("/")
     parsed = urlsplit(server_url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise ValueError("server_url must be an http or https URL")
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError("server_url must be an https URL")
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError("server_url must not contain credentials, query, or fragment")
     path = parsed.path.rstrip("/")
@@ -82,6 +85,8 @@ def load_config(path: Path) -> dict[str, Any]:
 def validate_config(raw: dict[str, Any]) -> dict[str, Any]:
     raw = dict(raw)
     raw["server_url"] = normalize_server_url(raw.get("server_url"))
+    if raw.get("allow_insecure_tls") is True:
+        raise ValueError("allow_insecure_tls is not supported for authenticated devices")
     clients = raw.get("clients")
     if not isinstance(clients, list) or not clients:
         raise ValueError("clients must be a non-empty array")
@@ -169,6 +174,9 @@ def resolve_client(
     matches: list[dict[str, Any]] = []
     seen_config_ips: set[str] = set()
     seen_config_macs: set[str] = set()
+    certificate_bound = config.get("certificate_bound_client") is True
+    if certificate_bound and len(config["clients"]) != 1:
+        raise ValueError("certificate-bound config must contain exactly one client")
     for index, raw_client in enumerate(config["clients"]):
         if not isinstance(raw_client, dict):
             raise ValueError(f"clients[{index}] must be an object")
@@ -184,7 +192,7 @@ def resolve_client(
                 raise ValueError(f"duplicate client MAC in config: {mac}")
             seen_config_macs.add(mac)
         configured_ip = ""
-        if raw_client.get("ip_address") or not configured_macs:
+        if raw_client.get("ip_address") or (not configured_macs and not certificate_bound):
             configured_ip = str(
                 ipaddress.ip_address(
                     require_text(raw_client.get("ip_address"), f"clients[{index}].ip_address")
@@ -224,7 +232,10 @@ def resolve_client(
             value = raw_client.get(optional_field)
             if isinstance(value, str) and value.strip():
                 client[optional_field] = value.strip()
-        if local_macs.intersection(configured_macs):
+        if certificate_bound:
+            client["ip_address"] = sorted(local_addresses)[0] if local_addresses else configured_ip
+            matches.append(client)
+        elif local_macs.intersection(configured_macs):
             # Matched by hardware address: report the IP the Pi has right now,
             # since DHCP and LAN/WLAN changes move it.
             client["ip_address"] = sorted(local_addresses)[0] if local_addresses else configured_ip
@@ -246,8 +257,10 @@ def resolve_client(
 def normalize_config_url(value: Any) -> str:
     config_url = require_text(value, "config_url")
     parsed = urlsplit(config_url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise ValueError("config_url must be an http or https URL")
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError("config_url must be an https URL")
+    if parsed.username or parsed.password or parsed.fragment:
+        raise ValueError("config_url must not contain credentials or fragment")
     return config_url
 
 
@@ -277,7 +290,6 @@ def managed_config_request(
 def fetch_managed_config(
     config_url: str,
     request_body: dict[str, Any],
-    allow_insecure_tls: bool,
 ) -> Optional[dict[str, Any]]:
     """Answer of the Multiview, or None when it cannot be reached."""
     request = Request(
@@ -290,11 +302,7 @@ def fetch_managed_config(
         method="POST",
     )
     try:
-        with urlopen(
-            request,
-            timeout=3,
-            context=ssl_context_for_url(config_url, allow_insecure_tls),
-        ) as response:
+        with open_device_request(request) as response:
             payload = json.load(response)
     except (HTTPError, URLError, TimeoutError, OSError, ValueError):
         return None
@@ -317,6 +325,7 @@ def merge_managed_config(
     for key in MANAGED_CONFIG_KEYS:
         if key in remote:
             merged[key] = remote[key]
+    merged["certificate_bound_client"] = True
     return merged
 
 
@@ -358,13 +367,11 @@ def load_effective_config(
     if not local_raw.get("config_url"):
         return validate_config(local_raw), local_raw, "file"
     config_url = normalize_config_url(local_raw.get("config_url"))
-    allow_insecure_tls = local_raw.get("allow_insecure_tls") is True
     deadline = time.monotonic() + max(0, int(wait_seconds))
     while True:
         response = fetch_managed_config(
             config_url,
             managed_config_request(local_raw, addresses, mac_addresses),
-            allow_insecure_tls,
         )
         if response is not None:
             write_managed_config_cache(response)
@@ -398,7 +405,6 @@ def start_managed_config_watch(
         config_url = normalize_config_url(local_raw.get("config_url"))
     except ValueError:
         return None
-    allow_insecure_tls = local_raw.get("allow_insecure_tls") is True
 
     def run() -> None:
         while not stop_event.wait(poll_seconds):
@@ -409,7 +415,6 @@ def start_managed_config_watch(
             response = fetch_managed_config(
                 config_url,
                 managed_config_request(local_raw, addresses, detect_mac_addresses()),
-                allow_insecure_tls,
             )
             if response is None:
                 continue
@@ -445,10 +450,25 @@ def build_kesher_url(server_url: str, client: dict[str, Any]) -> str:
     return f"{server_url}/?{urlencode(params)}"
 
 
-def ssl_context_for_url(url: str, allow_insecure_tls: bool) -> Optional[ssl.SSLContext]:
-    if allow_insecure_tls and url.startswith("https://"):
-        return ssl._create_unverified_context()
-    return None
+def ssl_context_for_url(url: str) -> ssl.SSLContext:
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("device requests require HTTPS without URL credentials")
+    context = ssl.create_default_context(cafile=str(SERVER_CA_CERTIFICATE))
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(str(DEVICE_CERTIFICATE), str(DEVICE_PRIVATE_KEY))
+    return context
+
+
+class NoDeviceRedirect(HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, new_url):
+        raise HTTPError(request.full_url, code, "device redirects are not allowed", headers, response)
+
+
+def open_device_request(request: Request):
+    context = ssl_context_for_url(request.full_url)
+    opener = build_opener(HTTPSHandler(context=context), NoDeviceRedirect())
+    return opener.open(request, timeout=3)
 
 
 def read_cpu_times() -> Optional[tuple[int, int]]:
@@ -736,14 +756,7 @@ def fetch_remote_station(
         headers={"User-Agent": f"Kesher-Pi-Launcher/{LAUNCHER_VERSION}"},
     )
     try:
-        with urlopen(
-            request,
-            timeout=3,
-            context=ssl_context_for_url(
-                status_url,
-                config.get("allow_insecure_tls") is True,
-            ),
-        ) as response:
+        with open_device_request(request) as response:
             payload = json.load(response)
     except (HTTPError, URLError, TimeoutError, OSError, ValueError):
         return None
@@ -811,16 +824,9 @@ def send_heartbeat(
         headers["X-Kesher-Pi-Secret"] = heartbeat_secret
     request = Request(heartbeat_url, data=payload, headers=headers, method="POST")
     try:
-        with urlopen(
-            request,
-            timeout=3,
-            context=ssl_context_for_url(
-                heartbeat_url,
-                config.get("allow_insecure_tls") is True,
-            ),
-        ) as response:
+        with open_device_request(request) as response:
             return 200 <= response.status < 300
-    except (HTTPError, URLError, TimeoutError, OSError):
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError):
         return False
 
 
@@ -878,14 +884,15 @@ def wait_for_server(
     stop_event: Optional[threading.Event] = None,
 ) -> None:
     health_url = f"{server_url}/api/healthz"
-    ssl_context = ssl_context_for_url(health_url, allow_insecure_tls)
+    if allow_insecure_tls:
+        raise ValueError("allow_insecure_tls is not supported for authenticated devices")
     while not (stop_event and stop_event.is_set()):
         try:
             request = Request(
                 health_url,
                 headers={"User-Agent": f"Kesher-Pi-Launcher/{LAUNCHER_VERSION}"},
             )
-            with urlopen(request, timeout=3, context=ssl_context) as response:
+            with open_device_request(request) as response:
                 if 200 <= response.status < 300:
                     return
         except (HTTPError, URLError, TimeoutError, OSError):
@@ -1110,9 +1117,10 @@ def cleanup_chromium_singletons(profile_dir: Optional[Path] = None) -> None:
 def browser_command(
     config: dict[str, Any], kesher_url: str, low_power_mode: bool = False
 ) -> list[str]:
-    server_url = config["server_url"]
-    parsed = urlsplit(server_url)
-    origin = urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+    normalize_server_url(config["server_url"])
+    normalize_server_url(kesher_url.split("?", 1)[0])
+    if config.get("allow_insecure_tls") is True:
+        raise ValueError("allow_insecure_tls is not supported for authenticated devices")
     profile_dir = chromium_profile_dir()
     command = [
         resolve_browser(config.get("browser_binary")),
@@ -1128,10 +1136,6 @@ def browser_command(
         "--use-fake-ui-for-media-stream",
         f"--user-data-dir={profile_dir}",
     ]
-    if parsed.scheme == "http":
-        command.append(f"--unsafely-treat-insecure-origin-as-secure={origin}")
-    if config.get("allow_insecure_tls") is True:
-        command.append("--ignore-certificate-errors")
     if low_power_mode:
         command.extend(
             [

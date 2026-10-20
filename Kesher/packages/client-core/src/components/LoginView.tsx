@@ -72,6 +72,8 @@ export function LoginView({
   onRaspberryRemoteJoin,
 }: LoginViewProps) {
   const stripWhitespace = (value: string) => value.replace(/\s+/g, "");
+  // Opened with ?login=raspberry ("Raspberry fernsteuern"): only the station list
+  const raspberryOnly = initialMode === "raspberry";
   const [loginMode, setLoginMode] = useState<LoginMode>(initialMode);
   // Occupied roles stay visible but cannot be chosen; they cannot be taken
   // over from the login form.
@@ -100,12 +102,17 @@ export function LoginView({
         <div className="login-card-head">
           <BrandLogo className="login-brand-logo" />
           <div className="login-card-title">
-            <h1>Intercom</h1>
-            <p className="variant-subtitle">Live Production · Station Deck</p>
+            <h1>{raspberryOnly ? "Raspberry fernsteuern" : "Intercom"}</h1>
+            <p className="variant-subtitle">
+              {raspberryOnly
+                ? "Wähle die Station, die du steuern möchtest."
+                : "Live-Produktion · Sprechstation"}
+            </p>
           </div>
         </div>
         <div className="login-box">
-        <div className="login-mode-tabs" role="tablist" aria-label="Login mode">
+        {raspberryOnly ? null : (
+        <div className="login-mode-tabs" role="tablist" aria-label="Anmeldeart">
           <button
             type="button"
             className={loginMode === "operator" ? "is-active" : ""}
@@ -113,7 +120,7 @@ export function LoginView({
             role="tab"
             aria-selected={loginMode === "operator"}
           >
-            Operator
+            Bediener
           </button>
           <button
             type="button"
@@ -134,8 +141,9 @@ export function LoginView({
             Admin
           </button>
         </div>
+        )}
 
-        {loginMode === "operator" ? (
+        {loginMode === "operator" && !raspberryOnly ? (
           <div className="login-form">
             <div
               className={`login-field${usernameMissing ? " is-required-missing" : ""}`}
@@ -199,9 +207,9 @@ export function LoginView({
             </button>
             {loginError ? <p className="login-error">{loginError}</p> : null}
           </div>
-        ) : loginMode === "raspberry" ? (
+        ) : loginMode === "raspberry" || raspberryOnly ? (
           <div className="login-remote-panel">
-            <div className="login-remote-stations" aria-label="Active Raspberry Pis">
+            <div className="login-remote-stations" aria-label="Raspberry Pis">
               {remoteStations.length === 0 ? (
                 <div className="login-remote-empty">
                   {raspberryRemoteError || "Noch keine Raspberry Pis bekannt."}

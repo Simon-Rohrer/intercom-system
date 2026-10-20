@@ -24,10 +24,10 @@ export function RoleMultiSelect({
       setState={setState}
       keyPrefix={keyPrefix}
       options={roles.map((role) => ({ id: role.id, label: role.name }))}
-      noneSelectedLabel="No roles selected"
-      allSelectedLabel="All roles"
-      selectAllLabel="Select all"
-      clearLabel="Clear all"
+      noneSelectedLabel="Keine Rolle gewählt"
+      allSelectedLabel="Alle Rollen"
+      selectAllLabel="Alle wählen"
+      clearLabel="Alle abwählen"
     />
   );
 }

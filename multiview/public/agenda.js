@@ -1,9 +1,13 @@
 // ChurchTools-Ablauf als Kachel, der laufende Punkt ist hervorgehoben. Drei Arten:
 // „Heute“ (Events von heute), „Nächstes Event“ (das laufende, sonst das nächste,
-// auch an späteren Tagen) und ein festes Datum. Events ohne Ablauf erscheinen mit
-// „Kein Ablauf hinterlegt“. Die Daten kommen vom Multiview-Server.
+// auch an späteren Tagen) und ein festes Datum. Vorhandene Abläufe werden bevorzugt,
+// sonntags hat der Morgen Vorrang. Die Daten kommen vom Multiview-Server.
 
 const views = new Set()
+// Aufgeklappte Punkte (ChurchTools-IDs), bleiben beim Neuzeichnen offen
+const openItems = new Set()
+// Nach Klick oder eigenem Scrollen so lange nicht automatisch mitscrollen
+const MANUAL_MS = 30 * 1000
 
 function el(tag, className, text) {
   const node = document.createElement(tag)
@@ -32,46 +36,172 @@ function fmtDuration(seconds) {
   return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')} h` : `${m}′`
 }
 
-/** Passt das Event zum Filter der Kachel (Name oder Kalender enthält)? */
+/** Passt das Event zum ausdrücklich gesetzten Filter der Kachel? */
 function matchesFilter(event, filter) {
   const f = String(filter || '').trim().toLowerCase()
-  return !f || event.name.toLowerCase().includes(f) || (event.calendar || '').toLowerCase().includes(f)
+  return !f || String(event.name || '').toLowerCase().includes(f) || String(event.calendar || '').toLowerCase().includes(f)
+}
+
+function matchingEvents(events, filter) {
+  return (events || [])
+    .filter((e) => !e.isCanceled && matchesFilter(e, filter) && Number.isFinite(Date.parse(e.startDate)))
+    .sort((a, b) => Date.parse(a.startDate) - Date.parse(b.startDate))
+}
+
+function hasAgenda(event) {
+  return event.agenda?.items?.some((item) => item.type !== 'header') === true
+}
+
+const eventDateFormatters = new Map()
+function eventLocalTime(iso, timeZone) {
+  if (!eventDateFormatters.has(timeZone)) {
+    eventDateFormatters.set(timeZone, new Intl.DateTimeFormat('en-CA', {
+      timeZone, year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short', hour: '2-digit', hourCycle: 'h23',
+    }))
+  }
+  const parts = Object.fromEntries(eventDateFormatters.get(timeZone).formatToParts(new Date(iso)).map((p) => [p.type, p.value]))
+  return { day: `${parts.year}-${parts.month}-${parts.day}`, sundayMorning: parts.weekday === 'Sun' && Number(parts.hour) < 12 }
+}
+
+function sundayMornings(events, timeZone, day) {
+  return events.filter((event) => {
+    const local = eventLocalTime(event.startDate, timeZone)
+    return local.sundayMorning && (!day || local.day === day)
+  })
+}
+
+function currentOrNext(events, now) {
+  return events.find((e) => Date.parse(e.startDate) <= now && now < Date.parse(e.endDate)) ||
+    events.find((e) => Date.parse(e.startDate) > now) || null
 }
 
 /**
- * Welches Event die Kachel zeigt: passend zum Filter (Name oder Kalender),
- * das laufende, sonst das nächste, sonst das letzte des Tages.
+ * Heute/festes Datum: Sonntags bleibt der Morgen bevorzugt, auch nach Eventende.
+ * Innerhalb dieser Auswahl haben vorhandene Abläufe Vorrang vor leeren Events.
+ * Ohne Ablauf bleibt das Event samt verständlicher Fehlermeldung sichtbar.
  */
-export function pickEvent(events, filter, now = Date.now()) {
-  const list = (events || []).filter((e) => matchesFilter(e, filter))
-  return (
-    list.find((e) => Date.parse(e.startDate) <= now && now < Date.parse(e.endDate)) ||
-    list.find((e) => Date.parse(e.startDate) > now) ||
-    list[list.length - 1] ||
-    null
-  )
+export function pickEvent(events, filter, now = Date.now(), timeZone = 'Europe/Berlin') {
+  const list = matchingEvents(events, filter)
+  const morning = sundayMornings(list, timeZone)
+  const candidates = morning.length ? morning : list
+  const withAgenda = candidates.filter(hasAgenda)
+  const preferred = withAgenda.length ? withAgenda : candidates
+  return currentOrNext(preferred, now) || preferred[preferred.length - 1] || null
 }
 
-/** Für „Nächstes Event“: das laufende, sonst das nächste – heute oder an einem späteren Tag. */
-export function pickNextEvent(todays, upcoming, filter, now = Date.now()) {
-  const list = (todays || []).filter((e) => matchesFilter(e, filter))
-  return (
-    list.find((e) => Date.parse(e.startDate) <= now && now < Date.parse(e.endDate)) ||
-    list.find((e) => Date.parse(e.startDate) > now) ||
-    (upcoming || []).find((e) => matchesFilter(e, filter)) ||
-    null
-  )
+/**
+ * Nächstes Event: verfügbare Abläufe des laufenden/nächsten Events bevorzugen.
+ * Nur am Sonntag bleibt ein heutiges Morgenevent vor anderen Events stehen;
+ * unter der Woche verdrängt der nächste Sonntag kein heutiges Event mit Ablauf.
+ */
+export function pickNextEvent(todays, upcoming, filter, now = Date.now(), timeZone = 'Europe/Berlin') {
+  const today = matchingEvents(todays, filter)
+  const morning = sundayMornings(today, timeZone, eventLocalTime(now, timeZone).day)
+  if (morning.length) return pickEvent(morning, filter, now, timeZone)
+  const candidates = matchingEvents([...today, ...(upcoming || [])], filter)
+    .filter((e) => Date.parse(e.startDate) > now || now < Date.parse(e.endDate))
+  const withAgenda = candidates.filter(hasAgenda)
+  return currentOrNext(withAgenda.length ? withAgenda : candidates, now)
+}
+
+const DENSITIES = ['compact', 'normal', 'airy']
+const ACCENTS = ['#00d1ff', '#30d158', '#ffb020', '#ff5a4f', '#bf5af2', '#ffffff']
+const CCLI_COLORS = ['#a9b2be', '#ffffff', '#00d1ff', '#ffd60a', '#ffb020', '#30d158', '#ff5a4f', '#bf5af2']
+
+/** Darstellung der Ablauf-Kachel (tile.agendaLook) mit Standardwerten */
+export function agendaOptions(look) {
+  const o = look || {}
+  const bool = (v, d) => (typeof v === 'boolean' ? v : d)
+  const size = Number(o.size)
+  return {
+    size: Number.isFinite(size) ? Math.min(3, Math.max(0.5, size)) : 1,
+    density: DENSITIES.includes(o.density) ? o.density : 'normal',
+    accent: ACCENTS.includes(o.accent) ? o.accent : ACCENTS[0],
+    header: bool(o.header, true), // Kopfzeile mit Event und Datum
+    time: bool(o.time, true), // Uhrzeit-Spalte
+    duration: bool(o.duration, true), // Dauer-Spalte
+    progress: bool(o.progress, true), // Fortschrittsbalken am laufenden Punkt
+    sections: bool(o.sections, true), // Abschnitts-Überschriften
+    before: bool(o.before, true), // Punkte vor Eventbeginn
+    hideDone: bool(o.hideDone, false), // erledigte Punkte ausblenden
+    openAll: bool(o.openAll, false), // Programmspalten immer aufgeklappt
+    columns: String(o.columns || ''), // nur diese Programmspalten (Komma), leer = alle
+    ccliSize: Number.isFinite(Number(o.ccliSize)) && o.ccliSize != null ? Math.min(2.5, Math.max(0.5, Number(o.ccliSize))) : 1,
+    ccliColor: CCLI_COLORS.includes(o.ccliColor) ? o.ccliColor : CCLI_COLORS[0],
+  }
+}
+
+export const AGENDA_ACCENTS = ACCENTS
+export const AGENDA_CCLI_COLORS = CCLI_COLORS
+
+/** Text in die Zwischenablage – auch ohne HTTPS bzw. ohne Clipboard-API (ältere Geräte) */
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // weiter mit dem alten Weg
+  }
+  const area = document.createElement('textarea')
+  area.value = text
+  area.setAttribute('readonly', '')
+  area.style.cssText = 'position:fixed;top:0;left:0;opacity:0;'
+  document.body.append(area)
+  area.select()
+  area.setSelectionRange(0, text.length)
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } catch {
+    ok = false
+  }
+  area.remove()
+  return ok
+}
+
+function copyButton(text) {
+  const btn = el('button', 'agenda-copy', 'Kopieren')
+  btn.type = 'button'
+  btn.title = `CCLI ${text} kopieren`
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation() // nicht den Punkt auf-/zuklappen
+    const ok = await copyText(text)
+    btn.textContent = ok ? '✓ Kopiert' : 'Fehler'
+    btn.classList.toggle('done', ok)
+    clearTimeout(btn.resetTimer)
+    btn.resetTimer = setTimeout(() => {
+      btn.textContent = 'Kopieren'
+      btn.classList.remove('done')
+    }, 1600)
+  })
+  btn.addEventListener('keydown', (e) => e.stopPropagation())
+  return btn
 }
 
 export function createAgendaView(tile) {
+  const look = agendaOptions(tile.agendaLook)
+  const onlyColumns = look.columns.split(',').map((c) => c.trim().toLowerCase()).filter(Boolean)
   const options = {
     filter: tile.ctFilter || '',
     date: tile.ctDate || '', // leer = heute bzw. nächstes Event
     next: !tile.ctDate && tile.ctMode === 'next',
     responsible: tile.ctResponsible !== false,
     notes: tile.ctNotes === true,
+    songInfo: tile.ctSongInfo !== false,
+    ccli: tile.ctCcli !== false,
   }
-  const root = el('div', 'agenda')
+  const root = el('div', `agenda density-${look.density}`)
+  root.style.setProperty('--ag-scale', String(look.size))
+  root.style.setProperty('--k-accent', look.accent)
+  root.style.setProperty('--ag-ccli-scale', String(look.ccliSize))
+  root.style.setProperty('--ag-ccli-color', look.ccliColor)
+  root.classList.toggle('no-header', !look.header)
+  root.classList.toggle('no-time', !look.time)
+  root.classList.toggle('no-dur', !look.duration)
+  root.classList.toggle('no-progress', !look.progress)
+  root.classList.toggle('hide-done', look.hideDone)
   const header = el('header', 'agenda-header')
   const titleBox = el('div', 'agenda-title')
   const label = el('strong', null, 'Ablauf')
@@ -87,6 +217,40 @@ export function createAgendaView(tile) {
   let rows = [] // { li, item, bar }
   let live = false // nur beim heutigen Tag: laufenden Punkt markieren
   let shownId = null // gezeigtes Event, um beim Weiterrücken neu zu zeichnen
+  let manualUntil = 0 // bis dahin kein automatisches Mitscrollen
+
+  function pauseFollow() {
+    manualUntil = Date.now() + MANUAL_MS
+  }
+
+  /** Was beim Aufklappen erscheint: Programmspalten und ausgeblendete Angaben */
+  function details(item) {
+    const lines = (item.columns || [])
+      .filter((c) => !onlyColumns.length || onlyColumns.includes(String(c.group).toLowerCase()))
+      .map((c) => [c.group, c.note])
+    if (!options.responsible && item.responsible) lines.unshift(['Verantwortlich', item.responsible])
+    if (!options.notes && item.note) lines.push(['Notiz', item.note])
+    if (item.song) {
+      if (!options.songInfo) {
+        const facts = [item.song.key && `Tonart ${item.song.key}`, item.song.arrangement].filter(Boolean)
+        if (facts.length) lines.push(['Song', facts.join(' · ')])
+      }
+      if (!options.ccli && item.song.ccli) lines.push(['CCLI', item.song.ccli])
+    }
+    return lines
+  }
+
+  // openItems merkt die Abweichung vom Standard (zu bzw. bei „immer aufgeklappt“ offen)
+  const isOpen = (id) => look.openAll !== openItems.has(id)
+
+  function toggle(row) {
+    if (openItems.has(row.item.id)) openItems.delete(row.item.id)
+    else openItems.add(row.item.id)
+    const open = isOpen(row.item.id)
+    row.li.classList.toggle('open', open)
+    row.li.setAttribute('aria-expanded', String(open))
+    pauseFollow()
+  }
 
   function message(text) {
     rows = []
@@ -111,7 +275,9 @@ export function createAgendaView(tile) {
     const ct = data
     const events = ct?.days?.[options.date || ct?.date]
     if (!events) return null
-    return options.next ? pickNextEvent(events, ct.upcoming, options.filter) : pickEvent(events, options.filter)
+    return options.next
+      ? pickNextEvent(events, ct.upcoming, options.filter, Date.now(), ct.timeZone)
+      : pickEvent(events, options.filter, Date.now(), ct.timeZone)
   }
 
   function render() {
@@ -146,11 +312,17 @@ export function createAgendaView(tile) {
     eventName.textContent = event.name
     when.textContent = `${fmtDate(event.startDate, tz)} · ${fmtTime(event.startDate, tz)}`
     if (!event.agenda) return message(event.agendaError || 'Kein Ablauf hinterlegt')
-    if (!event.agenda.items.length) return message('Der Ablauf ist leer')
+    // ChurchTools can return a single blank placeholder instead of an empty list.
+    const hasContent = event.agenda.items.some((item) =>
+      String(item.title || '').trim() || item.duration > 0 || String(item.responsible || '').trim() ||
+      String(item.note || '').trim() || String(item.song?.title || '').trim())
+    if (!hasContent) return message('Der Ablauf ist leer')
 
     const list = el('ol', 'agenda-list')
     rows = []
     for (const item of event.agenda.items) {
+      if (item.type === 'header' && !look.sections) continue
+      if (item.beforeEvent && !look.before) continue
       const li = el('li', `agenda-item type-${item.type}`)
       if (item.beforeEvent) li.classList.add('before-event')
       if (item.type === 'header') {
@@ -163,19 +335,52 @@ export function createAgendaView(tile) {
       const title = el('div', 'agenda-item-title')
       title.append(el('span', null, item.title))
       if (item.song) {
-        const facts = [item.song.key && `Tonart ${item.song.key}`, item.song.arrangement].filter(Boolean)
+        const facts = options.songInfo ? [item.song.key && `Tonart ${item.song.key}`, item.song.arrangement].filter(Boolean) : []
         if (facts.length) title.append(el('span', 'agenda-song', facts.join(' · ')))
+        if (options.ccli && item.song.ccli) {
+          const ccli = el('span', 'agenda-ccli-wrap')
+          ccli.append(el('span', 'agenda-ccli', `CCLI ${item.song.ccli}`), copyButton(item.song.ccli))
+          title.append(ccli)
+        }
       }
       main.append(title)
       if (options.responsible && item.responsible) main.append(el('div', 'agenda-resp', item.responsible))
       if (options.notes && item.note) main.append(el('div', 'agenda-note', item.note))
+      const lines = details(item)
+      if (lines.length) {
+        const sub = el('dl', 'agenda-sub')
+        for (const line of lines) sub.append(el('dt', null, line[0]), el('dd', null, line[1]))
+        main.append(sub)
+      }
       const bar = el('span', 'agenda-progress')
       li.append(el('span', 'agenda-time', fmtTime(item.start, tz)), main, el('span', 'agenda-dur', fmtDuration(item.duration)), bar)
       list.append(li)
-      rows.push({ li, item, bar })
+      const row = { li, item, bar }
+      rows.push(row)
+      if (lines.length) {
+        li.classList.add('has-sub')
+        li.tabIndex = 0
+        li.setAttribute('role', 'button')
+        const open = isOpen(item.id)
+        li.classList.toggle('open', open)
+        li.setAttribute('aria-expanded', String(open))
+        li.addEventListener('click', () => toggle(row))
+        li.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return
+          e.preventDefault()
+          toggle(row)
+        })
+      }
     }
+    // Eigenes Scrollen (Rad, Wischen) hält das Mitscrollen kurz an
+    list.addEventListener('wheel', pauseFollow, { passive: true })
+    list.addEventListener('touchstart', pauseFollow, { passive: true })
+    const keepScroll = body.querySelector('.agenda-list')?.scrollTop
     body.replaceChildren(list)
-    tick(true)
+    if (keepScroll != null && Date.now() < manualUntil) {
+      list.scrollTop = keepScroll
+      tick()
+    } else tick(true)
   }
 
   /** Laufenden Punkt markieren, erledigte abdunkeln, mitscrollen. */
@@ -208,10 +413,16 @@ export function createAgendaView(tile) {
     }
     const list = rows[0].li.parentElement
     const target = current || rows.find((r) => !r.li.classList.contains('done') && r.item.type !== 'header')
-    if (!list || !target) return
+    if (!list || !target || (!force && Date.now() < manualUntil)) return
     // Den vorherigen Punkt noch sichtbar lassen
+    // (ausgeblendete erledigte Punkte überspringen)
     const index = rows.indexOf(target)
-    const anchor = rows[Math.max(0, index - 1)].li
+    let anchor = target.li
+    for (let i = index - 1; i >= 0; i--) {
+      if (rows[i].li.offsetParent === null) continue
+      anchor = rows[i].li
+      break
+    }
     const top = anchor.offsetTop - list.offsetTop
     if (force || Math.abs(list.scrollTop - top) > 2) list.scrollTo({ top, behavior: force ? 'auto' : 'smooth' })
   }

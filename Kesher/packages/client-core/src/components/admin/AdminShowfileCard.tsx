@@ -23,58 +23,58 @@ const availableSections: Array<{
 }> = [
 	{
 		key: "roles",
-		label: "Roles",
-		description: "Role names and default operator settings.",
+		label: "Rollen",
+		description: "Rollennamen und Standardeinstellungen für Bediener.",
 	},
 	{
 		key: "users",
-		label: "User Roles",
-		description: "Username-to-role assignments.",
+		label: "Benutzerrollen",
+		description: "Zuordnung von Benutzernamen zu Rollen.",
 	},
 	{
 		key: "rooms",
 		label: "Party Lines",
-		description: "Party-line names and talk/listen permissions.",
+		description: "Namen der Party Lines sowie Sprech- und Hörrechte.",
 	},
 	{
 		key: "broadcastGroups",
-		label: "Broadcast Channels",
-		description: "Broadcast channel membership and allowed roles.",
+		label: "Durchsage-Kanäle",
+		description: "Mitglieder der Durchsage-Kanäle und erlaubte Rollen.",
 	},
 	{
 		key: "telegramAllowlist",
-		label: "Telegram Whitelist",
-		description: "Telegram usernames and mapped Kesher users.",
+		label: "Telegram-Freigabeliste",
+		description: "Telegram-Benutzernamen und zugeordnete Kesher-Benutzer.",
 	},
 	{
 		key: "telegramMappings",
-		label: "Telegram Room Mappings",
-		description: "Telegram chats mapped to Kesher party lines.",
+		label: "Telegram-Chat-Zuordnungen",
+		description: "Telegram-Chats, die Kesher-Party-Lines zugeordnet sind.",
 	},
 	{
 		key: "telegramUsers",
-		label: "Telegram Users & Subscriptions",
-		description: "Linked Telegram identities, private chats and party-line subscriptions.",
+		label: "Telegram-Benutzer & Abos",
+		description: "Verknüpfte Telegram-Konten, private Chats und Party-Line-Abos.",
 	},
 	{
 		key: "ackSettings",
-		label: "ACK Settings",
-		description: "Global ACK cue toggle.",
+		label: "Bestätigungs-Einstellungen",
+		description: "Globaler Schalter für Bestätigungs-Hinweise (ACK).",
 	},
 	{
 		key: "streamDeckSettings",
-		label: "Stream Deck Profiles",
-		description: "Per-role Stream Deck button and page mappings.",
+		label: "Stream-Deck-Profile",
+		description: "Stream-Deck-Tasten und Seiten pro Rolle.",
 	},
 	{
 		key: "companionProfiles",
-		label: "Companion Profiles",
-		description: "Published Companion profiles and their versions.",
+		label: "Companion-Profile",
+		description: "Veröffentlichte Companion-Profile und ihre Versionen.",
 	},
 	{
 		key: "companionRolePages",
-		label: "Companion Role Pages",
-		description: "Configured Companion start page for every role.",
+		label: "Companion-Seiten pro Rolle",
+		description: "Eingestellte Companion-Startseite für jede Rolle.",
 	},
 ];
 
@@ -188,7 +188,7 @@ export function AdminShowfileCard({
 			} catch {
 				// The import action reports malformed JSON with the existing error UI.
 			}
-			setMessage(`Loaded ${file.name}.`);
+			setMessage(`${file.name} geladen.`);
 			setError("");
 		});
 		event.target.value = "";
@@ -205,9 +205,9 @@ export function AdminShowfileCard({
 				selectedExportSections,
 			);
 			downloadShowfile(document, "kesher-showfile");
-			setMessage("Configuration exported as showfile JSON.");
+			setMessage("Konfiguration als Showfile (JSON) exportiert.");
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "export failed");
+			setError(err instanceof Error ? err.message : "Export fehlgeschlagen");
 		} finally {
 			setBusy(false);
 		}
@@ -231,7 +231,7 @@ export function AdminShowfileCard({
 				documentSections.has(section),
 			);
 			if (effectiveImportSections.length === 0) {
-				throw new Error("The showfile does not contain any selected sections.");
+				throw new Error("Das Showfile enthält keinen der ausgewählten Bereiche.");
 			}
 			const response = await importConfiguration(
 				token,
@@ -241,13 +241,19 @@ export function AdminShowfileCard({
 			);
 			await refreshBootstrapData();
 			const warningText = response.warnings?.length
-				? ` Warnings: ${response.warnings.join(" ")}`
+				? ` Warnungen: ${response.warnings.join(" ")}`
 				: "";
 			setMessage(
-				`Imported sections: ${response.importedSections.join(", ")}.${warningText}`,
+				`Importierte Bereiche: ${response.importedSections
+						.map(
+							(key) =>
+								availableSections.find((section) => section.key === key)?.label ||
+								key,
+						)
+						.join(", ")}.${warningText}`,
 			);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "import failed");
+			setError(err instanceof Error ? err.message : "Import fehlgeschlagen");
 		} finally {
 			setBusy(false);
 		}
@@ -264,19 +270,19 @@ export function AdminShowfileCard({
 				<div className="admin-card-body">
 					<div className="admin-block">
 						<div className="admin-block-header">
-							<h4>Export</h4>
+							<h4>Exportieren</h4>
 						</div>
 						<p>
-							Choose the configuration areas to include. Everything is selected
-							by default for a complete system copy.
+							Wähle die Bereiche aus, die gespeichert werden sollen. Für eine
+							vollständige Kopie des Systems ist standardmäßig alles ausgewählt.
 						</p>
 						<p className="admin-block-subtitle">
-							Runtime history and credentials such as the Admin PIN, Telegram bot
-							token and Companion secret are intentionally not written to showfiles.
+							Verläufe und Zugangsdaten wie Admin-PIN, Telegram-Bot-Token und
+							Companion-Geheimnis werden bewusst nicht ins Showfile geschrieben.
 						</p>
 						<div className="admin-form-actions">
 							<span className="admin-block-subtitle">
-								{selectedExportSections.length} of {availableSections.length} selected
+								{selectedExportSections.length} von {availableSections.length} ausgewählt
 							</span>
 							<button
 								type="button"
@@ -284,7 +290,7 @@ export function AdminShowfileCard({
 								onClick={() => selectAllSections(setExportSectionSelection, true)}
 								disabled={busy}
 							>
-								Select all
+								Alle auswählen
 							</button>
 							<button
 								type="button"
@@ -292,7 +298,7 @@ export function AdminShowfileCard({
 								onClick={() => selectAllSections(setExportSectionSelection, false)}
 								disabled={busy}
 							>
-								Clear selection
+								Auswahl aufheben
 							</button>
 						</div>
 						<div className="admin-grid admin-showfile-sections">
@@ -320,22 +326,22 @@ export function AdminShowfileCard({
 								onClick={() => void handleExport()}
 								disabled={busy || selectedExportSections.length === 0}
 							>
-								{busy ? "Working..." : "Export showfile"}
+								{busy ? "Bitte warten …" : "Showfile exportieren"}
 							</button>
 						</div>
 					</div>
 
 					<div className="admin-block">
 						<div className="admin-block-header">
-							<h4>Import</h4>
+							<h4>Importieren</h4>
 						</div>
 						<p>
-							Paste a showfile JSON document or load it from disk. Only the
-							selected sections will be applied.
+							Showfile (JSON) hier einfügen oder als Datei laden. Nur die
+							ausgewählten Bereiche werden übernommen.
 						</p>
 						<div className="admin-grid">
 							<label className="admin-checkbox admin-checkbox-wide">
-								<span>Load JSON file</span>
+								<span>JSON-Datei laden</span>
 								<input
 									type="file"
 									accept="application/json,.json"
@@ -348,7 +354,7 @@ export function AdminShowfileCard({
 							<textarea
 								value={importText}
 								onChange={(event) => setImportText(event.target.value)}
-								placeholder="Paste showfile JSON here"
+								placeholder="Showfile-JSON hier einfügen"
 								rows={14}
 							/>
 						</div>
@@ -361,11 +367,11 @@ export function AdminShowfileCard({
 									disabled={busy}
 								/>
 								<span>
-									<strong>Create Backup Before Import</strong>
+									<strong>Vor dem Import Sicherung erstellen</strong>
 									<br />
 									<small>
-										Downloads current live configuration before applying the
-										import.
+										Lädt die aktuelle Konfiguration herunter, bevor der Import
+										übernommen wird.
 									</small>
 								</span>
 							</label>
@@ -395,7 +401,7 @@ export function AdminShowfileCard({
 								onClick={() => void handleImport()}
 								disabled={busy || !importText.trim() || selectedImportSections.length === 0}
 							>
-								{busy ? "Working..." : "Import selected sections"}
+								{busy ? "Bitte warten …" : "Ausgewählte Bereiche importieren"}
 							</button>
 						</div>
 					</div>

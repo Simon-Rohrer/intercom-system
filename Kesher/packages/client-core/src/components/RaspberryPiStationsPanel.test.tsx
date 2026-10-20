@@ -31,15 +31,15 @@ describe("RaspberryPiStationsPanel", () => {
   it("shows a connected Raspberry with a missing intercom login separately", () => {
     render(<RaspberryPiStationsPanel stations={[baseStation]} />);
 
-    expect(screen.getAllByText("Waiting for intercom").length).toBeGreaterThan(
+    expect(screen.getAllByText("Wartet auf Intercom").length).toBeGreaterThan(
       0,
     );
     expect(screen.getByText("Kamera-1")).toBeInTheDocument();
     expect(screen.getByText("192.168.0.61")).toBeInTheDocument();
-    expect(screen.getByText("Low power")).toBeInTheDocument();
+    expect(screen.getByText("Stromsparen")).toBeInTheDocument();
     expect(screen.getByText("Launcher v1")).toBeInTheDocument();
     expect(screen.getByText("Browser")).toBeInTheDocument();
-    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.getByText("Läuft")).toBeInTheDocument();
     expect(screen.getByText("CPU")).toBeInTheDocument();
     expect(screen.getByText("37%")).toBeInTheDocument();
     expect(screen.getByText("GPU")).toBeInTheDocument();
@@ -47,8 +47,8 @@ describe("RaspberryPiStationsPanel", () => {
     expect(screen.getByText("RAM")).toBeInTheDocument();
     expect(screen.getByText("61%")).toBeInTheDocument();
     expect(screen.getByText("Temp")).toBeInTheDocument();
-    expect(screen.getByText("55 C")).toBeInTheDocument();
-    expect(screen.getByText("Seen 12s ago")).toBeInTheDocument();
+    expect(screen.getByText("55 °C")).toBeInTheDocument();
+    expect(screen.getByText("Zuletzt gesehen vor 12 s")).toBeInTheDocument();
   });
 
   it("shows when the Raspberry itself is not connected", () => {
@@ -67,9 +67,9 @@ describe("RaspberryPiStationsPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Raspberry not connected")).toBeInTheDocument();
+    expect(screen.getByText("Raspberry nicht verbunden")).toBeInTheDocument();
     expect(screen.getByText("Offline")).toBeInTheDocument();
-    expect(screen.getByText("Seen 1m ago")).toBeInTheDocument();
+    expect(screen.getByText("Zuletzt gesehen vor 1 min")).toBeInTheDocument();
   });
 
   it("shows short heartbeat ages instead of hiding them behind now", () => {
@@ -79,7 +79,7 @@ describe("RaspberryPiStationsPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Seen 2s ago")).toBeInTheDocument();
+    expect(screen.getByText("Zuletzt gesehen vor 2 s")).toBeInTheDocument();
   });
 
   it("hides the GPU metric when the Raspberry does not report a GPU value", () => {
@@ -126,10 +126,10 @@ describe("RaspberryPiStationsPanel", () => {
       />,
     );
 
-    expect(screen.getAllByText("Waiting for intercom").length).toBeGreaterThan(
+    expect(screen.getAllByText("Wartet auf Intercom").length).toBeGreaterThan(
       0,
     );
-    expect(screen.queryByText("Login error")).not.toBeInTheDocument();
+    expect(screen.queryByText("Anmeldefehler")).not.toBeInTheDocument();
   });
 
   it("shows explicit login failures as errors", () => {
@@ -147,7 +147,7 @@ describe("RaspberryPiStationsPanel", () => {
       />,
     );
 
-    expect(screen.getAllByText("Login error").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Anmeldefehler").length).toBeGreaterThan(0);
   });
 
   it("shows browser startup as progress instead of a login error", () => {
@@ -164,8 +164,8 @@ describe("RaspberryPiStationsPanel", () => {
       />,
     );
 
-    expect(screen.getAllByText("Starting browser").length).toBeGreaterThan(0);
-    expect(screen.getByText("Starting")).toBeInTheDocument();
-    expect(screen.queryByText("Login error")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Browser startet").length).toBeGreaterThan(0);
+    expect(screen.getByText("Startet")).toBeInTheDocument();
+    expect(screen.queryByText("Anmeldefehler")).not.toBeInTheDocument();
   });
 });

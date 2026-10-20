@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	_ "modernc.org/sqlite"
@@ -617,6 +618,8 @@ func (s *Store) Close() error { return s.db.Close() }
 
 func (s *Store) migrate(ctx context.Context) error {
 	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS central_ticket_redemptions (ticket_id TEXT PRIMARY KEY, expires_at INTEGER NOT NULL)`,
+		`CREATE INDEX IF NOT EXISTS central_ticket_redemptions_expiry ON central_ticket_redemptions(expires_at)`,
 		`CREATE TABLE IF NOT EXISTS roles (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL UNIQUE
@@ -891,9 +894,23 @@ func (s *Store) RoleExists(ctx context.Context, roleID string) (bool, error) {
 }
 
 func (s *Store) UpsertUser(ctx context.Context, username, roleID string) (User, error) {
+	if hasWhitespace(strings.TrimSpace(username)) {
+		return User{}, ErrInvalidInput
+	}
+	return s.upsertUser(ctx, username, roleID)
+}
+
+func (s *Store) upsertCentralUser(ctx context.Context, username, roleID string) (User, error) {
+	if strings.IndexFunc(username, unicode.IsControl) >= 0 {
+		return User{}, ErrInvalidInput
+	}
+	return s.upsertUser(ctx, username, roleID)
+}
+
+func (s *Store) upsertUser(ctx context.Context, username, roleID string) (User, error) {
 	username = strings.TrimSpace(username)
 	roleID = strings.TrimSpace(roleID)
-	if username == "" || roleID == "" || hasWhitespace(username) {
+	if username == "" || roleID == "" {
 		return User{}, ErrInvalidInput
 	}
 	tx, err := s.db.BeginTx(ctx, nil)

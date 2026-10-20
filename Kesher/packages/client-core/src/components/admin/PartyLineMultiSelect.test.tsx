@@ -23,7 +23,7 @@ function PartyLineMultiSelectHarness() {
 describe("PartyLineMultiSelect", () => {
   it("shows no party lines selected by default", () => {
     render(<PartyLineMultiSelectHarness />);
-    expect(screen.getByText("No party lines selected")).toBeVisible();
+    expect(screen.getByText("Keine Party Line gewählt")).toBeVisible();
   });
 
   it("selects a party line and supports clear selection", async () => {
@@ -32,9 +32,9 @@ describe("PartyLineMultiSelect", () => {
 
     await user.click(screen.getByLabelText("Party Line 1"));
     expect(screen.getAllByText("Party Line 1").length).toBeGreaterThan(0);
-    expect(screen.queryByText("No party lines selected")).not.toBeInTheDocument();
+    expect(screen.queryByText("Keine Party Line gewählt")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Clear selection" }));
-    expect(screen.getByText("No party lines selected")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Auswahl leeren" }));
+    expect(screen.getByText("Keine Party Line gewählt")).toBeVisible();
   });
 });

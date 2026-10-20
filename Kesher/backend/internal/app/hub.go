@@ -106,14 +106,15 @@ func (h *Hub) SignalStateWithMetadataForUsername(username string) (string, strin
 }
 
 type ActiveClient struct {
-	Username    string
-	RoleID      string
-	RoleName    string
-	UserID      string
-	VoiceMode   string
-	ListenRooms []string
-	TalkRooms   []string
-	MicEnabled  bool
+	StationDeviceID string `json:"-"`
+	Username        string
+	RoleID          string
+	RoleName        string
+	UserID          string
+	VoiceMode       string
+	ListenRooms     []string
+	TalkRooms       []string
+	MicEnabled      bool
 }
 
 // GetActiveClients returns a list of currently connected clients with their basic info.
@@ -147,14 +148,15 @@ func (h *Hub) GetActiveClients(ctx context.Context) []ActiveClient {
 	for _, c := range clientMap {
 		roleName := roleMap[c.session.RoleID]
 		result = append(result, ActiveClient{
-			Username:    c.user.Username,
-			RoleID:      c.session.RoleID,
-			RoleName:    roleName,
-			UserID:      c.user.ID,
-			VoiceMode:   c.voiceMode,
-			ListenRooms: roomSetToSortedSlice(c.listenRooms),
-			TalkRooms:   roomSetToSortedSlice(c.talkRooms),
-			MicEnabled:  c.micEnabled,
+			StationDeviceID: c.session.StationDeviceID,
+			Username:        c.user.Username,
+			RoleID:          c.session.RoleID,
+			RoleName:        roleName,
+			UserID:          c.user.ID,
+			VoiceMode:       c.voiceMode,
+			ListenRooms:     roomSetToSortedSlice(c.listenRooms),
+			TalkRooms:       roomSetToSortedSlice(c.talkRooms),
+			MicEnabled:      c.micEnabled,
 		})
 	}
 
@@ -764,7 +766,6 @@ func (h *Hub) SendChatToGlobal(e RoutedEvent) {
 	h.logger.Debug("chat sent to global", "from", e.FromUser.Username)
 }
 
-
 // SendChatToUser sends a chat message to all sessions of a specific user.
 // Used by external systems (like Telegram) to deliver messages to Kesher users.
 func (h *Hub) SendChatToUser(userID string, e RoutedEvent) {
@@ -885,6 +886,16 @@ func (h *Hub) SetVoiceState(token, state string) {
 
 func (h *Hub) Remove(token string) {
 	h.removeToken(token, "")
+}
+
+func (h *Hub) sessionSnapshot() []Session {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	result := make([]Session, 0, len(h.clients))
+	for _, connected := range h.clients {
+		result = append(result, connected.session)
+	}
+	return result
 }
 
 func (h *Hub) RemoveWithReason(token string, reason string) {
@@ -1275,6 +1286,27 @@ func (h *Hub) LatestTokenForUsername(username string) (string, bool) {
 	return selectedToken, true
 }
 
+// PrimaryTokenForRole returns the newest non-secondary client of a role (the
+// device that really uses it, e.g. a laptop with headset), excluding one token.
+// Secondary sessions (the Kesher tile in JMS Control) forward their controls to it.
+func (h *Hub) PrimaryTokenForRole(roleID, excludeToken string) (string, string, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	var selectedToken, selectedUser string
+	var selectedAt time.Time
+	for token, c := range h.clients {
+		if token == excludeToken || c.session.Secondary || c.session.RoleID != roleID {
+			continue
+		}
+		if selectedToken == "" || c.connectedAt.After(selectedAt) {
+			selectedToken = token
+			selectedUser = c.user.Username
+			selectedAt = c.connectedAt
+		}
+	}
+	return selectedToken, selectedUser, selectedToken != ""
+}
+
 func (h *Hub) LatestTokenForUsernameRole(username, roleID string) (string, bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -1360,6 +1392,7 @@ func (h *Hub) SubscribePresence() (chan []PresenceState, func()) {
 	}
 	return ch, unsubscribe
 }
+
 // preferredClient reports whether candidate should represent a user instead of
 // current: real devices win over secondary ones (e.g. the Multiview tile), then
 // the most recent connection.

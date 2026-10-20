@@ -1,8 +1,11 @@
+import { TIME_ZONE } from './common.js'
 // Kesher-Chat als Kachel: gleiche Darstellung wie die Kesher-Chat-Anzeige (?viewMode=chat).
 // Die Nachrichten kommen vom Multiview-Server, der einmal bei Kesher angemeldet ist.
 
 /** Ältere Nachrichten bleiben stehen, werden aber abgedunkelt. */
 const RECENT_MS = 5 * 60 * 1000
+// Beamer-/Bühnen-Meldungen sind nur so lange rot hervorgehoben, danach wie jede andere Nachricht
+export const ALERT_MS = 15 * 1000
 const FLASH_MS = 4000
 
 const views = new Set()
@@ -15,11 +18,11 @@ function el(tag, className, text) {
 }
 
 function shortTime(ts) {
-  return new Date(ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+  return new Date(ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: TIME_ZONE })
 }
 
 /** Darstellung der Chat-Kachel (im Layout-Editor einstellbar). */
-export const CHAT_DEFAULTS = { size: 1, newest: true, header: true, meta: true, dimOld: true, count: 30, follow: true }
+export const CHAT_DEFAULTS = { size: 1, newest: true, header: true, meta: true, dimOld: true, count: 30, follow: true, newestTop: false }
 
 export function chatOptions(options) {
   const o = { ...CHAT_DEFAULTS, ...options }
@@ -37,6 +40,7 @@ export function createChatView(options) {
   root.classList.toggle('no-newest', !o.newest)
   root.classList.toggle('no-dim', !o.dimOld)
   root.classList.toggle('no-follow', !o.follow)
+  root.classList.toggle('newest-top', o.newestTop)
   const header = el('header', 'kchat-header')
   const logo = el('img', 'kchat-logo')
   logo.src = 'jms-logo.svg'
@@ -56,11 +60,18 @@ export function createChatView(options) {
   const firstSeen = new Map()
   let lastKey = ''
   let feedEl = null
+  let lastChat = null
+  let alertTimer = null
 
   // An der neuesten Nachricht hängen: immer ganz nach unten – auch wenn die Kachel erst später
   // ihre Größe bekommt, die Schrift nachlädt oder die Kachel größer/kleiner gezogen wird.
   const stick = () => {
     if (!o.follow || !feedEl) return
+    // Neueste oben: einfach ganz nach oben
+    if (o.newestTop) {
+      feedEl.scrollTop = 0
+      return
+    }
     const newest = feedEl.lastElementChild
     // Passt die neueste Nachricht nicht ganz hinein (riesige Schrift, kleine Kachel): ihren Anfang zeigen
     feedEl.scrollTop =
@@ -76,6 +87,8 @@ export function createChatView(options) {
     el: root,
     clock,
     update(chat) {
+      lastChat = chat
+      clearTimeout(alertTimer)
       station.textContent = chat.stationName || ''
       const connected = chat.state === 'connected'
       live.classList.toggle('connected', connected)
@@ -83,8 +96,9 @@ export function createChatView(options) {
       liveText.textContent = connected ? 'Live' : chat.state === 'offline' ? 'Offline' : 'Verbinde …'
       live.title = connected ? '' : chat.error || ''
 
-      // Neueste unten, wie in Kesher
-      const feed = (chat.messages || []).slice(0, o.count).reverse()
+      // Neueste unten wie in Kesher – oder (Einstellung) neueste oben
+      const feed = o.newestTop ? (chat.messages || []).slice(0, o.count) : (chat.messages || []).slice(0, o.count).reverse()
+      const newestIndex = o.newestTop ? 0 : feed.length - 1
       const now = Date.now()
       for (const m of feed) if (!firstSeen.has(m.key)) firstSeen.set(m.key, m.receivedAt || now)
 
@@ -94,8 +108,9 @@ export function createChatView(options) {
         return
       }
       const list = el('ol', 'kchat-feed')
+      let nextAlertEnd = Infinity
       feed.forEach((m, i) => {
-        const isNewest = i === feed.length - 1
+        const isNewest = i === newestIndex
         const isOld = now - (firstSeen.get(m.key) ?? now) > RECENT_MS && !isNewest
         const needsAck = m.ackRequired && !m.acked
         const li = el('li', `kchat-msg scope-${m.scope}`)
@@ -103,7 +118,13 @@ export function createChatView(options) {
         if (isNewest && m.key !== lastKey) li.classList.add('arrive')
         if (isOld) li.classList.add('is-old')
         if (needsAck) li.classList.add('needs-ack')
-        if (m.source === 'multiview-alert') li.classList.add('is-alert')
+        // Rot nur in den ersten 15 s; beim Eintreffen eine kleine Zoom-Animation
+        const alertAge = now - (firstSeen.get(m.key) ?? now)
+        if (m.source === 'multiview-alert' && alertAge < ALERT_MS) {
+          li.classList.add('is-alert')
+          if (alertAge < 1500) li.classList.add('alert-pop')
+          nextAlertEnd = Math.min(nextAlertEnd, ALERT_MS - alertAge)
+        }
         const meta = el('div', 'kchat-meta')
         meta.append(el('strong', null, m.from))
         if (m.fromRole && m.fromRole !== m.from) meta.append(el('span', 'kchat-role', m.fromRole))
@@ -111,13 +132,15 @@ export function createChatView(options) {
         if (m.source === 'telegram') meta.append(el('span', 'kchat-target is-telegram', 'Telegram'))
         else if (m.source === 'companion') meta.append(el('span', 'kchat-target', 'Stream Deck'))
         else if (m.source === 'multiview') meta.append(el('span', 'kchat-target', 'JMS Control'))
-        else if (m.source === 'multiview-alert') meta.append(el('span', 'kchat-target is-alert', 'Wichtig'))
+        else if (m.source === 'multiview-alert') meta.append(el('span', `kchat-target${alertAge < ALERT_MS ? ' is-alert' : ''}`, 'Wichtig'))
         if (needsAck) meta.append(el('span', 'kchat-ack', 'Bestätigung erwartet'))
         meta.append(el('time', null, shortTime(m.timestamp)))
         li.append(meta, el('p', 'kchat-text', m.body))
         list.append(li)
       })
-      lastKey = feed[feed.length - 1].key
+      lastKey = feed[newestIndex].key
+      // Sobald die nächste Meldung ihre 15 s hinter sich hat, neu zeichnen (dann ohne Rot)
+      if (nextAlertEnd !== Infinity) alertTimer = setTimeout(() => lastChat && view.update(lastChat), nextAlertEnd + 50)
       // Ohne „hängen“: Scroll-Position behalten, damit man in Ruhe zurücklesen kann
       const keep = !o.follow && feedEl ? feedEl.scrollTop : null
       body.replaceChildren(list)
@@ -141,7 +164,7 @@ export function createChatView(options) {
 }
 
 function tickClock(view) {
-  const text = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+  const text = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: TIME_ZONE })
   if (view.clock.textContent !== text) view.clock.textContent = text
 }
 

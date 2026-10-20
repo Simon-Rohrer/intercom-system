@@ -14,7 +14,7 @@ describe("RealtimeEventsPanel", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: "Realtime events" }),
+      screen.getByRole("heading", { name: "Live-Ereignisse" }),
     ).toBeVisible();
     expect(screen.getByText("Connected")).toBeVisible();
     expect(screen.getByText("Mic enabled")).toBeVisible();

@@ -18,7 +18,6 @@
         <span class="brand-text" id="brand-text">JMS Control<small>Technik</small></span>
       </div>
 
-      <!-- Schritt 1 (nur für die anderen Dienste, nicht für JMS Control): Tagescode -->
       <form id="code-form" class="auth-step" autocomplete="off" hidden>
         <div>
           <h1>Gerät freischalten</h1>
@@ -29,6 +28,7 @@
           <input type="text" id="day-code" class="code-input" inputmode="numeric" autocomplete="one-time-code" pattern="\d{6}" maxlength="6" required placeholder="000000" aria-describedby="code-error">
         </label>
         <button class="btn primary block" type="submit">Weiter</button>
+        <button class="btn block" type="button" id="admin-login">Als Admin mit PIN anmelden</button>
         <button class="btn block scan-btn" type="button" id="scan-start">
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>
           Mit der Kamera scannen

@@ -30,7 +30,7 @@ export function AdminChatHistoryCard({
 
   async function handleClear() {
     const confirmed = window.confirm(
-      "Chat-Verlauf wirklich fuer alle verbundenen Clients leeren?",
+      "Chatverlauf wirklich für alle verbundenen Geräte leeren?",
     );
     if (!confirmed) return;
 
@@ -41,7 +41,7 @@ export function AdminChatHistoryCard({
       await clearChatHistory(token, adminPin);
       setMessage("Chat-Verlauf wurde geleert.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "failed to clear history");
+      setError(err instanceof Error ? err.message : "Chatverlauf konnte nicht geleert werden");
     } finally {
       setBusy(false);
     }
@@ -63,7 +63,7 @@ export function AdminChatHistoryCard({
       // which causes the last chat message to be re-broadcasted. The config_updated WebSocket
       // message will update the ackEnabled state throughout the application.
     } catch (err) {
-      setError(err instanceof Error ? err.message : "failed to update ack settings");
+      setError(err instanceof Error ? err.message : "Lesebestätigung konnte nicht gespeichert werden");
     } finally {
       setBusyAck(false);
     }
@@ -87,8 +87,8 @@ export function AdminChatHistoryCard({
             </div>
 
             <p>
-              Aktiviert oder deaktiviert ACK-Cue-Nachrichten global fuer alle
-              Clients.
+              Schaltet Lesebestätigungen (ACK) im Chat für alle Geräte ein
+              oder aus.
             </p>
 
             <label className="admin-chat-toggle-row">
@@ -101,8 +101,8 @@ export function AdminChatHistoryCard({
                 }}
               />
               <span>
-                <strong>ACK-Nachrichten aktivieren</strong>
-                <small>Bei Aktivierung koennen ACK-Cues im Chat genutzt werden.</small>
+                <strong>Lesebestätigungen aktivieren</strong>
+                <small>Wenn aktiv, können Nachrichten im Chat bestätigt werden.</small>
               </span>
             </label>
           </div>
@@ -112,8 +112,8 @@ export function AdminChatHistoryCard({
               <h4>Verlauf bereinigen</h4>
             </div>
             <p>
-              Leert den fluechtigen Chat-Verlauf fuer alle Party-Lines und
-              Direktnachrichten, z. B. vor Show-Beginn.
+              Leert den Chatverlauf aller Party Lines und Direktnachrichten,
+              z. B. vor Beginn des Gottesdienstes.
             </p>
             <div className="admin-form-actions admin-chat-actions">
               <button
@@ -124,7 +124,7 @@ export function AdminChatHistoryCard({
                 }}
                 disabled={busy}
               >
-                {busy ? "Loesche..." : "Clear for new Show"}
+                {busy ? "Lösche …" : "Für neuen Gottesdienst leeren"}
               </button>
             </div>
           </div>

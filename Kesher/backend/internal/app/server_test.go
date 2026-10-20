@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -48,6 +49,49 @@ func TestEmbeddedStaticHandlerRootDoesNotRedirect(t *testing.T) {
 	}
 	if rec.Body.Len() == 0 {
 		t.Fatal("expected embedded root response body to be non-empty")
+	}
+}
+
+func TestStaticEntryPointsAreNeverCached(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"index.html":           "<html>current build</html>",
+		"sw.js":                "self.addEventListener('activate', () => {});",
+		"manifest.webmanifest": "{}",
+		"asset-hash.css":       "body {}",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handlers := map[string]http.Handler{"disk": (&Server{cfg: Config{StaticDir: dir}}).staticHandler()}
+	if embeddedStaticAvailable() {
+		handlers["embedded"] = (&Server{}).embeddedStaticHandler()
+	}
+	for name, handler := range handlers {
+		for _, requestPath := range []string{"/", "/login", "/sw.js", "/manifest.webmanifest"} {
+			t.Run(name+requestPath, func(t *testing.T) {
+				rec := httptest.NewRecorder()
+				handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, requestPath, nil))
+				if rec.Code != http.StatusOK || rec.Header().Get("Cache-Control") != "no-store" {
+					t.Fatalf("status=%d cache=%q", rec.Code, rec.Header().Get("Cache-Control"))
+				}
+			})
+		}
+		for _, requestPath := range []string{"/api/missing", "/ws/missing"} {
+			t.Run(name+requestPath, func(t *testing.T) {
+				rec := httptest.NewRecorder()
+				handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, requestPath, nil))
+				if rec.Code != http.StatusNotFound {
+					t.Fatalf("API path must not return app HTML: %d", rec.Code)
+				}
+			})
+		}
+	}
+	rec := httptest.NewRecorder()
+	handlers["disk"].ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/asset-hash.css", nil))
+	if rec.Code != http.StatusOK || rec.Header().Get("Cache-Control") == "no-store" {
+		t.Fatal("versioned asset caching must remain available")
 	}
 }
 

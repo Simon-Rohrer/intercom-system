@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="meters.css">
   <link rel="stylesheet" href="chat.css">
   <link rel="stylesheet" href="agenda.css">
+  <link rel="stylesheet" href="uplink.css">
   <link rel="stylesheet" href="propresenter.css">
   <link rel="stylesheet" href="stage.css">
 </head>
@@ -35,6 +36,10 @@
       </div>
 
       <nav class="site-nav" aria-label="Bereiche">
+        <a href="https://technik.local/" class="nav-dashboard" id="nav-dashboard" title="Zurück zum Dashboard">
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+          <span>Dashboard</span>
+        </a>
         <a href="#/" data-page="uebersicht">
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>
           <span>Übersicht</span>
@@ -54,6 +59,10 @@
         <a href="#/zugang" data-page="zugang" data-admin>
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16.5 14.2a5 5 0 0 1 5 5.3"/></svg>
           <span>Benutzer &amp; Rechte</span>
+        </a>
+        <a href="#/services" data-page="services" data-admin>
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><path d="M17.5 14v7M14 17.5h7"/></svg>
+          <span>Services</span>
         </a>
       </nav>
 
@@ -107,6 +116,17 @@
           <div id="profile-card" class="profile-hero"></div>
 
           <div id="status-strip" class="status-strip"></div>
+        </section>
+
+        <!-- Services: alle Dienste auf einen Blick (nur Admin) -->
+        <section id="page-services" class="page" hidden>
+          <div class="page-head">
+            <div>
+              <h1>Services</h1>
+              <p class="lead">Alle Dienste auf dem Technik-Server. Ein Klick öffnet den Dienst – angemeldet bist du dort schon.</p>
+            </div>
+          </div>
+          <div id="services-list" class="services-list"></div>
         </section>
 
         <!-- Multiviews (Unterseiten: Multiviews und Layouts) -->
@@ -296,7 +316,7 @@
               </div>
               <div class="table-wrap">
                 <table class="table">
-                  <thead><tr><th>Anschluss</th><th>Name</th><th>Multiview</th><th>Monitor</th></tr></thead>
+                  <thead><tr><th>Anschluss</th><th>Name</th><th>Multiview</th><th>Drehung</th><th>Monitor</th></tr></thead>
                   <tbody id="screen-rows"></tbody>
                 </table>
               </div>
@@ -430,7 +450,7 @@
                 <label class="field"><span>Browser auf dem Pi</span>
                   <input id="pi-browserBinary" type="text" placeholder="chromium" spellcheck="false">
                 </label>
-                <label class="check pi-check"><input type="checkbox" id="pi-allowInsecureTls"> Eigenes Zertifikat des Servers akzeptieren</label>
+                <p class="muted">TLS-Prüfung ist verpflichtend. Die Server-CA und das persönliche Gerätezertifikat müssen auf dem Pi installiert sein.</p>
               </div>
               <details class="disclosure inner">
                 <summary>Wartezeiten beim Start</summary>
@@ -450,7 +470,7 @@
               <div class="section-head">
                 <div>
                   <h3>Stationen</h3>
-                  <p class="muted">Der Pi erkennt seinen Eintrag an einer MAC-Adresse (LAN und WLAN, egal welche IP er gerade hat) oder – ohne MAC – an seiner festen IP.</p>
+                  <p class="muted">Ein registriertes Gerätezertifikat ordnet den Pi seinem Eintrag zu. IP- und MAC-Adressen dienen nur zur Diagnose und erteilen keinen Zugriff. Die Zertifikatzuordnung verwaltest du unter „Benutzer &amp; Rechte → Anmeldung für alle Dienste“.</p>
                 </div>
                 <button class="btn primary" type="button" id="pi-add">+ Raspberry Pi</button>
               </div>
@@ -459,16 +479,15 @@
               <div class="section-head">
                 <div>
                   <h3>Pis im Netz</h3>
-                  <p class="muted">Pis, die in letzter Zeit nach ihren Einstellungen gefragt haben. Einen neuen Pi übernimmst du mit einem Klick – mit den Werten aus seiner Datei.</p>
+                  <p class="muted">Registrierte Pis, die zuletzt mit gültigem Gerätenachweis nach ihren Einstellungen gefragt haben. Übernommene Einstellungen ersetzen keine Zertifikatregistrierung.</p>
                 </div>
-                <button class="btn small" type="button" id="pi-refresh">Aktualisieren</button>
               </div>
               <div id="pi-seen"></div>
 
               <div class="callout">
                 <b>Einmal auf jedem Pi:</b> In <code>/etc/kesher/raspberry-pis.json</code> die Zeile
                 <code id="pi-config-line">"config_url": "…/api/raspberry-pis/config"</code> eintragen und den Launcher aktualisieren
-                (<code>sudo ./install.sh &lt;user&gt; --update-config</code>, siehe Dokumentation). Alles andere in der Datei ist dann nur noch die Reserve, falls JMS Control nicht erreichbar ist.
+                (<code>sudo ./install.sh &lt;user&gt; --update-config</code>, siehe Dokumentation). Zusätzlich Server-CA, Gerätezertifikat und privaten Schlüssel nach der Betriebsdokumentation installieren. Eine lokale Reservekonfiguration umgeht die Geräteprüfung nicht.
               </div>
             </div>
 
@@ -476,7 +495,7 @@
               <div class="card-head">
                 <div>
                   <h2>Companion</h2>
-                  <p class="muted">Im Companion-Modul <b>Generic HTTP</b> eine GET-Anfrage auf diese Adressen legen. Multiviews, Layouts und Quellen gehen per Nummer, Name oder ID. Läuft Companion auf diesem Server, gilt die Adresse mit <code>127.0.0.1</code>.</p>
+                  <p class="muted">Im Companion-Modul <b>Generic HTTP</b> eine Anfrage mit dem eingerichteten Dienstnachweis auf diese Adressen legen. Multiviews, Layouts und Quellen gehen per Nummer, Name oder ID. Auch Aufrufe über <code>127.0.0.1</code> benötigen einen gültigen Dienstnachweis; Schlüssel werden nur direkt auf dem Server eingerichtet.</p>
                 </div>
               </div>
               <div id="companion-help"></div>
@@ -497,11 +516,13 @@
             <a href="#/zugang/anmeldung" data-section-link="anmeldung">Anmeldung &amp; Admin-PIN</a>
             <a href="#/zugang/dienste" data-section-link="dienste">Anmeldung für alle Dienste</a>
             <a href="#/zugang/zugangsdaten" data-section-link="zugangsdaten">Zugangsdaten der Dienste</a>
+            <a href="#/zugang/nachrichten" data-section-link="nachrichten">Nachrichten-Links</a>
           </nav>
           <div class="settings-stack">
             <div class="card" id="access-pin-card" data-section="anmeldung"></div>
             <div class="card" id="access-gateway-card" data-section="dienste"></div>
             <div class="card" id="service-creds-card" data-section="zugangsdaten"></div>
+            <div class="card" id="message-links-card" data-section="nachrichten"></div>
             <div class="card" data-section="rollen">
               <div class="card-head">
                 <div>

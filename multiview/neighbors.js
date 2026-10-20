@@ -21,27 +21,30 @@ function createNeighbors({
   log = console.log,
 } = {}) {
   let table = new Map()
-  let loadedAt = 0
+  let loadedAt = null
   let warned = false
 
   function load() {
     loadedAt = Date.now()
     try {
       const next = new Map()
-      for (const n of JSON.parse(read() || '[]'))
-        if (n?.dst && n?.lladdr && !DOCKER_DEV.test(n.dev ?? '')) next.set(normalize(n.dst), String(n.lladdr).toLowerCase())
+      for (const neighbor of JSON.parse(read() || '[]'))
+        if (neighbor?.dst && /^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$/i.test(neighbor?.lladdr ?? '') &&
+          !DOCKER_DEV.test(neighbor.dev ?? '') && !(neighbor.state ?? []).some((state) => ['FAILED', 'INCOMPLETE'].includes(state)))
+          next.set(normalize(neighbor.dst), String(neighbor.lladdr).toLowerCase())
       table = next
+      warned = false
     } catch (err) {
+      table = new Map()
       if (!warned) log(`Zugang: Nachbartabelle nicht lesbar (${err.message}) – Geräte nur an ihrer Adresse erkannt`)
       warned = true
     }
   }
 
-  /** MAC-Adresse zur Adresse oder null. Unbekannte Adressen lösen höchstens alle 3 s ein neues Lesen aus. */
   function macOf(ip) {
     const addr = normalize(ip)
     if (!addr) return null
-    if (!table.has(addr) && Date.now() - loadedAt > CACHE_MS) load()
+    if (loadedAt === null || Date.now() - loadedAt >= CACHE_MS || Date.now() < loadedAt) load()
     return table.get(addr) ?? null
   }
 

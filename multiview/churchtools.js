@@ -267,7 +267,55 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
     return text.replace(/\[([^\]]+)\]/g, '$1').trim()
   }
 
-  function agendaItems(agenda, event) {
+  // Dienstgruppen (Namen der Programmspalten im Ablauf), selten geändert
+  let serviceGroups = { at: 0, base: '', map: new Map() }
+  async function loadServiceGroups(base, token) {
+    if (serviceGroups.base === base && Date.now() - serviceGroups.at < 60 * 60 * 1000) return serviceGroups.map
+    try {
+      const { data } = await request(base, '/servicegroups', { token })
+      const map = new Map()
+      for (const g of data?.data || []) map.set(g.id, { name: g.nameTranslated || g.name || '', sort: g.sortKey ?? g.id })
+      serviceGroups = { at: Date.now(), base, map }
+    } catch {
+      // Ohne Namen trotzdem anzeigen ("Spalte 3"); später erneut versuchen
+      serviceGroups = { ...serviceGroups, at: Date.now() - 55 * 60 * 1000 }
+    }
+    return serviceGroups.map
+  }
+
+  // CCLI-Nummern der Songs (braucht im ChurchTools-Benutzer Leserecht auf Songs)
+  const ccliCache = new Map() // songId → { at, ccli }
+  async function loadCcli(base, token, songIds) {
+    const result = new Map()
+    for (const id of new Set(songIds)) {
+      const cached = ccliCache.get(id)
+      if (cached && Date.now() - cached.at < (cached.ccli ? 6 * 60 * 60 : 2 * 60) * 1000) {
+        result.set(id, cached.ccli)
+        continue
+      }
+      let ccli = ''
+      try {
+        const { data } = await request(base, `/songs/${id}`, { token })
+        ccli = String(data?.data?.ccli || '').trim()
+      } catch {
+        ccli = '' // keine Berechtigung oder Song gelöscht
+      }
+      ccliCache.set(id, { at: Date.now(), ccli })
+      result.set(id, ccli)
+    }
+    return result
+  }
+
+  /** Programmspalten eines Punkts: [{ group, note }] in ChurchTools-Reihenfolge */
+  function columnNotes(item, groups) {
+    return (item.serviceGroupNotes || [])
+      .map((n) => ({ id: n.serviceGroupId, note: String(n.note || '').trim() }))
+      .filter((n) => n.note)
+      .sort((a, b) => (groups.get(a.id)?.sort ?? a.id) - (groups.get(b.id)?.sort ?? b.id))
+      .map((n) => ({ group: groups.get(n.id)?.name || `Spalte ${n.id}`, note: n.note }))
+  }
+
+  function agendaItems(agenda, event, groups = new Map()) {
     const items = [...(agenda?.items || [])].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
     // Startzeiten: von ChurchTools, sonst ab Eventbeginn aufsummiert
     const before = items.filter((i) => i.isBeforeEvent)
@@ -288,8 +336,17 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
         beforeEvent: Boolean(i.isBeforeEvent),
         responsible: i.type === 'header' ? '' : responsibleText(i.responsible),
         note: i.type === 'header' ? '' : String(i.note || '').trim(),
+        columns: columnNotes(i, groups),
         song: song
-          ? { title: song.title || '', key: song.key || '', arrangement: song.arrangement || '', bpm: song.bpm ?? null }
+          ? {
+              id: song.songId ?? null,
+              title: song.title || '',
+              key: song.key || '',
+              arrangement: song.arrangement || '',
+              isDefault: song.isDefault === true,
+              bpm: song.bpm ?? null,
+              ccli: '',
+            }
           : null,
       }
     })
@@ -300,7 +357,14 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
       const { data } = await request(base, `/events/${event.id}/agenda`, { token })
       const agenda = data?.data
       if (!agenda) return { agenda: null, agendaError: 'Kein Ablauf hinterlegt' }
-      return { agenda: { name: agenda.name || '', items: agendaItems(agenda, event) }, agendaError: '' }
+      const groups = await loadServiceGroups(base, token)
+      const items = agendaItems(agenda, event, groups)
+      const songIds = items.map((i) => i.song?.id).filter((id) => id != null)
+      if (songIds.length) {
+        const ccli = await loadCcli(base, token, songIds)
+        for (const i of items) if (i.song) i.song.ccli = ccli.get(i.song.id) || ''
+      }
+      return { agenda: { name: agenda.name || '', items }, agendaError: '' }
     } catch (err) {
       if (err.status === 404) return { agenda: null, agendaError: 'Kein Ablauf hinterlegt' }
       if (err.status === 403) return { agenda: null, agendaError: 'Keine Berechtigung für den Ablauf' }
