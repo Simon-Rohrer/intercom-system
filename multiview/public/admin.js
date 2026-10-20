@@ -22,10 +22,10 @@ const esc = (s) =>
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max)
 
 const CLIENT_ID = uid('c')
-const PAGES = ['uebersicht', 'multiviews', 'eingaenge', 'layouts', 'einstellungen', 'services']
-const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'services']
+const PAGES = ['uebersicht', 'multiviews', 'layouts', 'einstellungen', 'services']
+const ADMIN_PAGES = ['einstellungen', 'services']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
-const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'raspberry', 'companion', 'bildschirme', 'geraete', 'zugang']
+const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'eingaenge', 'raspberry', 'companion', 'bildschirme', 'geraete', 'zugang']
 // Unterseiten von Benutzer & Rechte: #/einstellungen/zugang/rollen …
 const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste', 'zugangsdaten', 'nachrichten']
 const SOURCE_TYPES = {
@@ -266,6 +266,11 @@ function showPage() {
   const previousPage = page
   let [requested, sub, nested] = location.hash.replace(/^#\/?/, '').split('/')
   // Benutzer & Rechte war früher ein eigener Hauptbereich. Die alte URL bleibt als Alias bestehen.
+  // Eingänge waren früher ein eigener Hauptbereich (#/eingaenge) – jetzt eine Unterseite der Einstellungen
+  if (requested === 'eingaenge') {
+    requested = 'einstellungen'
+    sub = 'eingaenge'
+  }
   if (requested === 'zugang') {
     requested = 'einstellungen'
     nested = sub
@@ -306,9 +311,10 @@ function showPage() {
   const navPage = page === 'layouts' ? 'multiviews' : page
   document.querySelectorAll('.site-nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === navPage))
   document.body.classList.remove('nav-open')
-  if (page === 'eingaenge') autoScanDevices()
+  if (inputsVisible()) autoScanDevices()
   if (page === 'einstellungen' && settingsSection === 'geraete') loadSessions()
-  if (page === 'einstellungen' && settingsSection === 'raspberry') loadRaspberryStatus()
+  // Auch für den Status-Punkt der Raspberry Pis in der Leiste, nicht nur auf ihrer Unterseite
+  if (page === 'einstellungen') loadRaspberryStatus()
   if (page === 'einstellungen' && settingsSection === 'zugang') loadGateway()
   if (page === 'einstellungen' && settingsSection === 'zugang' && accessSection === 'nachrichten') loadMessageLinks()
   if (page === 'services') renderServices()
@@ -324,6 +330,11 @@ window.addEventListener('hashchange', showPage)
 // #/einstellungen/zugang/rollen … die Unterseite mit „‹ Benutzer & Rechte“ (Desktop und Handy).
 let settingsFromList = false // Unterseite aus der Übersicht geöffnet? Dann führt Zurück per history.back()
 let accessFromList = false // dasselbe eine Ebene tiefer, in Benutzer & Rechte
+
+/** Ist die Unterseite Einstellungen → Eingänge offen? (Dann laufen Gerätesuche und Vorschauen.) */
+function inputsVisible() {
+  return page === 'einstellungen' && settingsSection === 'eingaenge'
+}
 
 function showSettingsView(sub, previousPage, nested) {
   const el = $('#page-einstellungen')
@@ -467,7 +478,7 @@ function renderAll() {
 /** Gibt Capture-Geräte frei, die auf der aktuellen Seite nicht angezeigt werden. */
 function syncStreams() {
   const used = new Set()
-  if (page === 'eingaenge') {
+  if (inputsVisible()) {
     localDevices.forEach((d) => used.add(`dev:${d}`))
     config.sources.filter((s) => s.type === 'stream').forEach((s) => used.add(mediaKey(s)))
   }
@@ -771,7 +782,7 @@ $('#scan-devices').addEventListener('click', () => scanDevices())
 
 function renderDeviceGrid() {
   const grid = $('#device-grid')
-  if (page !== 'eingaenge') {
+  if (!inputsVisible()) {
     if (deviceGridKey) grid.replaceChildren()
     deviceGridKey = ''
     return
@@ -889,7 +900,7 @@ function renderStreams() {
 
   const grid = $('#stream-grid')
   const streams = config.sources.filter((s) => s.type === 'stream')
-  if (page !== 'eingaenge') {
+  if (!inputsVisible()) {
     if (streamGridKey) grid.replaceChildren()
     streamGridKey = ''
     return
@@ -2928,10 +2939,11 @@ async function loadRaspberryStatus() {
     piStatus = { seen: piStatus.seen, stations: null, error: `Status nicht ladbar (${err.message})` }
   }
   renderRaspberry()
+  renderStatusStrip()
 }
 // Online/offline ändert sich laufend – solange der Reiter offen ist, alle 10 s neu laden
 setInterval(() => {
-  if (document.visibilityState === 'visible' && page === 'einstellungen' && !$('#set-raspberry').hidden) loadRaspberryStatus()
+  if (document.visibilityState === 'visible' && page === 'einstellungen') loadRaspberryStatus()
 }, 10_000)
 
 $('#pi-managed').addEventListener('change', (e) => {
@@ -3173,7 +3185,7 @@ const SEARCH_ENTRIES = [
   { label: 'Dashboard', href: serviceUrl(findService('dashboard')), words: 'zurück startseite technik dashboard' },
   { label: 'Multiviews', href: '#/multiviews', words: 'vorschau vollbild ausgabe monitor live' },
   { label: 'Layouts', href: '#/multiviews/layouts', words: 'multiviews editor kacheln raster trennlinien vorlagen' },
-  { label: 'Eingänge', href: '#/eingaenge', admin: true, words: 'kamera capture stream video quellen testbild' },
+  { label: 'Eingänge', href: '#/einstellungen/eingaenge', admin: true, words: 'kamera capture stream video quellen testbild' },
   { label: 'ATEM', href: '#/einstellungen/atem', admin: true, words: 'einstellungen tally mischer ip' },
   { label: 'ProPresenter', href: '#/einstellungen/propresenter', admin: true, words: 'einstellungen folien stage display beamer nachricht' },
   { label: 'Kesher-Chat', href: '#/einstellungen/kesher', admin: true, words: 'einstellungen intercom chat rolle' },
@@ -3261,12 +3273,9 @@ document.addEventListener('keydown', (e) => {
 const APP_TILES = [
   { href: '#/multiviews', label: 'Multiviews', color: 'indigo', icon: '<path fill-rule="evenodd" d="M5.5 3h13A3.5 3.5 0 0 1 22 6.5v11a3.5 3.5 0 0 1-3.5 3.5h-13A3.5 3.5 0 0 1 2 17.5v-11A3.5 3.5 0 0 1 5.5 3ZM4 6.5V11h7V5H5.5C4.7 5 4 5.7 4 6.5ZM13 5v6h7V6.5c0-.8-.7-1.5-1.5-1.5H13Zm7 8h-7v6h5.5c.8 0 1.5-.7 1.5-1.5V13Zm-9 6v-6H4v4.5c0 .8.7 1.5 1.5 1.5H11Z"/>' },
   { href: '#/multiviews/layouts', label: 'Layouts', color: 'blue', icon: '<path fill-rule="evenodd" d="M5.5 3h13A3.5 3.5 0 0 1 22 6.5v11a3.5 3.5 0 0 1-3.5 3.5h-13A3.5 3.5 0 0 1 2 17.5v-11A3.5 3.5 0 0 1 5.5 3Zm-1.5 7v7.5c0 .8.7 1.5 1.5 1.5H9v-9H4Zm7 0v9h7.5c.8 0 1.5-.7 1.5-1.5V10h-9Z"/>' },
-  { href: '#/eingaenge', label: 'Eingänge', color: 'green', admin: true, icon: '<rect x="1.5" y="5.5" width="14.5" height="13" rx="3.2"/><path d="M17.3 10.1 21 7.6c.6-.4 1.5 0 1.5.8v7.2c0 .8-.9 1.2-1.5.8l-3.7-2.5z"/>' },
   { href: '#/einstellungen', label: 'Einstellungen', color: 'gray', admin: true, icon: '<path fill-rule="evenodd" d="M19.60 12.00 L21.42 13.87 L20.87 15.67 L18.32 16.22 L17.37 17.37 L17.33 19.98 L15.67 20.87 L13.48 19.45 L12.00 19.60 L10.13 21.42 L8.33 20.87 L7.78 18.32 L6.63 17.37 L4.02 17.33 L3.13 15.67 L4.55 13.48 L4.40 12.00 L2.58 10.13 L3.13 8.33 L5.68 7.78 L6.63 6.63 L6.67 4.02 L8.33 3.13 L10.52 4.55 L12.00 4.40 L13.87 2.58 L15.67 3.13 L16.22 5.68 L17.37 6.63 L19.98 6.67 L20.87 8.33 L19.45 10.52Z M15.2 12 a3.2 3.2 0 1 0 -6.4 0 a3.2 3.2 0 1 0 6.4 0Z"/>' },
-  { href: '#/einstellungen/zugang', label: 'Benutzer', color: 'orange', admin: true, icon: '<circle cx="9" cy="7.2" r="3.7"/><path d="M1.8 19.3c0-3.8 3.2-6.4 7.2-6.4s7.2 2.6 7.2 6.4c0 .7-.5 1.2-1.2 1.2H3c-.7 0-1.2-.5-1.2-1.2Z"/><circle cx="17.2" cy="8.3" r="2.9"/><path d="M17.6 12.9c2.7.2 4.6 2.1 4.6 4.9 0 .7-.5 1.2-1.2 1.2h-3.2c.2-.6.3-1.1.3-1.7 0-1.7-.7-3.2-1.8-4.4h1.3Z"/>' },
   { href: '/remote.html', label: 'Handy', color: 'purple', icon: '<path fill-rule="evenodd" d="M8.2 1.5h7.6A3.2 3.2 0 0 1 19 4.7v14.6a3.2 3.2 0 0 1-3.2 3.2H8.2A3.2 3.2 0 0 1 5 19.3V4.7a3.2 3.2 0 0 1 3.2-3.2Zm1.6 17.6a.8.8 0 0 0 0 1.6h4.4a.8.8 0 0 0 0-1.6H9.8Z"/>' },
-  { open: 'qr-dialog', label: 'QR-Codes', color: 'teal', icon: '<path fill-rule="evenodd" d="M4 2.5h5A1.5 1.5 0 0 1 10.5 4v5A1.5 1.5 0 0 1 9 10.5H4A1.5 1.5 0 0 1 2.5 9V4A1.5 1.5 0 0 1 4 2.5Zm1.5 3v2h2v-2h-2ZM15 2.5h5A1.5 1.5 0 0 1 21.5 4v5a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 13.5 9V4A1.5 1.5 0 0 1 15 2.5Zm1.5 3v2h2v-2h-2ZM4 13.5h5a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 9 21.5H4A1.5 1.5 0 0 1 2.5 20v-5A1.5 1.5 0 0 1 4 13.5Zm1.5 3v2h2v-2h-2Z"/><rect x="13.5" y="13.5" width="3.4" height="3.4" rx=".8"/><rect x="18.1" y="18.1" width="3.4" height="3.4" rx=".8"/><rect x="18.1" y="13.5" width="3.4" height="3.4" rx=".8"/><rect x="13.5" y="18.1" width="3.4" height="3.4" rx=".8"/>' },
-  { open: 'appearance-dialog', label: 'Darstellung', color: 'pink', icon: '<path fill-rule="evenodd" d="M12 2C6.5 2 2 6.2 2 11.5S6.3 21.5 11.3 21.5c1.5 0 2.4-1 2.4-2.2 0-.6-.2-1.1-.6-1.5-.3-.4-.5-.8-.5-1.3 0-1.2 1-2.1 2.2-2.1h2.4c3 0 4.8-2 4.8-4.6C22 5.6 17.5 2 12 2Zm-5.4 9.8a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Zm3.5-4.3a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Zm4.8.3a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Z"/>' },
+  { open: 'qr-dialog', label: 'Handy-Fernsteuerung', color: 'teal', icon: '<path fill-rule="evenodd" d="M4 2.5h5A1.5 1.5 0 0 1 10.5 4v5A1.5 1.5 0 0 1 9 10.5H4A1.5 1.5 0 0 1 2.5 9V4A1.5 1.5 0 0 1 4 2.5Zm1.5 3v2h2v-2h-2ZM15 2.5h5A1.5 1.5 0 0 1 21.5 4v5a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 13.5 9V4A1.5 1.5 0 0 1 15 2.5Zm1.5 3v2h2v-2h-2ZM4 13.5h5a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 9 21.5H4A1.5 1.5 0 0 1 2.5 20v-5A1.5 1.5 0 0 1 4 13.5Zm1.5 3v2h2v-2h-2Z"/><rect x="13.5" y="13.5" width="3.4" height="3.4" rx=".8"/><rect x="18.1" y="18.1" width="3.4" height="3.4" rx=".8"/><rect x="18.1" y="13.5" width="3.4" height="3.4" rx=".8"/><rect x="13.5" y="18.1" width="3.4" height="3.4" rx=".8"/>' },
 ]
 
 function renderProfileCard() {
@@ -3407,6 +3416,18 @@ function layoutAccessFields(layout) {
 
 // --- Statusübersicht ---------------------------------------------------------
 
+/** Raspberry Pis in der Leiste: wirklich erreichbar (laut Kesher), nicht nur „hier verwaltet“. */
+function piNavState() {
+  const clients = config.raspberry?.managed ? config.raspberry.clients ?? [] : []
+  if (!clients.length) return { state: 'off', text: 'Nicht eingerichtet' }
+  const active = clients.filter((pi) => !pi.standby)
+  if (!active.length) return { state: 'off', text: 'Ruhemodus' }
+  if (!piStatus.stations) return { state: 'off', text: 'Unbekannt' }
+  const online = active.filter((pi) => piStatus.stations.some((st) => st.deviceId === piDeviceId(pi) && st.online)).length
+  const text = active.length === 1 ? (online ? 'Online' : 'Offline') : `${online} von ${active.length} online`
+  return { state: online === active.length ? 'ok' : 'bad', text }
+}
+
 function renderStatusStrip() {
   if (!config) return
   const tile = (state, title, text, href) =>
@@ -3434,12 +3455,13 @@ function renderStatusStrip() {
       : tile(ct.state === 'connected' ? 'ok' : 'bad', 'ChurchTools', ct.state === 'connected' ? 'verbunden' : ct.error || 'Fehler', '#/einstellungen/churchtools'),
   ].join('')
   // Derselbe Zustand als Punkt in den Reitern der Einstellungen
+  const pis = piNavState()
   const dots = {
     atem: !config.atem.ip ? 'off' : atem.connected ? 'ok' : 'bad',
     propresenter: !config.propresenter?.host ? 'off' : pp.connected ? 'ok' : 'bad',
     kesher: chat.state === 'connected' ? 'ok' : 'bad',
     churchtools: ct.state === 'unconfigured' ? 'off' : ct.state === 'connected' ? 'ok' : 'bad',
-    raspberry: config.raspberry?.managed ? 'ok' : 'off',
+    raspberry: pis.state,
   }
   const stateText = { ok: 'Verbunden', bad: 'Getrennt', off: 'Nicht eingerichtet' }
   for (const [section, state] of Object.entries(dots)) {
@@ -3447,7 +3469,7 @@ function renderStatusStrip() {
     if (!link) continue
     link.dataset.state = state
     const text = link.querySelector('.settings-nav-state-text')
-    if (text) text.textContent = section === 'raspberry' ? { ok: 'Aktiv', off: 'Aus' }[state] : stateText[state]
+    if (text) text.textContent = section === 'raspberry' ? pis.text : stateText[state]
   }
 }
 
