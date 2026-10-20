@@ -432,5 +432,38 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(calls, [1])
 
 
+    def test_power_command_runs_once_per_id(self):
+        calls = []
+
+        def run(command, timeout):
+            calls.append(command)
+            return mock.Mock(returncode=0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "last-power-command"
+            response = {"managed": True, "config": {}, "power": {"id": "c1", "action": "poweroff"}}
+            self.assertEqual(launcher.handle_power_command(response, state, run), "poweroff")
+            # Derselbe Befehl (z. B. aus dem Cache nach dem Neustart) läuft nicht noch einmal
+            self.assertIsNone(launcher.handle_power_command(response, state, run))
+            self.assertEqual(calls, [["systemctl", "poweroff"]])
+
+    def test_power_command_falls_back_to_sudo_and_ignores_unknown_actions(self):
+        calls = []
+
+        def run(command, timeout):
+            calls.append(command)
+            return mock.Mock(returncode=1 if command[0] == "systemctl" else 0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "last-power-command"
+            self.assertIsNone(launcher.handle_power_command({"power": {"id": "x", "action": "rm"}}, state, run))
+            self.assertIsNone(launcher.handle_power_command({"managed": True}, state, run))
+            self.assertEqual(launcher.handle_power_command({"power": {"id": "c2", "action": "reboot"}}, state, run), "reboot")
+            self.assertEqual(calls, [["systemctl", "reboot"], ["sudo", "-n", "systemctl", "reboot"]])
+
+    def test_power_command_is_not_cached(self):
+        payload = {"managed": True, "config": {"a": 1}, "power": {"id": "c1", "action": "reboot"}}
+        self.assertEqual(launcher.without_power_command(payload), {"managed": True, "config": {"a": 1}})
+
 if __name__ == "__main__":
     unittest.main()

@@ -871,6 +871,7 @@ a.status-tile:hover { border-color: var(--accent-line); }
 .pi-item .field small { font-weight: 400; color: var(--muted); }
 .pi-item .field input.invalid { border-color: var(--red); }
 .pi-problem { margin: 10px 0 0; color: var(--amber); font-size: 13px; }
+.pi-power-hint { margin: 10px 0 0; font-size: 13px; }
 /* Mikrofon/Kopfhörer-Auswahl: Hinweis unter dem Feld */
 .pi-grid .field small.muted, .pi-device-missing { font-size: 12px; margin-top: 2px; }
 .pi-device-missing { color: var(--amber); }

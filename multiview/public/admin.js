@@ -2846,6 +2846,11 @@ function renderRaspberry() {
           const seen = piStatus.seen.find((p) => piSeenMatches(pi, p))
           const problems = piProblems(pi, r.clients)
           const remote = r.serverUrl ? `<a class="btn small" href="${esc(r.serverUrl)}/?login=raspberry" target="_blank" rel="noopener">Fernsteuern</a>` : ''
+          // Herunterfahren / Neu starten geht nur, solange der Pi beim Multiview nachfragt
+          const reachable = Boolean(seen && seen.ageMs < 60_000)
+          const offHint = 'Der Pi meldet sich gerade nicht. Einschalten geht nur am Gerät: Strom kurz trennen (Pi 5: Einschaltknopf).'
+          const power = `<button class="btn small" type="button" data-pi-power="reboot" ${reachable ? '' : `disabled title="${esc(offHint)}"`}>Neu starten</button>
+              <button class="btn small" type="button" data-pi-power="poweroff" ${reachable ? '' : `disabled title="${esc(offHint)}"`}>Herunterfahren</button>`
           return `<div class="pi-item" data-pi="${esc(pi.id)}">
             <div class="pi-item-head">
               <h4>${esc(pi.name || 'Neuer Raspberry Pi')}</h4>
@@ -2853,6 +2858,7 @@ function renderRaspberry() {
               ${seen ? `<span class="muted">fragt ${esc(agoText(seen.ageMs))}${seen.ips.length ? ` · <code class="ip">${esc(seen.ips.join(', '))}</code>` : ''}</span>` : ''}
               <span class="pi-spacer"></span>
               ${remote}
+              ${power}
               <button class="btn small danger" type="button" data-pi-remove>Entfernen</button>
             </div>
             <div class="pi-grid">
@@ -2875,6 +2881,7 @@ function renderRaspberry() {
               <label class="check pi-check"><input type="checkbox" data-p="lowPowerMode" ${pi.lowPowerMode ? 'checked' : ''}> Sparmodus (schwache Pis)</label>
             </div>
             ${problems.length ? `<p class="pi-problem">⚠ ${esc(problems.join(' · '))}</p>` : ''}
+            ${reachable ? '' : `<p class="muted pi-power-hint">${esc(offHint)}</p>`}
           </div>`
         })
         .join('') || '<p class="muted">Noch keine Station eingetragen.</p>'
@@ -2969,7 +2976,36 @@ $('#pi-list').addEventListener('change', onPiField)
 // Nach dem Tippen Überschrift und Hinweise nachziehen
 $('#pi-list').addEventListener('focusout', () => setTimeout(() => !$('#pi-list').contains(document.activeElement) && renderRaspberry()))
 
+const PI_POWER_TEXT = {
+  poweroff: { ask: 'herunterfahren? Wieder einschalten geht danach nur am Gerät (Strom kurz trennen, Pi 5: Einschaltknopf).', done: 'fährt in den nächsten 15 Sekunden herunter' },
+  reboot: { ask: 'neu starten? Das Intercom auf dem Pi ist dabei etwa eine Minute weg.', done: 'startet in den nächsten 15 Sekunden neu' },
+}
+
+async function piPower(button) {
+  const pi = piSettings().clients.find((c) => c.id === button.closest('[data-pi]').dataset.pi)
+  const action = button.dataset.piPower
+  if (!pi || !PI_POWER_TEXT[action]) return
+  const name = pi.name || 'Den Raspberry Pi'
+  if (!confirm(`${name} ${PI_POWER_TEXT[action].ask}`)) return
+  button.disabled = true
+  try {
+    const res = await fetch('/api/raspberry-pis/power', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: pi.id, action }),
+    })
+    const result = await res.json().catch(() => ({}))
+    if (!res.ok || !result.ok) throw new Error(result.error || `HTTP ${res.status}`)
+    toast(`${name} ${PI_POWER_TEXT[action].done}.`)
+  } catch (err) {
+    toast(`Befehl nicht gesendet: ${err.message}`)
+    button.disabled = false
+  }
+}
+
 $('#set-raspberry').addEventListener('click', (e) => {
+  const power = e.target.closest('[data-pi-power]')
+  if (power) return piPower(power)
   const remove = e.target.closest('[data-pi-remove]')
   if (remove) {
     const r = piSettings()

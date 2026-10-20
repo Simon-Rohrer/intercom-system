@@ -52,6 +52,19 @@ Fernsteuern: Im Dashboard **Raspberry fernsteuern** öffnet Kesher direkt im Rei
 *Raspberry* (`https://192.168.0.21:8443/?login=raspberry`), ohne automatische Anmeldung mit der
 eigenen Rolle. Dort mit **Steuern** eine verbundene Station übernehmen.
 
+## Herunterfahren und neu starten aus JMS Control
+
+In JMS Control unter *Einstellungen → Raspberry Pis* hat jede Station die Knöpfe **Neu starten** und **Herunterfahren**. Der Befehl geht beim nächsten Abruf des Pi mit (alle 15 Sekunden) und wird genau einmal ausgeführt; holt der Pi ihn nicht innerhalb von 2 Minuten ab, verfällt er. Die Knöpfe sind nur aktiv, solange der Pi sich beim Multiview meldet.
+
+**Einschalten geht nicht aus der Ferne:** Ein heruntergefahrener Raspberry Pi startet erst wieder, wenn der Strom kurz getrennt wird (Pi 5: Einschaltknopf). Für Fern-Einschalten bräuchte es eine schaltbare Steckdose.
+
+Voraussetzung ist der aktuelle Launcher auf dem Pi (`install.sh` richtet dafür auch die sudo-Regel `/etc/sudoers.d/kesher-pi-power` ein, die nur `systemctl poweroff` und `systemctl reboot` erlaubt). Aktualisieren vom Server aus, ohne die Konfiguration auf dem Pi zu überschreiben:
+
+```sh
+cd ~/intercom-system/Kesher/deploy && tar -czf /tmp/kesher-raspberry-pi-deploy.tar.gz raspberry-pi && scp /tmp/kesher-raspberry-pi-deploy.tar.gz <user>@<pi-ip>:~
+ssh <user>@<pi-ip> 'rm -rf raspberry-pi && tar -xzf kesher-raspberry-pi-deploy.tar.gz && cd raspberry-pi && sudo ./install.sh <user> && sudo reboot'
+```
+
 ## Konfiguration in der Datei (ohne Multiview)
 
 Auf dem Entwicklungsrechner diese Datei bearbeiten:

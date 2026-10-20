@@ -126,6 +126,19 @@ fi
 install -d -m 0755 /opt/kesher-pi /etc/kesher
 install -m 0755 "${SCRIPT_DIR}/kesher-pi-launcher.py" /opt/kesher-pi/kesher-pi-launcher.py
 
+# Herunterfahren / Neu starten aus den Einstellungen von JMS Control: der Launcher darf genau
+# diese beiden Befehle ohne Passwort ausführen (sonst nur, wenn polkit es der Sitzung erlaubt)
+SUDOERS_POWER=/etc/sudoers.d/kesher-pi-power
+SYSTEMCTL="$(command -v systemctl)"
+printf '%s ALL=(root) NOPASSWD: %s poweroff, %s reboot\n' "${TARGET_USER}" "${SYSTEMCTL}" "${SYSTEMCTL}" >"${SUDOERS_POWER}.tmp"
+chmod 0440 "${SUDOERS_POWER}.tmp"
+if visudo -cf "${SUDOERS_POWER}.tmp" >/dev/null; then
+  mv "${SUDOERS_POWER}.tmp" "${SUDOERS_POWER}"
+else
+  rm -f "${SUDOERS_POWER}.tmp"
+  echo "Warning: could not install ${SUDOERS_POWER}; shutdown from JMS Control needs polkit" >&2
+fi
+
 if [[ ! -f /etc/kesher/raspberry-pis.json ]]; then
   install -m 0644 "${SCRIPT_DIR}/raspberry-pis.json" /etc/kesher/raspberry-pis.json
   echo "Created /etc/kesher/raspberry-pis.json. Edit it before rebooting."

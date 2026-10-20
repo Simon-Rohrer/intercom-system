@@ -1364,6 +1364,19 @@ app.get('/api/config', requireTrusted, requireDisplayReader, (req, res) => res.j
 
 const piRegistry = createPiRegistry()
 
+// Herunterfahren / Neu starten aus den Einstellungen. Der Befehl wartet, bis der Pi das nächste
+// Mal seine Konfiguration holt (alle 15 s), geht genau einmal raus und verfällt nach 2 Minuten.
+const PI_POWER_ACTIONS = ['poweroff', 'reboot']
+const PI_POWER_TTL_MS = 2 * 60 * 1000
+const piPowerCommands = new Map() // Raspberry-Eintrag (client.id) -> { id, action, at }
+
+function takePiPowerCommand(clientId) {
+  const command = piPowerCommands.get(clientId)
+  if (!command) return null
+  piPowerCommands.delete(clientId)
+  return Date.now() - command.at < PI_POWER_TTL_MS ? { id: command.id, action: command.action } : null
+}
+
 // Ohne Anmeldung (der Pi hat keine) – es kommen nur die Einträge zurück, die zu seinen MACs/IPs passen
 app.post('/api/raspberry-pis/config', (req, res) => {
   if (!isMachine(req, 'pi-config')) return res.status(403).json({ ok: false, error: 'Nur für registrierte Technikstationen' })
@@ -1373,7 +1386,22 @@ app.post('/api/raspberry-pis/config', (req, res) => {
     return res.status(403).json({ ok: false, error: 'Technikstation muss zuerst vom Admin registriert werden' })
   const request = parsePiRequest(req.body)
   piRegistry.record({ ...request, ips: [observedIp] }, observedIp)
-  res.set('Cache-Control', 'no-store').json(stationLauncherConfig(config.raspberry, machine))
+  const answer = stationLauncherConfig(config.raspberry, machine)
+  const power = takePiPowerCommand(machine.raspberryClientId)
+  if (power) {
+    answer.power = power
+    console.log(`Raspberry Pi ${machine.raspberryClientId}: ${power.action} ausgeliefert`)
+  }
+  res.set('Cache-Control', 'no-store').json(answer)
+})
+
+app.post('/api/raspberry-pis/power', requireAdmin, (req, res) => {
+  const { clientId, action } = req.body ?? {}
+  if (!PI_POWER_ACTIONS.includes(action)) return res.status(400).json({ ok: false, error: 'Unbekannte Aktion' })
+  const client = (config.raspberry.clients || []).find((c) => c.id === clientId)
+  if (!client) return res.status(404).json({ ok: false, error: 'Raspberry Pi nicht gefunden' })
+  piPowerCommands.set(client.id, { id: require('crypto').randomUUID(), action, at: Date.now() })
+  res.json({ ok: true, waitSeconds: 15 })
 })
 
 // Für den Reiter in den Einstellungen: welche Pis gefragt haben und wie Kesher sie gerade sieht

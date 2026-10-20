@@ -343,6 +343,59 @@ def write_managed_config_cache(payload: dict[str, Any], path: Optional[Path] = N
         pass
 
 
+POWER_ACTIONS = ("poweroff", "reboot")
+
+
+def power_command_state_path() -> Path:
+    return Path.home() / ".cache" / "kesher-pi" / "last-power-command"
+
+
+def handle_power_command(
+    response: Optional[dict[str, Any]],
+    state_path: Optional[Path] = None,
+    run: Any = subprocess.run,
+) -> Optional[str]:
+    """Herunterfahren / Neu starten, wenn der Multiview es in seiner Antwort schickt.
+
+    Jeder Befehl hat eine ID; die zuletzt ausgeführte wird gemerkt, damit derselbe
+    Befehl nach dem Neustart nicht noch einmal läuft. Liefert die ausgeführte Aktion.
+    """
+    power = response.get("power") if isinstance(response, dict) else None
+    if not isinstance(power, dict):
+        return None
+    action = power.get("action")
+    command_id = power.get("id")
+    if action not in POWER_ACTIONS or not isinstance(command_id, str) or not command_id:
+        return None
+    target = state_path or power_command_state_path()
+    try:
+        if target.read_text(encoding="utf-8").strip() == command_id:
+            return None
+    except OSError:
+        pass
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(command_id, encoding="utf-8")
+    except OSError:
+        pass
+    print(f"{action} requested from the Multiview", flush=True)
+    # Erst direkt (polkit erlaubt das der angemeldeten Sitzung), sonst über die sudo-Regel
+    # aus install.sh
+    for command in (["systemctl", action], ["sudo", "-n", "systemctl", action]):
+        try:
+            if run(command, timeout=30).returncode == 0:
+                return action
+        except (OSError, subprocess.SubprocessError):
+            continue
+    print(f"Could not {action}: neither systemctl nor sudo -n systemctl worked", flush=True)
+    return None
+
+
+def without_power_command(payload: dict[str, Any]) -> dict[str, Any]:
+    """Für den Cache: ein Befehl gilt nur für die Antwort, in der er kam."""
+    return {key: value for key, value in payload.items() if key != "power"}
+
+
 def load_effective_config(
     path: Path,
     addresses: list[str],
@@ -367,7 +420,8 @@ def load_effective_config(
             allow_insecure_tls,
         )
         if response is not None:
-            write_managed_config_cache(response)
+            handle_power_command(response)
+            write_managed_config_cache(without_power_command(response))
             source = "multiview" if response.get("managed") else "file"
             break
         if time.monotonic() >= deadline:
@@ -413,7 +467,9 @@ def start_managed_config_watch(
             )
             if response is None:
                 continue
-            write_managed_config_cache(response)
+            if handle_power_command(response):
+                return
+            write_managed_config_cache(without_power_command(response))
             if merge_managed_config(local_raw, response) != current_raw:
                 print("Settings changed in the Multiview; restarting the station", flush=True)
                 reload_event.set()
