@@ -15,7 +15,7 @@ SPEC.loader.exec_module(launcher)
 class LauncherTests(unittest.TestCase):
     def setUp(self):
         self.config = {
-            "server_url": "http://192.168.1.10:8080",
+            "server_url": "https://192.168.1.10:8443",
             "browser_binary": "python3",
             "clients": [
                 {
@@ -248,7 +248,7 @@ class LauncherTests(unittest.TestCase):
     def test_heartbeat_targets_configured_server_url(self):
         self.assertEqual(
             launcher.heartbeat_endpoint_url(self.config),
-            "http://192.168.1.10:8080/api/raspberry-pi/heartbeat",
+            "https://192.168.1.10:8443/api/raspberry-pi/heartbeat",
         )
 
     def test_remote_station_payload_matches_device_id(self):
@@ -407,7 +407,7 @@ class LauncherTests(unittest.TestCase):
         body = launcher.managed_config_request(self.config, ["192.168.1.51"], ["b8:27:eb:00:00:01"])
         self.assertEqual(body["local"]["name"], "FOH")
         self.assertEqual(body["local"]["role_id"], "audio")
-        self.assertEqual(body["localServerUrl"], "http://192.168.1.10:8080")
+        self.assertEqual(body["localServerUrl"], "https://192.168.1.10:8443")
         self.assertEqual(body["launcherVersion"], launcher.LAUNCHER_VERSION)
 
     def test_config_watch_restarts_on_changes_only(self):
@@ -430,6 +430,57 @@ class LauncherTests(unittest.TestCase):
                 thread.join(timeout=2)
             self.assertTrue(reload_event.is_set())
             self.assertEqual(calls, [1])
+
+    def test_device_requests_load_ca_and_client_key(self):
+        context = mock.Mock()
+        with mock.patch.object(launcher.ssl, "create_default_context", return_value=context) as create:
+            result = launcher.ssl_context_for_url("https://192.168.0.21:8090/api/healthz")
+        self.assertIs(result, context)
+        create.assert_called_once_with(cafile="/etc/jms-device/server-ca.crt")
+        context.load_cert_chain.assert_called_once_with(
+            "/etc/jms-device/client.crt", "/etc/jms-device/client.key"
+        )
+        self.assertEqual(context.minimum_version, launcher.ssl.TLSVersion.TLSv1_2)
+
+    def test_device_requests_reject_http_and_url_credentials(self):
+        for url in ("http://192.168.0.21/api", "https://user:password@192.168.0.21/api"):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                launcher.ssl_context_for_url(url)
+
+    def test_insecure_browser_and_configuration_are_rejected(self):
+        config = dict(self.config, allow_insecure_tls=True)
+        with self.assertRaisesRegex(ValueError, "allow_insecure_tls"):
+            launcher.validate_config(config)
+        with self.assertRaisesRegex(ValueError, "allow_insecure_tls"):
+            launcher.browser_command(config, self.config["server_url"])
+        with self.assertRaisesRegex(ValueError, "https"):
+            launcher.normalize_config_url("http://192.168.0.21/config")
+        with self.assertRaisesRegex(ValueError, "https"):
+            launcher.normalize_server_url("http://192.168.0.21")
+
+    def test_device_redirects_are_rejected(self):
+        handler = launcher.NoDeviceRedirect()
+        request = launcher.Request("https://192.168.0.21:8090/config")
+        for target in ("http://192.168.0.21/config", "https://untrusted.example/config"):
+            with self.subTest(target=target), self.assertRaises(launcher.HTTPError):
+                handler.redirect_request(request, None, 302, "Found", {}, target)
+
+    def test_certificate_bound_client_ignores_changed_network_addresses(self):
+        merged = launcher.merge_managed_config(self.config, self.managed_response())
+        client = launcher.resolve_client(merged, ["10.42.0.7"], ["aa:bb:cc:dd:ee:ff"])
+        self.assertEqual(client["device_id"], "kamera-1-pi")
+        self.assertEqual(client["ip_address"], "10.42.0.7")
+
+    def test_certificate_bound_client_requires_single_assignment(self):
+        merged = launcher.merge_managed_config(self.config, self.managed_response())
+        merged["clients"].append(dict(merged["clients"][0], device_id="other"))
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            launcher.resolve_client(merged, [], [])
+
+    def test_browser_has_no_certificate_or_insecure_origin_bypass(self):
+        command = launcher.browser_command(self.config, self.config["server_url"])
+        self.assertFalse(any("ignore-certificate" in argument for argument in command))
+        self.assertFalse(any("insecure-origin" in argument for argument in command))
 
 
     def test_power_command_runs_once_per_id(self):

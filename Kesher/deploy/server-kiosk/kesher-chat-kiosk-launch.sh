@@ -14,13 +14,29 @@ if [[ -f "${CONFIG_FILE}" ]]; then
   source "${CONFIG_FILE}"
 fi
 
-KESHER_URL="${KESHER_URL:-http://127.0.0.1:8080}"
+KESHER_URL="${KESHER_URL:-https://192.168.0.21:8443}"
 KESHER_USERNAME="${KESHER_USERNAME:-Chat-Monitor}"
 KESHER_ROLE_ID="${KESHER_ROLE_ID:-chat-monitor}"
 KIOSK_URL="${KIOSK_URL:-}"
 KIOSK_HEALTH_URL="${KIOSK_HEALTH_URL:-}"
-MULTIVIEW_URL="${MULTIVIEW_URL:-http://127.0.0.1:8090}"
+MULTIVIEW_URL="${MULTIVIEW_URL:-https://192.168.0.21:8090}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-300}"
+DEVICE_CERTIFICATE="/etc/jms-device/client.crt"
+DEVICE_PRIVATE_KEY="/etc/jms-device/client.key"
+SERVER_CA_CERTIFICATE="/etc/jms-device/server-ca.crt"
+
+for endpoint in "${KESHER_URL}" "${MULTIVIEW_URL}"; do
+  if [[ "${endpoint}" != https://* ]]; then
+    echo "Authenticated kiosk endpoints require HTTPS." >&2
+    exit 1
+  fi
+done
+for credential_file in "${DEVICE_CERTIFICATE}" "${DEVICE_PRIVATE_KEY}" "${SERVER_CA_CERTIFICATE}"; do
+  if [[ ! -r "${credential_file}" ]]; then
+    echo "A required kiosk TLS credential is not readable." >&2
+    exit 1
+  fi
+done
 
 urlencode() {
   local raw="$1" out="" ch i
@@ -35,16 +51,20 @@ urlencode() {
 }
 
 if [[ "${KIOSK_URL}" == "screens" ]]; then
-  HEALTH_URL="${KIOSK_HEALTH_URL:-${MULTIVIEW_URL%/}/api/state}"
+  HEALTH_URL="${KIOSK_HEALTH_URL:-${MULTIVIEW_URL%/}/api/healthz}"
 elif [[ -n "${KIOSK_URL}" ]]; then
   HEALTH_URL="${KIOSK_HEALTH_URL:-${KIOSK_URL}}"
 else
   HEALTH_URL="${KESHER_URL}/api/healthz"
 fi
+if [[ "${HEALTH_URL}" != https://* ]] || { [[ -n "${KIOSK_URL}" && "${KIOSK_URL}" != screens && "${KIOSK_URL}" != https://* ]]; }; then
+  echo "Authenticated kiosk pages and health checks require HTTPS." >&2
+  exit 1
+fi
 
 # Wait for the page instead of showing a browser error page after boot.
 deadline=$((SECONDS + HEALTH_TIMEOUT_SECONDS))
-until curl -fsS --max-time 3 "${HEALTH_URL}" >/dev/null 2>&1; do
+until curl -fsS --max-time 3 --proto '=https' --cacert "${SERVER_CA_CERTIFICATE}" --cert "${DEVICE_CERTIFICATE}" --key "${DEVICE_PRIVATE_KEY}" "${HEALTH_URL}" >/dev/null 2>&1; do
   if ((SECONDS >= deadline)); then
     echo "Not reachable: ${HEALTH_URL} after ${HEALTH_TIMEOUT_SECONDS}s" >&2
     exit 1
