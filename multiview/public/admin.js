@@ -302,7 +302,7 @@ function showPage() {
     }
   }
 
-  if (page === 'einstellungen') showSettingsView(sub, previousPage)
+  if (page === 'einstellungen') showSettingsView(sub, previousPage, nested)
   const navPage = page === 'layouts' ? 'multiviews' : page
   document.querySelectorAll('.site-nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === navPage))
   document.body.classList.remove('nav-open')
@@ -320,24 +320,44 @@ window.addEventListener('hashchange', showPage)
 // --- Einstellungen: Übersicht und Unterseiten -----------------------------------------
 // Am Desktop stehen Leiste und Unterseite nebeneinander. Auf dem Handy ist #/einstellungen
 // die Übersicht (Liste) und #/einstellungen/atem … eine eigene Seite mit „‹ Einstellungen“.
+// Benutzer & Rechte hat darunter noch einmal eine Liste: #/einstellungen/zugang ist die Liste,
+// #/einstellungen/zugang/rollen … die Unterseite mit „‹ Benutzer & Rechte“ (Desktop und Handy).
 let settingsFromList = false // Unterseite aus der Übersicht geöffnet? Dann führt Zurück per history.back()
+let accessFromList = false // dasselbe eine Ebene tiefer, in Benutzer & Rechte
 
-function showSettingsView(sub, previousPage) {
+function showSettingsView(sub, previousPage, nested) {
   const el = $('#page-einstellungen')
   const view = SETTINGS_SECTIONS.includes(sub) ? 'detail' : 'list'
-  settingsFromList = view === 'detail' && previousPage === 'einstellungen' && el.dataset.view === 'list'
+  // Innerhalb von Benutzer & Rechte bleibt der Weg zurück zur Übersicht derselbe
+  if (!(sub === 'zugang' && el.dataset.sub === 'zugang')) {
+    settingsFromList = view === 'detail' && previousPage === 'einstellungen' && el.dataset.view === 'list'
+  }
+  if (sub === 'zugang') {
+    const accessView = ZUGANG_SECTIONS.includes(nested) ? 'detail' : 'list'
+    accessFromList = accessView === 'detail' && el.dataset.sub === 'zugang' && el.dataset.accessView === 'list'
+    el.dataset.accessView = accessView
+  } else {
+    delete el.dataset.accessView
+  }
   el.dataset.view = view
+  el.dataset.sub = view === 'detail' ? sub : ''
 }
 
 function settingsBack() {
-  if (settingsFromList) history.back()
+  const el = $('#page-einstellungen')
+  if (el.dataset.accessView === 'detail') {
+    if (accessFromList) history.back()
+    else location.replace('#/einstellungen/zugang')
+  } else if (settingsFromList) history.back()
   else location.replace('#/einstellungen')
 }
 
-$('#settings-back').addEventListener('click', (e) => {
-  e.preventDefault()
-  settingsBack()
-})
+for (const link of [$('#settings-back'), $('#access-back')]) {
+  link.addEventListener('click', (e) => {
+    e.preventDefault()
+    settingsBack()
+  })
+}
 
 // Vom linken Rand nach rechts wischen = zurück zur Übersicht (wie auf dem iPhone). Die Unterseite
 // folgt dem Finger; losgelassen nach mehr als einem Drittel (oder mit Schwung) geht es zurück,

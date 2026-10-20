@@ -2073,3 +2073,54 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
     will-change: transform;
   }
 }
+
+/* Benutzer & Rechte: Unterseiten als Liste (wie die Einstellungen auf dem Handy), jede Unterseite
+   mit „‹ Benutzer & Rechte“ – auf Desktop und Handy gleich */
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.settings-list a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 50px;
+  padding: 0 14px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 15.5px;
+  font-weight: 500;
+}
+.settings-list a:hover { background: var(--surface-2); }
+.settings-list a + a::before { content: ""; position: absolute; top: 0; left: 56px; right: 0; height: 1px; background: var(--line); }
+.settings-list .app-icon { width: 30px; height: 30px; border-radius: 7px; flex: none; box-shadow: none; }
+.settings-list .app-icon svg { width: 18px; height: 18px; stroke-width: 2; }
+.settings-list .settings-nav-chevron { display: block; }
+.access-back svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+#page-einstellungen:not([data-access-view="detail"]) .access-back { display: none; }
+#page-einstellungen[data-access-view="list"] .access-section-stack { display: none; }
+#page-einstellungen[data-access-view="detail"] .settings-list,
+#page-einstellungen[data-access-view="detail"] .access-section-head { display: none; }
+#page-einstellungen[data-access-view="detail"] .access-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  margin: -6px 0 6px -8px;
+  padding-right: 8px;
+  color: var(--accent-text);
+  font-size: 17px;
+  font-weight: 500;
+  text-decoration: none;
+}
+@media (max-width: 760px) {
+  /* In einer Unterseite von Benutzer & Rechte nur „‹ Benutzer & Rechte“ zeigen */
+  #page-einstellungen[data-access-view="detail"] .settings-back:not(.access-back) { display: none; }
+  #page-einstellungen.swiping[data-access-view="detail"] .settings-nav { display: none; }
+}
