@@ -74,6 +74,12 @@ const postJson = async (path, body) => {
 
 const ssoInfo = getJson('/api/sso')
 
+// Der Rollenwechsel kann aus einer Admin-Sitzung kommen. Diese Sitzung ist selbst
+// vom Tagescode befreit, eine neue Bedienerrolle braucht die Gerätefreigabe aber
+// trotzdem. Den begonnenen Rollenwechsel halten wir beim Code-Schritt fest.
+let pendingLogin = null
+let codeStepReady = false
+
 async function pullFromCentral() {
   if (params.has('wechseln')) return false
   const sso = await ssoInfo
@@ -114,15 +120,30 @@ async function main() {
     watchLogin('', { url: api('/api/me'), onChange: (state) => state.user && !state.user.open && continueAfterLogin() })
   }
   const device = await getJson('/api/device')
-  if (!adminOnly && device?.required && !device.approved) return showCodeStep()
+  const roleSwitchNeedsCode =
+    !adminOnly &&
+    params.has('wechseln') &&
+    me?.user?.admin &&
+    device?.hasGrant === false
+  if (!adminOnly && ((device?.required && !device.approved) || roleSwitchNeedsCode)) return showCodeStep()
   showLoginStep()
 }
 
 // --- Schritt 1: Tagescode ----------------------------------------------------
 
-function showCodeStep() {
+function showCodeStep(message = '') {
   $('#login-step').hidden = true
   $('#code-form').hidden = false
+  if (message) {
+    $('#code-note').textContent = message
+    $('#code-note').hidden = false
+  }
+  const input = $('#day-code')
+  if (codeStepReady) {
+    input.focus()
+    return
+  }
+  codeStepReady = true
   $('#admin-login').onclick = () => {
     const query = new URLSearchParams(location.search)
     query.set('admin', '1')
@@ -136,7 +157,6 @@ function showCodeStep() {
         : 'Der QR-Code ist nicht mehr gültig. Es gilt immer nur der Code von heute – lass dir den aktuellen zeigen.'
     $('#code-note').hidden = false
   }
-  const input = $('#day-code')
   input.focus()
   // Nur Ziffern; mit der sechsten geht es von selbst weiter
   input.addEventListener('input', () => {
@@ -234,28 +254,63 @@ function setupScanner(onCode) {
     start.hidden = true
     $('#scan-view').hidden = false
 
-    let detect
-    if ('BarcodeDetector' in window) {
-      const detector = new window.BarcodeDetector({ formats: ['qr_code'] })
-      detect = async () => (await detector.detect(video))[0]?.rawValue
-    } else {
+    // Safari kann BarcodeDetector teilweise anbieten, obwohl QR-Erkennung nicht
+    // verfügbar ist. Deshalb wird die native Erkennung geprüft und bei jedem
+    // Laufzeitfehler zuverlässig auf jsQR zurückgefallen.
+    if (video.readyState < 2) {
+      await new Promise((resolve) => {
+        const done = () => resolve()
+        video.addEventListener('loadeddata', done, { once: true })
+        setTimeout(done, 1500)
+      })
+    }
+
+    let fallbackPromise
+    const createJsQrDetector = async () => {
       const jsQR = await loadJsQr().catch(() => null)
-      if (!jsQR) {
-        hint.textContent = 'Scannen geht hier nicht – bitte den Code eintippen.'
-        return
-      }
+      if (!jsQR) return null
       const canvas = document.createElement('canvas')
       const ctx = canvas.getContext('2d', { willReadFrequently: true })
-      detect = async () => {
+      if (!ctx) return null
+      return () => {
         const w = video.videoWidth
         const h = video.videoHeight
         if (!w || !h) return null
-        const scale = Math.min(1, 640 / Math.max(w, h))
-        canvas.width = Math.round(w * scale)
-        canvas.height = Math.round(h * scale)
+        const scale = Math.min(1, 800 / Math.max(w, h))
+        canvas.width = Math.max(1, Math.round(w * scale))
+        canvas.height = Math.max(1, Math.round(h * scale))
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
         const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
-        return jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' })?.data
+        return jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' })?.data
+      }
+    }
+    const fallbackDetect = async () => {
+      fallbackPromise ||= createJsQrDetector()
+      const fallback = await fallbackPromise
+      return fallback?.() || null
+    }
+
+    let detect = fallbackDetect
+    if ('BarcodeDetector' in window) {
+      try {
+        const supported = await window.BarcodeDetector.getSupportedFormats?.()
+        if (supported?.length && !supported.includes('qr_code')) throw new Error('QR nicht unterstützt')
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] })
+        let failures = 0
+        detect = async () => {
+          try {
+            const value = (await detector.detect(video))[0]?.rawValue
+            failures = 0
+            return value
+          } catch {
+            failures += 1
+            // Defekte native Implementierungen nicht dauerhaft pollen.
+            if (failures >= 2) detect = fallbackDetect
+            return fallbackDetect()
+          }
+        }
+      } catch {
+        detect = fallbackDetect
       }
     }
     const tick = async () => {
@@ -293,7 +348,9 @@ async function showLoginStep() {
   }
   $('#login-step').hidden = false
 
-  const lastRole = adminOnly ? 'admin' : remembered('role')
+  const pending = pendingLogin
+  pendingLogin = null
+  const lastRole = adminOnly ? 'admin' : pending?.roleId || remembered('role')
   $('#role').innerHTML = adminOnly ? '<option value="admin" selected>Admin (mit PIN)</option>' : [
     `<option value="" disabled ${lastRole ? '' : 'selected'}>Rolle wählen …</option>`,
     ...roles.map((r) => `<option value="${esc(r.id)}" ${r.id === lastRole ? 'selected' : ''}>${esc(r.name)}</option>`),
@@ -327,7 +384,9 @@ async function showLoginStep() {
   // Nur Admin: keine Rollenauswahl, gleich die PIN
   $('#role').closest('.field').hidden = adminOnly
   if (!roles.length && !adminOnly) $('#error').textContent = 'Kesher ist gerade nicht erreichbar – nur die Admin-Anmeldung geht.'
-  $('#name').value = remembered('name')
+  $('#name').value = pending?.name || remembered('name')
+  if (pending?.roleId && [...$('#role').options].some((option) => option.value === pending.roleId))
+    $('#role').value = pending.roleId
   // Großer Avatar über dem Formular, wächst beim Tippen des Namens mit
   const showAvatar = () => ($('#auth-avatar').innerHTML = avatarHtml({ name: $('#name').value.trim() || '?' }))
   $('#name').addEventListener('input', showAvatar)
@@ -352,6 +411,14 @@ async function showLoginStep() {
     const body = { name: $('#name').value.trim(), roleId: $('#role').value, pin: $('#pin').value }
     $('#error').textContent = ''
     const { res, data } = await postJson('/api/login', body)
+    if (res?.status === 403 && /Tagescode/i.test(data?.error || '')) {
+      // Die Gerätefreigabe kann zwischen Seitenaufruf und Absenden ablaufen.
+      // In diesem Fall den Code-Schritt öffnen, statt die Fehlermeldung unten
+      // im Rollenformular stehen zu lassen. Die Auswahl bleibt erhalten.
+      pendingLogin = body
+      showCodeStep('Für den Rollenwechsel ist einmal der Tagescode von heute nötig.')
+      return
+    }
     if (res?.status === 409) {
       // Rolle inzwischen belegt: Hinweis zeigen und die Liste gleich auffrischen
       $('#error').textContent = data?.error || 'Die Rolle ist schon angemeldet – bitte eine andere wählen.'

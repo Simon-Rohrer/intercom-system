@@ -73,7 +73,7 @@
 }
 
 /* ---- Inhalt -------------------------------------------------------------- */
-.rm-main { padding: 6px 16px calc(var(--tabs-h) + 24px); }
+.rm-main { padding: 6px 16px calc(var(--tabs-h) + 40px); }
 .rm-title { display: flex; align-items: center; gap: 10px; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; margin: 8px 4px 16px; }
 .rm-sub { font-size: 13px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 24px 4px 10px; }
 .rm-chip { font-size: 12px; font-weight: 650; letter-spacing: 0; padding: 3px 9px; border-radius: 99px; background: var(--amber-soft); color: var(--amber); }
@@ -212,16 +212,18 @@
 
 /* Eingabe fest über der Leiste */
 .rm-composer {
-  position: sticky;
-  bottom: calc(var(--tabs-h) + 8px);
-  z-index: 5;
-  margin-top: 10px;
+  position: fixed;
+  left: max(16px, calc((100vw - 1000px) / 2 + 28px));
+  right: max(16px, calc((100vw - 1000px) / 2 + 28px));
+  bottom: calc(var(--tabs-h) + 16px);
+  z-index: 35;
+  margin: 0;
   padding: 10px;
   border-radius: 20px;
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
-  box-shadow: var(--shadow-lg), inset 0 0 0 1px var(--line);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 .rm-composer .chat-compose { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .rm-composer .chat-compose select {
@@ -379,7 +381,8 @@
   font-weight: 650;
 }
 .rm-tabs button .icon { width: 24px; height: 24px; transition: transform 0.15s ease; }
-.rm-tabs button.active { color: var(--accent-text); }
+.rm-tabs button[data-tab="stage"] span { line-height: 1.05; }
+.rm-tabs button.active { color: var(--accent-text); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); font-weight: 750; }
 .rm-tabs button.active .icon { transform: translateY(-1px) scale(1.06); }
 .rm-tabs button:active { background: var(--surface-2); }
 .rm-badge {
@@ -430,7 +433,7 @@ body.booting .rm-main { opacity: 0; }
 }
 
 /* Chat füllt den Platz, damit die Eingabe auch bei wenigen Nachrichten unten sitzt */
-.rm-chat:not([hidden]) { display: flex; flex-direction: column; min-height: calc(100vh - 150px - var(--tabs-h)); }
+.rm-chat:not([hidden]) { display: flex; flex-direction: column; min-height: calc(100vh - 150px - var(--tabs-h)); padding-bottom: 178px; }
 .rm-chat .rm-bubbles { flex: 1; }
 
 /* ---- Beamer-Meldungen ------------------------------------------------------------ */
@@ -592,6 +595,7 @@ body.booting .rm-main { opacity: 0; }
   .rm-offline { margin: 4px 28px 0; }
   .rm-main { padding-left: 28px; padding-right: 28px; }
   .rm-title { font-size: 36px; margin-bottom: 20px; }
+  .rm-chat:not([hidden]) { padding-bottom: 148px; }
 
   /* Leiste wie in iPad-Apps: Symbol neben dem Text, schmaler und mittig */
   .rm-tabs { max-width: 600px; height: 58px; }
@@ -723,9 +727,14 @@ body.booting .rm-main { opacity: 0; }
   #outputs, #screens { grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; }
 
   /* Chat wie ein Messenger am Mac: Spalte begrenzt, Eingabe unten angeheftet */
-  .rm-chat:not([hidden]) { max-width: 960px; min-height: calc(100vh - 62px); }
+  .rm-chat:not([hidden]) { max-width: 960px; min-height: calc(100vh - 62px); padding-bottom: 100px; }
   .rm-bubble { max-width: 62%; }
-  .rm-composer { bottom: 16px; }
+  .rm-composer {
+    left: 304px;
+    right: auto;
+    width: min(calc(100vw - 344px), 960px);
+    bottom: 16px;
+  }
 
   /* Bühne: links Anzeige + Eingabe, rechts die Schnelltasten */
   .rm-panel[data-panel="stage"]:not([hidden]) {

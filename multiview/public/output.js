@@ -634,7 +634,8 @@ async function refreshDayQr() {
     dayQrKey = ''
     return
   }
-  const target = `${data.startUrl || lanOrigin()}/.jms-auth/code?c=${data.code}`
+  const base = (data.startUrl || lanOrigin()).replace(/\/+$/, '')
+  const target = `${base}/.jms-auth/code?c=${encodeURIComponent(data.code)}&next=${encodeURIComponent('/remote.html')}`
   const key = JSON.stringify([target, data.corner, data.size])
   dayQr.dataset.corner = data.corner || 'br'
   dayQr.dataset.size = data.size || 'm'

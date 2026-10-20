@@ -2,7 +2,7 @@
 // (am Desktop als Seitenleiste links, siehe remote.css):
 //   Multiviews:  die eigenen Multiviews umschalten (welches Layout läuft)
 //   Chat:        Kesher-Chat lesen und als die angemeldete Rolle schreiben
-//   Bühne:       Bühnennachricht (Stage Display) in ProPresenter senden/löschen
+//   Stage Display: Nachricht auf dem Stage Display in ProPresenter senden/löschen
 //   Beamer:      Meldung für die Gemeinde in ProPresenter vorbereiten – anzeigen tut sie der Bediener
 //   Monitore:    (nur Admin) welcher Multiview auf welchem Monitor am Server läuft
 import { setPreviewSize, previewMetrics, connect, reloadWhenIdle, watchLogin, loginKey, TIME_ZONE } from './common.js'
@@ -201,8 +201,10 @@ $('#tabs').addEventListener('click', (e) => {
   tab = btn.dataset.tab
   writeJson(localStorage, 'mv.remote.tab', tab)
   renderTabs()
+  // Beim Öffnen immer am Anfang des Bereichs bleiben: Der Sticky-Kopf bleibt
+  // dadurch sichtbar. Neue Nachrichten scrollen weiterhin nur dann ans Ende,
+  // wenn man vorher bereits am Ende des Chats war.
   window.scrollTo(0, 0)
-  if (tab === 'chat') scrollChatToEnd()
 })
 
 function updateBadges() {
@@ -506,8 +508,8 @@ function renderMessage() {
   const live = propresenter.connected && stage.message
   card.classList.toggle('live', Boolean(live))
   card.classList.toggle('offline', !propresenter.connected)
-  $('#stage-label').textContent = !propresenter.connected ? 'ProPresenter nicht verbunden' : live ? 'Gerade auf der Bühne' : 'Keine Nachricht'
-  $('#message-current').textContent = live ? stage.message : propresenter.connected ? 'Die Bühne zeigt gerade keine Nachricht.' : 'Senden geht erst wieder, wenn ProPresenter erreichbar ist.'
+  $('#stage-label').textContent = !propresenter.connected ? 'ProPresenter nicht verbunden' : live ? 'Gerade auf dem Stage Display' : 'Keine Nachricht'
+  $('#message-current').textContent = live ? stage.message : propresenter.connected ? 'Das Stage Display zeigt gerade keine Nachricht.' : 'Senden geht erst wieder, wenn ProPresenter erreichbar ist.'
   $('#message-clear').hidden = !live
   // Die eigene, gerade gesendete Nachricht wird zurückgezogen, eine fremde nur gelöscht
   $('#message-clear').textContent = live && stage.message === lastSentStage ? 'Zurückziehen' : 'Löschen'
@@ -527,7 +529,7 @@ async function sendMessage(text) {
   navigator.vibrate?.(15)
   const withdrawn = !text && stage.message && stage.message === lastSentStage
   lastSentStage = text
-  toast(text ? 'Auf der Bühne ✓' : withdrawn ? 'Zurückgezogen' : 'Nachricht gelöscht', 'ok')
+  toast(text ? 'Auf dem Stage Display ✓' : withdrawn ? 'Zurückgezogen' : 'Nachricht gelöscht', 'ok')
 }
 
 $('#message-form').addEventListener('submit', (e) => {
@@ -540,7 +542,7 @@ $('#message-form').addEventListener('submit', (e) => {
 })
 $('#message-clear').addEventListener('click', () => sendMessage(''))
 $('#message-quick').addEventListener('click', (e) => {
-  // Nur eintragen, gesendet wird mit dem Pfeil – ein versehentliches Antippen landet nicht auf der Bühne
+  // Nur eintragen, gesendet wird mit dem Pfeil – ein versehentliches Antippen landet nicht auf dem Stage Display
   const btn = e.target.closest('[data-quick]')
   if (!btn) return
   $('#message-text').value = btn.dataset.quick

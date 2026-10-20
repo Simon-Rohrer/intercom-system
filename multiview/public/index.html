@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="de" data-theme="system">
+<html lang="de" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f5f5f7">
+  <meta name="theme-color" content="#0a0a0b">
   <title>JMS - Control</title>
   <script src="theme-boot.js"></script>
   <link rel="stylesheet" href="admin.css">
@@ -55,10 +55,6 @@
         <a href="#/einstellungen" data-page="einstellungen" data-admin>
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
           <span>Einstellungen</span>
-        </a>
-        <a href="#/zugang" data-page="zugang" data-admin>
-          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16.5 14.2a5 5 0 0 1 5 5.3"/></svg>
-          <span>Benutzer &amp; Rechte</span>
         </a>
         <a href="#/services" data-page="services" data-admin>
           <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><path d="M17.5 14v7M14 17.5h7"/></svg>
@@ -304,14 +300,14 @@
               <div class="settings-nav-group" data-admin>
                 <h2 class="settings-nav-title">Zugang</h2>
                 <a href="#/einstellungen/geraete" data-section-link="geraete" data-admin><span class="app-icon gray"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg></span><span class="settings-nav-label">Angemeldete Geräte</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
-                <a href="#/zugang" data-admin><span class="app-icon gray"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span><span class="settings-nav-label">Benutzer &amp; Rechte</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+                <a href="#/einstellungen/zugang" data-section-link="zugang" data-admin><span class="app-icon gray"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span><span class="settings-nav-label">Benutzer &amp; Rechte</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
               </div>
             </nav>
 
             <div class="settings-detail">
               <a href="#/einstellungen" class="settings-back" id="settings-back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Einstellungen</a>
 
-          <div class="settings-stack">
+          <div id="settings-config-content" class="settings-stack">
             <div class="card" id="set-sessions" data-section="geraete">
               <div class="card-head">
                 <div>
@@ -396,7 +392,7 @@
               <div class="card-head">
                 <div>
                   <h2>Kesher-Chat</h2>
-                  <p class="muted">JMS Control meldet sich einmal mit dieser Rolle an und verteilt den Chat an alle Monitore. Über diese Verbindung kommen auch die Rollen für die Anmeldung – angelegt werden sie unter <a href="#/zugang/rollen">Benutzer &amp; Rechte</a> und dann in Kesher gespeichert.</p>
+                  <p class="muted">JMS Control meldet sich einmal mit dieser Rolle an und verteilt den Chat an alle Monitore. Über diese Verbindung kommen auch die Rollen für die Anmeldung – angelegt werden sie unter <a href="#/einstellungen/zugang/rollen">Benutzer &amp; Rechte</a> und dann in Kesher gespeichert.</p>
                 </div>
               </div>
               <div class="form-grid">
@@ -515,31 +511,27 @@
               <div id="companion-help"></div>
             </div>
           </div>
-            </div>
-          </div>
-        </section>
 
-        <!-- Benutzer & Rechte -->
-        <section id="page-zugang" class="page" hidden>
-          <div class="page-head">
+        <div id="settings-access-content" class="settings-stack" hidden>
+          <div class="section-head access-section-head">
             <div>
-              <h1>Benutzer &amp; Rechte</h1>
-              <p class="lead">Wie bei Kesher: Man meldet sich mit Namen und Rolle an. Pro Rolle legst du fest, welche Multiviews sie sieht und ob sie ihre Layouts selbst einrichten darf.</p>
+              <h2>Benutzer &amp; Rechte</h2>
+              <p class="muted">Rollen, Anmeldung und Dienstzugänge werden hier zentral verwaltet. Die Auswahl bleibt als eigene Unterseite der Einstellungen erreichbar.</p>
             </div>
           </div>
-          <nav class="subnav" aria-label="Bereiche von Benutzer &amp; Rechte">
-            <a href="#/zugang/rollen" data-section-link="rollen">Rollen</a>
-            <a href="#/zugang/anmeldung" data-section-link="anmeldung">Anmeldung &amp; Admin-PIN</a>
-            <a href="#/zugang/dienste" data-section-link="dienste">Anmeldung für alle Dienste</a>
-            <a href="#/zugang/zugangsdaten" data-section-link="zugangsdaten">Zugangsdaten der Dienste</a>
-            <a href="#/zugang/nachrichten" data-section-link="nachrichten">Nachrichten-Links</a>
+          <nav class="subnav subnav-nested" aria-label="Bereiche von Benutzer &amp; Rechte">
+            <a href="#/einstellungen/zugang/rollen" data-access-section-link="rollen">Rollen</a>
+            <a href="#/einstellungen/zugang/anmeldung" data-access-section-link="anmeldung">Anmeldung &amp; Admin-PIN</a>
+            <a href="#/einstellungen/zugang/dienste" data-access-section-link="dienste">Anmeldung für alle Dienste</a>
+            <a href="#/einstellungen/zugang/zugangsdaten" data-access-section-link="zugangsdaten">Zugangsdaten der Dienste</a>
+            <a href="#/einstellungen/zugang/nachrichten" data-access-section-link="nachrichten">Nachrichten-Links</a>
           </nav>
-          <div class="settings-stack">
-            <div class="card" id="access-pin-card" data-section="anmeldung"></div>
-            <div class="card" id="access-gateway-card" data-section="dienste"></div>
-            <div class="card" id="service-creds-card" data-section="zugangsdaten"></div>
-            <div class="card" id="message-links-card" data-section="nachrichten"></div>
-            <div class="card" data-section="rollen">
+          <div class="settings-stack access-section-stack">
+            <div class="card" id="access-pin-card" data-access-section="anmeldung"></div>
+            <div class="card" id="access-gateway-card" data-access-section="dienste"></div>
+            <div class="card" id="service-creds-card" data-access-section="zugangsdaten"></div>
+            <div class="card" id="message-links-card" data-access-section="nachrichten"></div>
+            <div class="card" data-access-section="rollen">
               <div class="card-head">
                 <div>
                   <h2>Rollen</h2>
@@ -550,6 +542,9 @@
               </div>
               <div id="access-roles"></div>
             </div>
+          </div>
+        </div>
+        </div>
           </div>
         </section>
       </main>

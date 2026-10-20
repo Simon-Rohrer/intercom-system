@@ -941,7 +941,7 @@ function createAccess({
     const required = gatewayActive() && !machine && !session?.admin
     const grant = deviceGrant(req)
     return {
-      required, approved: !required || Boolean(grant),
+      required, approved: !required || Boolean(grant), hasGrant: Boolean(grant),
       generation: grant?.gen ?? null, expiresAt: grant?.expiresAt ?? (session?.admin ? session.expiresAt : machine?.expiresAt ?? null),
     }
   }

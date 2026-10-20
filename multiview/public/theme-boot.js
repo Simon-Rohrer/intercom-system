@@ -66,12 +66,12 @@
 
   try {
     var root = document.documentElement
-    var theme = JSON.parse(localStorage.getItem('mv.theme') || '"system"')
+    var theme = JSON.parse(localStorage.getItem('mv.theme') || '"dark"')
     var wallpaper = JSON.parse(localStorage.getItem('mv.wallpaper') || '"graphit"')
-    root.dataset.theme = theme === 'light' || theme === 'dark' ? theme : 'system'
-    var dark = theme === 'dark' || (theme !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)
+    root.dataset.theme = theme === 'light' || theme === 'dark' || theme === 'system' ? theme : 'dark'
+    var dark = theme === 'dark' || (theme === 'system' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) || (theme !== 'light' && theme !== 'system')
     applyWallpaper(wallpaper, dark)
   } catch (e) {
-    document.documentElement.dataset.theme = 'system'
+    document.documentElement.dataset.theme = 'dark'
   }
 })()

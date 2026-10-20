@@ -22,11 +22,11 @@ const esc = (s) =>
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max)
 
 const CLIENT_ID = uid('c')
-const PAGES = ['uebersicht', 'multiviews', 'eingaenge', 'layouts', 'einstellungen', 'zugang', 'services']
-const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'zugang', 'services']
+const PAGES = ['uebersicht', 'multiviews', 'eingaenge', 'layouts', 'einstellungen', 'services']
+const ADMIN_PAGES = ['eingaenge', 'einstellungen', 'services']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
-const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'raspberry', 'companion', 'bildschirme', 'geraete']
-// Unterseiten von Benutzer & Rechte: #/zugang/rollen …
+const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'raspberry', 'companion', 'bildschirme', 'geraete', 'zugang']
+// Unterseiten von Benutzer & Rechte: #/einstellungen/zugang/rollen …
 const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste', 'zugangsdaten', 'nachrichten']
 const SOURCE_TYPES = {
   device: 'Capture-Gerät',
@@ -71,6 +71,8 @@ function gridPreset(n) {
 let config = null
 let atem = { connected: false, program: [], preview: [], inputs: {} }
 let page = 'uebersicht'
+let settingsSection = ''
+let accessSection = ''
 let serverDevices = []
 let detectedScreens = [] // Anschlüsse der Grafikkarte am Server { id, connected, mode }
 let server ={ addresses: [], ports: {}, mediamtx: { status: 'unknown', message: '' } }
@@ -262,30 +264,53 @@ function renderServices() {
 
 function showPage() {
   const previousPage = page
-  let [requested, sub] = location.hash.replace(/^#\/?/, '').split('/')
+  let [requested, sub, nested] = location.hash.replace(/^#\/?/, '').split('/')
+  // Benutzer & Rechte war früher ein eigener Hauptbereich. Die alte URL bleibt als Alias bestehen.
+  if (requested === 'zugang') {
+    requested = 'einstellungen'
+    nested = sub
+    sub = 'zugang'
+  }
   // Layouts sind eine Unterseite der Multiviews (die alte Adresse #/layouts geht weiter)
   if (requested === 'multiviews' && sub === 'layouts') requested = 'layouts'
   page = PAGES.includes(requested) && (isAdmin() || !ADMIN_PAGES.includes(requested)) ? requested : 'uebersicht'
+  settingsSection = ''
+  accessSection = ''
   for (const p of PAGES) $(`#page-${p}`).hidden = p !== page
-  const sectionsOf = { einstellungen: SETTINGS_SECTIONS, zugang: ZUGANG_SECTIONS }[page]
-  if (sectionsOf) {
-    const section = sectionsOf.includes(sub) ? sub : sectionsOf[0]
-    document.querySelectorAll(`#page-${page} [data-section]`).forEach((el) => (el.hidden = el.dataset.section !== section))
-    document.querySelectorAll(`#page-${page} [data-section-link]`).forEach((a) => {
-      a.classList.toggle('active', a.dataset.sectionLink === section)
-      if (a.dataset.sectionLink === section) a.setAttribute('aria-current', 'page')
+
+  if (page === 'einstellungen') {
+    settingsSection = SETTINGS_SECTIONS.includes(sub) ? sub : SETTINGS_SECTIONS[0]
+    const configRoot = $('#settings-config-content')
+    configRoot.hidden = settingsSection === 'zugang'
+    configRoot.querySelectorAll('[data-section]').forEach((el) => (el.hidden = el.dataset.section !== settingsSection))
+    document.querySelectorAll('#page-einstellungen [data-section-link]').forEach((a) => {
+      a.classList.toggle('active', a.dataset.sectionLink === settingsSection)
+      if (a.dataset.sectionLink === settingsSection) a.setAttribute('aria-current', 'page')
       else a.removeAttribute('aria-current')
     })
+    const accessRoot = $('#settings-access-content')
+    const accessActive = settingsSection === 'zugang'
+    accessRoot.hidden = !accessActive
+    if (accessActive) {
+      accessSection = ZUGANG_SECTIONS.includes(nested) ? nested : ZUGANG_SECTIONS[0]
+      accessRoot.querySelectorAll('[data-access-section]').forEach((el) => (el.hidden = el.dataset.accessSection !== accessSection))
+      accessRoot.querySelectorAll('[data-access-section-link]').forEach((a) => {
+        a.classList.toggle('active', a.dataset.accessSectionLink === accessSection)
+        if (a.dataset.accessSectionLink === accessSection) a.setAttribute('aria-current', 'page')
+        else a.removeAttribute('aria-current')
+      })
+    }
   }
+
   if (page === 'einstellungen') showSettingsView(sub, previousPage)
   const navPage = page === 'layouts' ? 'multiviews' : page
   document.querySelectorAll('.site-nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === navPage))
   document.body.classList.remove('nav-open')
   if (page === 'eingaenge') autoScanDevices()
-  if (page === 'einstellungen' && sub === 'geraete') loadSessions()
-  if (page === 'einstellungen' && sub === 'raspberry') loadRaspberryStatus()
-  if (page === 'zugang') loadGateway()
-  if (page === 'zugang' && sub === 'nachrichten') loadMessageLinks()
+  if (page === 'einstellungen' && settingsSection === 'geraete') loadSessions()
+  if (page === 'einstellungen' && settingsSection === 'raspberry') loadRaspberryStatus()
+  if (page === 'einstellungen' && settingsSection === 'zugang') loadGateway()
+  if (page === 'einstellungen' && settingsSection === 'zugang' && accessSection === 'nachrichten') loadMessageLinks()
   if (page === 'services') renderServices()
   renderAll()
   window.scrollTo(0, 0)
@@ -3051,7 +3076,7 @@ function renderUserCard() {
   if (user?.open) {
     card.innerHTML = `<div class="avatar" style="background:var(--amber)">!</div>
       <div class="user-meta"><b>Zugang offen</b><span>Ohne Anmeldung – alle dürfen alles</span></div>
-      <a class="icon-btn" href="#/zugang/anmeldung" title="Admin-PIN festlegen" aria-label="Admin-PIN festlegen">
+      <a class="icon-btn" href="#/einstellungen/zugang/anmeldung" title="Admin-PIN festlegen" aria-label="Admin-PIN festlegen">
         <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></a>`
     return
   }
@@ -3085,11 +3110,11 @@ const SEARCH_ENTRIES = [
   { label: 'Companion', href: '#/einstellungen/companion', admin: true, words: 'einstellungen stream deck tasten' },
   { label: 'Bildschirme am Server', href: '#/einstellungen/bildschirme', admin: true, words: 'einstellungen hdmi monitor anschluss' },
   { label: 'Angemeldete Geräte', href: '#/einstellungen/geraete', admin: true, words: 'einstellungen online ip sitzung abmelden' },
-  { label: 'Rollen', href: '#/zugang/rollen', admin: true, words: 'benutzer rechte sehen bearbeiten licht ton' },
-  { label: 'Anmeldung & Admin-PIN', href: '#/zugang/anmeldung', admin: true, words: 'benutzer pin passwort admin' },
-  { label: 'Anmeldung für alle Dienste', href: '#/zugang/dienste', admin: true, words: 'benutzer tagescode qr feste geräte gateway' },
-  { label: 'Nachrichten-Links (Ordner, ohne Anmeldung)', href: '#/zugang/nachrichten', admin: true, words: 'ordner beamer stage display bühne meldung qr helfer' },
-  { label: 'Zugangsdaten der Dienste (Portainer, Router)', href: '#/zugang/zugangsdaten', admin: true, words: 'passwort portainer router speedport automatisch anmelden' },
+  { label: 'Rollen', href: '#/einstellungen/zugang/rollen', admin: true, words: 'benutzer rechte sehen bearbeiten licht ton' },
+  { label: 'Anmeldung & Admin-PIN', href: '#/einstellungen/zugang/anmeldung', admin: true, words: 'benutzer pin passwort admin' },
+  { label: 'Anmeldung für alle Dienste', href: '#/einstellungen/zugang/dienste', admin: true, words: 'benutzer tagescode qr feste geräte gateway' },
+  { label: 'Nachrichten-Links (Ordner, ohne Anmeldung)', href: '#/einstellungen/zugang/nachrichten', admin: true, words: 'ordner beamer stage display bühne meldung qr helfer' },
+  { label: 'Zugangsdaten der Dienste (Portainer, Router)', href: '#/einstellungen/zugang/zugangsdaten', admin: true, words: 'passwort portainer router speedport automatisch anmelden' },
   { label: 'Darstellung', open: 'appearance-dialog', words: 'hintergrund hell dunkel farbe wallpaper theme' },
   { label: 'QR-Codes fürs Handy', open: 'qr-dialog', words: 'handy anmelden scannen' },
 ]
@@ -3166,7 +3191,7 @@ const APP_TILES = [
   { href: '#/multiviews/layouts', label: 'Layouts', color: 'blue', icon: '<path fill-rule="evenodd" d="M5.5 3h13A3.5 3.5 0 0 1 22 6.5v11a3.5 3.5 0 0 1-3.5 3.5h-13A3.5 3.5 0 0 1 2 17.5v-11A3.5 3.5 0 0 1 5.5 3Zm-1.5 7v7.5c0 .8.7 1.5 1.5 1.5H9v-9H4Zm7 0v9h7.5c.8 0 1.5-.7 1.5-1.5V10h-9Z"/>' },
   { href: '#/eingaenge', label: 'Eingänge', color: 'green', admin: true, icon: '<rect x="1.5" y="5.5" width="14.5" height="13" rx="3.2"/><path d="M17.3 10.1 21 7.6c.6-.4 1.5 0 1.5.8v7.2c0 .8-.9 1.2-1.5.8l-3.7-2.5z"/>' },
   { href: '#/einstellungen', label: 'Einstellungen', color: 'gray', admin: true, icon: '<path fill-rule="evenodd" d="M19.60 12.00 L21.42 13.87 L20.87 15.67 L18.32 16.22 L17.37 17.37 L17.33 19.98 L15.67 20.87 L13.48 19.45 L12.00 19.60 L10.13 21.42 L8.33 20.87 L7.78 18.32 L6.63 17.37 L4.02 17.33 L3.13 15.67 L4.55 13.48 L4.40 12.00 L2.58 10.13 L3.13 8.33 L5.68 7.78 L6.63 6.63 L6.67 4.02 L8.33 3.13 L10.52 4.55 L12.00 4.40 L13.87 2.58 L15.67 3.13 L16.22 5.68 L17.37 6.63 L19.98 6.67 L20.87 8.33 L19.45 10.52Z M15.2 12 a3.2 3.2 0 1 0 -6.4 0 a3.2 3.2 0 1 0 6.4 0Z"/>' },
-  { href: '#/zugang', label: 'Benutzer', color: 'orange', admin: true, icon: '<circle cx="9" cy="7.2" r="3.7"/><path d="M1.8 19.3c0-3.8 3.2-6.4 7.2-6.4s7.2 2.6 7.2 6.4c0 .7-.5 1.2-1.2 1.2H3c-.7 0-1.2-.5-1.2-1.2Z"/><circle cx="17.2" cy="8.3" r="2.9"/><path d="M17.6 12.9c2.7.2 4.6 2.1 4.6 4.9 0 .7-.5 1.2-1.2 1.2h-3.2c.2-.6.3-1.1.3-1.7 0-1.7-.7-3.2-1.8-4.4h1.3Z"/>' },
+  { href: '#/einstellungen/zugang', label: 'Benutzer', color: 'orange', admin: true, icon: '<circle cx="9" cy="7.2" r="3.7"/><path d="M1.8 19.3c0-3.8 3.2-6.4 7.2-6.4s7.2 2.6 7.2 6.4c0 .7-.5 1.2-1.2 1.2H3c-.7 0-1.2-.5-1.2-1.2Z"/><circle cx="17.2" cy="8.3" r="2.9"/><path d="M17.6 12.9c2.7.2 4.6 2.1 4.6 4.9 0 .7-.5 1.2-1.2 1.2h-3.2c.2-.6.3-1.1.3-1.7 0-1.7-.7-3.2-1.8-4.4h1.3Z"/>' },
   { href: '/remote.html', label: 'Handy', color: 'purple', icon: '<path fill-rule="evenodd" d="M8.2 1.5h7.6A3.2 3.2 0 0 1 19 4.7v14.6a3.2 3.2 0 0 1-3.2 3.2H8.2A3.2 3.2 0 0 1 5 19.3V4.7a3.2 3.2 0 0 1 3.2-3.2Zm1.6 17.6a.8.8 0 0 0 0 1.6h4.4a.8.8 0 0 0 0-1.6H9.8Z"/>' },
   { open: 'qr-dialog', label: 'QR-Codes', color: 'teal', icon: '<path fill-rule="evenodd" d="M4 2.5h5A1.5 1.5 0 0 1 10.5 4v5A1.5 1.5 0 0 1 9 10.5H4A1.5 1.5 0 0 1 2.5 9V4A1.5 1.5 0 0 1 4 2.5Zm1.5 3v2h2v-2h-2ZM15 2.5h5A1.5 1.5 0 0 1 21.5 4v5a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 13.5 9V4A1.5 1.5 0 0 1 15 2.5Zm1.5 3v2h2v-2h-2ZM4 13.5h5a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 9 21.5H4A1.5 1.5 0 0 1 2.5 20v-5A1.5 1.5 0 0 1 4 13.5Zm1.5 3v2h2v-2h-2Z"/><rect x="13.5" y="13.5" width="3.4" height="3.4" rx=".8"/><rect x="18.1" y="18.1" width="3.4" height="3.4" rx=".8"/><rect x="18.1" y="13.5" width="3.4" height="3.4" rx=".8"/><rect x="13.5" y="18.1" width="3.4" height="3.4" rx=".8"/>' },
   { open: 'appearance-dialog', label: 'Darstellung', color: 'pink', icon: '<path fill-rule="evenodd" d="M12 2C6.5 2 2 6.2 2 11.5S6.3 21.5 11.3 21.5c1.5 0 2.4-1 2.4-2.2 0-.6-.2-1.1-.6-1.5-.3-.4-.5-.8-.5-1.3 0-1.2 1-2.1 2.2-2.1h2.4c3 0 4.8-2 4.8-4.6C22 5.6 17.5 2 12 2Zm-5.4 9.8a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Zm3.5-4.3a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Zm4.8.3a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Z"/>' },
@@ -3424,7 +3449,7 @@ $('#service-creds-card')?.addEventListener('click', async (e) => {
 })
 
 function renderAccess() {
-  if (!config || !isAdmin() || page !== 'zugang') return
+  if (!config || !isAdmin() || page !== 'einstellungen' || settingsSection !== 'zugang') return
   if (!serviceCreds) loadServiceCreds()
   // Nicht neu aufbauen, während jemand eine PIN tippt
   if ($('#access-pin-card').contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return
@@ -3547,7 +3572,7 @@ function suggestRights() {
   toast(added ? `${added} Freigabe(n) ergänzt` : 'Keine passenden Namen gefunden')
 }
 
-$('#page-zugang').addEventListener('change', (e) => {
+$('#settings-access-content').addEventListener('change', (e) => {
   const row = e.target.closest('tr[data-role]')
   if (!row) return
   const roleId = row.dataset.role
@@ -3563,7 +3588,7 @@ $('#page-zugang').addEventListener('change', (e) => {
 })
 
 // Multiview-Recht einer Rolle weiterschalten: aus → sehen → bearbeiten → aus
-$('#page-zugang').addEventListener('click', (e) => {
+$('#settings-access-content').addEventListener('click', (e) => {
   const chip = e.target.closest('[data-role-output]')
   const row = chip?.closest('tr[data-role]')
   if (!row) return
@@ -3641,7 +3666,7 @@ $('#role-form').addEventListener('submit', async (e) => {
   }
 })
 
-$('#page-zugang').addEventListener('click', async (e) => {
+$('#settings-access-content').addEventListener('click', async (e) => {
   const button = e.target.closest('[data-role-rename], [data-role-copy], [data-role-delete]')
   const roleId = button?.closest('tr[data-role]')?.dataset.role
   if (!roleId) return
@@ -3657,7 +3682,7 @@ $('#page-zugang').addEventListener('click', async (e) => {
   }
 })
 
-$('#page-zugang').addEventListener('submit', async (e) => {
+$('#settings-access-content').addEventListener('submit', async (e) => {
   if (e.target.id !== 'pin-form') return
   e.preventDefault()
   const form = new FormData(e.target)
@@ -3677,7 +3702,7 @@ $('#page-zugang').addEventListener('submit', async (e) => {
   setTimeout(() => location.reload(), 900)
 })
 
-$('#page-zugang').addEventListener('click', async (e) => {
+$('#settings-access-content').addEventListener('click', async (e) => {
   const choice = e.target.closest('[data-pin-source]')
   if (choice) {
     pinChoice = choice.dataset.pinSource
@@ -3743,7 +3768,7 @@ function machineExpiryValue(expiresAt = Date.now() + 365 * 24 * 60 * 60 * 1000) 
 }
 
 async function loadGateway() {
-  if (!isAdmin() || page !== 'zugang' || gatewayBusy) return
+  if (!isAdmin() || page !== 'einstellungen' || settingsSection !== 'zugang' || gatewayBusy) return
   try {
     const res = await fetch('/api/access/gateway', { cache: 'no-store' })
     gatewayInfo = res.ok ? await res.json() : null
@@ -3756,7 +3781,10 @@ async function loadGateway() {
 setInterval(() => document.visibilityState === 'visible' && loadGateway(), 60_000)
 
 /** Adresse im QR-Code: öffnet die Startseite (Dashboard) und übernimmt dabei den Code. */
-const gatewayCodeUrl = (info) => `${info.startUrl || publicOrigin(server)}/.jms-auth/code?c=${info.code}`
+const gatewayCodeUrl = (info) => {
+  const base = (info.startUrl || publicOrigin(server)).replace(/\/+$/, '')
+  return `${base}/.jms-auth/code?c=${encodeURIComponent(info.code)}&next=${encodeURIComponent('/remote.html')}`
+}
 
 function machineRow(machine) {
   const status = machine.revokedAt ? 'Widerrufen' : machine.active ? 'Aktiv' : 'Abgelaufen'
@@ -3810,7 +3838,7 @@ function machineCreateForm() {
 
 function renderGateway() {
   const card = $('#access-gateway-card')
-  if (!isAdmin() || page !== 'zugang') return
+  if (!isAdmin() || page !== 'einstellungen' || settingsSection !== 'zugang') return
   // Nicht neu aufbauen, während jemand tippt
   const active = document.activeElement
   if (gatewayBusy || gatewayDirty || (card.contains(active) && ['INPUT', 'SELECT', 'TEXTAREA'].includes(active.tagName))) return
@@ -3844,7 +3872,7 @@ function renderGateway() {
     <form id="gateway-form" class="gateway-form" autocomplete="off">
       <label class="field"><span>Startseite nach dem Scannen</span>
         <input type="url" name="startUrl" value="${esc(info.startUrl)}" placeholder="${esc(publicOrigin(server))}">
-        <small class="muted">Am besten das Dashboard, z. B. https://192.168.0.21:3000. Leer = JMS Control.</small>
+        <small class="muted">Das ist die Basisadresse des JMS-Control-Servers. Nach dem Scan öffnet sich die Handyansicht.</small>
       </label>
       <div class="btn-row"><button class="btn primary" type="submit">Speichern</button></div>
       <p class="form-error" id="gateway-error" role="alert"></p>

@@ -2,8 +2,6 @@
 
 Telegram ist optional. Es wird nur benötigt, wenn Telegram-Chats mit Kesher-Party-Lines verbunden werden sollen.
 
-Die Störungsmeldungen des Servers laufen über einen eigenen, zweiten Bot (siehe [Betrieb → Störungsmeldungen per Telegram](BETRIEB.md#störungsmeldungen-per-telegram)).
-
 ## Bot erstellen
 
 1. In Telegram `@BotFather` öffnen.
