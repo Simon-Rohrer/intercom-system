@@ -298,7 +298,7 @@ func TestMachineCompanionIgnoresLegacySecretInCentralMode(t *testing.T) {
 	if !server.requireCompanionSecret(httptest.NewRecorder(), request) {
 		t.Fatal("scoped Companion device required unnecessary legacy secret")
 	}
-	if _, allowed := server.authorizeMachineLogin(httptest.NewRecorder(), request, "audio"); allowed {
+	if _, allowed := server.authorizeMachineLogin(httptest.NewRecorder(), request, "audio", false); allowed {
 		t.Fatal("Companion service created operator identity")
 	}
 }

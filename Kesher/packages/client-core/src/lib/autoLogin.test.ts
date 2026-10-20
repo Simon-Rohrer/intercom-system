@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveAutoLoginConfiguration } from "./autoLogin";
+import { centralMirrorFor, resolveAutoLoginConfiguration, urlRequestsMirror } from "./autoLogin";
 
 const roles = [
   { id: "audio", name: "Audio" },
@@ -98,5 +98,25 @@ describe("resolveAutoLoginConfiguration", () => {
     });
     expect(config.enabled).toBe(false);
     expect(config.central).toBe(false);
+  });
+});
+
+describe("mirror tiles with the central login", () => {
+  const central = { name: "Lasse", roleId: "audio", admin: true, sessionId: "s", version: "v", expiresAt: Date.now() + 60_000 };
+
+  it("mirrors the tile's role, not the role of the central login", () => {
+    const config = resolveAutoLoginConfiguration(
+      "?autoLogin=1&username=Multiview&roleId=stage-left&secondary=1",
+      roles,
+      central,
+    );
+    expect(centralMirrorFor(config)).toEqual({ roleId: "stage-left", username: "Multiview" });
+    expect(urlRequestsMirror("?autoLogin=1&username=Multiview&roleId=stage-left&secondary=1")).toBe(true);
+  });
+
+  it("uses the normal central login without a mirror request", () => {
+    expect(centralMirrorFor(resolveAutoLoginConfiguration("", roles, { ...central, admin: false }))).toBeUndefined();
+    expect(centralMirrorFor(resolveAutoLoginConfiguration("?autoLogin=1&username=FOH&roleId=audio", roles, central))).toBeUndefined();
+    expect(urlRequestsMirror("?autoLogin=1&username=FOH&roleId=audio")).toBe(false);
   });
 });

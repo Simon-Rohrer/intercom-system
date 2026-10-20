@@ -4585,7 +4585,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "username must not contain whitespace", http.StatusBadRequest)
 		return
 	}
-	device, allowed := s.authorizeMachineLogin(w, r, req.RoleID)
+	device, allowed := s.authorizeMachineLogin(w, r, req.RoleID, req.Secondary)
 	if !allowed {
 		return
 	}
@@ -4690,7 +4690,7 @@ func (s *Server) handleLoginTakeover(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "username must not contain whitespace", http.StatusBadRequest)
 		return
 	}
-	device, allowed := s.authorizeMachineLogin(w, r, req.RoleID)
+	device, allowed := s.authorizeMachineLogin(w, r, req.RoleID, false)
 	if !allowed {
 		return
 	}
@@ -5748,6 +5748,34 @@ type upsertBroadcastGroupRequest struct {
 	AllowedRoleIDs []string `json:"allowedRoleIds"`
 }
 
+// broadcastCurrentConfig sends roles, channels and broadcast groups to all
+// connected clients, so open pages (also the Kesher tiles in JMS Control)
+// show a change without reloading.
+func (s *Server) broadcastCurrentConfig(ctx context.Context) {
+	if s.hub == nil {
+		return
+	}
+	roles, err := s.store.ListRoles(ctx)
+	if err != nil {
+		return
+	}
+	rooms, err := s.store.ListRooms(ctx)
+	if err != nil {
+		return
+	}
+	groups, err := s.store.ListBroadcastGroups(ctx)
+	if err != nil {
+		return
+	}
+	s.hub.BroadcastConfigUpdate(PublicBootstrapResponse{
+		Roles:           roles,
+		Rooms:           rooms,
+		BroadcastGroups: groups,
+		AckEnabled:      s.isAckEnabled(),
+		AppVersion:      GetVersionInfo(),
+	})
+}
+
 func (s *Server) handleAdminRoles(w http.ResponseWriter, r *http.Request, session Session) {
 	if !s.requireAdmin(w, r, session) {
 		return
@@ -5766,6 +5794,7 @@ func (s *Server) handleAdminRoles(w http.ResponseWriter, r *http.Request, sessio
 			s.internalErr(w, err)
 			return
 		}
+		s.broadcastCurrentConfig(r.Context())
 		s.writeJSON(w, http.StatusCreated, map[string]bool{"ok": true})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -5807,6 +5836,7 @@ func (s *Server) handleAdminRoleByID(w http.ResponseWriter, r *http.Request, ses
 			s.internalErr(w, err)
 			return
 		}
+		s.broadcastCurrentConfig(r.Context())
 		s.writeJSON(w, http.StatusCreated, duplicated)
 		return
 	}
@@ -5829,6 +5859,7 @@ func (s *Server) handleAdminRoleByID(w http.ResponseWriter, r *http.Request, ses
 			s.internalErr(w, err)
 			return
 		}
+		s.broadcastCurrentConfig(r.Context())
 		s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	case http.MethodDelete:
 		if err := s.store.DeleteRole(r.Context(), roleID); err != nil {
@@ -5838,6 +5869,7 @@ func (s *Server) handleAdminRoleByID(w http.ResponseWriter, r *http.Request, ses
 			s.internalErr(w, err)
 			return
 		}
+		s.broadcastCurrentConfig(r.Context())
 		s.writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

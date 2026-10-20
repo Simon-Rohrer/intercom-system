@@ -199,7 +199,11 @@ type Session struct {
 	Secondary bool
 	// CentralAdmin is an admin session opened through the server's central
 	// login (signed ticket from the Multiview) instead of the admin PIN.
-	CentralAdmin     bool
+	CentralAdmin bool
+	// CentralMirror is a secondary session for a role other than the central
+	// login's own one (Kesher tile in JMS Control). The Multiview signed the
+	// role into the ticket; the session ends with the central login.
+	CentralMirror    bool
 	CentralSessionID string
 	CentralVersion   string
 	DeviceID         string

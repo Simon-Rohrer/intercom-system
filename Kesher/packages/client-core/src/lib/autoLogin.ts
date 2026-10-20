@@ -81,3 +81,20 @@ export function resolveAutoLoginConfiguration(
     central: false,
   };
 }
+
+/** Mirror login for the central login: only for a tile opened as secondary device via the URL. */
+export function centralMirrorFor(
+  config: AutoLoginConfiguration,
+): { roleId: string; username: string } | undefined {
+  if (!config.enabled || config.central || !config.secondary || !config.roleId || !config.username) {
+    return undefined;
+  }
+  return { roleId: config.roleId, username: config.username };
+}
+
+/** Opened as a mirror via the URL (?autoLogin=1&secondary=1&roleId=…), before the roles are loaded. */
+export function urlRequestsMirror(search: string): boolean {
+  const params = new URLSearchParams(search);
+  const on = (key: string) => params.get(key) === "1" || params.get(key) === "true";
+  return on("autoLogin") && on("secondary") && Boolean((params.get("roleId") || params.get("roleName") || "").trim());
+}

@@ -1437,6 +1437,9 @@ const access = createAccess({
   // Dasselbe Gerät per IPv4 (IP-Adresse) und IPv6 (.local-Namen) erkennen
   macOf: createNeighbors().macOf,
   onChange: sessionsChanged,
+  // Kesher-Kacheln mit fester Rolle (nicht „angemeldeter Nutzer“)
+  getMirrorRoles: () => config.layouts.flatMap((layout) => (layout.tiles || [])
+    .filter((tile) => tile.kind === 'kesher' && tile.kesherRoleId && tile.kesherRoleId !== '@user').map((tile) => tile.kesherRoleId)),
   // Übernommene oder vom Admin beendete Anmeldung: die offenen Seiten dort abmelden
   onRevoke: (ids, reason) => {
     for (const ws of wss.clients) {
@@ -1466,7 +1469,7 @@ function requireTrusted(req, res, next) {
 
 function isMachine(req, capability = '', service = 'multiview') {
   const machine = access.machineOf(req)
-  return machineRequest(req, machine?.mode === 'station' && machine.services.includes(service) && (!capability || machine.capabilities.includes(capability)), access.userOf(req))
+  return machineRequest(req, machine?.mode === 'station' && access.machineServes(machine, service) && (!capability || machine.capabilities.includes(capability)), access.userOf(req))
 }
 
 function requireDisplayReader(req, res, next) {
@@ -2166,11 +2169,26 @@ app.get('/.jms-auth/code', (req, res) => {
   }
 })
 
-// Signiertes Ticket, mit dem sich Kesher den Nutzer selbst anmeldet (nur für den Admin nötig)
+/**
+ * Darf die Person eine Kesher-Kachel mit dieser Rolle sehen? Dann darf die Kachel die Rolle in
+ * Kesher spiegeln (Zweitgerät: zeigt und steuert das echte Gerät der Rolle, belegt sie aber nie).
+ */
+function mayMirrorRole(user, roleId) {
+  if (!roleId || typeof roleId !== 'string' || roleId.length > 128) return false
+  if (user.admin || user.roleId === roleId) return true
+  return viewConfig(config, user).layouts.some((layout) =>
+    (layout.tiles || []).some((tile) => tile.kind === 'kesher' && tile.kesherRoleId === roleId))
+}
+
+// Signiertes Ticket, mit dem sich Kesher den Nutzer selbst anmeldet – mit ?mirror=<Rolle> für
+// eine Kesher-Kachel, die diese Rolle nur spiegelt
 app.get('/.jms-auth/api/ticket', requireUser, (req, res) => {
   try {
     if (req.user.open) return res.status(400).json({ ok: false, error: 'Anmeldung ist nicht eingeschaltet' })
-    res.set('Cache-Control', 'no-store').json({ ok: true, ticket: access.createTicket(req.user, String(req.query.aud || ''), AUTH_SECRET) })
+    const mirror = req.query.mirror === undefined ? null : String(req.query.mirror)
+    if (mirror !== null && !mayMirrorRole(req.user, mirror))
+      return res.status(403).json({ ok: false, error: 'Diese Intercom-Rolle ist für dich nicht freigegeben' })
+    res.set('Cache-Control', 'no-store').json({ ok: true, ticket: access.createTicket(req.user, String(req.query.aud || ''), AUTH_SECRET, { mirror }) })
   } catch (err) {
     res.status(err.status || 400).json({ ok: false, error: err.message })
   }

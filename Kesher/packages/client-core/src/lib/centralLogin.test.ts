@@ -73,6 +73,17 @@ describe("central session binding", () => {
     expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({ ticket: "fixture-ticket" });
   });
 
+  it("asks for a signed mirror ticket for a Kesher tile and never sends the own role", async () => {
+    const result = { token: "fixture-token", user: { id: "fixture-user", username: "Multiview", roleId: "lighting" } };
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ticket: "fixture-ticket" })))
+      .mockResolvedValueOnce(new Response(JSON.stringify(result)));
+    vi.stubGlobal("fetch", fetcher);
+    expect(await centralSessionLogin({ roleId: "lighting", username: "Multiview" })).toEqual(result);
+    expect(fetcher.mock.calls[0][0]).toBe("/.jms-auth/api/ticket?aud=kesher&mirror=lighting");
+    expect(JSON.parse(fetcher.mock.calls[1][1].body)).toEqual({ ticket: "fixture-ticket", secondary: true, username: "Multiview" });
+  });
+
   it("keeps a certificate-authenticated Pi on the native station login path", async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
       access: { enabled: true },

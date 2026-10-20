@@ -67,7 +67,8 @@ import {
 } from "./lib/streamDeckHardwareFeedback";
 import { withResolvedStreamDeckButtonLabel } from "./lib/streamDeckLabels";
 import { sortDirectUsersByRoleAndUsername } from "./lib/users";
-import { resolveAutoLoginConfiguration } from "./lib/autoLogin";
+import { centralMirrorFor, resolveAutoLoginConfiguration, urlRequestsMirror } from "./lib/autoLogin";
+import { watchForNewVersion } from "./lib/versionWatch";
 import {
   centralSessionLogin,
   centralIdentityKey,
@@ -432,6 +433,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   const [centralChecked, setCentralChecked] = useState(() => !centralLoginAvailable());
   const centralIdentityRef = useRef<CentralIdentity | null>(null);
   const centralAdminTriedRef = useRef(false);
+  // New version on the server: reload by itself (also kiosks and the tiles in JMS Control)
+  useEffect(() => watchForNewVersion(), []);
   useEffect(() => {
     if (centralChecked) return;
     let cancelled = false;
@@ -644,7 +647,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           return;
         }
 
-        let res = centralIdentityRef.current ? await centralSessionLogin() : await login(
+        let res = centralIdentityRef.current ? await centralSessionLogin(centralMirrorFor(autoLoginConfig)) : await login(
           useUsername,
           useRoleId,
           autoLoginConfig.enabled && autoLoginConfig.secondary,
@@ -1487,7 +1490,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
       void (async () => {
         try {
-          let res = centralIdentityRef.current ? await centralSessionLogin() : await login(
+          // Central login + tile opened as mirror: a signed mirror ticket, never the own role
+          let res = centralIdentityRef.current ? await centralSessionLogin(centralMirrorFor(autoLoginConfig)) : await login(
             paramUsername,
             targetRoleId,
             autoLoginConfig.secondary,
@@ -1551,7 +1555,9 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       token ||
       !centralIdentity?.admin ||
       centralAdminTriedRef.current ||
-      raspberryRemoteLogin
+      raspberryRemoteLogin ||
+      // Kesher tile in JMS Control: stays a mirror of its role, even for the admin
+      urlRequestsMirror(window.location.search)
     ) {
       return;
     }

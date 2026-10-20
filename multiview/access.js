@@ -183,6 +183,9 @@ function createAccess({
   ipOf = () => '',
   onChange = () => {},
   allowBootstrap = false,
+  // Rollen der Kesher-Kacheln in den Layouts: Anzeige-Stationen (Kiosk am HDMI-Ausgang) dürfen
+  // sie in Kesher spiegeln (Zweitgerät, belegt die Rolle nie)
+  getMirrorRoles = () => [],
 }) {
   const file = path.join(dataDir, 'access-secret.json')
   const qrTokens = new Map()
@@ -262,7 +265,17 @@ function createAccess({
   function publicMachine(machine) {
     const { id, name, mode, version, fingerprint, services, capabilities, roleId, raspberryClientId, deviceId, expiresAt, revokedAt, createdAt } = machine
     return { id, name, mode, version, fingerprint, services: [...services], capabilities: [...capabilities], roleId,
-      raspberryClientId, deviceId, expiresAt, revokedAt, createdAt }
+      raspberryClientId, deviceId, expiresAt, revokedAt, createdAt, mirrorRoles: mirrorRolesOf(machine) }
+  }
+
+  /** Welche Kesher-Rollen eine Anzeige-Station spiegeln darf (die ihrer Kesher-Kacheln). */
+  function mirrorRolesOf(machine) {
+    if (machine?.mode !== 'station' || !machine.capabilities?.includes('display') || !machine.services?.includes('multiview')) return []
+    try {
+      return [...new Set(getMirrorRoles())].filter((role) => typeof role === 'string' && role && role.length <= 128).sort()
+    } catch {
+      return []
+    }
   }
 
   function validMachine(machine, now = Date.now()) {
@@ -956,14 +969,19 @@ function createAccess({
     const level = SERVICE_LEVELS[service] ?? 'admin'
     const user = userOf(req)
     const machine = machineOf(req)
-    if (!user && machine?.mode === 'station' && level === 'user' && machine.services.includes(service)) return { action: 'allow', user }
+    if (!user && machine?.mode === 'station' && level === 'user' && machineServes(machine, service)) return { action: 'allow', user }
     if (!machine && !user?.admin && !deviceGrant(req)) return { action: 'code', user }
     if (!user) return { action: 'login', user: null }
     if (level === 'admin' && !user.admin) return { action: 'forbidden', user }
     return { action: 'allow', user }
   }
 
-  function createTicket(user, audience, key) {
+  /** Darf das feste Gerät den Dienst nutzen? Kesher auch nur zum Spiegeln seiner Kachel-Rollen. */
+  function machineServes(machine, service) {
+    return Boolean(machine?.services?.includes(service) || (service === 'kesher' && machine?.mirrorRoles?.length))
+  }
+
+  function createTicket(user, audience, key, { mirror = null } = {}) {
     if (!key) throw fail(503, 'JMS_AUTH_SECRET ist nicht eingerichtet')
     const session = rawSessionById(user?.sessionId)
     if (!validSession(session) || session.version !== user?.version) throw fail(401, 'Bitte erneut anmelden')
@@ -971,6 +989,7 @@ function createAccess({
       name: session.name, roleId: session.roleId, admin: session.admin, aud: audience,
       sid: session.id, exp: Math.min(Date.now() + 60_000, session.expiresAt),
       sessionExpiresAt: session.expiresAt, ver: session.version, version: session.version, jti: randomToken(),
+      ...(mirror ? { mirror } : {}),
     })).toString('base64url')
     const signature = crypto.createHmac('sha256', key).update(payload).digest('base64url')
     return payload + '.' + signature
@@ -980,7 +999,7 @@ function createAccess({
     enabled, pinSource, userOf, sessionOf, sessionIdOf, sessionStatusById, occupiedRoles, occupiedForLogin,
     login, createSsoTicket, redeemSsoTicket, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession, revokeAdmins,
     gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, check, trusted, createTicket,
-    listMachines, createMachine, rotateMachine, revokeMachine, machineOf, machineStatus, machineByFingerprint,
+    listMachines, createMachine, rotateMachine, revokeMachine, machineOf, machineStatus, machineByFingerprint, machineServes,
     prune, sweep: prune, flush: write,
   }
 }

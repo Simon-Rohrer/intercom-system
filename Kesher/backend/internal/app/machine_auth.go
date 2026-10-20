@@ -38,6 +38,14 @@ type centralMachineStatus struct {
 	RaspberryClientID string   `json:"raspberryClientId"`
 	DeviceID          string   `json:"deviceId"`
 	ExpiresAt         int64    `json:"expiresAt"`
+	// MirrorRoles are the roles of the Kesher tiles a display station (e.g. the
+	// server's HDMI kiosk) shows. It may open secondary sessions for them only.
+	MirrorRoles []string `json:"mirrorRoles"`
+}
+
+// mayMirror reports whether the device may open a secondary session for roleID.
+func (status centralMachineStatus) mayMirror(roleID string) bool {
+	return roleID != "" && slices.Contains(status.MirrorRoles, roleID)
 }
 
 var errInvalidMachine = errors.New("invalid device identity")
@@ -101,7 +109,7 @@ func (s *Server) machineStatus(ctx context.Context, deviceID, version string) (c
 	if err := s.centralRequest(ctx, "machine-status", payload, &status); err != nil {
 		return status, err
 	}
-	if !status.Active || status.ID != deviceID || status.Version != version || status.ExpiresAt <= time.Now().UnixMilli() || !slices.Contains(status.Services, "kesher") {
+	if !status.Active || status.ID != deviceID || status.Version != version || status.ExpiresAt <= time.Now().UnixMilli() || (!slices.Contains(status.Services, "kesher") && len(status.MirrorRoles) == 0) {
 		return centralMachineStatus{}, errInvalidMachine
 	}
 	return status, nil
@@ -124,12 +132,13 @@ func (s *Server) machineForRequest(r *http.Request) (centralMachineStatus, error
 	return status, nil
 }
 
-func (s *Server) authorizeMachineLogin(w http.ResponseWriter, r *http.Request, roleID string) (centralMachineStatus, bool) {
+func (s *Server) authorizeMachineLogin(w http.ResponseWriter, r *http.Request, roleID string, secondary bool) (centralMachineStatus, bool) {
 	if s.cfg.JMSAuthURL == "" {
 		return centralMachineStatus{}, true
 	}
 	status, err := s.machineForRequest(r)
-	if err != nil || roleID == "" || status.RoleID != roleID {
+	ownRole := slices.Contains(status.Services, "kesher") && status.RoleID == roleID
+	if err != nil || roleID == "" || !(ownRole || (secondary && status.mayMirror(roleID))) {
 		http.Error(w, "registered device role required", http.StatusForbidden)
 		return centralMachineStatus{}, false
 	}
@@ -137,7 +146,8 @@ func (s *Server) authorizeMachineLogin(w http.ResponseWriter, r *http.Request, r
 }
 
 func matchesMachineSession(session Session, status centralMachineStatus) bool {
-	return status.Active && session.DeviceID == status.ID && session.DeviceVersion == status.Version && session.StationDeviceID == status.DeviceID && session.RoleID == status.RoleID && status.ExpiresAt > time.Now().UnixMilli() && !session.CentralAdmin && session.CentralSessionID == ""
+	role := (slices.Contains(status.Services, "kesher") && session.RoleID == status.RoleID) || (session.Secondary && status.mayMirror(session.RoleID))
+	return status.Active && session.DeviceID == status.ID && session.DeviceVersion == status.Version && session.StationDeviceID == status.DeviceID && role && status.ExpiresAt > time.Now().UnixMilli() && !session.CentralAdmin && session.CentralSessionID == ""
 }
 
 func (s *Server) validateMachineSession(ctx context.Context, session Session) bool {

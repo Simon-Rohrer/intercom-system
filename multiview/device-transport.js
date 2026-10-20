@@ -6,7 +6,7 @@ const net = require('node:net')
 const tls = require('node:tls')
 
 function deviceAssertion(machine, secret, now = Date.now()) {
-  if (!machine || !secret || machine.mode !== 'station' || !machine.services?.includes('kesher')) return ''
+  if (!machine || !secret || machine.mode !== 'station' || !(machine.services?.includes('kesher') || machine.mirrorRoles?.length)) return ''
   const payload = Buffer.from(JSON.stringify({ aud: 'kesher-device', id: machine.id, version: machine.version,
     roleId: machine.roleId, deviceId: machine.deviceId, capabilities: machine.capabilities,
     exp: Math.min(now + 30_000, machine.expiresAt) })).toString('base64url')

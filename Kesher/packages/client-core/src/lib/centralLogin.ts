@@ -87,9 +87,18 @@ export async function fetchCentralIdentity(): Promise<CentralIdentity | null> {
   }
 }
 
-/** Kesher admin session for the central admin (signed ticket, no PIN). */
-export async function centralSessionLogin(): Promise<LoginSuccess> {
-  const ticketRes = await fetch(`${BASE}/api/ticket?aud=kesher`, {
+/**
+ * Mirror of a role (Kesher tile in JMS Control): the tile only shows and controls the device
+ * that really uses the role and never occupies it. The Multiview signs the role into the ticket
+ * only if the signed-in person may see a tile with that role.
+ */
+export type CentralMirror = { roleId: string; username: string };
+
+/** Kesher session for whoever is signed in centrally (signed ticket, no PIN) – or a mirror. */
+export async function centralSessionLogin(mirror?: CentralMirror): Promise<LoginSuccess> {
+  const query = new URLSearchParams({ aud: "kesher" });
+  if (mirror) query.set("mirror", mirror.roleId);
+  const ticketRes = await fetch(`${BASE}/api/ticket?${query}`, {
     cache: "no-store",
     credentials: "same-origin",
   });
@@ -103,7 +112,11 @@ export async function centralSessionLogin(): Promise<LoginSuccess> {
   const res = await fetch("/api/login/central", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ticket: ticketData.ticket }),
+    body: JSON.stringify(
+      mirror
+        ? { ticket: ticketData.ticket, secondary: true, username: mirror.username }
+        : { ticket: ticketData.ticket },
+    ),
   });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as LoginSuccess;
