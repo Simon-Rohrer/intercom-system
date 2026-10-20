@@ -1,4 +1,4 @@
-import { layoutSize, isStandardLayout, TIME_ZONE, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder } from './common.js'
+import { layoutSize, isStandardLayout, TIME_ZONE, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder, watchLogin, loginKey } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions } from './meters.js'
 import { createChatView } from './chat.js'
 import { chatFor, chatRoleFor } from './rights.js'
@@ -58,6 +58,9 @@ fetch('/api/me', { cache: 'no-store' })
   .then((r) => r.json())
   .then((me) => {
     viewer = me?.user && !me.user.open ? me.user : null
+    // In einem anderen Tab (oder Dienst) an- oder abgemeldet: neu laden, damit Chat und
+    // Intercom-Kacheln gleich für die neue Anmeldung gelten
+    if (me?.access?.enabled) watchLogin(loginKey(me.user))
     if (!viewer) return
     for (const view of chatViews) view.update(chatFor(chat, view.roleId()))
   })

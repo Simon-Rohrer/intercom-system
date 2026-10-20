@@ -263,3 +263,17 @@ test('Zertifikatregistrierung verlangt eindeutigen Fingerprint und gültige Meta
   for (const input of [{ fingerprint: 'bad' }, { expiresAt: 0 }, { name: '' }, { mode: 'admin' }, { deviceId: '../unsafe' }])
     assert.throws(() => createStation(access, input))
 })
+
+test('Anzeige-Station spiegelt nur die Rollen ihrer Kesher-Kacheln, ohne Kesher-Dienst', async () => {
+  const { access } = await setup({ getMirrorRoles: () => ['light', 'light', 'video'] })
+  const display = fingerprint()
+  const { machine: created } = createStation(access, { fingerprint: display, services: ['multiview'], capabilities: ['display'] })
+  const status = access.machineStatus(created.id, created.version)
+  assert.deepEqual(status.mirrorRoles, ['light', 'video'])
+  assert.deepEqual(status.services, ['multiview'])
+  assert.equal(access.machineServes(status, 'kesher'), true)
+  assert.equal(access.check({ service: 'kesher', ip }, certificate(display)).action, 'allow')
+  const { machine: plain } = createStation(access, { services: ['multiview'], capabilities: ['pi-config'] })
+  assert.deepEqual(access.machineStatus(plain.id, plain.version).mirrorRoles, [])
+  assert.equal(access.machineServes(access.machineStatus(plain.id, plain.version), 'kesher'), false)
+})

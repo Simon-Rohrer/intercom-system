@@ -33,6 +33,9 @@ type centralTicketClaims struct {
 	SessionID string `json:"sid"`
 	Version   string `json:"ver"`
 	TicketID  string `json:"jti"`
+	// Mirror is the role of a Kesher tile the person may see in JMS Control
+	// (only set by the Multiview after checking that).
+	Mirror string `json:"mirror,omitempty"`
 }
 
 type centralSessionStatus struct {
@@ -180,6 +183,9 @@ func (s *Server) revokeSession(session Session) {
 }
 
 func matchesCentralSession(session Session, status centralSessionStatus) bool {
+	if session.CentralMirror {
+		return status.Active && status.SessionID == session.CentralSessionID && status.Version == session.CentralVersion && status.ExpiresAt > time.Now().UnixMilli() && !session.CentralAdmin
+	}
 	return status.Active && status.SessionID == session.CentralSessionID && status.Version == session.CentralVersion && status.Admin == session.CentralAdmin && status.ExpiresAt > time.Now().UnixMilli() && (session.CentralAdmin || (status.Name == session.Username && status.RoleID == session.RoleID))
 }
 
@@ -270,6 +276,8 @@ func (s *Server) startCentralSessionCleanup() {
 type centralAdminLoginRequest struct {
 	Ticket    string `json:"ticket"`
 	Secondary bool   `json:"secondary"`
+	// Username of a mirror (the name the tile shows in Kesher)
+	Username string `json:"username"`
 }
 
 func (s *Server) handleCentralAdminLogin(w http.ResponseWriter, r *http.Request) {
@@ -314,6 +322,10 @@ func (s *Server) handleCentralLogin(w http.ResponseWriter, r *http.Request, admi
 	}
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
+	if claims.Mirror != "" {
+		s.createCentralMirror(w, r, claims, status, req, adminOnly)
+		return
+	}
 	user := User{Username: "admin"}
 	if !claims.Admin {
 		if !isValidLoginRequest(claims.Name, claims.RoleID) || strings.IndexFunc(claims.Name, unicode.IsControl) >= 0 {
@@ -343,6 +355,39 @@ func (s *Server) handleCentralLogin(w http.ResponseWriter, r *http.Request, admi
 	if !claims.Admin {
 		s.sessions.ScheduleDisconnectLogout(session.Token, operatorSessionConnectGrace)
 	}
+	disableResponseCaching(w)
+	s.writeJSON(w, http.StatusOK, LoginResponse{Token: session.Token, User: user})
+}
+
+// createCentralMirror signs a Kesher tile in as a mirror of its role: it shows
+// and controls the device that really uses the role, never occupies the role
+// and never conflicts with it. Called with sessionMu held.
+func (s *Server) createCentralMirror(w http.ResponseWriter, r *http.Request, claims centralTicketClaims, status centralSessionStatus, req centralAdminLoginRequest, adminOnly bool) {
+	if adminOnly || !req.Secondary {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	exists, err := s.store.RoleExists(r.Context(), claims.Mirror)
+	if err != nil || !exists {
+		http.Error(w, "invalid role", http.StatusBadRequest)
+		return
+	}
+	username := strings.TrimSpace(strings.ReplaceAll(req.Username, "\u00a0", " "))
+	if username == "" || len(username) > 64 || strings.IndexFunc(username, unicode.IsControl) >= 0 {
+		username = "Multiview"
+	}
+	username = strings.Join(strings.Fields(username), "\u00a0")
+	user, err := s.store.upsertCentralUser(r.Context(), username, claims.Mirror)
+	if err != nil {
+		s.internalErr(w, err)
+		return
+	}
+	if len(s.sessions.Snapshot()) >= 1024 {
+		http.Error(w, "session capacity reached", http.StatusTooManyRequests)
+		return
+	}
+	session := s.sessions.CreateCentralMirror(user, status)
+	s.sessions.ScheduleDisconnectLogout(session.Token, operatorSessionConnectGrace)
 	disableResponseCaching(w)
 	s.writeJSON(w, http.StatusOK, LoginResponse{Token: session.Token, User: user})
 }

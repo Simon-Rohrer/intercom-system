@@ -38,6 +38,12 @@ func (m *SessionManager) CreateCentral(user User, parent centralSessionStatus, s
 	return m.create(Session{UserID: user.ID, Username: user.Username, RoleID: user.RoleID, CentralAdmin: parent.Admin, CentralSessionID: parent.SessionID, CentralVersion: parent.Version, ExpiresAt: time.UnixMilli(parent.ExpiresAt), Secondary: secondary})
 }
 
+// CreateCentralMirror opens a secondary session of the mirrored role for a
+// central login. It never carries the central admin right.
+func (m *SessionManager) CreateCentralMirror(user User, parent centralSessionStatus) Session {
+	return m.create(Session{UserID: user.ID, Username: user.Username, RoleID: user.RoleID, CentralMirror: true, CentralSessionID: parent.SessionID, CentralVersion: parent.Version, ExpiresAt: time.UnixMilli(parent.ExpiresAt), Secondary: true})
+}
+
 func (m *SessionManager) CreateDevice(user User, device centralMachineStatus, secondary bool) Session {
 	expiresAt := time.Now().Add(m.ttl)
 	if deviceExpiry := time.UnixMilli(device.ExpiresAt); deviceExpiry.Before(expiresAt) {
