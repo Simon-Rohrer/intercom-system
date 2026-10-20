@@ -2846,15 +2846,18 @@ function renderRaspberry() {
           const seen = piStatus.seen.find((p) => piSeenMatches(pi, p))
           const problems = piProblems(pi, r.clients)
           const remote = r.serverUrl ? `<a class="btn small" href="${esc(r.serverUrl)}/?login=raspberry" target="_blank" rel="noopener">Fernsteuern</a>` : ''
-          // Herunterfahren / Neu starten geht nur, solange der Pi beim Multiview nachfragt
+          // Neu starten geht nur, solange der Pi beim Multiview nachfragt. Aus/Ein ist der Ruhemodus:
+          // eine Einstellung der Station, die der Pi beim nächsten Abruf übernimmt (auch nach einem Neustart)
           const reachable = Boolean(seen && seen.ageMs < 60_000)
-          const offHint = 'Der Pi meldet sich gerade nicht. Einschalten geht nur am Gerät: Strom kurz trennen (Pi 5: Einschaltknopf).'
-          const power = `<button class="btn small" type="button" data-pi-power="reboot" ${reachable ? '' : `disabled title="${esc(offHint)}"`}>Neu starten</button>
-              <button class="btn small" type="button" data-pi-power="poweroff" ${reachable ? '' : `disabled title="${esc(offHint)}"`}>Herunterfahren</button>`
+          const offHint = 'Der Pi meldet sich gerade nicht – Strom und Netzwerk prüfen.'
+          const power = `${pi.standby
+            ? '<button class="btn small primary" type="button" data-pi-standby="off">Einschalten</button>'
+            : '<button class="btn small" type="button" data-pi-standby="on">Ausschalten</button>'}
+              <button class="btn small" type="button" data-pi-power="reboot" ${reachable ? '' : `disabled title="${esc(offHint)}"`}>Neu starten</button>`
           return `<div class="pi-item" data-pi="${esc(pi.id)}">
             <div class="pi-item-head">
               <h4>${esc(pi.name || 'Neuer Raspberry Pi')}</h4>
-              ${piStationPill(pi)}
+              ${pi.standby ? '<span class="pill">Ruhemodus</span>' : piStationPill(pi)}
               ${seen ? `<span class="muted">fragt ${esc(agoText(seen.ageMs))}${seen.ips.length ? ` · <code class="ip">${esc(seen.ips.join(', '))}</code>` : ''}</span>` : ''}
               <span class="pi-spacer"></span>
               ${remote}
@@ -2881,7 +2884,7 @@ function renderRaspberry() {
               <label class="check pi-check"><input type="checkbox" data-p="lowPowerMode" ${pi.lowPowerMode ? 'checked' : ''}> Sparmodus (schwache Pis)</label>
             </div>
             ${problems.length ? `<p class="pi-problem">⚠ ${esc(problems.join(' · '))}</p>` : ''}
-            ${reachable ? '' : `<p class="muted pi-power-hint">${esc(offHint)}</p>`}
+            ${pi.standby ? '<p class="muted pi-power-hint">Ausgeschaltet: kein Intercom, Bildschirm aus. Der Pi bleibt im Netz – „Einschalten“ weckt ihn in etwa 15 Sekunden.</p>' : reachable ? '' : `<p class="muted pi-power-hint">${esc(offHint)}</p>`}
           </div>`
         })
         .join('') || '<p class="muted">Noch keine Station eingetragen.</p>'
@@ -2977,7 +2980,6 @@ $('#pi-list').addEventListener('change', onPiField)
 $('#pi-list').addEventListener('focusout', () => setTimeout(() => !$('#pi-list').contains(document.activeElement) && renderRaspberry()))
 
 const PI_POWER_TEXT = {
-  poweroff: { ask: 'herunterfahren? Wieder einschalten geht danach nur am Gerät (Strom kurz trennen, Pi 5: Einschaltknopf).', done: 'fährt in den nächsten 15 Sekunden herunter' },
   reboot: { ask: 'neu starten? Das Intercom auf dem Pi ist dabei etwa eine Minute weg.', done: 'startet in den nächsten 15 Sekunden neu' },
 }
 
@@ -3003,7 +3005,21 @@ async function piPower(button) {
   }
 }
 
+function piStandby(button) {
+  const pi = piSettings().clients.find((c) => c.id === button.closest('[data-pi]').dataset.pi)
+  if (!pi) return
+  const off = button.dataset.piStandby === 'on'
+  const name = pi.name || 'Der Raspberry Pi'
+  if (off && !confirm(`${name} ausschalten? Das Intercom auf dem Pi wird beendet und der Bildschirm geht aus. Der Pi bleibt im Netz und lässt sich hier wieder einschalten.`)) return
+  pi.standby = off
+  renderRaspberry()
+  changed(0)
+  toast(off ? `${name} geht in den nächsten 15 Sekunden aus.` : `${name} startet in den nächsten 15 Sekunden.`)
+}
+
 $('#set-raspberry').addEventListener('click', (e) => {
+  const standby = e.target.closest('[data-pi-standby]')
+  if (standby) return piStandby(standby)
   const power = e.target.closest('[data-pi-power]')
   if (power) return piPower(power)
   const remove = e.target.closest('[data-pi-remove]')

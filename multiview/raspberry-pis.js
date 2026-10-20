@@ -61,6 +61,8 @@ function normalizeClient(c, index) {
     audioOutputMatch: text(c?.audioOutputMatch),
     lowPowerMode: c?.lowPowerMode === true,
     view: VIEWS.includes(c?.view) ? c.view : 'standard',
+    // Ruhemodus aus JMS Control: kein Intercom, Bildschirm aus, der Pi bleibt im Netz
+    standby: c?.standby === true,
   }
 }
 
@@ -91,6 +93,7 @@ function launcherClient(c) {
   if (c.audioInputMatch) out.audio_input_match = c.audioInputMatch
   if (c.audioOutputMatch) out.audio_output_match = c.audioOutputMatch
   if (c.view !== 'standard') out.simple_view = c.view === 'simple'
+  if (c.standby) out.standby = true
   return out
 }
 

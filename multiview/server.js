@@ -1364,9 +1364,11 @@ app.get('/api/config', requireTrusted, requireDisplayReader, (req, res) => res.j
 
 const piRegistry = createPiRegistry()
 
-// Herunterfahren / Neu starten aus den Einstellungen. Der Befehl wartet, bis der Pi das nächste
-// Mal seine Konfiguration holt (alle 15 s), geht genau einmal raus und verfällt nach 2 Minuten.
-const PI_POWER_ACTIONS = ['poweroff', 'reboot']
+// Neu starten aus den Einstellungen. Der Befehl wartet, bis der Pi das nächste Mal seine
+// Konfiguration holt (alle 15 s), geht genau einmal raus und verfällt nach 2 Minuten.
+// Kein Herunterfahren: ein Pi lässt sich danach aus der Ferne nicht wieder einschalten –
+// dafür gibt es den Ruhemodus (Einstellung „standby“ der Station).
+const PI_POWER_ACTIONS = ['reboot']
 const PI_POWER_TTL_MS = 2 * 60 * 1000
 const piPowerCommands = new Map() // Raspberry-Eintrag (client.id) -> { id, action, at }
 

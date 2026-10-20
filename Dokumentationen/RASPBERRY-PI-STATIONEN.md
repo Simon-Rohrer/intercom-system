@@ -52,13 +52,15 @@ Fernsteuern: Im Dashboard **Raspberry fernsteuern** öffnet Kesher direkt im Rei
 *Raspberry* (`https://192.168.0.21:8443/?login=raspberry`), ohne automatische Anmeldung mit der
 eigenen Rolle. Dort mit **Steuern** eine verbundene Station übernehmen.
 
-## Herunterfahren und neu starten aus JMS Control
+## Aus- und einschalten aus JMS Control (Ruhemodus)
 
-In JMS Control unter *Einstellungen → Raspberry Pis* hat jede Station die Knöpfe **Neu starten** und **Herunterfahren**. Der Befehl geht beim nächsten Abruf des Pi mit (alle 15 Sekunden) und wird genau einmal ausgeführt; holt der Pi ihn nicht innerhalb von 2 Minuten ab, verfällt er. Die Knöpfe sind nur aktiv, solange der Pi sich beim Multiview meldet.
+In JMS Control unter *Einstellungen → Raspberry Pis* hat jede Station die Knöpfe **Ausschalten** / **Einschalten** und **Neu starten**.
 
-**Einschalten geht nicht aus der Ferne:** Ein heruntergefahrener Raspberry Pi startet erst wieder, wenn der Strom kurz getrennt wird (Pi 5: Einschaltknopf). Für Fern-Einschalten bräuchte es eine schaltbare Steckdose.
+- **Ausschalten** ist ein Ruhemodus: Das Intercom auf dem Pi wird beendet und der Bildschirm geht aus, der Pi selbst bleibt an und im Netz. **Einschalten** weckt ihn wieder – nach etwa 15 Sekunden (so oft fragt der Pi seine Einstellungen ab) läuft das Intercom wieder. Der Ruhemodus ist eine Einstellung der Station: Startet der Pi neu oder war der Strom weg, bleibt er aus, bis er hier eingeschaltet wird.
+- **Neu starten** startet den ganzen Pi neu (geht nur, solange er sich meldet). Der Befehl wird genau einmal ausgeführt und verfällt nach 2 Minuten.
+- **Bewusst kein echtes Herunterfahren:** Ein heruntergefahrener Raspberry Pi lässt sich aus der Ferne nicht wieder einschalten (kein Wake-on-LAN), nur durch kurzes Trennen vom Strom. Für echtes Aus/An bräuchte es eine schaltbare Steckdose vor dem Netzteil.
 
-Voraussetzung ist der aktuelle Launcher auf dem Pi (`install.sh` richtet dafür auch die sudo-Regel `/etc/sudoers.d/kesher-pi-power` ein, die nur `systemctl poweroff` und `systemctl reboot` erlaubt). Aktualisieren vom Server aus, ohne die Konfiguration auf dem Pi zu überschreiben:
+Voraussetzung ist der aktuelle Launcher auf dem Pi (ab Version 12; `install.sh` richtet für „Neu starten“ auch die sudo-Regel `/etc/sudoers.d/kesher-pi-power` ein, die nur `systemctl poweroff` und `systemctl reboot` erlaubt). Den Bildschirm schaltet der Launcher über `wlr-randr` (labwc), sonst `wlopm` oder `vcgencmd`. Aktualisieren vom Server aus, ohne die Konfiguration auf dem Pi zu überschreiben:
 
 ```sh
 cd ~/intercom-system/Kesher/deploy && tar -czf /tmp/kesher-raspberry-pi-deploy.tar.gz raspberry-pi && scp /tmp/kesher-raspberry-pi-deploy.tar.gz <user>@<pi-ip>:~

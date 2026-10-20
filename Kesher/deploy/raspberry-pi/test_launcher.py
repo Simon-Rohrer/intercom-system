@@ -465,5 +465,37 @@ class LauncherTests(unittest.TestCase):
         payload = {"managed": True, "config": {"a": 1}, "power": {"id": "c1", "action": "reboot"}}
         self.assertEqual(launcher.without_power_command(payload), {"managed": True, "config": {"a": 1}})
 
+    def test_standby_is_read_from_the_client(self):
+        self.config["clients"][0]["standby"] = True
+        client = launcher.resolve_client(launcher.validate_config(self.config), ["192.168.1.51"], [])
+        self.assertTrue(client["standby"])
+        self.config["clients"][0]["standby"] = "ja"
+        with self.assertRaises(ValueError):
+            launcher.resolve_client(launcher.validate_config(self.config), ["192.168.1.51"], [])
+
+    def test_display_power_switches_every_wayland_output(self):
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            if command == ["wlr-randr"]:
+                return mock.Mock(returncode=0, stdout='HDMI-A-1 "Dell"\n  Enabled: yes\nHDMI-A-2 "LG"\n  Enabled: yes\n')
+            return mock.Mock(returncode=0)
+
+        self.assertTrue(launcher.set_display_power(False, run))
+        self.assertEqual(calls[1:], [["wlr-randr", "--output", "HDMI-A-1", "--off"], ["wlr-randr", "--output", "HDMI-A-2", "--off"]])
+
+    def test_display_power_falls_back_without_wlr_randr(self):
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            if command[0] in ("wlr-randr", "wlopm"):
+                raise FileNotFoundError(command[0])
+            return mock.Mock(returncode=0)
+
+        self.assertTrue(launcher.set_display_power(True, run))
+        self.assertEqual(calls[-1], ["vcgencmd", "display_power", "1"])
+
 if __name__ == "__main__":
     unittest.main()

@@ -21,7 +21,7 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
-LAUNCHER_VERSION = "11"
+LAUNCHER_VERSION = "12"
 HEARTBEAT_INTERVAL_SECONDS = 4
 AUDIO_RUNTIME_WAIT_SECONDS = 3
 DISPLAY_RUNTIME_WAIT_SECONDS = 15
@@ -220,6 +220,11 @@ def resolve_client(
             if not isinstance(simple_view, bool):
                 raise ValueError(f"clients[{index}].simple_view must be a boolean")
             client["simple_view"] = simple_view
+        if "standby" in raw_client:
+            standby = raw_client.get("standby")
+            if not isinstance(standby, bool):
+                raise ValueError(f"clients[{index}].standby must be a boolean")
+            client["standby"] = standby
         for optional_field in ("audio_input_match", "audio_output_match"):
             value = raw_client.get(optional_field)
             if isinstance(value, str) and value.strip():
@@ -341,6 +346,33 @@ def write_managed_config_cache(payload: dict[str, Any], path: Optional[Path] = N
         temporary.replace(target)
     except OSError:
         pass
+
+
+def wayland_outputs(run: Any = subprocess.run) -> list[str]:
+    """Namen der Bildschirmausgänge laut wlr-randr (Zeilen ohne Einrückung)."""
+    try:
+        result = run(["wlr-randr"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if result.returncode != 0:
+        return []
+    return [line.split()[0] for line in result.stdout.splitlines() if line and not line[0].isspace()]
+
+
+def set_display_power(on: bool, run: Any = subprocess.run) -> bool:
+    """Bildschirm an/aus für den Ruhemodus: wlr-randr (labwc), sonst wlopm, sonst vcgencmd."""
+    state = "--on" if on else "--off"
+
+    def ok(command: list[str]) -> bool:
+        try:
+            return run(command, capture_output=True, timeout=10).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    outputs = wayland_outputs(run)
+    if outputs and all([ok(["wlr-randr", "--output", output, state]) for output in outputs]):
+        return True
+    return ok(["wlopm", state, "*"]) or ok(["vcgencmd", "display_power", "1" if on else "0"])
 
 
 POWER_ACTIONS = ("poweroff", "reboot")
@@ -1302,6 +1334,35 @@ def main() -> int:
                 heartbeat_stop,
             )
         reload_requested = False
+        if client.get("standby") is True:
+            # Ruhemodus aus JMS Control: kein Intercom, Bildschirm aus, der Pi bleibt im Netz.
+            # „Einschalten“ ändert die Einstellung – die Konfig-Abfrage startet dann neu.
+            print("Standby: station is switched off in JMS Control", flush=True)
+            update_heartbeat_state(
+                heartbeat_state,
+                heartbeat_state_lock,
+                browser_status="standby",
+                login_status="standby",
+                login_error="",
+            )
+            try:
+                wait_for_display_runtime(
+                    config.get("display_runtime_wait_seconds", DISPLAY_RUNTIME_WAIT_SECONDS),
+                    0,
+                )
+                set_display_power(False)
+                if config_watch is None:
+                    print("Standby needs config_url; nothing will wake this station", flush=True)
+                reload_event.wait()
+                reload_requested = True
+                return 0
+            finally:
+                heartbeat_stop.set()
+                heartbeat_thread.join(timeout=1)
+                if config_watch is not None:
+                    config_watch.join(timeout=1)
+                if reload_requested:
+                    os.execv(sys.executable, [sys.executable, os.path.abspath(__file__), *sys.argv[1:]])
         try:
             wait_for_server(
                 config["server_url"],
@@ -1332,6 +1393,8 @@ def main() -> int:
                 login_status="starting_browser",
                 login_error="",
             )
+            # Nach dem Ruhemodus (oder falls ihn jemand ausgeschaltet hat) den Bildschirm einschalten
+            set_display_power(True)
             return_code = 0
             while not reload_event.is_set():
                 cleanup_chromium_singletons()
