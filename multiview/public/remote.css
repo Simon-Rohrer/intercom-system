@@ -223,7 +223,7 @@
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
-  box-shadow: var(--shadow-lg), inset 0 0 0 1px var(--line);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 .rm-composer .chat-compose { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .rm-composer .chat-compose select {
