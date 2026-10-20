@@ -21,7 +21,7 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
 
-LAUNCHER_VERSION = "10"
+LAUNCHER_VERSION = "11"
 HEARTBEAT_INTERVAL_SECONDS = 4
 AUDIO_RUNTIME_WAIT_SECONDS = 3
 DISPLAY_RUNTIME_WAIT_SECONDS = 15
