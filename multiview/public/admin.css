@@ -1925,3 +1925,125 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 .output-qr-controls .check { min-height: 44px; }
 .output-qr-options[hidden] { display: none; }
 .output-qr-options select { width: auto; min-height: 44px; max-width: 100%; }
+
+/* ==================================================================
+   Einstellungen: Leiste mit Unterseiten (Desktop) bzw. Übersicht + eigene
+   Unterseite mit „‹ Einstellungen“ und Zurückwischen vom linken Rand (Handy)
+   ================================================================== */
+.settings-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 24px; align-items: start; }
+.settings-nav {
+  position: sticky;
+  top: 76px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  padding: 12px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+.settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.settings-nav-group[hidden], .settings-nav a[hidden] { display: none; }
+.settings-nav-title {
+  margin: 0;
+  padding: 4px 10px 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.settings-nav a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 14.5px;
+  font-weight: 500;
+}
+.settings-nav a:hover { background: var(--surface-2); }
+.settings-nav a.active { background: color-mix(in srgb, var(--accent) 16%, transparent); font-weight: 600; }
+.settings-nav .app-icon { width: 28px; height: 28px; border-radius: 7px; flex: none; box-shadow: none; }
+.settings-nav .app-icon svg { width: 17px; height: 17px; stroke-width: 2; }
+.settings-nav-label { flex: 1; min-width: 0; }
+.settings-nav-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.settings-nav-state .status-dot { width: 7px; height: 7px; box-shadow: none; }
+.settings-nav a:not([data-state]) .settings-nav-state { display: none; }
+.settings-nav a[data-state="ok"] .status-dot { background: var(--green); }
+.settings-nav a[data-state="bad"] .status-dot { background: var(--red); }
+.settings-nav a[data-state="bad"] .settings-nav-state { color: var(--red); }
+.settings-nav a[data-state="off"] .status-dot { background: var(--line-strong); }
+.settings-nav-chevron { display: none; width: 16px; height: 16px; flex: none; fill: none; stroke: var(--muted); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.settings-detail { min-width: 0; }
+.settings-back { display: none; }
+
+@media (max-width: 980px) {
+  .settings-layout { grid-template-columns: 240px minmax(0, 1fr); gap: 18px; }
+}
+
+@media (max-width: 760px) {
+  .settings-layout { display: block; position: relative; }
+  .settings-nav {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    gap: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .settings-nav-group { gap: 0; }
+  .settings-nav-title { padding: 0 14px 6px; }
+  /* Gruppen als Listen wie in den iPhone-Einstellungen */
+  .settings-nav a,
+  .settings-nav a.active { min-height: 50px; padding: 0 14px; border-radius: 0; background: var(--surface); font-size: 16px; font-weight: 500; }
+  .settings-nav a:hover { background: var(--surface); }
+  .settings-nav a:active { background: var(--surface-2); }
+  .settings-nav-title + a { border-radius: 14px 14px 0 0; }
+  .settings-nav-group > a:last-child { border-radius: 0 0 14px 14px; }
+  .settings-nav-title + a:last-child { border-radius: 14px; }
+  .settings-nav a + a::before { content: ""; position: absolute; top: 0; left: 54px; right: 0; height: 1px; background: var(--line); }
+  .settings-nav .app-icon { width: 30px; height: 30px; }
+  .settings-nav-state { font-size: 14px; }
+  .settings-nav-chevron { display: block; }
+
+  #page-einstellungen[data-view="list"] .settings-detail { display: none; }
+  #page-einstellungen[data-view="detail"] > .page-head,
+  #page-einstellungen[data-view="detail"] .settings-nav { display: none; }
+  #page-einstellungen[data-view="detail"] .settings-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    min-height: 44px;
+    margin: -6px 0 6px -8px;
+    padding-right: 8px;
+    color: var(--accent-text);
+    font-size: 17px;
+    font-weight: 500;
+    text-decoration: none;
+  }
+  .settings-back svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Beim Zurückwischen liegt die Übersicht sichtbar unter der Unterseite */
+  #page-einstellungen.swiping .settings-layout { overflow-x: clip; }
+  #page-einstellungen.swiping .settings-nav { display: flex; position: absolute; inset: 0 0 auto 0; opacity: 0.55; pointer-events: none; }
+  #page-einstellungen.swiping .settings-detail {
+    position: relative;
+    z-index: 1;
+    background: var(--bg);
+    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.25);
+    will-change: transform;
+  }
+}

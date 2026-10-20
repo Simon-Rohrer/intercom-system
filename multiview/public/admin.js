@@ -261,6 +261,7 @@ function renderServices() {
 }
 
 function showPage() {
+  const previousPage = page
   let [requested, sub] = location.hash.replace(/^#\/?/, '').split('/')
   // Layouts sind eine Unterseite der Multiviews (die alte Adresse #/layouts geht weiter)
   if (requested === 'multiviews' && sub === 'layouts') requested = 'layouts'
@@ -276,6 +277,7 @@ function showPage() {
       else a.removeAttribute('aria-current')
     })
   }
+  if (page === 'einstellungen') showSettingsView(sub, previousPage)
   const navPage = page === 'layouts' ? 'multiviews' : page
   document.querySelectorAll('.site-nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === navPage))
   document.body.classList.remove('nav-open')
@@ -289,6 +291,105 @@ function showPage() {
   window.scrollTo(0, 0)
 }
 window.addEventListener('hashchange', showPage)
+
+// --- Einstellungen: Übersicht und Unterseiten -----------------------------------------
+// Am Desktop stehen Leiste und Unterseite nebeneinander. Auf dem Handy ist #/einstellungen
+// die Übersicht (Liste) und #/einstellungen/atem … eine eigene Seite mit „‹ Einstellungen“.
+let settingsFromList = false // Unterseite aus der Übersicht geöffnet? Dann führt Zurück per history.back()
+
+function showSettingsView(sub, previousPage) {
+  const el = $('#page-einstellungen')
+  const view = SETTINGS_SECTIONS.includes(sub) ? 'detail' : 'list'
+  settingsFromList = view === 'detail' && previousPage === 'einstellungen' && el.dataset.view === 'list'
+  el.dataset.view = view
+}
+
+function settingsBack() {
+  if (settingsFromList) history.back()
+  else location.replace('#/einstellungen')
+}
+
+$('#settings-back').addEventListener('click', (e) => {
+  e.preventDefault()
+  settingsBack()
+})
+
+// Vom linken Rand nach rechts wischen = zurück zur Übersicht (wie auf dem iPhone). Die Unterseite
+// folgt dem Finger; losgelassen nach mehr als einem Drittel (oder mit Schwung) geht es zurück,
+// sonst federt sie an ihren Platz.
+;(() => {
+  const phone = matchMedia('(max-width: 760px)')
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)')
+  const EDGE = 28 // px vom linken Rand, in denen die Geste beginnt
+  let swipe = null
+
+  const settingsPage = () => $('#page-einstellungen')
+  const detail = () => $('#page-einstellungen .settings-detail')
+
+  function reset() {
+    const d = detail()
+    d.style.transition = ''
+    d.style.transform = ''
+    settingsPage().classList.remove('swiping')
+    swipe = null
+  }
+
+  document.addEventListener('touchstart', (e) => {
+    const el = settingsPage()
+    if (!phone.matches || el.hidden || el.dataset.view !== 'detail' || e.touches.length !== 1) return
+    const t = e.touches[0]
+    if (t.clientX > EDGE) return
+    swipe = { x: t.clientX, y: t.clientY, dx: 0, t: e.timeStamp, active: false, lastX: t.clientX, lastT: e.timeStamp, v: 0 }
+  }, { passive: true })
+
+  document.addEventListener('touchmove', (e) => {
+    if (!swipe) return
+    const t = e.touches[0]
+    const dx = t.clientX - swipe.x
+    const dy = t.clientY - swipe.y
+    if (!swipe.active) {
+      // Eher senkrecht: normal scrollen lassen
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { swipe = null; return }
+      if (dx < 8) return
+      swipe.active = true
+      settingsPage().classList.add('swiping')
+    }
+    e.preventDefault()
+    swipe.dx = Math.max(0, dx)
+    const dt = e.timeStamp - swipe.lastT
+    if (dt > 0) swipe.v = (t.clientX - swipe.lastX) / dt // px pro ms
+    swipe.lastX = t.clientX
+    swipe.lastT = e.timeStamp
+    detail().style.transform = `translateX(${swipe.dx}px)`
+  }, { passive: false })
+
+  function end() {
+    if (!swipe) return
+    if (!swipe.active) { swipe = null; return }
+    const d = detail()
+    const width = d.getBoundingClientRect().width || window.innerWidth
+    const goBack = swipe.dx > width / 3 || (swipe.v > 0.5 && swipe.dx > 40)
+    if (reduceMotion.matches) {
+      reset()
+      if (goBack) settingsBack()
+      return
+    }
+    d.style.transition = 'transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)'
+    d.style.transform = goBack ? `translateX(${width}px)` : 'translateX(0)'
+    const done = () => {
+      d.removeEventListener('transitionend', done)
+      clearTimeout(timer)
+      reset()
+      if (goBack) settingsBack()
+    }
+    const timer = setTimeout(done, 300) // falls transitionend ausbleibt
+    d.addEventListener('transitionend', done)
+    swipe.active = false
+  }
+  document.addEventListener('touchend', end)
+  // Übernimmt das System die Geste (z. B. Safari „Zurück“), sauber zurücksetzen
+  document.addEventListener('touchcancel', () => swipe?.active && reset())
+})()
 
 function renderAll() {
   if (!config) return
@@ -3243,9 +3344,13 @@ function renderStatusStrip() {
     churchtools: ct.state === 'unconfigured' ? 'off' : ct.state === 'connected' ? 'ok' : 'bad',
     raspberry: config.raspberry?.managed ? 'ok' : 'off',
   }
+  const stateText = { ok: 'Verbunden', bad: 'Getrennt', off: 'Nicht eingerichtet' }
   for (const [section, state] of Object.entries(dots)) {
     const link = document.querySelector(`[data-section-link="${section}"]`)
-    if (link) link.dataset.state = state
+    if (!link) continue
+    link.dataset.state = state
+    const text = link.querySelector('.settings-nav-state-text')
+    if (text) text.textContent = section === 'raspberry' ? { ok: 'Aktiv', off: 'Aus' }[state] : stateText[state]
   }
 }
 
