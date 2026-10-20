@@ -3200,7 +3200,7 @@ const SEARCH_ENTRIES = [
   { label: 'Nachrichten-Links (Ordner, ohne Anmeldung)', href: '#/einstellungen/zugang/nachrichten', admin: true, words: 'ordner beamer stage display bühne meldung qr helfer' },
   { label: 'Zugangsdaten der Dienste (Portainer, Router)', href: '#/einstellungen/zugang/zugangsdaten', admin: true, words: 'passwort portainer router speedport automatisch anmelden' },
   { label: 'Darstellung', open: 'appearance-dialog', words: 'hintergrund hell dunkel farbe wallpaper theme' },
-  { label: 'QR-Codes fürs Handy', open: 'qr-dialog', words: 'handy anmelden scannen' },
+  { label: 'Handy-Fernsteuerung', open: 'qr-dialog', words: 'handy anmelden scannen qr-codes qr fernsteuerung' },
 ]
 
 const searchInput = $('#side-search')
