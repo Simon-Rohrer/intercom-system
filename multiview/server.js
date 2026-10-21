@@ -2187,7 +2187,11 @@ app.get(['/api/device', '/.jms-auth/api/device'], (req, res) => {
 
 app.post(['/api/device', '/.jms-auth/api/device'], (req, res) => {
   try {
-    if (access.deviceStatus(clientIp(req), req).required) access.redeemDayCode(req.body?.code, clientIp(req), req, res)
+    // Nicht nur wenn nötig (required): Beim Rollenwechsel aus einer Admin-Sitzung heraus braucht
+    // das Gerät die Freigabe für die neue Rolle – vorher wurde der Code dann stillschweigend nicht
+    // eingelöst, und die Anmeldung fragte immer wieder nach ihm
+    const status = access.deviceStatus(clientIp(req), req)
+    if (status.required || status.grantable) access.redeemDayCode(req.body?.code, clientIp(req), req, res)
     res.json({ ok: true })
   } catch (err) {
     res.status(err.status || 400).json({ ok: false, error: err.message })
@@ -2198,7 +2202,8 @@ app.post(['/api/device', '/.jms-auth/api/device'], (req, res) => {
 app.get('/.jms-auth/code', (req, res) => {
   const next = safeNext(req.query.next)
   try {
-    if (access.deviceStatus(clientIp(req), req).required) access.redeemDayCode(req.query.c, clientIp(req), req, res)
+    const status = access.deviceStatus(clientIp(req), req)
+    if (status.required || status.grantable) access.redeemDayCode(req.query.c, clientIp(req), req, res)
     res.redirect(302, loginPath(next))
   } catch (err) {
     res.redirect(302, `${loginPath(next)}&code=${err.status === 429 ? 'gesperrt' : 'falsch'}`)

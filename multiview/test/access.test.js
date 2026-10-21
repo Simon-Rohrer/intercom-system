@@ -207,6 +207,23 @@ test('Admin-Einstieg braucht PIN und keinen Tagescode', async () => {
   await assert.rejects(access.login({ name: 'Admin', roleId: 'admin', pin: '000000' }, request(), response(), { pinChecked: true }), /PIN falsch/)
 })
 
+test('Rollenwechsel aus der Admin-Sitzung: Tagescode schaltet das Gerät frei', async () => {
+  const { access } = await setup()
+  access.setGateway({ enabled: true })
+  const admin = await loginAs(access, 'admin')
+  // Die Admin-Sitzung braucht keinen Code – das Gerät hat aber noch keine Freigabe
+  const status = access.deviceStatus(CLIENT, request(admin))
+  assert.equal(status.required, false)
+  assert.equal(status.grantable, true)
+  await assert.rejects(loginAs(access, 'video', admin), /Tagescode/)
+  const res = response()
+  access.redeemDayCode(access.dayCode().code, CLIENT, request(admin), res)
+  const withGrant = { ...admin, ...res.cookies }
+  assert.equal(access.deviceStatus(CLIENT, request(withGrant)).grantable, false)
+  const video = await loginAs(access, 'video', withGrant)
+  assert.equal(access.userOf(request(video)).roleId, 'video')
+})
+
 test('IP-Ausnahmen können nicht mehr angelegt werden', async () => {
   const { access } = await setup()
   assert.throws(() => access.setGateway({ exempt: [{ network: '192.168.0.161', label: 'Raspberry' }] }), /IP-Ausnahmen/)

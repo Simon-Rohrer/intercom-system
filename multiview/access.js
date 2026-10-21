@@ -955,6 +955,9 @@ function createAccess({
     const grant = deviceGrant(req)
     return {
       required, approved: !required || Boolean(grant), hasGrant: Boolean(grant),
+      // Kann das Gerät freigeschaltet werden? Auch in einer Admin-Sitzung (die selbst keinen Code
+      // braucht): Wechselt man zu einer Rolle, braucht das Gerät die Freigabe doch
+      grantable: gatewayActive() && !machine && !grant,
       generation: grant?.gen ?? null, expiresAt: grant?.expiresAt ?? (session?.admin ? session.expiresAt : machine?.expiresAt ?? null),
     }
   }

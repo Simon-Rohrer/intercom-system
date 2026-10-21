@@ -79,6 +79,7 @@ const ssoInfo = getJson('/api/sso')
 // trotzdem. Den begonnenen Rollenwechsel halten wir beim Code-Schritt fest.
 let pendingLogin = null
 let codeStepReady = false
+let loginStepReady = false
 
 async function pullFromCentral() {
   if (params.has('wechseln')) return false
@@ -181,7 +182,10 @@ function showCodeStep(message = '') {
     }
     $('#code-note').hidden = true
     stopScan()
-    showLoginStep()
+    // Kam der Code-Schritt aus einem abgeschickten Rollenwechsel: gleich damit weiter
+    const resume = Boolean(pendingLogin)
+    await showLoginStep()
+    if (resume && $('#role').value) $('#login-form').requestSubmit()
   }
   setupScanner((code) => {
     input.value = code
@@ -350,6 +354,15 @@ async function showLoginStep() {
 
   const pending = pendingLogin
   pendingLogin = null
+  // Zweiter Aufruf (nach dem Tagescode): Formular steht schon, nur die Eingaben zurückholen –
+  // sonst hinge jeder Knopf doppelt am Formular und die Rolle würde zweimal angemeldet
+  if (loginStepReady) {
+    if (pending?.name) $('#name').value = pending.name
+    if (pending?.roleId && [...$('#role').options].some((option) => option.value === pending.roleId)) $('#role').value = pending.roleId
+    $('#role').dispatchEvent(new Event('change'))
+    return
+  }
+  loginStepReady = true
   const lastRole = adminOnly ? 'admin' : pending?.roleId || remembered('role')
   $('#role').innerHTML = adminOnly ? '<option value="admin" selected>Admin (mit PIN)</option>' : [
     `<option value="" disabled ${lastRole ? '' : 'selected'}>Rolle wählen …</option>`,
