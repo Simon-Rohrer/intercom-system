@@ -197,9 +197,13 @@ def boot_time():
         return time.time() - float(fh.read().split()[0])
 
 
-def result(ok, name, info="", warn=False):
-    """warn=True: ein Problem ist eine Warnung (z. B. Speicher fast voll), kein Ausfall."""
-    return {"ok": ok, "name": name, "info": info, "warn": warn}
+def result(ok, name, info="", warn=False, quiet=False):
+    """warn=True: ein Problem ist eine Warnung (z. B. Speicher fast voll), kein Ausfall.
+    quiet=True: nur ein Hinweis in /status, keine Telegram-Meldung (unwichtige Hintergrund-Aufgaben)."""
+    item = {"ok": ok, "name": name, "info": info, "warn": warn}
+    if quiet:
+        item["quiet"] = True
+    return item
 
 
 # Ist eine Warnung aktiv, gilt sie erst 3 Prozentpunkte unter der Grenze als behoben –
@@ -536,10 +540,11 @@ def check_units(cfg, unknown):
         if unit in covered or unit in ignore or unit.split(".")[0] in ignore:
             continue
         _, props = unit_props(unit)
-        # Hintergrund-Aufgaben von Ubuntu sind nur ein Hinweis, kein Ausfall
+        # Hintergrund-Aufgaben von Ubuntu laufen nach Zeitplan immer wieder an und scheitern oft nur
+        # kurz (kein Internet, Server im Internet überlastet) – nur Hinweis in /status, keine Meldung
         minor = unit_base(unit) in UNIT_HINTS
         results[f"failed:{unit}"] = result(False, unit_label(unit, props.get("Description", "")),
-                                           f"fehlgeschlagen\n{failure_reason(unit, props)}", warn=minor)
+                                           f"fehlgeschlagen\n{failure_reason(unit, props)}", warn=minor, quiet=minor)
     return results
 
 
@@ -735,7 +740,8 @@ def render_status(cfg, state, now):
     at = state.get("last_at")
     failing = [k for k, item in last.items() if not item["ok"]]
     alerted = [k for k in failing if checks.get(k, {}).get("alerted")]
-    watching = [k for k in failing if k not in alerted]
+    hints = [k for k in failing if k not in alerted and last[k].get("quiet")]
+    watching = [k for k in failing if k not in alerted and k not in hints]
     errors = [k for k in alerted if not last[k].get("warn")]
     warnings = [k for k in alerted if last[k].get("warn")]
 
@@ -750,7 +756,8 @@ def render_status(cfg, state, now):
     elif watching:
         lines.append(f"🟡 <b>Alles läuft</b> – {len(watching)} Auffälligkeit{'en' if len(watching) > 1 else ''} wird beobachtet")
     else:
-        lines.append("🟢 <b>Alles in Ordnung</b>")
+        lines.append("🟢 <b>Alles in Ordnung</b>"
+                     + (f" – {len(hints)} Hinweis{'e' if len(hints) > 1 else ''}" if hints else ""))
     lines.append(f"Server läuft seit {fmt_duration(time.time() - boot_time())}")
     if not last:
         lines.append("\nNoch keine Prüfrunde gelaufen.")
@@ -770,6 +777,8 @@ def render_status(cfg, state, now):
                 icon = "🟢"
             elif entry and entry.get("alerted"):
                 icon = "⚠️" if item.get("warn") else "🔴"
+            elif item.get("quiet"):
+                icon = "ℹ️"
             else:
                 icon = "🟡"
             info = item["info"].replace("\n", " · ")[:160]
@@ -1002,7 +1011,7 @@ def evaluate(cfg, state, results, unknown, now):
         entry["info"] = item["info"]
         entry["warn"] = item.get("warn", False)
         needed = internet_fail_after if key == "internet" else fail_after
-        if not entry["alerted"] and entry["fails"] >= needed:
+        if not entry["alerted"] and entry["fails"] >= needed and not item.get("quiet"):
             entry["alerted"] = True
             if entry["warn"]:
                 queue(state, f"⚠️ {title(key, item['name'])} – Warnung\nseit {fmt_time(entry['down_since'], now)}"
