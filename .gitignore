@@ -22,3 +22,6 @@ app/data/
 .cache/
 tmp/
 __pycache__/
+
+# Sicherungskopien direkt auf dem Server (enthalten u. a. access-secret.json) – nie ins Repository
+backups/
