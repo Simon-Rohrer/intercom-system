@@ -588,6 +588,7 @@ function renderOutputs() {
           (o) => `<article class="output-card" data-id="${esc(o.id)}">
           <div class="output-preview">
             <iframe src="${esc(outputUrl(o, true))}" allow="microphone; camera; fullscreen; autoplay; speaker-selection; clipboard-write" title="${esc(o.name)}"></iframe>
+            <button class="output-preview-hit" type="button" data-action="select" aria-label="${esc(o.name)} auswählen"></button>
           </div>
           <div class="output-body">
             <button class="output-select" type="button" data-action="select">

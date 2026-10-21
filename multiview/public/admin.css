@@ -2336,3 +2336,9 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 #yt-status { display: flex; flex-direction: column; gap: 4px; }
 .yt-summary { margin-top: 6px; line-height: 1.5; }
 @media (max-width: 760px) { .yt-form { grid-template-columns: 1fr; } }
+
+/* Multiviews: Klick auf die Vorschau wählt den Multiview aus. Ist er ausgewählt, bleibt die
+   Vorschau bedienbar (z. B. die Kesher-Kachel) – dann liegt keine Klickfläche mehr darüber. */
+.output-preview-hit { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.output-card.selected .output-preview-hit { display: none; }
+.output-preview-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
