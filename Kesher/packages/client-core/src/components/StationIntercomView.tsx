@@ -2812,9 +2812,11 @@ export function StationIntercomView({
               <div className="station-live-role">{stationRoleLabel}</div>
               <div className="station-live-label">{stationLiveLabel}</div>
             </div>
-            {liveBadge}
+            {/* Eingebettet: Rolle steht schon links, Verbindungsprobleme zeigt das Banner oben */}
+            {embedMode ? null : liveBadge}
           </div>
-          {micStats}
+          {/* Ein Spiegel hat kein eigenes Mikrofon – die Anzeige bliebe immer leer */}
+          {embedMode ? null : micStats}
           {lowPowerMode ? (
             <LowPowerModeBadge className="station-low-power-badge" />
           ) : null}

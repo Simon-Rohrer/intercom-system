@@ -158,7 +158,7 @@ export function SimpleIntercomView({
           <strong>Einfach</strong>
           <span>{simplePptTargetLabel || "Keine Party Line"}</span>
         </div>
-        {liveBadge}
+        {resolveEmbedMode(window.location.search) ? null : liveBadge}
         {lowPowerMode ? <LowPowerModeBadge /> : null}
         {/* Eingebettet (Kesher-Kachel in JMS Control): ein Spiegel – ohne Abmelden */}
         {resolveEmbedMode(window.location.search) ? null : (
