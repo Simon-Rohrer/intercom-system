@@ -361,10 +361,13 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     // identity is checked (see below) – it may belong to another identity.
     // Opened to remote-control a Raspberry Pi: always the station selection.
     if (resolveRaspberryRemoteLogin(window.location.search)) return null;
+    // Kesher-Kachel (Spiegel): nie eine gespeicherte Sitzung übernehmen – sie gehört evtl. einer
+    // anderen Kachel im selben Tab
+    if (urlRequestsMirror(window.location.search)) return null;
     return centralLoginAvailable() ? null : t;
   });
   const restoreStoredMatrixOnInitialBootstrapRef = useRef(
-    sessionStorage.getItem(tokenStorageKey) !== null,
+    sessionStorage.getItem(tokenStorageKey) !== null && !urlRequestsMirror(window.location.search),
   );
   const [appData, setAppData] = useState<Bootstrap | null>(null);
   const [publicData, setPublicData] = useState<PublicBootstrap | null>(null);
@@ -444,7 +447,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       // Keep this tab's Kesher session only if it was opened for the same
       // central identity; otherwise sign it out (frees the role) and log in
       // again as whoever is signed in centrally now.
-      const storedToken = sessionStorage.getItem(tokenStorageKey);
+      // Spiegel: die Ablage gehört evtl. einer anderen Kachel – weder übernehmen noch abmelden
+      const storedToken = urlRequestsMirror(window.location.search) ? null : sessionStorage.getItem(tokenStorageKey);
       const keepToken =
         resolveStoredTokenRestore({
           storedToken,

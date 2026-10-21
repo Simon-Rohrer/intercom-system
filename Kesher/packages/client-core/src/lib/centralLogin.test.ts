@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { centralIdentityKey, centralSessionLogin, fetchCentralIdentity, redirectToCentralLoginOnUnauthorized, resolveStoredTokenRestore } from "./centralLogin";
+import { centralIdentityKey, centralSessionLogin, fetchCentralIdentity, redirectToCentralLoginOnUnauthorized, resolveStoredTokenRestore, storeSessionToken } from "./centralLogin";
+import { tokenStorageKey } from "../app/settings";
 import { ApiError, getGlobalApiBaseUrl } from "../api";
 import { resolveAutoLoginConfiguration } from "./autoLogin";
 
@@ -165,5 +166,23 @@ describe("resolveStoredTokenRestore", () => {
         raspberryRemoteLogin: true,
       }),
     ).toBe("none");
+  });
+});
+
+describe("Kesher-Kachel (Spiegel) im selben Tab wie andere Kacheln", () => {
+  afterEach(() => {
+    window.history.replaceState(null, "", "/");
+    sessionStorage.clear();
+  });
+
+  it("legt ihre Sitzung nicht in der gemeinsamen Ablage ab", () => {
+    window.history.replaceState(null, "", "/?autoLogin=1&secondary=1&roleId=licht&username=Multiview&embed=1");
+    storeSessionToken("mirror-token", { name: "Simon", roleId: "admin", admin: true, sessionId: "s", version: "v", expiresAt: Date.now() + 60_000 });
+    expect(sessionStorage.getItem(tokenStorageKey)).toBeNull();
+  });
+
+  it("normale Sitzungen werden weiter gemerkt", () => {
+    storeSessionToken("own-token", null);
+    expect(sessionStorage.getItem(tokenStorageKey)).toBe("own-token");
   });
 });

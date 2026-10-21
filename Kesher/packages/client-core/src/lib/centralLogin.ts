@@ -1,6 +1,7 @@
 import { getGlobalApiBaseUrl, isUnauthorizedError } from "../api";
 import { tokenStorageKey } from "../app/settings";
 import type { LoginSuccess } from "../types";
+import { urlRequestsMirror } from "./autoLogin";
 
 /**
  * Central login of the JMS server (served by the Multiview, routed by Caddy
@@ -33,6 +34,10 @@ export function centralIdentityKey(identity: CentralIdentity | null): string {
  * centrally as admin.
  */
 export function storeSessionToken(token: string, identity: CentralIdentity | null): void {
+  // Kesher-Kacheln in JMS Control teilen sich im Tab dieselbe Ablage (gleiche Adresse): Ein
+  // Spiegel merkt sich seine Sitzung nicht – sonst übernähme die nächste Kachel sie (andere
+  // Rolle) oder sie gälte beim Neuladen als Admin-Sitzung der angemeldeten Person
+  if (urlRequestsMirror(window.location.search)) return;
   sessionStorage.setItem(tokenStorageKey, token);
   sessionStorage.setItem(sessionIdentityStorageKey, centralIdentityKey(identity));
 }
