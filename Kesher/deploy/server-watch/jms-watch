@@ -324,10 +324,179 @@ def check_containers(cfg, unknown):
     return results
 
 
-def last_log_lines(unit):
-    _, out, _ = run(["journalctl", "-u", unit, "-n", "3", "-o", "cat", "--no-pager"], timeout=10)
-    lines = [l.strip() for l in out.splitlines() if l.strip()]
-    return " | ".join(lines)[-300:]
+# Verständliche Namen für Dienste; was hier fehlt, heißt wie die Beschreibung der Unit
+UNIT_LABELS = {
+    "docker": "Docker (startet alle Container)",
+    "containerd": "containerd (Unterbau von Docker)",
+    "caddy": "Caddy (Webserver, HTTPS)",
+    "tailscaled": "Tailscale (Fernzugriff)",
+    "companion": "Companion (Stream Deck)",
+    "multiview": "JMS Control (Multiview)",
+    "kesher-chat-kiosk": "Chat-Bildschirm am Server",
+    "jms-backup-cloud": "Wöchentliche Sicherung",
+    "jms-backup": "Wöchentliche Sicherung",
+    "jms-watch-bot": "Telegram-Bot (/status)",
+    "ssh": "SSH-Zugang",
+    "systemd-timesyncd": "Uhrzeit-Abgleich",
+    "systemd-resolved": "Namensauflösung (DNS)",
+    "NetworkManager": "Netzwerk",
+    "systemd-networkd": "Netzwerk",
+    "fwupd-refresh": "Firmware-Updates suchen",
+    "fwupd": "Firmware-Updates",
+    "apt-daily": "Ubuntu-Updates suchen",
+    "apt-daily-upgrade": "Ubuntu-Updates einspielen",
+    "unattended-upgrades": "Automatische Sicherheits-Updates",
+    "motd-news": "Ubuntu-Neuigkeiten für die Anmeldung",
+    "man-db": "Handbuch-Verzeichnis aktualisieren",
+    "update-notifier-download": "Update-Hinweise laden",
+    "snapd": "Snap-Pakete",
+    "logrotate": "Protokolle aufräumen",
+    "e2scrub_all": "Dateisystem prüfen",
+    "fstrim": "SSD aufräumen (TRIM)",
+}
+
+# Hintergrund-Aufgaben von Ubuntu: laufen nach Zeitplan, holen meist etwas aus dem Internet
+# und versuchen es beim nächsten Mal von selbst wieder. Für JMS unwichtig → nur Hinweis (⚠️).
+UNIT_HINTS = {
+    "fwupd-refresh": "Sucht regelmäßig nach neuen Firmware-Versionen für die Hardware des Servers (BIOS, SSD …). "
+                     "Für JMS nicht wichtig, läuft beim nächsten Mal von selbst wieder.",
+    "apt-daily": "Lädt die Liste der Ubuntu-Updates. Für JMS nicht wichtig, läuft beim nächsten Mal von selbst wieder.",
+    "apt-daily-upgrade": "Spielt Sicherheits-Updates ein. Klappt es dauerhaft nicht, bleiben Updates liegen.",
+    "motd-news": "Lädt Ubuntu-Neuigkeiten für die Anmeldung im Terminal. Unwichtig.",
+    "man-db": "Baut das Verzeichnis der Handbuchseiten neu. Unwichtig.",
+    "update-notifier-download": "Lädt Update-Hinweise. Unwichtig.",
+    "logrotate": "Räumt alte Protokolle auf. Klappt es dauerhaft nicht, wächst die Festplatte langsam voll.",
+    "e2scrub_all": "Prüft das Dateisystem auf Fehler. Unwichtig, solange es nicht dauerhaft fehlschlägt.",
+    "fstrim": "Räumt die SSD auf. Unwichtig, solange es nicht dauerhaft fehlschlägt.",
+}
+
+# Bekannte Fehlermeldungen → was das auf Deutsch heißt (erste passende gewinnt)
+REASON_PATTERNS = [
+    (r"could not resolve|name resolution|resolve host|name or service not known|NXDOMAIN",
+     "Server konnte die Internet-Adresse nicht auflösen – kein Internet oder DNS gestört"),
+    (r"network is unreachable|no route to host|failed to connect to|couldn't connect",
+     "Keine Verbindung ins Internet bzw. zum Gegenüber"),
+    (r"timed? ?out|timeout|zeitüberschreitung", "Zeitüberschreitung – Gegenstelle hat nicht rechtzeitig geantwortet"),
+    (r"connection refused", "Verbindung abgelehnt – das Gegenüber läuft nicht"),
+    (r"certificate|ssl|tls", "Problem mit einem Zertifikat (HTTPS)"),
+    (r"no space left|disk full|ENOSPC", "Festplatte voll"),
+    (r"permission denied|operation not permitted|EACCES", "Keine Berechtigung"),
+    (r"no such file|not found|ENOENT", "Datei oder Programm nicht gefunden"),
+    (r"address already in use|EADDRINUSE", "Port ist schon von einem anderen Programm belegt"),
+    (r"out of memory|cannot allocate memory|oom", "Arbeitsspeicher voll"),
+    (r"\b(429|too many requests|rate limit|server limit)\b", "Gegenstelle hat zu viele Anfragen abgelehnt (später erneut)"),
+    (r"\b(5\d\d)\b.*(error|fehler)|server error|service unavailable|bad gateway",
+     "Fehler auf der Gegenseite (Server im Internet gestört)"),
+    (r"dpkg|apt.*lock|could not get lock", "Paketverwaltung war gerade von einem anderen Vorgang belegt"),
+]
+
+RESULT_TEXT = {
+    "exit-code": "Programm hat sich mit Fehler beendet",
+    "signal": "Programm wurde abgebrochen (abgestürzt oder beendet)",
+    "core-dump": "Programm ist abgestürzt",
+    "timeout": "Programm hat zu lange gebraucht und wurde abgebrochen",
+    "watchdog": "Programm hing und wurde abgebrochen",
+    "oom-kill": "Arbeitsspeicher voll – das System hat das Programm beendet",
+    "start-limit-hit": "zu oft hintereinander abgestürzt – systemd versucht es nicht mehr",
+    "resources": "konnte nicht starten (fehlende Datei, Rechte oder Speicher)",
+    "protocol": "Programm hat sich beim Start nicht richtig gemeldet",
+    "exec-condition": "Startbedingung nicht erfüllt",
+}
+
+
+def unit_base(unit):
+    return unit[:-8] if unit.endswith(".service") else unit
+
+
+def unit_label(unit, description=""):
+    base = unit_base(unit)
+    label = UNIT_LABELS.get(base)
+    if not label:
+        # Beschreibung der Unit ist meist verständlicher als der technische Name
+        desc = description.strip()
+        label = desc if desc and desc.lower() != base.lower() else base
+    return f"{label} ({base})" if label != base else base
+
+
+# Zeilen von systemd selbst („Main process exited …“, „Failed with result …“) sagen nichts über
+# den Grund – gesucht sind die Ausgaben des Programms
+SYSTEMD_NOISE = re.compile(
+    r"^(Main process exited|Failed with result|Failed to start|Started |Starting |Stopped |Stopping |"
+    r"Deactivated successfully|Consumed |Scheduled restart job|Start request repeated|"
+    r"Unit entered failed state|.*\.service: )", re.I)
+
+
+def unit_logs(unit, invocation=""):
+    """Letzte eigene Meldungen des Programms (ohne die Standardzeilen von systemd)."""
+    cmd = ["journalctl", "-o", "json", "-n", "40", "--no-pager"]
+    cmd += [f"_SYSTEMD_INVOCATION_ID={invocation}"] if invocation else ["-u", unit]
+    _, out, _ = run(cmd, timeout=10)
+    if invocation and not out.strip():
+        _, out, _ = run(["journalctl", "-o", "json", "-n", "40", "--no-pager", "-u", unit], timeout=10)
+    lines = []
+    for raw in out.splitlines():
+        try:
+            entry = json.loads(raw)
+        except ValueError:
+            continue
+        msg = entry.get("MESSAGE")
+        if isinstance(msg, list):  # Binärdaten
+            continue
+        msg = (msg or "").strip()
+        if not msg or entry.get("SYSLOG_IDENTIFIER") == "systemd" or SYSTEMD_NOISE.match(msg):
+            continue
+        prio = entry.get("PRIORITY", "6")
+        lines.append((int(prio) if str(prio).isdigit() else 6, msg))
+    # Fehler und Warnungen bevorzugen, sonst die letzten Zeilen
+    errors = [m for p, m in lines if p <= 4]
+    picked = (errors or [m for _, m in lines])[-2:]
+    return [re.sub(r"\s+", " ", m)[:200] for m in picked]
+
+
+def explain(texts):
+    joined = " ".join(texts)
+    for pattern, meaning in REASON_PATTERNS:
+        if re.search(pattern, joined, re.I):
+            return meaning
+    return ""
+
+
+def failure_reason(unit, props):
+    """Warum eine Unit nicht läuft – auf Deutsch, dazu die Originalmeldung des Programms."""
+    logs = unit_logs(unit, props.get("InvocationID", ""))
+    res = props.get("Result", "")
+    status = props.get("ExecMainStatus", "")
+    parts = []
+    meaning = explain(logs)
+    if meaning:
+        parts.append(f"Grund: {meaning}")
+    elif res in RESULT_TEXT:
+        text = RESULT_TEXT[res]
+        if res == "exit-code" and status not in ("", "0"):
+            text += f" (Fehlercode {status})"
+        parts.append(f"Grund: {text}")
+    elif props.get("ActiveState") == "inactive":
+        parts.append("Grund: Dienst ist gestoppt (von Hand oder nicht gestartet)")
+    if logs:
+        parts.append("Meldung: " + " | ".join(logs))
+    elif not meaning:
+        parts.append("Das Programm hat keine eigene Meldung hinterlassen")
+    if res in RESULT_TEXT and meaning:
+        parts.append(RESULT_TEXT[res] + (f" (Fehlercode {status})" if res == "exit-code" and status not in ("", "0") else ""))
+    hint = UNIT_HINTS.get(unit_base(unit))
+    if hint:
+        parts.append(f"ℹ️ {hint}")
+    # Eine Zeile je Angabe; in /status werden daraus „ · “
+    return "\n".join(parts)
+
+
+UNIT_PROPS = "LoadState,ActiveState,SubState,UnitFileState,ActiveEnterTimestampMonotonic,MemoryCurrent," \
+             "Description,Result,ExecMainStatus,InvocationID"
+
+
+def unit_props(unit):
+    code, out, _ = run(["systemctl", "show", unit, "-p", UNIT_PROPS], timeout=10)
+    return code, dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
 
 
 def check_units(cfg, unknown):
@@ -338,10 +507,7 @@ def check_units(cfg, unknown):
     for unit in words(cfg["WATCH_UNITS"]):
         full = unit if "." in unit else unit + ".service"
         covered.add(full)
-        code, out, _ = run(["systemctl", "show", full, "-p",
-                            "LoadState,ActiveState,SubState,UnitFileState,ActiveEnterTimestampMonotonic,MemoryCurrent"],
-                           timeout=10)
-        props = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
+        code, props = unit_props(full)
         # Nur Dienste, die es gibt und die beim Start an sein sollen
         if code != 0 or props.get("LoadState") != "loaded" or props.get("UnitFileState") not in ("enabled", "enabled-runtime"):
             continue
@@ -354,24 +520,26 @@ def check_units(cfg, unknown):
             mem = props.get("MemoryCurrent", "")
             if mem.isdigit() and int(mem) < 2**60:
                 parts.append(f"{int(mem) / 1e6:.0f} MB RAM")
-            results[key] = result(True, unit, " · ".join(parts))
+            results[key] = result(True, unit_label(full, props.get("Description", "")), " · ".join(parts))
         else:
-            info = f"{props.get('ActiveState')}/{props.get('SubState')}"
-            logs = last_log_lines(full)
-            results[key] = result(False, unit, info + (f" – {logs}" if logs else ""))
+            state = {"failed": "fehlgeschlagen", "inactive": "gestoppt"}.get(props.get("ActiveState"), props.get("ActiveState"))
+            results[key] = result(False, unit_label(full, props.get("Description", "")),
+                                  f"{state}\n{failure_reason(full, props)}")
     code, out, _ = run(["systemctl", "list-units", "--state=failed", "--plain", "--no-legend", "--no-pager"], timeout=10)
     if code != 0:
         unknown.add("failed:")
     for line in out.splitlines():
-        parts = line.split()
+        parts = line.replace("●", " ").split()
         if not parts:
             continue
-        unit = parts[0].lstrip("●")
+        unit = parts[0]
         if unit in covered or unit in ignore or unit.split(".")[0] in ignore:
             continue
-        logs = last_log_lines(unit)
-        name = unit[:-8] if unit.endswith(".service") else unit
-        results[f"failed:{unit}"] = result(False, name, "fehlgeschlagen" + (f" – {logs}" if logs else ""))
+        _, props = unit_props(unit)
+        # Hintergrund-Aufgaben von Ubuntu sind nur ein Hinweis, kein Ausfall
+        minor = unit_base(unit) in UNIT_HINTS
+        results[f"failed:{unit}"] = result(False, unit_label(unit, props.get("Description", "")),
+                                           f"fehlgeschlagen\n{failure_reason(unit, props)}", warn=minor)
     return results
 
 
@@ -604,7 +772,7 @@ def render_status(cfg, state, now):
                 icon = "⚠️" if item.get("warn") else "🔴"
             else:
                 icon = "🟡"
-            info = item["info"][:160]
+            info = item["info"].replace("\n", " · ")[:160]
             if entry and not item["ok"]:
                 info += f" · seit {fmt_time(entry['down_since'], now)}"
             lines.append(f"{icon} <b>{esc(item['name'])}</b> – {esc(info)}" if info else f"{icon} <b>{esc(item['name'])}</b>")
