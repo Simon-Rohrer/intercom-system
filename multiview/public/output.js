@@ -6,6 +6,7 @@ import { createComposer } from './chat-compose.js'
 import { createAgendaView } from './agenda.js'
 import { createUplinkView, mergeUplink } from './uplink.js'
 import { createYouTubeView } from './youtube.js'
+import { createSlideshowView } from './slideshow.js'
 import { createProPresenterView, createPlaylistView, createPreacherView } from './propresenter.js'
 import { createStageView } from './stage.js'
 import {
@@ -80,6 +81,8 @@ const uplinkViews = new Set() // Upload-Kacheln (FRITZ!Box)
 let uplink = null
 const youtubeViews = new Set() // Kacheln „YouTube Live“
 let youtube = null
+const slideshowViews = new Set() // Kacheln „Diashow“
+let slideshow = null
 let churchtools = { state: 'connecting', events: [] }
 const frames = new Map() // Kesher-Intercom: tile.id → { wrap, url }
 
@@ -106,6 +109,10 @@ const ws = connect(
     } else if (msg.type === 'churchtools') {
       churchtools = msg
       for (const view of agendaViews) view.update(churchtools)
+      for (const view of slideshowViews) view.update({ churchtools })
+    } else if (msg.type === 'slideshow') {
+      slideshow = msg
+      for (const view of slideshowViews) view.update({ slideshow })
     } else if (msg.type === 'youtube') {
       youtube = msg
       for (const view of youtubeViews) view.update(youtube)
@@ -174,6 +181,7 @@ function render() {
   agendaViews.clear()
   uplinkViews.clear()
   youtubeViews.clear()
+  slideshowViews.clear()
   stageViews.clear()
 
   syncFrames(layout)
@@ -275,6 +283,12 @@ function buildTile(tile, layout, usedStreams) {
     // Die Kesher-Seite selbst liegt in der Ebene #frames (syncFrames) über dieser Kachel
     media.classList.add('chat')
     media.append(placeholder(`Kesher-Intercom\n${kesherUrl(tile) ? 'wird geladen …' : kesherMissing(tile)}`))
+  } else if (tile.kind === 'slideshow') {
+    const view = createSlideshowView(tile.slideshow)
+    view.update({ slideshow, churchtools })
+    slideshowViews.add(view)
+    media.classList.add('chat')
+    media.append(view.el)
   } else if (tile.kind === 'youtube') {
     const view = createYouTubeView(tile.youtube)
     view.update(youtube)

@@ -3,6 +3,7 @@ import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } fr
 import { createChatView, chatOptions } from './chat.js'
 import { createUplinkView, mergeUplink, uplinkOptions } from './uplink.js'
 import { createYouTubeView, youtubeOptions } from './youtube.js'
+import { createSlideshowView, slideshowOptions } from './slideshow.js'
 import { createAgendaView, agendaOptions, AGENDA_ACCENTS, AGENDA_CCLI_COLORS } from './agenda.js'
 import {
   createProPresenterView, createPlaylistView, createPreacherView, ppOptions, playlistOptions, preacherOptions,
@@ -26,7 +27,7 @@ const CLIENT_ID = uid('c')
 const PAGES = ['uebersicht', 'multiviews', 'layouts', 'einstellungen', 'services']
 const ADMIN_PAGES = ['einstellungen', 'services']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
-const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'youtube', 'eingaenge', 'raspberry', 'companion', 'bildschirme', 'geraete', 'zugang']
+const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'youtube', 'eingaenge', 'raspberry', 'companion', 'bildschirme', 'diashow', 'geraete', 'zugang']
 // Unterseiten von Benutzer & Rechte: #/einstellungen/zugang/rollen …
 const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste', 'zugangsdaten', 'nachrichten']
 const SOURCE_TYPES = {
@@ -94,6 +95,8 @@ const uplinkViews = new Set()
 let uplink = null
 const youtubeViews = new Set()
 let youtube = null
+const slideshowViews = new Set()
+let slideshowData = null
 let templates = [] // gespeicherte Layouts { id, name, savedAt, owner, tiles, own }
 
 // Wer ist angemeldet? Wird in start() geladen, bevor die Verbindung zum Server aufgeht.
@@ -130,6 +133,13 @@ function onMessage(msg) {
     }
     const hint = inspector.querySelector('[data-uplink-state]')
     if (hint) hint.textContent = uplinkStateText()
+  } else if (msg.type === 'slideshow') {
+    slideshowData = msg
+    for (const view of slideshowViews) {
+      if (view.el.isConnected) view.update({ slideshow: slideshowData })
+      else slideshowViews.delete(view)
+    }
+    renderSlideshowSettings()
   } else if (msg.type === 'youtube') {
     youtube = msg
     for (const view of youtubeViews) {
@@ -146,6 +156,7 @@ function onMessage(msg) {
       if (view.el.isConnected) view.update(churchtools)
       else agendaViews.delete(view)
     }
+    for (const view of slideshowViews) if (view.el.isConnected) view.update({ churchtools })
   } else if (msg.type === 'chat') {
     chat = msg
     renderChatStatus()
@@ -1548,6 +1559,8 @@ function syncTileMedia(el, tile) {
         ? JSON.stringify(['uplink', uplinkOptions(tile.uplink)])
       : tile.kind === 'youtube'
         ? JSON.stringify(['youtube', youtubeOptions(tile.youtube)])
+      : tile.kind === 'slideshow'
+        ? JSON.stringify(['slideshow', slideshowOptions(tile.slideshow)])
       : tile.kind === 'churchtools'
         ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctSongInfo, tile.ctCcli, tile.ctDate, tile.ctMode, agendaOptions(tile.agendaLook)])
         : livePreview && source
@@ -1559,7 +1572,7 @@ function syncTileMedia(el, tile) {
   el.dataset.mediaKey = key
   el.querySelector('.etile-media')?.remove()
   el.classList.toggle('live', Boolean(key))
-  el.classList.toggle('chat-tile', ['chat', 'churchtools', 'uplink', 'youtube'].includes(tile.kind))
+  el.classList.toggle('chat-tile', ['chat', 'churchtools', 'uplink', 'youtube', 'slideshow'].includes(tile.kind))
   if (!key) return
   const media = document.createElement('div')
   media.className = 'etile-media'
@@ -1583,6 +1596,11 @@ function syncTileMedia(el, tile) {
     const view = createYouTubeView(tile.youtube)
     view.update(youtube)
     youtubeViews.add(view)
+    media.append(view.el)
+  } else if (tile.kind === 'slideshow') {
+    const view = createSlideshowView(tile.slideshow)
+    view.update({ slideshow: slideshowData, churchtools })
+    slideshowViews.add(view)
     media.append(view.el)
   } else if (tile.kind === 'kesher') {
     // Echtes Kesher als Spiegel der Rolle – im Editor nur zum Ansehen, Ziehen und Größe bleiben möglich
@@ -1647,6 +1665,11 @@ function describeTile(tile) {
     return { title: 'ChurchTools-Ablauf', sub: [day, tile.ctFilter].filter(Boolean).join(' · ') }
   }
   if (tile.kind === 'uplink') return { title: 'Upload / Stream', sub: 'Internet-Upload (FRITZ!Box)' }
+  if (tile.kind === 'slideshow') {
+    const o = slideshowOptions(tile.slideshow)
+    const parts = [o.images && 'Bilder', o.pp && 'ProPresenter', o.events && 'Veranstaltungen'].filter(Boolean)
+    return { title: 'Diashow', sub: `${parts.join(', ') || 'keine Quelle'} · alle ${o.seconds} s` }
+  }
   if (tile.kind === 'youtube') return { title: 'YouTube Live', sub: youtubeOptions(tile.youtube).chat ? 'Zuschauer, Stream und Chat' : 'Zuschauer und Stream' }
   if (tile.kind === 'propresenter') return { title: 'ProPresenter', sub: 'Folien' }
   if (tile.kind === 'playlist') return { title: 'Playlist', sub: 'ProPresenter' }
@@ -2226,6 +2249,34 @@ function uplinkSection(tile) {
     }`
 }
 
+/** Kachel „Diashow“ */
+function slideshowSection(tile) {
+  const o = slideshowOptions(tile.slideshow)
+  const count = slideshowData ? `${slideshowData.images.filter((i) => i.enabled).length} Bilder, ${slideshowData.pp.slides.length} ProPresenter-Folien` : '…'
+  return `
+    <label class="field"><span>Jede Folie <output>${o.seconds} s</output></span>
+      <input type="range" min="3" max="60" step="1" data-ss="seconds" value="${o.seconds}"></label>
+    <label class="field"><span>Bilder einpassen</span>
+      <select data-ss="fit"><option value="contain" ${o.fit === 'contain' ? 'selected' : ''}>Ganz zeigen (schwarze Ränder möglich)</option><option value="cover" ${o.fit === 'cover' ? 'selected' : ''}>Füllen (Ränder werden abgeschnitten)</option></select></label>
+    <label class="check"><input type="checkbox" data-ss="images" ${o.images ? 'checked' : ''}> Hochgeladene Bilder</label>
+    <label class="check"><input type="checkbox" data-ss="pp" ${o.pp ? 'checked' : ''}> Folien aus ProPresenter</label>
+    <label class="check"><input type="checkbox" data-ss="events" ${o.events ? 'checked' : ''}> Nächste Veranstaltungen (ChurchTools)</label>
+    ${
+      o.events
+        ? `<div class="meter-settings">
+      <h4>Veranstaltungen</h4>
+      <label class="field"><span>Überschrift</span><input type="text" data-ss="eventTitle" value="${esc(o.eventTitle)}" maxlength="60"></label>
+      <div class="row">
+        <label class="field"><span>Tage voraus</span><input type="number" min="1" max="28" data-ss="eventDays" value="${o.eventDays}"></label>
+        <label class="field"><span>Höchstens</span><input type="number" min="1" max="10" data-ss="eventMax" value="${o.eventMax}"></label>
+      </div>
+      <label class="field"><span>Nur diese (Name oder Kalender enthält, mit Komma getrennt; leer = alle)</span><input type="text" data-ss="eventFilter" value="${esc(o.eventFilter)}" placeholder="z. B. Gottesdienst, Jugend"></label>
+    </div>`
+        : ''
+    }
+    <p class="muted small">Gerade dabei: ${esc(count)}. Bilder und Playlist verwaltest du unter <a href="#/einstellungen/diashow">Einstellungen → Diashow</a>.</p>`
+}
+
 /** Kachel „YouTube Live“ */
 function youtubeSection(tile) {
   const o = youtubeOptions(tile.youtube)
@@ -2362,6 +2413,7 @@ function tileInspector(tile, layout) {
         <option value="churchtools" ${kind === 'churchtools' ? 'selected' : ''}>ChurchTools-Ablauf</option>
         <option value="uplink" ${kind === 'uplink' ? 'selected' : ''}>Upload / Stream (Internet)</option>
         <option value="youtube" ${kind === 'youtube' ? 'selected' : ''}>YouTube Live (Zuschauer, Stream, Chat)</option>
+        <option value="slideshow" ${kind === 'slideshow' ? 'selected' : ''}>Diashow (Bilder, ProPresenter, Veranstaltungen)</option>
         <option value="propresenter" ${kind === 'propresenter' ? 'selected' : ''}>ProPresenter (Folien / Hintergründe)</option>
         <option value="playlist" ${kind === 'playlist' ? 'selected' : ''}>ProPresenter-Playlist</option>
         <option value="preacher" ${kind === 'preacher' ? 'selected' : ''}>ProPresenter-Prediger (Folien steuern)</option>
@@ -2403,6 +2455,7 @@ function tileInspector(tile, layout) {
     }
     ${kind === 'uplink' ? uplinkSection(tile) : ''}
     ${kind === 'youtube' ? youtubeSection(tile) : ''}
+    ${kind === 'slideshow' ? slideshowSection(tile) : ''}
     ${kind === 'chat' ? chatSection(tile) : ''}
     ${kind === 'kesher' ? kesherSection(tile) : ''}
     ${kind === 'audio' ? bankSection(tile) : ''}
@@ -2449,6 +2502,20 @@ function onInspectorField(e) {
     }
     tile.stage = o
     renderCanvas()
+    changed()
+    return
+  }
+
+  if (el.dataset.ss) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const key = el.dataset.ss
+    const value = el.type === 'checkbox' ? el.checked : el.type === 'range' || el.type === 'number' ? Number(el.value) : el.value
+    tile.slideshow = { ...slideshowOptions(tile.slideshow), [key]: value }
+    const out = el.closest('label').querySelector('output')
+    if (out) out.textContent = `${value} s`
+    renderCanvas()
+    if (el.type === 'checkbox') renderInspector()
     changed()
     return
   }
@@ -2878,6 +2945,144 @@ function localDay() {
 // ---------------------------------------------------------------------------
 // Einstellungen: ChurchTools
 // ---------------------------------------------------------------------------
+
+// --- Diashow: Bilder hochladen und verwalten, ProPresenter-Playlist -----------------------------
+
+let slideshowListKey = ''
+
+async function slideshowRequest(method, url, body, headers = { 'Content-Type': 'application/json' }) {
+  const res = await fetch(url, { method, headers, body: body instanceof Blob || body == null ? body : JSON.stringify(body) }).catch(() => null)
+  const data = await res?.json().catch(() => null)
+  if (!res?.ok || !data?.ok) throw new Error(data?.error || (res ? `HTTP ${res.status}` : 'Server nicht erreichbar'))
+  return data
+}
+
+function renderSlideshowSettings() {
+  const list = $('#ss-list')
+  if (!list || !slideshowData) return
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' })
+  const key = JSON.stringify(slideshowData.images)
+  // Nicht neu aufbauen, während jemand im Titel tippt
+  if (key !== slideshowListKey && !(list.contains(document.activeElement) && document.activeElement.type === 'text')) {
+    slideshowListKey = key
+    list.innerHTML = slideshowData.images.length
+      ? slideshowData.images
+          .map((image, index) => {
+            const waiting = image.from && image.from > today
+            const over = image.to && image.to < today
+            const status = !image.enabled ? 'aus' : over ? 'abgelaufen' : waiting ? `ab ${new Date(`${image.from}T12:00:00Z`).toLocaleDateString('de-DE', { timeZone: 'UTC' })}` : 'läuft'
+            return `<li class="ss-item ${image.enabled && !over && !waiting ? 'on' : 'off'}" data-id="${esc(image.id)}">
+          <img src="${esc(image.url)}" alt="" loading="lazy">
+          <div class="ss-item-fields">
+            <input type="text" data-ss-field="title" value="${esc(image.title)}" placeholder="Titel (nur für dich)" maxlength="80" aria-label="Titel">
+            <div class="ss-item-dates">
+              <label class="field"><span>Zeigen ab</span><input type="date" data-ss-field="from" value="${esc(image.from)}"></label>
+              <label class="field"><span>bis einschließlich</span><input type="date" data-ss-field="to" value="${esc(image.to)}"></label>
+            </div>
+          </div>
+          <div class="ss-item-actions">
+            <span class="pill ${status === 'läuft' ? 'ok' : ''}">${esc(status)}</span>
+            <label class="switch"><input type="checkbox" data-ss-field="enabled" ${image.enabled ? 'checked' : ''}><span class="switch-track" aria-hidden="true"></span><span class="sr-only">Zeigen</span></label>
+            <div class="btn-row">
+              <button class="icon-btn" type="button" data-ss-move="-1" ${index === 0 ? 'disabled' : ''} aria-label="Nach vorne">↑</button>
+              <button class="icon-btn" type="button" data-ss-move="1" ${index === slideshowData.images.length - 1 ? 'disabled' : ''} aria-label="Nach hinten">↓</button>
+              <button class="icon-btn danger" type="button" data-ss-delete aria-label="Löschen">${trashIcon}</button>
+            </div>
+          </div>
+        </li>`
+          })
+          .join('')
+      : '<li class="muted">Noch keine Bilder.</li>'
+  }
+  const pp = slideshowData.pp
+  const input = $('#ss-pp-playlist')
+  if (document.activeElement !== input) input.value = pp.playlist || ''
+  const at = pp.at ? new Date(pp.at).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }) : ''
+  $('#ss-pp-state').innerHTML =
+    pp.state === 'off'
+      ? 'Aus – keine Folien aus ProPresenter.'
+      : `${pp.state === 'ok' ? '<span style="color:var(--green)">●</span>' : '<span style="color:var(--amber)">●</span>'} ${pp.slides.length} Folien${at ? ` · Stand ${esc(at)}` : ''}${pp.error ? ` · ${esc(pp.error)}` : ''}`
+  $('#ss-pp-refresh').hidden = pp.state === 'off'
+  $('#ss-pp-thumbs').innerHTML = pp.slides.slice(0, 24).map((slide) => `<img src="${esc(slide.url)}" alt="" title="${esc(slide.name)}" loading="lazy">`).join('')
+}
+
+async function uploadSlides(files) {
+  const error = $('#ss-error')
+  error.textContent = ''
+  const list = [...files].filter((f) => f.type.startsWith('image/'))
+  for (const [i, file] of list.entries()) {
+    error.textContent = `Lade hoch … ${i + 1} von ${list.length}`
+    const title = file.name.replace(/\.[^.]+$/, '').slice(0, 80)
+    try {
+      await slideshowRequest('POST', `/api/slideshow/images?title=${encodeURIComponent(title)}`, file, { 'Content-Type': file.type || 'application/octet-stream' })
+    } catch (err) {
+      error.textContent = `${file.name}: ${err.message}`
+      return
+    }
+  }
+  error.textContent = ''
+  if (list.length) toast(`${list.length} Bild${list.length > 1 ? 'er' : ''} hochgeladen`)
+}
+
+$('#ss-file').addEventListener('change', (e) => {
+  uploadSlides(e.target.files)
+  e.target.value = ''
+})
+const ssDrop = $('#ss-drop')
+for (const type of ['dragenter', 'dragover']) ssDrop.addEventListener(type, (e) => (e.preventDefault(), ssDrop.classList.add('over')))
+for (const type of ['dragleave', 'drop']) ssDrop.addEventListener(type, () => ssDrop.classList.remove('over'))
+ssDrop.addEventListener('drop', (e) => {
+  e.preventDefault()
+  uploadSlides(e.dataTransfer.files)
+})
+
+$('#ss-list').addEventListener('change', async (e) => {
+  const field = e.target.dataset.ssField
+  const id = e.target.closest('[data-id]')?.dataset.id
+  if (!field || !id) return
+  try {
+    await slideshowRequest('PATCH', `/api/slideshow/images/${encodeURIComponent(id)}`, { [field]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })
+  } catch (err) {
+    $('#ss-error').textContent = err.message
+    slideshowListKey = ''
+    renderSlideshowSettings()
+  }
+})
+
+$('#ss-list').addEventListener('click', async (e) => {
+  const item = e.target.closest('[data-id]')
+  if (!item) return
+  const id = item.dataset.id
+  try {
+    if (e.target.closest('[data-ss-delete]')) {
+      if (!confirm('Bild aus der Diashow löschen?')) return
+      await slideshowRequest('DELETE', `/api/slideshow/images/${encodeURIComponent(id)}`)
+    }
+    const move = e.target.closest('[data-ss-move]')
+    if (move) {
+      const ids = slideshowData.images.map((i) => i.id)
+      const from = ids.indexOf(id)
+      const to = from + Number(move.dataset.ssMove)
+      if (to < 0 || to >= ids.length) return
+      ;[ids[from], ids[to]] = [ids[to], ids[from]]
+      await slideshowRequest('PUT', '/api/slideshow/order', { ids })
+    }
+  } catch (err) {
+    $('#ss-error').textContent = err.message
+  }
+})
+
+$('#ss-pp-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  $('#ss-pp-state').textContent = 'Hole Folien aus ProPresenter …'
+  await slideshowRequest('PUT', '/api/slideshow/propresenter', { playlist: $('#ss-pp-playlist').value.trim() }).catch((err) => ($('#ss-error').textContent = err.message))
+  renderSlideshowSettings()
+})
+$('#ss-pp-refresh').addEventListener('click', async () => {
+  $('#ss-pp-state').textContent = 'Hole Folien aus ProPresenter …'
+  await slideshowRequest('POST', '/api/slideshow/propresenter/refresh').catch((err) => ($('#ss-error').textContent = err.message))
+  renderSlideshowSettings()
+})
 
 // --- YouTube (API-Schlüssel, ohne Google-Anmeldung) --------------------------------------------
 

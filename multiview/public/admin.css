@@ -2342,3 +2342,40 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 .output-preview-hit { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .output-card.selected .output-preview-hit { display: none; }
 .output-preview-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Einstellungen → Diashow */
+.ss-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 22px 16px;
+  margin-bottom: 8px;
+  border: 2px dashed var(--line-strong);
+  border-radius: 14px;
+  text-align: center;
+  cursor: pointer;
+}
+.ss-drop:hover, .ss-drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.ss-drop b { font-size: 15px; }
+.ss-drop .muted { font-size: 12.5px; }
+.ss-list { list-style: none; margin: 8px 0 18px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.ss-item { display: grid; grid-template-columns: 160px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 10px; border-radius: 12px; background: var(--surface-2); }
+.ss-item.off img { opacity: 0.45; }
+.ss-item img { width: 160px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; background: #000; display: block; }
+.ss-item-fields { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ss-item-fields input[type="text"] { font-weight: 600; }
+.ss-item-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ss-item-dates .field { font-size: 12px; }
+.ss-item-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.ss-item-actions .btn-row { gap: 4px; flex-wrap: nowrap; }
+.ss-item-actions .icon-btn { width: 32px; height: 32px; }
+.ss-pp-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+.ss-pp-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
+.ss-pp-thumbs img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; background: #000; }
+@media (max-width: 760px) {
+  .ss-item { grid-template-columns: 1fr; }
+  .ss-item img { width: 100%; }
+  .ss-item-actions { flex-direction: row; align-items: center; justify-content: space-between; }
+  .ss-pp-form { grid-template-columns: 1fr; }
+}

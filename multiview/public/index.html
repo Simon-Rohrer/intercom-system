@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="agenda.css">
   <link rel="stylesheet" href="uplink.css">
   <link rel="stylesheet" href="youtube.css">
+  <link rel="stylesheet" href="slideshow.css">
   <link rel="stylesheet" href="propresenter.css">
   <link rel="stylesheet" href="stage.css">
 </head>
@@ -226,6 +227,7 @@
                 <a href="#/einstellungen/raspberry" data-section-link="raspberry"><span class="app-icon red"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg></span><span class="settings-nav-label">Raspberry Pis</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 <a href="#/einstellungen/companion" data-section-link="companion"><span class="app-icon gray"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg></span><span class="settings-nav-label">Companion</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 <a href="#/einstellungen/bildschirme" data-section-link="bildschirme"><span class="app-icon teal"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="12" height="9" rx="1.5"/><rect x="10" y="9" width="12" height="9" rx="1.5"/></svg></span><span class="settings-nav-label">Bildschirme am Server</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+                <a href="#/einstellungen/diashow" data-section-link="diashow"><span class="app-icon orange"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/></svg></span><span class="settings-nav-label">Diashow</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
               </div>
               <div class="settings-nav-group" data-admin>
                 <h2 class="settings-nav-title">Zugang</h2>
@@ -317,6 +319,35 @@
               </div>
               <div id="access-sessions"></div>
             </div>
+            <div class="card" id="set-diashow" data-section="diashow">
+              <div class="card-head">
+                <div>
+                  <h2>Diashow</h2>
+                  <p class="muted">Für die Kachel <b>Diashow</b>, z. B. auf dem Bildschirm in der Empfangshalle. Sie zeigt nacheinander die Bilder hier, die Folien einer ProPresenter-Playlist und – in der Kachel einstellbar – die nächsten Veranstaltungen aus ChurchTools. Änderungen erscheinen sofort auf allen Bildschirmen.</p>
+                </div>
+              </div>
+              <label class="ss-drop" id="ss-drop">
+                <input type="file" id="ss-file" accept="image/jpeg,image/png,image/webp,image/gif" multiple hidden>
+                <b>Bilder hochladen</b>
+                <span class="muted">Hierher ziehen oder antippen · JPG, PNG, WebP · am besten 1920 × 1080</span>
+              </label>
+              <p class="form-error" id="ss-error" role="alert"></p>
+              <ul class="ss-list" id="ss-list"></ul>
+              <div class="meter-settings ss-pp">
+                <h4>ProPresenter</h4>
+                <p class="muted small">Die Folien dieser Playlist werden auf dem Server gespeichert und alle 10 Minuten aktualisiert, solange ProPresenter läuft. Ist ProPresenter aus, laufen die zuletzt gespeicherten weiter.</p>
+                <form id="ss-pp-form" class="ss-pp-form" autocomplete="off">
+                  <label class="field"><span>Playlist in ProPresenter</span><input type="text" id="ss-pp-playlist" placeholder="z. B. Ankündigungen (leer = aus)" maxlength="80"></label>
+                  <div class="btn-row">
+                    <button class="btn primary small" type="submit">Speichern</button>
+                    <button class="btn small" type="button" id="ss-pp-refresh">Jetzt holen</button>
+                  </div>
+                </form>
+                <p class="muted small" id="ss-pp-state"></p>
+                <div class="ss-pp-thumbs" id="ss-pp-thumbs"></div>
+              </div>
+            </div>
+
             <div class="card" id="set-screens" data-section="bildschirme">
               <div class="card-head">
                 <div>
