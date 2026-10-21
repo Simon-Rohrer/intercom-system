@@ -119,6 +119,15 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
     onUpdate(snap)
   }
 
+  /** Fehler verständlich statt der HTML-Fehlerseite von ChurchTools. */
+  function httpErrorText(status, detail) {
+    if (detail) return `HTTP ${status}: ${detail}`
+    if ([502, 503, 504].includes(status))
+      return `ChurchTools ist gerade nicht erreichbar (HTTP ${status}) – Wartung oder Störung bei ChurchTools, nicht bei uns. Wird automatisch erneut versucht.`
+    if (status >= 500) return `Fehler auf dem ChurchTools-Server (HTTP ${status}) – wird automatisch erneut versucht.`
+    return `HTTP ${status}`
+  }
+
   async function request(base, pathname, { token, method = 'GET', body, headers = {} } = {}) {
     const res = await fetch(`${base}/api${pathname}`, {
       method,
@@ -139,8 +148,8 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
       data = null
     }
     if (!res.ok) {
-      const detail = data?.message || data?.errors?.[0]?.message || text.slice(0, 120)
-      throw new ChurchToolsError(`HTTP ${res.status}${detail ? `: ${detail}` : ''}`, res.status)
+      const detail = data?.message || data?.errors?.[0]?.message || (/^\s*</.test(text) ? '' : text.slice(0, 120))
+      throw new ChurchToolsError(httpErrorText(res.status, detail), res.status)
     }
     return { data, res }
   }
