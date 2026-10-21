@@ -4,6 +4,7 @@ import type { InputChannelSelection } from "../app/settings";
 import { BrandLogo } from "./BrandLogo";
 import { LowPowerModeBadge } from "./LowPowerModeBadge";
 import { AppShell, type ShellUser } from "./shell/AppShell";
+import { resolveEmbedMode } from "../lib/runtimeMode";
 
 type DirectReplyTarget = {
   userId: string;
@@ -159,6 +160,8 @@ export function SimpleIntercomView({
         </div>
         {liveBadge}
         {lowPowerMode ? <LowPowerModeBadge /> : null}
+        {/* Eingebettet (Kesher-Kachel in JMS Control): ein Spiegel – ohne Abmelden */}
+        {resolveEmbedMode(window.location.search) ? null : (
         <button
           type="button"
           className="simple-logout"
@@ -173,6 +176,7 @@ export function SimpleIntercomView({
           </svg>
           <span>Abmelden</span>
         </button>
+        )}
       </header>
       )}
       <section className="simple-controls">

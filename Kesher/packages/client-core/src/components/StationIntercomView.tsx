@@ -2818,6 +2818,8 @@ export function StationIntercomView({
           {lowPowerMode ? (
             <LowPowerModeBadge className="station-low-power-badge" />
           ) : null}
+          {/* Eingebettet (Kesher-Kachel in JMS Control): ein Spiegel – ohne Einstellungen und Abmelden */}
+          {embedMode ? null : (
           <div className="station-top-actions">
             <button
               type="button"
@@ -2842,6 +2844,7 @@ export function StationIntercomView({
               </span>
             </button>
           </div>
+          )}
         </div>
         )}
 
