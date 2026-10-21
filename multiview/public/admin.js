@@ -541,49 +541,50 @@ const previewScaler =
     ? new ResizeObserver((entries) => entries.forEach((entry) => scalePreview(entry.target)))
     : { observe: (el) => requestAnimationFrame(() => scalePreview(el)) }
 
+// Multiviews: Karten mit Vorschau in echter Monitorgröße (verkleinert), Einstellungen des
+// gewählten Multiviews rechts – auf dem Handy als Blatt von unten
+let selectedOutputId = null
+let outputSheetOpen = false
+const phoneLayout = matchMedia('(max-width: 760px)')
+const QR_CORNERS = [['tl', 'oben links'], ['tr', 'oben rechts'], ['bl', 'unten links'], ['br', 'unten rechts']]
+const QR_SIZES = [['s', 'Klein'], ['m', 'Mittel'], ['l', 'Groß']]
+const iconFullscreen = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>'
+const iconExternal = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/></svg>'
+const iconMore = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>'
+
+function outputLayoutName(output) {
+  return config.layouts.find((l) => l.id === output.layoutId)?.name ?? null
+}
+
 function renderOutputs() {
   const grid = $('#output-cards')
   // Vorschauen (iframes) nur laden, solange die Seite Multiviews offen ist
   if (page !== 'multiviews') {
     if (outputsKey) grid.replaceChildren()
     outputsKey = ''
+    renderOutputPanel()
     return
   }
   const outputs = myOutputs()
+  if (!outputs.some((o) => o.id === selectedOutputId)) selectedOutputId = phoneLayout.matches ? null : outputs[0]?.id ?? null
   const key = outputs.map((o) => o.id).join('|')
   if (key !== outputsKey) {
     outputsKey = key
     grid.innerHTML =
       outputs
         .map(
-          (o) => `<article class="card output-card" data-id="${esc(o.id)}">
+          (o) => `<article class="output-card" data-id="${esc(o.id)}">
           <div class="output-preview">
             <iframe src="${esc(outputUrl(o, true))}" allow="microphone; camera; fullscreen; autoplay; speaker-selection; clipboard-write" title="${esc(o.name)}"></iframe>
           </div>
           <div class="output-body">
-            <div class="output-title">
-              <input type="text" class="name-input" data-o="name" aria-label="Name" ${isAdmin() ? '' : 'readonly'}>
-              <select data-o="layoutId" aria-label="Layout"></select>
-            </div>
-            <div class="output-foot">
-              <div class="btn-row">
-                <button class="btn primary" data-action="fullscreen">⛶ Vollbild</button>
-                <a class="btn" href="${esc(outputUrl(o))}" target="_blank" rel="noopener">Monitor-Ansicht ↗</a>
-                <div class="output-qr-controls">
-                  <label class="check"><input type="checkbox" data-output-dayqr="show"> QR-Code anzeigen</label>
-                  <div class="output-qr-options" hidden>
-                    <select data-output-dayqr="corner" aria-label="QR-Code-Position">
-                      <option value="br">unten rechts</option><option value="bl">unten links</option>
-                      <option value="tr">oben rechts</option><option value="tl">oben links</option>
-                    </select>
-                    <select data-output-dayqr="size" aria-label="QR-Code-Größe">
-                      <option value="s">klein</option><option value="m">mittel</option><option value="l">groß</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              ${isAdmin() ? '<button class="btn small danger" data-action="delete-output">Entfernen</button>' : ''}
-            </div>
+            <button class="output-select" type="button" data-action="select">
+              <span class="output-name"></span>
+              <span class="output-layout"></span>
+            </button>
+            <button class="icon-btn" type="button" data-action="fullscreen" aria-label="Vollbild" title="Vollbild">${iconFullscreen}</button>
+            <a class="icon-btn" href="${esc(outputUrl(o))}" target="_blank" rel="noopener" aria-label="Monitor-Ansicht in neuem Fenster" title="Monitor-Ansicht">${iconExternal}</a>
+            <button class="icon-btn" type="button" data-action="select" aria-label="Einstellungen" title="Einstellungen">${iconMore}</button>
           </div>
         </article>`,
         )
@@ -593,76 +594,199 @@ function renderOutputs() {
         : `<div class="empty-state">Für deine Rolle ist noch kein Multiview freigegeben. Der Admin legt das unter <b>Benutzer &amp; Rechte</b> fest.</div>`)
   }
   // Felder aktualisieren, ohne die Vorschauen neu zu laden
-  // Vorschau in Monitorgröße rendern und verkleinern (sonst wirkt alles zu groß)
+  // Vorschau in Monitorgröße rendern und verkleinern – sieht so aus wie am Monitor
   for (const preview of grid.querySelectorAll('.output-preview')) previewScaler.observe(preview)
   for (const card of grid.querySelectorAll('.output-card')) {
     const output = config.outputs.find((o) => o.id === card.dataset.id)
-    // Hochformat-Layout: Vorschau hochkant und mittig
+    // Format des Layouts (16:9, Hochformat, eigene Pixel): Vorschau im selben Seitenverhältnis
     const preview = card.querySelector('.output-preview')
     if (preview && setPreviewSize(preview, config.layouts.find((l) => l.id === output?.layoutId))) scalePreview(preview)
-    const name = card.querySelector('[data-o="name"]')
-    if (document.activeElement !== name) name.value = output.name
-    const select = card.querySelector('[data-o="layoutId"]')
-    const editable = canEditOutput(config, user, output.id)
-    // Nur ansehen: das laufende Layout anzeigen, nicht umschaltbar
-    select.innerHTML = editable
-      ? layoutOptions(output.layoutId)
-      : `<option>${esc(config.layouts.find((l) => l.id === output.layoutId)?.name ?? '– kein Layout –')} · nur ansehen</option>`
-    select.disabled = !editable
+    card.classList.toggle('selected', output.id === selectedOutputId && (!phoneLayout.matches || outputSheetOpen))
+    card.querySelector('.output-name').textContent = output.name
+    const layoutName = outputLayoutName(output)
+    card.querySelector('.output-layout').textContent = layoutName ? `Layout „${layoutName}“` : 'kein Layout'
     card.querySelector('iframe').title = output.name
-    const qrControls = card.querySelector('.output-qr-controls')
-    if (qrControls) {
-      const qr = output.dayQr || { show: false, corner: 'br', size: 's' }
-      qrControls.querySelector('[data-output-dayqr="show"]').checked = qr.show
-      qrControls.querySelector('.output-qr-options').hidden = !qr.show
-      for (const key of ['corner', 'size']) qrControls.querySelector(`[data-output-dayqr="${key}"]`).value = qr[key]
-    }
   }
+  renderOutputPanel()
+}
+
+function renderOutputPanel() {
+  const panel = $('#output-panel')
+  const backdrop = $('#output-backdrop')
+  const output = page === 'multiviews' ? config.outputs.find((o) => o.id === selectedOutputId) : null
+  const visible = Boolean(output) && (!phoneLayout.matches || outputSheetOpen)
+  panel.hidden = !visible
+  backdrop.hidden = !(visible && phoneLayout.matches)
+  document.body.classList.toggle('sheet-open', visible && phoneLayout.matches)
+  if (!visible) {
+    panel.dataset.id = ''
+    return
+  }
+  // Während jemand tippt nicht neu aufbauen
+  if (panel.dataset.id === output.id && panel.contains(document.activeElement) && document.activeElement.type === 'text') return
+  panel.dataset.id = output.id
+  const editable = canEditOutput(config, user, output.id)
+  const admin = isAdmin()
+  const qr = { show: false, corner: 'br', size: 's', ...output.dayQr }
+  const layoutSelect = editable
+    ? `<select data-o="layoutId">${layoutOptions(output.layoutId)}</select>`
+    : `<select disabled><option>${esc(outputLayoutName(output) ?? '– kein Layout –')} · nur ansehen</option></select>`
+  panel.innerHTML = `
+    <div class="panel-head">
+      <h3>${esc(output.name)}</h3>
+      ${phoneLayout.matches ? '<button class="btn small link" type="button" data-action="close">Fertig</button>' : ''}
+    </div>
+    <label class="field"><span>Name</span><input type="text" data-o="name" value="${esc(output.name)}" ${admin ? '' : 'readonly'}></label>
+    <label class="field"><span>Zeigt das Layout</span>${layoutSelect}</label>
+    ${output.layoutId ? '<button class="btn small link" type="button" data-action="edit-layout">Layout bearbeiten ›</button>' : ''}
+    <div class="panel-group">
+      <span class="group-title">Öffnen</span>
+      <div class="btn-pair">
+        <button class="btn primary" type="button" data-action="fullscreen">Vollbild</button>
+        <a class="btn" href="${esc(outputUrl(output))}" target="_blank" rel="noopener">Monitor-Ansicht ↗</a>
+      </div>
+      <button class="btn" type="button" data-action="copy-link">Link kopieren</button>
+    </div>
+    ${
+      admin
+        ? `<div class="qr-box">
+      <label class="switch qr-switch">
+        <span><b>QR-Code einblenden</b><small>Zum Mitsteuern mit dem Handy</small></span>
+        <input type="checkbox" data-output-dayqr="show" ${qr.show ? 'checked' : ''}>
+        <span class="switch-track" aria-hidden="true"></span>
+      </label>
+      <div class="qr-options" ${qr.show ? '' : 'hidden'}>
+        <div class="qr-option">
+          <span class="group-title">Position</span>
+          <div class="qr-corners" role="radiogroup" aria-label="Position des QR-Codes">
+            ${QR_CORNERS.map(([v, label]) => `<button type="button" role="radio" class="qr-corner ${v}" data-qr-corner="${v}" aria-checked="${qr.corner === v}" aria-label="${label}" title="${label}"></button>`).join('')}
+          </div>
+        </div>
+        <div class="qr-option grow">
+          <span class="group-title">Größe</span>
+          <div class="segmented" role="radiogroup" aria-label="Größe des QR-Codes">
+            ${QR_SIZES.map(([v, label]) => `<button type="button" role="radio" data-qr-size="${v}" aria-checked="${qr.size === v}" class="${qr.size === v ? 'active' : ''}">${label}</button>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+    <button class="btn small link danger" type="button" data-action="delete-output">Multiview entfernen</button>`
+        : ''
+    }`
+}
+
+function selectOutput(id) {
+  selectedOutputId = id
+  outputSheetOpen = true
+  renderOutputs()
+}
+
+function closeOutputPanel() {
+  outputSheetOpen = false
+  if (!phoneLayout.matches) selectedOutputId = null
+  renderOutputs()
+}
+phoneLayout.addEventListener('change', () => renderOutputs())
+
+function outputById(el) {
+  const id = el.closest('[data-id]')?.dataset.id
+  return config.outputs.find((o) => o.id === id)
+}
+
+function outputFullscreen(output) {
+  const iframe = $(`#output-cards .output-card[data-id="${CSS.escape(output.id)}"] iframe`)
+  if (!iframe) return
+  iframe.requestFullscreen().catch((err) => toast(`Vollbild nicht möglich: ${err.message}`))
+}
+
+function setDayQr(output, patch) {
+  output.dayQr = { show: false, corner: 'br', size: 's', ...output.dayQr, ...patch }
+  renderOutputPanel()
+  changed(0)
 }
 
 function onOutputField(e) {
   const el = e.target
-  const qrKey = el.dataset.outputDayqr
-  if (qrKey) {
-    if (e.type !== 'change' || !isAdmin() || !['show', 'corner', 'size'].includes(qrKey)) return
-    const output = config.outputs.find((o) => o.id === el.closest('.output-card').dataset.id)
-    output.dayQr = { show: false, corner: 'br', size: 's', ...output.dayQr, [qrKey]: qrKey === 'show' ? el.checked : el.value }
-    el.closest('.output-qr-controls').querySelector('.output-qr-options').hidden = !output.dayQr.show
-    changed(0)
-    return
+  const output = outputById(el)
+  if (!output) return
+  if (el.dataset.outputDayqr === 'show') {
+    if (e.type !== 'change' || !isAdmin()) return
+    return setDayQr(output, { show: el.checked })
   }
   const key = el.dataset.o
   if (!key) return
   if ((e.type === 'input') !== (el.type === 'text')) return
-  const output = config.outputs.find((o) => o.id === el.closest('.output-card').dataset.id)
   if (key === 'layoutId') claimLayouts(config, user)
   output[key] = el.value || null
+  if (key === 'name') {
+    $('#output-panel .panel-head h3').textContent = output.name
+    const card = $(`#output-cards .output-card[data-id="${CSS.escape(output.id)}"] .output-name`)
+    if (card) card.textContent = output.name
+  } else renderOutputs()
   renderLayoutList()
   renderScreens()
   renderCompanion()
   changed()
 }
-$('#output-cards').addEventListener('input', onOutputField)
-$('#output-cards').addEventListener('change', onOutputField)
+$('#output-panel').addEventListener('input', onOutputField)
+$('#output-panel').addEventListener('change', onOutputField)
 
 $('#output-cards').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-action]')
   if (!btn) return
-  const card = btn.closest('.output-card')
-  const output = config.outputs.find((o) => o.id === card.dataset.id)
-  if (btn.dataset.action === 'fullscreen') {
-    card.querySelector('iframe').requestFullscreen().catch((err) => toast(`Vollbild nicht möglich: ${err.message}`))
-  } else if (btn.dataset.action === 'delete-output') {
-    if (!confirm(`Multiview „${output.name}“ entfernen?`)) return
-    config.outputs = config.outputs.filter((o) => o !== output)
-    renderAll()
-    changed(0)
+  const output = outputById(btn)
+  if (!output) return
+  if (btn.dataset.action === 'fullscreen') outputFullscreen(output)
+  else if (btn.dataset.action === 'select') selectOutput(output.id)
+})
+
+$('#output-panel').addEventListener('click', async (e) => {
+  const corner = e.target.closest('[data-qr-corner]')
+  if (corner) return setDayQr(outputById(corner), { corner: corner.dataset.qrCorner })
+  const size = e.target.closest('[data-qr-size]')
+  if (size) return setDayQr(outputById(size), { size: size.dataset.qrSize })
+  const btn = e.target.closest('button[data-action]')
+  if (!btn) return
+  const output = outputById(btn)
+  if (!output) return
+  switch (btn.dataset.action) {
+    case 'close':
+      return closeOutputPanel()
+    case 'fullscreen':
+      return outputFullscreen(output)
+    case 'copy-link':
+      try {
+        await navigator.clipboard.writeText(new URL(outputUrl(output), location.href).href)
+        toast('Link kopiert.')
+      } catch {
+        toast('Kopieren nicht möglich – Link über „Monitor-Ansicht“ öffnen.')
+      }
+      return
+    case 'edit-layout':
+      layoutId = output.layoutId
+      selectedTileId = null
+      location.hash = '#/multiviews/layouts'
+      return
+    case 'delete-output':
+      if (!confirm(`Multiview „${output.name}“ entfernen?`)) return
+      config.outputs = config.outputs.filter((o) => o !== output)
+      selectedOutputId = null
+      outputSheetOpen = false
+      renderAll()
+      changed(0)
   }
+})
+$('#output-backdrop').addEventListener('click', closeOutputPanel)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && outputSheetOpen && phoneLayout.matches) closeOutputPanel()
 })
 
 $('#output-add').addEventListener('click', () => {
+  const id = uid('o')
+  selectedOutputId = id
+  outputSheetOpen = true
   config.outputs.push({
-    id: uid('o'),
+    id,
     name: `Multiview ${config.outputs.length + 1}`,
     dayQr: { show: false, corner: 'br', size: 's' },
     layoutId: config.layouts[0]?.id ?? null,
@@ -1053,24 +1177,24 @@ function currentLayout() {
 }
 
 function renderLayoutList() {
-  $('#layout-list').innerHTML =
-    myLayouts()
+  const select = $('#layout-select')
+  const layouts = myLayouts()
+  select.innerHTML =
+    layouts
       .map((l) => {
-        const usedBy = config.outputs.filter((o) => o.layoutId === l.id).length
+        const usedBy = config.outputs.filter((o) => o.layoutId === l.id).map((o) => o.name)
         const nr = config.layouts.indexOf(l) + 1
-        const tag = !canEditLayout(config, user, l) ? '🔒' : l.owner && isAdmin() ? esc(roleLabel(l.owner)) : l.shared ? 'für alle' : ''
-        return `<li data-id="${esc(l.id)}" class="${l.id === layoutId ? 'active' : ''}" title="${usedBy ? `auf ${usedBy} Multiview(s) aktiv` : ''}">
-        <span>${nr}. ${esc(l.name)}</span>
-        <span class="meta">${tag}${usedBy ? '<i class="live-dot"></i>' : ''}</span>
-      </li>`
+        const tag = !canEditLayout(config, user, l) ? ' 🔒' : l.owner && isAdmin() ? ` · ${roleLabel(l.owner)}` : l.shared ? ' · für alle' : ''
+        const live = usedBy.length ? ` · auf ${usedBy.join(', ')}` : ''
+        return `<option value="${esc(l.id)}" ${l.id === layoutId ? 'selected' : ''}>${nr}. ${esc(l.name)}${esc(tag)}${esc(live)}</option>`
       })
-      .join('') || '<li class="muted" style="cursor:default">Noch keine Layouts</li>'
+      .join('') || '<option value="">Noch keine Layouts</option>'
+  select.disabled = !layouts.length
 }
 
-$('#layout-list').addEventListener('click', (e) => {
-  const li = e.target.closest('li')
-  if (!li?.dataset.id) return
-  layoutId = li.dataset.id
+$('#layout-select').addEventListener('change', (e) => {
+  if (!e.target.value) return
+  layoutId = e.target.value
   selectedTileId = null
   renderLayoutList()
   renderCanvas()
@@ -1123,9 +1247,18 @@ function formatSavedAt(iso) {
   return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
+let showAllTemplates = false
+const TEMPLATES_SHOWN = 3
+
 function renderTemplates() {
-  $('#template-list').innerHTML = templates.length
-    ? templates
+  const sorted = [...templates].sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')))
+  const shown = showAllTemplates ? sorted : sorted.slice(0, TEMPLATES_SHOWN)
+  $('#template-count').textContent = templates.length ? `(${templates.length})` : ''
+  const more = $('#template-more')
+  more.hidden = templates.length <= TEMPLATES_SHOWN
+  more.textContent = showAllTemplates ? 'Weniger anzeigen' : `Alle ${templates.length} anzeigen`
+  $('#template-list').innerHTML = shown.length
+    ? shown
         .map((t) => {
           const owner = isAdmin() && t.owner ? ` · ${esc(roleLabel(t.owner))}` : !t.owner && !isAdmin() ? ' · vom Admin' : ''
           return `<li data-id="${esc(t.id)}">
@@ -1158,6 +1291,11 @@ function existingTemplate(name) {
   const id = name.toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)
   return templates.find((t) => t.id === id)
 }
+
+$('#template-more').addEventListener('click', () => {
+  showAllTemplates = !showAllTemplates
+  renderTemplates()
+})
 
 $('#template-save').addEventListener('click', async () => {
   const layout = currentLayout()
@@ -1510,6 +1648,8 @@ function selectTile(id) {
   selectedTileId = id
   updateCanvasOverlays()
   renderInspector()
+  // Handy: Arbeitsfläche über das Blatt mit den Kachel-Einstellungen holen
+  if (id && phoneLayout.matches) $('#canvas-frame').scrollIntoView({ block: 'start', behavior: 'smooth' })
 }
 
 function newTile(rect) {
@@ -1677,6 +1817,55 @@ function renderInspector() {
   }
   const tile = layout.tiles.find((t) => t.id === selectedTileId)
   inspector.innerHTML = tile ? tileInspector(tile, layout) : layoutInspector(layout)
+  inspector.classList.toggle('tile-mode', Boolean(tile))
+  if (tile) splitInspectorTabs()
+}
+
+const INSPECTOR_TABS = [
+  ['inhalt', 'Inhalt'],
+  ['darstellung', 'Darstellung'],
+  ['anordnung', 'Anordnung'],
+]
+let inspectorTab = 'inhalt'
+
+/** Kachel-Einstellungen in Inhalt · Darstellung · Anordnung aufteilen. */
+function splitInspectorTabs() {
+  const head = inspector.querySelector('.panel-head')
+  const arrange = inspector.querySelector('[data-pane="anordnung"]')
+  const content = document.createElement('div')
+  content.className = 'insp-pane'
+  content.dataset.pane = 'inhalt'
+  for (const node of [...inspector.childNodes]) if (node !== head && node !== arrange) content.append(node)
+  const look = document.createElement('div')
+  look.className = 'insp-pane'
+  look.dataset.pane = 'darstellung'
+  for (const box of content.querySelectorAll('.meter-settings')) {
+    const h4 = box.querySelector(':scope > h4')
+    if (h4?.textContent.trim() !== 'Darstellung') continue
+    h4.hidden = true
+    look.append(box)
+  }
+  const tabs = INSPECTOR_TABS.filter(([id]) => id !== 'darstellung' || look.childElementCount)
+  if (!tabs.some(([id]) => id === inspectorTab)) inspectorTab = 'inhalt'
+  const bar = document.createElement('div')
+  bar.className = 'segmented insp-tabs'
+  bar.setAttribute('role', 'tablist')
+  bar.innerHTML = tabs
+    .map(([id, label]) => `<button type="button" role="tab" data-insp-tab="${id}">${label}</button>`)
+    .join('')
+  inspector.append(bar, content)
+  if (look.childElementCount) inspector.append(look)
+  if (arrange) inspector.append(arrange)
+  showInspectorTab()
+}
+
+function showInspectorTab() {
+  for (const btn of inspector.querySelectorAll('[data-insp-tab]')) {
+    const on = btn.dataset.inspTab === inspectorTab
+    btn.classList.toggle('active', on)
+    btn.setAttribute('aria-selected', on)
+  }
+  for (const pane of inspector.querySelectorAll('[data-pane]')) pane.hidden = pane.dataset.pane !== inspectorTab
 }
 
 function presetIcon(rects) {
@@ -2107,7 +2296,7 @@ function tileInspector(tile, layout) {
   ].join('')
   const kind = tile.kind || 'source'
   return `
-    <div class="panel-head" style="margin:0"><h3>Kachel</h3><button class="btn small" data-action="deselect">← Layout</button></div>
+    <div class="panel-head" style="margin:0"><h3>Kachel</h3><button class="btn small${phoneLayout.matches ? ' link' : ''}" data-action="deselect">${phoneLayout.matches ? 'Fertig' : '← Layout'}</button></div>
     <label class="field"><span>Inhalt</span>
       <select data-t="kind">
         <option value="source" ${kind === 'source' ? 'selected' : ''}>Videoquelle</option>
@@ -2165,7 +2354,7 @@ function tileInspector(tile, layout) {
     ${kind === 'playlist' ? playlistSection(tile) : ''}
     ${kind === 'preacher' ? preacherSection(tile) : ''}
     ${kind === 'stage' ? stageSection(tile) : ''}
-    <hr class="divider">
+    <div class="insp-pane" data-pane="anordnung">
     <div class="row4">
       <label class="field"><span>X</span><input type="number" min="0" max="${layout.cols - 1}" data-t="x" value="${tile.x}"></label>
       <label class="field"><span>Y</span><input type="number" min="0" max="${layout.rows - 1}" data-t="y" value="${tile.y}"></label>
@@ -2177,6 +2366,7 @@ function tileInspector(tile, layout) {
       <button class="btn small" data-action="back">Nach hinten</button>
       <button class="btn small" data-action="duplicate-tile">Duplizieren</button>
       <button class="btn small danger" data-action="delete-tile">Löschen</button>
+    </div>
     </div>
   `
 }
@@ -2433,6 +2623,11 @@ function resizeGrid(layout, key, value) {
 inspector.addEventListener('click', (e) => {
   const btn = e.target.closest('button')
   if (!btn) return
+  if (btn.dataset.inspTab) {
+    inspectorTab = btn.dataset.inspTab
+    showInspectorTab()
+    return
+  }
   const layout = currentLayout()
   const tile = layout?.tiles.find((t) => t.id === selectedTileId)
 

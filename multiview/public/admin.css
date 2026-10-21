@@ -633,11 +633,6 @@ a.status-tile:hover { border-color: var(--accent-line); }
 .output-card + .output-card { margin-top: 0; }
 .output-preview { position: relative; aspect-ratio: 16 / 9; background: #000; }
 .output-preview iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-.output-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 14px; }
-.output-title { display: grid; grid-template-columns: 1fr minmax(150px, 210px); gap: 10px; }
-.output-title .name-input { font-size: 16px; font-weight: 650; }
-.output-title .name-input[readonly] { border-color: transparent; box-shadow: none; background: none; padding-left: 0; }
-.output-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* ------------------------------------------------------------------ Eingänge */
 
@@ -714,7 +709,6 @@ a.status-tile:hover { border-color: var(--accent-line); }
   gap: 20px;
   align-items: start;
 }
-.list-panel { padding: 14px; position: sticky; top: 76px; }
 .item-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .item-list li {
   padding: 8px 10px;
@@ -733,7 +727,6 @@ a.status-tile:hover { border-color: var(--accent-line); }
 .item-list li > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item-list .meta { font-size: 11.5px; opacity: 0.8; white-space: nowrap; display: inline-flex; gap: 5px; align-items: center; }
 
-.side-stack { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 .template-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .template-list li { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); }
 .template-list .name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
@@ -1067,10 +1060,8 @@ a.status-tile:hover { border-color: var(--accent-line); }
   .topbar { padding: 0 12px; }
   main { padding: 0 16px 48px; }
   .layout-editor { grid-template-columns: 1fr; }
-  .list-panel { position: static; }
   .steps, .form-grid, #ct-form, .qr-grid { grid-template-columns: 1fr; }
   .output-grid { grid-template-columns: 1fr; }
-  .output-title { grid-template-columns: 1fr; }
   .page-head { padding-top: 22px; }
   h1 { font-size: 23px; }
   .save-state { display: none; }
@@ -1283,24 +1274,6 @@ h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
 .btn.ghost, .btn.link { color: var(--accent-text); }
 .status-tile { border: 0; box-shadow: none; border-radius: 14px; background: var(--surface); }
 
-/* Layouts + Gespeichert: als eine Spalte angeheftet. Vorher waren beide Karten einzeln
-   sticky mit derselben Höhe und schoben sich beim Scrollen übereinander. */
-.side-stack {
-  position: sticky;
-  top: 76px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-height: calc(100vh - 92px);
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-.side-stack::-webkit-scrollbar { display: none; }
-.side-stack > .list-panel { position: static; }
-.side-stack > .card + .card { margin-top: 0; }
-@media (max-width: 980px) {
-  .side-stack { position: static; max-height: none; overflow: visible; }
-}
 
 /* Tages-QR-Code auf den Monitoren (Schalter in „Anmeldung für alle Dienste“) */
 
@@ -1391,7 +1364,7 @@ h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
 
 
 /* Glasflächen */
-.card, .status-tile, .glass, .sidebar, .list-panel {
+.card, .status-tile, .glass, .sidebar {
   background: var(--surface);
   border: 1px solid var(--glass-border);
   -webkit-backdrop-filter: blur(30px) saturate(160%);
@@ -1677,7 +1650,7 @@ h1, .profile-me h2, .card h2, .card-head h2 { font-family: -apple-system, BlinkM
 h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.025em; }
 
 /* Glasflächen: Lichtkante oben (Spiegelung), weicher Schatten, großer Radius */
-.card, .status-tile, .glass, .list-panel, .rm-card {
+.card, .status-tile, .glass, .rm-card {
   box-shadow: inset 0 1px 0 var(--lg-rim), inset 0 0 0 1px var(--lg-rim-soft), var(--lg-shadow);
   border-color: transparent;
 }
@@ -1946,12 +1919,6 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 .layout-size .field { flex: 1; min-width: 0; }
 .layout-size .times { padding-bottom: 12px; color: var(--muted, #8a8f98); }
 
-/* QR-Anzeige gehört zum jeweiligen Multiview; dieselben Formular- und Check-Stile. */
-.output-foot > .btn-row { align-items: center; min-width: 0; }
-.output-qr-controls, .output-qr-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
-.output-qr-controls .check { min-height: 44px; }
-.output-qr-options[hidden] { display: none; }
-.output-qr-options select { width: auto; min-height: 44px; max-width: 100%; }
 
 /* ==================================================================
    Einstellungen: Leiste mit Unterseiten (Desktop) bzw. Übersicht + eigene
@@ -2125,3 +2092,228 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
   #page-einstellungen[data-access-view="detail"] .settings-back:not(.access-back) { display: none; }
   #page-einstellungen.swiping[data-access-view="detail"] .settings-nav { display: none; }
 }
+
+/* ==================================================================
+   Multiviews: Vorschau exakt wie auf dem Monitor (eckig, echtes Format),
+   Einstellungen des gewählten Multiviews rechts bzw. als Blatt (Handy)
+   ================================================================== */
+#page-multiviews .subnav, #page-layouts .subnav {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 18px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  position: static;
+}
+#page-multiviews .subnav a, #page-layouts .subnav a {
+  min-height: 34px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--text-2);
+}
+#page-multiviews .subnav a.active, #page-layouts .subnav a.active { background: var(--surface-3); color: var(--text); font-weight: 650; }
+
+.outputs-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+.outputs-layout:has(> .output-panel[hidden]) { grid-template-columns: minmax(0, 1fr); }
+.output-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 18px; align-items: start; }
+.output-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 0 0 12px 12px;
+  background: var(--surface);
+  overflow: hidden;
+  min-width: 0;
+}
+.output-card.selected { box-shadow: 0 0 0 2px var(--accent); }
+/* Bild ohne Rundung und ohne Rahmen – genau der Monitorausschnitt */
+.output-preview { border-radius: 0; background: #000; }
+.output-body { display: flex; align-items: center; gap: 6px; padding: 8px 10px 8px 4px; }
+.output-select {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-height: 44px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.output-select:hover { background: var(--surface-2); }
+.output-name { font-size: 15px; font-weight: 650; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.output-layout { font-size: 12.5px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.output-body .icon-btn { width: 36px; height: 36px; flex: none; }
+
+.output-panel {
+  position: sticky;
+  top: 76px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+}
+.output-panel[hidden], .sheet-backdrop[hidden] { display: none; }
+.output-panel .panel-head { margin: 0; }
+.output-panel h3 { margin: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.output-panel > .btn.link { align-self: flex-start; padding: 0; height: auto; min-height: 28px; background: none; border: 0; box-shadow: none; }
+.output-panel > .btn.link.danger { color: var(--red); align-self: center; margin-top: 2px; }
+.panel-group { display: flex; flex-direction: column; gap: 8px; }
+.group-title { font-size: 11.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.btn-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.btn-pair .btn, .panel-group > .btn { justify-content: center; font-size: 13.5px; }
+
+.qr-box { display: flex; flex-direction: column; gap: 12px; padding: 12px; border-radius: 12px; background: var(--surface-2); }
+.qr-switch { justify-content: space-between; gap: 12px; font-weight: 500; }
+.qr-switch > span:first-child { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.qr-switch b { font-size: 13.5px; font-weight: 600; }
+.qr-switch small { font-size: 12px; color: var(--muted); }
+.qr-switch .switch-track { flex: none; }
+.qr-options { display: flex; align-items: flex-end; gap: 14px; }
+.qr-options[hidden] { display: none; }
+.qr-option { display: flex; flex-direction: column; gap: 6px; }
+.qr-option.grow { flex: 1; min-width: 0; }
+.qr-option .segmented { display: flex; width: 100%; }
+.qr-option .segmented button { flex: 1; height: 30px; font-size: 12.5px; padding: 0 6px; }
+/* Mini-Bildschirm: die gewählte Ecke ist hell */
+.qr-corners { position: relative; width: 64px; height: 36px; flex: none; border-radius: 4px; border: 1px solid var(--line-strong); background: #000; }
+.qr-corner { position: absolute; width: 18px; height: 12px; padding: 0; border: 0; border-radius: 2px; background: var(--surface-3); cursor: pointer; }
+.qr-corner:hover { background: var(--muted); }
+.qr-corner[aria-checked="true"] { background: var(--text); }
+.qr-corner.tl { top: 3px; left: 3px; }
+.qr-corner.tr { top: 3px; right: 3px; }
+.qr-corner.bl { bottom: 3px; left: 3px; }
+.qr-corner.br { bottom: 3px; right: 3px; }
+/* Fingerfreundlich: Trefferfläche größer als die sichtbare Ecke */
+.qr-corner::before { content: ""; position: absolute; inset: -6px; }
+
+.sheet-backdrop { position: fixed; inset: 0; z-index: 80; background: rgba(0, 0, 0, 0.5); }
+
+@media (max-width: 1180px) {
+  .outputs-layout { grid-template-columns: minmax(0, 1fr) 300px; }
+  .output-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .outputs-layout, .outputs-layout:has(> .output-panel[hidden]) { grid-template-columns: minmax(0, 1fr); }
+  #page-multiviews .subnav, #page-layouts .subnav { display: flex; }
+  #page-multiviews .subnav a, #page-layouts .subnav a { flex: 1; min-height: 36px; }
+  body.sheet-open { overflow: hidden; }
+  .output-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    z-index: 81;
+    max-height: 86vh;
+    padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
+    background: linear-gradient(var(--surface), var(--surface)), var(--bg);
+    border-radius: 20px 20px 0 0;
+    border: 0;
+    box-shadow: var(--shadow-lg);
+  }
+  .output-panel::before { content: ""; align-self: center; flex: none; width: 40px; height: 5px; border-radius: 3px; background: var(--line-strong); }
+  .output-panel h3 { font-size: 18px; }
+  .output-panel .panel-head .btn.link { background: none; border: 0; box-shadow: none; color: var(--accent-text); font-size: 15px; font-weight: 600; height: 36px; }
+  .btn-pair .btn, .panel-group > .btn { height: 44px; }
+  .qr-option .segmented button { height: 36px; }
+  .qr-corners { width: 72px; height: 42px; }
+  .qr-corner { width: 22px; height: 14px; }
+}
+
+/* ==================================================================
+   Layouts: Auswahl oben links, Arbeitsfläche + Einstellungen rechts,
+   Kachel-Einstellungen in Tabs, Vorlagen eingeklappt
+   ================================================================== */
+.layout-editor { grid-template-columns: minmax(0, 1fr) 320px; }
+.editor { display: flex; flex-direction: column; gap: 12px; }
+.editor > .hint { margin: 0; }
+.layout-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.layout-picker { flex: 0 1 340px; min-width: 0; }
+.layout-picker select { width: 100%; height: 38px; font-size: 14.5px; font-weight: 650; }
+.layout-toolbar > .btn { height: 38px; }
+.toolbar-spacer { flex: 1; }
+.layout-toolbar .switch { font-size: 13.5px; }
+
+.template-panel { padding: 12px 16px; border-radius: 16px; }
+.template-panel > summary { font-size: 14px; font-weight: 600; }
+.template-panel[open] > summary { margin-bottom: 12px; }
+.template-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.template-actions .template-import { margin: 0; }
+.template-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin: 0; }
+.template-list li { border-radius: 10px; padding: 10px 12px; }
+.template-list .name { font-size: 13.5px; }
+.template-list .empty { grid-column: 1 / -1; }
+#template-more { margin-top: 10px; background: none; border: 0; box-shadow: none; padding: 0; height: auto; }
+
+/* Einstellungen rechts: Schrift passend zu den Bedienelementen */
+.inspector { gap: 12px; padding: 16px; }
+.inspector .panel-head h3, .inspector > h3:first-child { font-size: 15px; margin: 0; }
+.inspector .field { gap: 5px; font-size: 12px; }
+.inspector .field > span { font-size: 12px; font-weight: 600; }
+.inspector .field input, .inspector .field select { font-size: 13.5px; min-height: 36px; height: 36px; padding-top: 0; padding-bottom: 0; }
+.inspector .field input[type="range"] { height: auto; min-height: 0; padding: 0; }
+.inspector .check { font-size: 13.5px; gap: 8px; min-height: 30px; }
+.inspector .muted { font-size: 12.5px; line-height: 1.45; }
+.inspector .btn.small { font-size: 12.5px; }
+.inspector .meter-settings { gap: 10px; }
+.inspector .meter-settings h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+.insp-tabs { display: flex; width: 100%; }
+.insp-tabs button { flex: 1; height: 32px; font-size: 13px; padding: 0 6px; }
+.insp-pane { display: flex; flex-direction: column; gap: 12px; }
+.insp-pane[hidden] { display: none; }
+.insp-pane > .meter-settings:only-child { padding: 0; border: 0; background: none; }
+
+@media (max-width: 1180px) {
+  .layout-editor { grid-template-columns: minmax(0, 1fr) 290px; }
+}
+@media (max-width: 980px) {
+  .layout-editor { grid-template-columns: minmax(0, 1fr); }
+  .inspector { position: static; max-height: none; grid-column: auto; }
+}
+@media (max-width: 760px) {
+  .layout-picker { flex: 1 1 100%; }
+  .layout-toolbar > .btn, .layout-picker select { height: 44px; }
+  /* Gewählte Kachel: Einstellungen als Blatt von unten, die Arbeitsfläche bleibt oben sichtbar */
+  .inspector.tile-mode {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    z-index: 81;
+    max-height: 55vh;
+    background: linear-gradient(var(--surface), var(--surface)), var(--bg);
+    overflow-y: auto;
+    padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
+    border-radius: 20px 20px 0 0;
+    border: 0;
+    box-shadow: var(--shadow-lg);
+  }
+  /* Platz unter der Seite, damit die Arbeitsfläche über das Blatt scrollen kann */
+  #page-layouts:has(.inspector.tile-mode) { padding-bottom: 60vh; }
+  #canvas-frame { scroll-margin-top: 72px; }
+  .inspector.tile-mode::before { content: ""; align-self: center; flex: none; width: 40px; height: 5px; border-radius: 3px; background: var(--line-strong); }
+  .inspector.tile-mode .panel-head h3 { font-size: 17px; }
+  .inspector.tile-mode .panel-head .btn.link { background: none; border: 0; box-shadow: none; color: var(--accent-text); font-size: 15px; font-weight: 600; height: 36px; }
+  .insp-tabs button { height: 36px; }
+  .inspector .field input, .inspector .field select { height: 44px; min-height: 44px; font-size: 16px; }
+  .template-list { grid-template-columns: minmax(0, 1fr); }
+}
+.qr-box .segmented { background: var(--surface); }
+.qr-option .segmented button, .insp-tabs button { justify-content: center; }

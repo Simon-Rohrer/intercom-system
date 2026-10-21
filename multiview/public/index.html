@@ -138,7 +138,11 @@
             <a href="#/multiviews/layouts">Layouts</a>
           </nav>
 
-          <div id="output-cards" class="output-grid"></div>
+          <div class="outputs-layout">
+            <div id="output-cards" class="output-grid"></div>
+            <div id="output-backdrop" class="sheet-backdrop" hidden></div>
+            <aside id="output-panel" class="card output-panel" aria-label="Einstellungen des Multiviews" hidden></aside>
+          </div>
         </section>
 
         <!-- Eingänge -->
@@ -149,11 +153,6 @@
               <h1>Layouts</h1>
               <p class="lead">Kacheln aufziehen, verschieben und Quellen zuweisen. Änderungen sind sofort live.</p>
             </div>
-            <label class="switch">
-              <input type="checkbox" id="live-preview">
-              <span class="switch-track" aria-hidden="true"></span>
-              <span>Live-Bilder im Editor</span>
-            </label>
           </div>
 
           <nav class="subnav" aria-label="Bereiche der Multiviews">
@@ -161,29 +160,20 @@
             <a href="#/multiviews/layouts" class="active" aria-current="page">Layouts</a>
           </nav>
           <div class="layout-editor">
-            <div class="side-stack">
-              <aside class="card list-panel">
-                <div class="panel-head">
-                  <h3>Layouts</h3>
-                  <button id="layout-add" class="btn small primary">+ Neu</button>
-                </div>
-                <ul id="layout-list" class="item-list"></ul>
-              </aside>
-
-              <aside id="template-panel" class="card list-panel">
-                <div class="panel-head">
-                  <h3>Gespeichert</h3>
-                  <button id="template-save" class="btn small primary" title="Aktuelles Layout unter einem Namen speichern">Speichern</button>
-                </div>
-                <ul id="template-list" class="template-list"></ul>
-                <label class="btn small block template-import" title="Vorlage aus einer .json-Datei übernehmen">
-                  Datei importieren …
-                  <input id="template-file" type="file" accept=".json,application/json" hidden>
-                </label>
-              </aside>
-            </div>
-
             <div class="editor">
+              <div class="layout-toolbar">
+                <label class="layout-picker">
+                  <span class="sr-only">Layout auswählen</span>
+                  <select id="layout-select"></select>
+                </label>
+                <button id="layout-add" class="btn small" type="button">+ Neu</button>
+                <span class="toolbar-spacer"></span>
+                <label class="switch">
+                  <input type="checkbox" id="live-preview">
+                  <span class="switch-track" aria-hidden="true"></span>
+                  <span>Live-Bilder</span>
+                </label>
+              </div>
               <div id="readonly-note" class="notice" hidden></div>
               <div class="canvas-frame" id="canvas-frame"><div id="canvas" class="canvas"></div></div>
               <p class="hint">
@@ -191,6 +181,19 @@
                 Ecke unten rechts: Größe · <kbd>Pfeiltasten</kbd> verschieben,
                 <kbd>⇧</kbd>+Pfeile Größe · <kbd>Entf</kbd> löschen
               </p>
+
+              <details id="template-panel" class="card disclosure template-panel">
+                <summary>Gespeicherte Vorlagen <span class="muted" id="template-count"></span></summary>
+                <div class="template-actions">
+                  <button id="template-save" class="btn small primary" type="button" title="Aktuelles Layout unter einem Namen speichern">Aktuelles Layout speichern</button>
+                  <label class="btn small template-import" title="Vorlage aus einer .json-Datei übernehmen">
+                    Datei importieren …
+                    <input id="template-file" type="file" accept=".json,application/json" hidden>
+                  </label>
+                </div>
+                <ul id="template-list" class="template-list"></ul>
+                <button id="template-more" class="btn small link" type="button" hidden></button>
+              </details>
             </div>
 
             <aside id="inspector" class="card inspector"></aside>
