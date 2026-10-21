@@ -123,3 +123,26 @@ test('ChurchTools-Termine: je Termin nur der nächste, ohne interne und vergange
   assert.equal(list[0].place, 'HISplace')
   assert.equal(list[0].calendar, 'Jugend')
 })
+
+test('Beiträge: genau die von der Startseite, abgelaufene fallen weg, Reihenfolge wie dort', () => {
+  const { mapPosts, websitePostIds } = require('../slideshow')
+  const ids = websitePostIds('<a href="/beitraege/451-a">x</a><a href="/beitraege/442-b">y</a><a href="/beitraege/451-a">z</a>')
+  assert.deepEqual(ids, [451, 442])
+  const now = Date.parse('2026-10-21T12:00:00Z')
+  const post = (id, extra = {}) => ({
+    id,
+    title: `Beitrag ${id}`,
+    content: '**Wann:** Mittwoch [Link](https://x)',
+    group: { title: 'Ankündigungen' },
+    imagesMeta: [{ imageUrl: `https://jms.church.tools/images/${id}/abc`, aspectRatio: 1.4 }],
+    expirationDate: '2026-11-30T00:00:00Z',
+    ...extra,
+  })
+  const list = [post(442), post(451), post(436), post(450, { expirationDate: '2026-10-01T00:00:00Z' })]
+  const posts = mapPosts(list, { ids, now })
+  assert.deepEqual(posts.map((p) => p.id), [451, 442])
+  assert.equal(posts[0].text, 'Wann: Mittwoch Link')
+  assert.deepEqual(posts[0].images, [{ url: 'https://jms.church.tools/images/451/abc', ratio: 1.4 }])
+  // Ohne Webseite: Gruppe „Ankündigungen“, nicht abgelaufen
+  assert.deepEqual(mapPosts(list, { now }).map((p) => p.id), [451, 442, 436])
+})

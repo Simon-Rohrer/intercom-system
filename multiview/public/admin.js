@@ -2253,7 +2253,7 @@ function uplinkSection(tile) {
 function slideshowSection(tile) {
   const o = slideshowOptions(tile.slideshow)
   const count = slideshowData
-    ? `${slideshowData.website?.slides?.length || 0} Folien der Webseite, ${slideshowData.ct?.appointments?.length || 0} Termine aus ChurchTools, ${slideshowData.images.filter((i) => i.enabled).length} Bilder, ${slideshowData.pp.slides.length} ProPresenter-Folien`
+    ? `${slideshowData.website?.slides?.length || 0} Folien der Webseite, ${slideshowData.ct?.posts?.length || 0} Beiträge, ${slideshowData.ct?.appointments?.length || 0} Termine aus ChurchTools, ${slideshowData.images.filter((i) => i.enabled).length} Bilder, ${slideshowData.pp.slides.length} ProPresenter-Folien`
     : '…'
   return `
     <label class="field"><span>Jede Folie <output>${o.seconds} s</output></span>
@@ -2261,6 +2261,8 @@ function slideshowSection(tile) {
     <label class="field"><span>Bilder einpassen</span>
       <select data-ss="fit"><option value="contain" ${o.fit === 'contain' ? 'selected' : ''}>Ganz zeigen (schwarze Ränder möglich)</option><option value="cover" ${o.fit === 'cover' ? 'selected' : ''}>Füllen (Ränder werden abgeschnitten)</option></select></label>
     <label class="check"><input type="checkbox" data-ss="website" ${o.website ? 'checked' : ''}> Slider der Webseite</label>
+    <label class="check"><input type="checkbox" data-ss="posts" ${o.posts ? 'checked' : ''}> Beiträge der Webseite (Ankündigungen mit Flyer)</label>
+    ${o.posts ? `<label class="check" style="margin-left:1.6em"><input type="checkbox" data-ss="postCaption" ${o.postCaption ? 'checked' : ''}> Titel unter dem Flyer (meist steht er schon drauf)</label>` : ''}
     <label class="check"><input type="checkbox" data-ss="ct" ${o.ct ? 'checked' : ''}> Termine aus ChurchTools (je Termin eine Folie mit Bild)</label>
     ${
       o.ct
@@ -3026,7 +3028,7 @@ function renderSlideshowSettings() {
   if ($('#ss-web-thumbs')) $('#ss-web-thumbs').innerHTML = web.slides.map((slide) => `<img src="${esc(slide.url)}" alt="" title="${esc(slide.text)}" loading="lazy">`).join('')
   const ct = slideshowData.ct || { appointments: [], state: 'error' }
   if ($('#ss-ct-state'))
-    $('#ss-ct-state').innerHTML = `${dot(ct.state)} ${ct.appointments.length} Termine in den nächsten 6 Wochen, ${ct.appointments.filter((a) => a.image).length} davon mit Bild${ct.at ? ` · Stand ${esc(stamp(ct.at))}` : ''}${ct.error ? ` · ${esc(ct.error)}` : ''}`
+    $('#ss-ct-state').innerHTML = `${dot(ct.state)} ${(ct.posts || []).length} Beiträge (${esc((ct.posts || []).map((p) => p.title).join(', ') || 'keine')}) · ${ct.appointments.length} Termine in den nächsten 6 Wochen, ${ct.appointments.filter((a) => a.image).length} davon mit Bild${ct.at ? ` · Stand ${esc(stamp(ct.at))}` : ''}${ct.error ? ` · ${esc(ct.error)}` : ''}`
   const pp = slideshowData.pp
   const input = $('#ss-pp-playlist')
   if (document.activeElement !== input) input.value = pp.playlist || ''

@@ -23,6 +23,8 @@ export function slideshowOptions(o = {}) {
     eventTitle: String(o.eventTitle ?? 'Nächste Veranstaltungen').slice(0, 60),
     fit: o.fit === 'cover' ? 'cover' : 'contain',
     website: o.website !== false, // Slider der Startseite
+    posts: o.posts !== false, // Beiträge der Startseite (Ankündigungen mit Flyer)
+    postCaption: o.postCaption === true, // Titel unter dem Flyer (meist steht er schon drauf)
     ct: o.ct !== false, // Termine aus ChurchTools als eigene Folien
     ctDays: num(o.ctDays, 14, 1, 42),
     ctMax: num(o.ctMax, 12, 1, 40),
@@ -79,6 +81,11 @@ export function buildSlides(data, o, now = Date.now()) {
   const day = today()
   if (o.website)
     for (const slide of data?.slideshow?.website?.slides || []) slides.push({ key: `web:${slide.url}`, kind: 'web', url: slide.url, text: slide.text })
+  if (o.posts)
+    for (const post of data?.slideshow?.ct?.posts || []) {
+      if (post.expires && Date.parse(post.expires) <= now) continue
+      for (const image of post.images) slides.push({ key: `post:${post.id}:${image.url}`, kind: 'post', post, image })
+    }
   if (o.ct) for (const a of ctAppointments(data?.slideshow, o, now)) slides.push({ key: `ct:${a.id}:${a.start}`, kind: 'ct', appointment: a })
   if (o.images)
     for (const image of data?.slideshow?.images || []) {
@@ -126,6 +133,20 @@ function sizedImage(url, box) {
   // Auf 40 px runden: gleiche Kachelgröße = gleiche Adresse = Bild aus dem Browser-Cache
   w = Math.round((w * scale) / 40) * 40 || 40
   h = Math.round((h * scale) / 40) * 40 || 40
+  return `${url}?w=${w}&h=${h}`
+}
+
+/** Flyer ganz zeigen: Bild im Original-Seitenverhältnis so groß anfordern, wie es in die Kachel passt */
+function fittedImage(url, ratio, box) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2)
+  const bw = (box.clientWidth || 1920) * dpr
+  const bh = (box.clientHeight || 1080) * dpr
+  const r = ratio || bw / bh
+  let w = bw / bh > r ? bh * r : bw
+  let h = w / r
+  const scale = Math.min(1, 1920 / Math.max(w, h))
+  w = Math.max(40, Math.round((w * scale) / 20) * 20)
+  h = Math.max(40, Math.round((h * scale) / 20) * 20)
   return `${url}?w=${w}&h=${h}`
 }
 
@@ -190,6 +211,18 @@ export function createSlideshowView(options) {
       back.style.backgroundImage = `url("${slide.url.replace(/"/g, '%22')}")`
       node.append(back, img)
       if (slide.text) node.append(el('div', 'ss-web-text', slide.text))
+    } else if (slide.kind === 'post') {
+      // Beitrag der Webseite: Flyer ganz zeigen, dahinter unscharf, darunter der Titel
+      const { post, image } = slide
+      node = el('div', `ss-slide ss-slide-web ss-slide-post${o.postCaption ? ' with-caption' : ''}`)
+      const url = fittedImage(image.url, image.ratio, root)
+      const img = await loadImage(url)
+      const back = el('div', 'ss-web-back')
+      back.style.backgroundImage = `url("${url.replace(/"/g, '%22')}")`
+      const frame = el('div', 'ss-post-frame')
+      frame.append(img)
+      node.append(back, frame)
+      if (o.postCaption) node.append(el('div', 'ss-post-caption', post.title))
     } else if (slide.kind === 'ct') {
       const a = slide.appointment
       node = el('div', `ss-slide ss-slide-ct${a.image ? '' : ' no-image'}`)

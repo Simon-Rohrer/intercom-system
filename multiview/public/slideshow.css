@@ -120,3 +120,24 @@
 .ss-ct-title { font-size: 2.1em; font-weight: 700; line-height: 1.05; overflow-wrap: anywhere; }
 .ss-ct-sub { font-size: 1.05em; color: #e3e6ea; line-height: 1.25; }
 .ss-ct-meta { font-size: 0.85em; color: #a9b2be; }
+
+/* Beiträge der Webseite (Flyer): ganz zeigen, mit etwas Rand; Titel als Leiste unten */
+.ss-post-frame { position: absolute; inset: 3% 3%; display: grid; place-items: center; }
+.ss-slide-post.with-caption .ss-post-frame { bottom: 13%; }
+.ss-post-frame img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; box-shadow: 0 0.6em 2.4em rgba(0, 0, 0, 0.55); border-radius: 0.4%; }
+.ss-post-caption {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: 3%;
+  height: 8%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: clamp(11px, min(2.6cqw, 4.6cqh), 56px);
+  font-weight: 700;
+  line-height: 1.1;
+  text-shadow: 0 0.06em 0.3em rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+}

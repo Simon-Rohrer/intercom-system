@@ -105,6 +105,48 @@ function parseWebsiteSlides(html, pageUrl) {
   return out
 }
 
+/** Beiträge, auf die die Startseite verlinkt (/beitraege/451-…): genau die, die dort gerade stehen */
+function websitePostIds(html) {
+  const ids = []
+  for (const m of String(html).matchAll(/href="[^"]*\/beitraege\/(\d+)[^"]*"/g)) if (!ids.includes(Number(m[1]))) ids.push(Number(m[1]))
+  return ids
+}
+
+/** Markdown der Beiträge grob zu Text (für die Bildunterschrift) */
+const plainText = (md) =>
+  String(md ?? '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[*_`#>\\]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+/** Beiträge aus /posts → Folien (Flyer mit Seitenverhältnis), abgelaufene fallen weg */
+function mapPosts(list, { ids = [], group = 'Ankündigungen', now = Date.now() } = {}) {
+  const isImage = (url) => /^https:\/\/[^/]+\/images\/\d+\/[0-9a-f]+$/i.test(url || '')
+  return (Array.isArray(list) ? list : [])
+    .filter((p) => p?.id != null && !p.isBanned)
+    .filter((p) => (ids.length ? ids.includes(Number(p.id)) : String(p.group?.title || '').toLowerCase() === group.toLowerCase()))
+    .filter((p) => !p.expirationDate || Date.parse(p.expirationDate) > now)
+    .map((p) => {
+      const meta = Array.isArray(p.imagesMeta) && p.imagesMeta.length ? p.imagesMeta : (p.images || []).map((url) => ({ imageUrl: url }))
+      return {
+        id: Number(p.id),
+        title: text(p.title, 160),
+        text: plainText(p.content).slice(0, 280),
+        group: text(p.group?.title, 80),
+        expires: p.expirationDate || '',
+        images: meta
+          .filter((m) => isImage(m.imageUrl))
+          .map((m) => ({ url: m.imageUrl, ratio: Number(m.aspectRatio) > 0.2 && Number(m.aspectRatio) < 6 ? Number(m.aspectRatio) : 0 }))
+          .slice(0, 4),
+      }
+    })
+    .filter((p) => p.title && p.images.length)
+    // Reihenfolge wie auf der Webseite
+    .sort((a, b) => (ids.length ? ids.indexOf(a.id) - ids.indexOf(b.id) : b.id - a.id))
+}
+
 /** Termine aus /calendars/appointments → das, was die Diashow braucht (je Termin nur der nächste) */
 function mapAppointments(list, now = Date.now()) {
   const seen = new Set()
@@ -162,14 +204,21 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
   // Webseite und ChurchTools-Termine (zuletzt geladener Stand bleibt nach Neustart erhalten)
   let websiteUrl = typeof saved.websiteUrl === 'string' ? saved.websiteUrl : DEFAULT_WEBSITE
   let website = { slides: Array.isArray(saved.website?.slides) ? saved.website.slides : [], at: Number(saved.website?.at) || 0, state: 'cached', error: '' }
-  let ct = { appointments: Array.isArray(saved.ct?.appointments) ? saved.ct.appointments : [], at: Number(saved.ct?.at) || 0, state: 'cached', error: '' }
+  let ct = {
+    appointments: Array.isArray(saved.ct?.appointments) ? saved.ct.appointments : [],
+    posts: Array.isArray(saved.ct?.posts) ? saved.ct.posts : [],
+    at: Number(saved.ct?.at) || 0,
+    state: 'cached',
+    error: '',
+  }
+  let postIds = Array.isArray(saved.website?.postIds) ? saved.website.postIds : []
   let extTimer = null
 
   function persist() {
     const tmp = `${stateFile}.tmp`
     fs.writeFileSync(
       tmp,
-      JSON.stringify({ images, ppPlaylist, ppSlides, ppAt, websiteUrl, website: { slides: website.slides, at: website.at }, ct: { appointments: ct.appointments, at: ct.at } }, null, 2),
+      JSON.stringify({ images, ppPlaylist, ppSlides, ppAt, websiteUrl, website: { slides: website.slides, at: website.at, postIds }, ct: { appointments: ct.appointments, posts: ct.posts, at: ct.at } }, null, 2),
     )
     fs.renameSync(tmp, stateFile)
   }
@@ -187,7 +236,7 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
         slides: ppSlides.map((s) => ({ url: `/diashow/pp/${s.file}`, name: s.name })),
       },
       website: { url: websiteUrl, state: websiteUrl ? website.state : 'off', error: website.error, at: website.at, slides: websiteUrl ? website.slides : [] },
-      ct: { state: ct.state, error: ct.error, at: ct.at, appointments: ct.appointments },
+      ct: { state: ct.state, error: ct.error, at: ct.at, appointments: ct.appointments, posts: ct.posts },
     }
   }
 
@@ -330,7 +379,9 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
     try {
       const res = await fetchImpl(websiteUrl, { signal: AbortSignal.timeout(EXT_TIMEOUT_MS), headers: { Accept: 'text/html' } })
       if (!res.ok) throw new Error(`Webseite antwortet mit Fehler ${res.status}`)
-      const slides = parseWebsiteSlides(await res.text(), res.url || websiteUrl)
+      const html = await res.text()
+      postIds = websitePostIds(html)
+      const slides = parseWebsiteSlides(html, res.url || websiteUrl)
       if (!slides.length) throw new Error('Auf der Seite wurde kein Slider gefunden')
       if (JSON.stringify(slides) !== JSON.stringify(website.slides)) log(`Diashow: ${slides.length} Folien von der Webseite`)
       website = { slides, at: now(), state: 'ok', error: '' }
@@ -353,14 +404,23 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
       const query = calendars.map((c) => `calendar_ids[]=${encodeURIComponent(c.id)}`).join('&')
       const list = (await api(`/calendars/appointments?${query}&from=${from}&to=${to}`))?.data || []
       const appointments = mapAppointments(list, now())
-      ct = { appointments, at: now(), state: 'ok', error: '' }
+      // Beiträge (Ankündigungen mit Flyer): die, die auf der Startseite stehen – ohne Webseite die Gruppe „Ankündigungen“
+      let posts = ct.posts
+      try {
+        posts = mapPosts((await api('/posts?limit=100'))?.data || [], { ids: websiteUrl ? postIds : [], now: now() })
+      } catch (err) {
+        log(`Diashow: Beiträge nicht geladen: ${err.message}`)
+      }
+      ct = { appointments, posts, at: now(), state: 'ok', error: '' }
     } catch (err) {
       ct = { ...ct, state: ct.appointments.length ? 'cached' : 'error', error: err.message }
     }
   }
 
   async function refreshExternal() {
-    await Promise.all([refreshWebsite(), refreshCt()])
+    // Erst die Webseite (welche Beiträge dort stehen), dann ChurchTools
+    await refreshWebsite()
+    await refreshCt()
     changed()
   }
 
@@ -434,4 +494,4 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
   }
 }
 
-module.exports = { createSlideshow, imageType, flattenPlaylists, parseWebsiteSlides, mapAppointments }
+module.exports = { createSlideshow, imageType, flattenPlaylists, parseWebsiteSlides, mapAppointments, mapPosts, websitePostIds }
