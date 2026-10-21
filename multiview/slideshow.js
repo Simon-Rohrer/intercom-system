@@ -164,6 +164,8 @@ function mapAppointments(list, now = Date.now()) {
       place: text(base.address?.meetingAt || base.address?.name, 80),
       // Öffentliche Bildadresse von ChurchTools; die Größe hängt die Kachel an (?w=…&h=…)
       image: /^https:\/\/[^/]+\/images\/\d+\/[0-9a-f]+$/i.test(base.image?.imageUrl || '') ? base.image.imageUrl : '',
+      // Seitenverhältnis des Originals, damit Flyer ganz und unbeschnitten gezeigt werden
+      imageRatio: Number(base.image?.imageMetadata?.aspectRatio) > 0.2 && Number(base.image?.imageMetadata?.aspectRatio) < 6 ? Number(base.image.imageMetadata.aspectRatio) : 0,
     }))
     .filter((a) => a.title && Number.isFinite(Date.parse(a.start)) && Date.parse(a.end || a.start) >= now - 3600e3)
     .sort((a, b) => Date.parse(a.start) - Date.parse(b.start))

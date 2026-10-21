@@ -146,3 +146,12 @@ test('Beiträge: genau die von der Startseite, abgelaufene fallen weg, Reihenfol
   // Ohne Webseite: Gruppe „Ankündigungen“, nicht abgelaufen
   assert.deepEqual(mapPosts(list, { now }).map((p) => p.id), [451, 442, 436])
 })
+
+test('Termin-Bild: Seitenverhältnis des Originals wird übernommen', () => {
+  const { mapAppointments } = require('../slideshow')
+  const [a] = mapAppointments(
+    [{ appointment: { base: { id: 7, title: 'One Pack', image: { imageUrl: 'https://jms.church.tools/images/7/ab12', imageMetadata: { aspectRatio: 1.41452 } } }, calculated: { startDate: '2026-10-22T17:00:00Z', endDate: '2026-10-22T18:00:00Z' } } }],
+    Date.parse('2026-10-21T12:00:00Z'),
+  )
+  assert.equal(a.imageRatio, 1.41452)
+})

@@ -124,19 +124,7 @@ function whenText(a, now = new Date()) {
   return `${dayLabel(start)} · ${time(start)} Uhr`
 }
 
-/** ChurchTools liefert das Bild in jeder Größe (zugeschnitten): passend zur Kachel anfordern */
-function sizedImage(url, box) {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2)
-  let w = Math.max(160, Math.round((box.clientWidth || 1920) * dpr))
-  let h = Math.max(90, Math.round((box.clientHeight || 1080) * dpr))
-  const scale = Math.min(1, 1920 / Math.max(w, h))
-  // Auf 40 px runden: gleiche Kachelgröße = gleiche Adresse = Bild aus dem Browser-Cache
-  w = Math.round((w * scale) / 40) * 40 || 40
-  h = Math.round((h * scale) / 40) * 40 || 40
-  return `${url}?w=${w}&h=${h}`
-}
-
-/** Flyer ganz zeigen: Bild im Original-Seitenverhältnis so groß anfordern, wie es in die Kachel passt */
+/** Bild von ChurchTools im gewünschten Seitenverhältnis so groß anfordern, wie es in die Kachel passt */
 function fittedImage(url, ratio, box) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2)
   const bw = (box.clientWidth || 1920) * dpr
@@ -201,51 +189,49 @@ export function createSlideshowView(options) {
   let current = null
   let changing = false
 
-  async function render(slide) {
-    let node
-    if (slide.kind === 'web') {
-      // Banner der Webseite (sehr breit): ganz zeigen, dahinter dasselbe Bild unscharf als Fläche
-      node = el('div', 'ss-slide ss-slide-web')
-      const img = await loadImage(slide.url)
-      const back = el('div', 'ss-web-back')
-      back.style.backgroundImage = `url("${slide.url.replace(/"/g, '%22')}")`
-      node.append(back, img)
-      if (slide.text) node.append(el('div', 'ss-web-text', slide.text))
-    } else if (slide.kind === 'post') {
-      // Beitrag der Webseite: Flyer ganz zeigen, dahinter unscharf, darunter der Titel
-      const { post, image } = slide
-      node = el('div', `ss-slide ss-slide-web ss-slide-post${o.postCaption ? ' with-caption' : ''}`)
-      const url = fittedImage(image.url, image.ratio, root)
+  /**
+   * Einheitliche Bild-Folie für alle Quellen: dasselbe Bild unscharf als Hintergrund, davor das
+   * Bild ganz und mittig im immer gleichen Rahmen; wo nötig darunter eine Beschriftung im
+   * immer gleichen Stil (Datum, Titel, Ort).
+   */
+  async function cardSlide(url, caption) {
+    const node = el('div', `ss-slide ss-card${caption ? ' has-caption' : ''}`)
+    const back = el('div', 'ss-back')
+    const frame = el('div', 'ss-frame')
+    if (url) {
       const img = await loadImage(url)
-      const back = el('div', 'ss-web-back')
       back.style.backgroundImage = `url("${url.replace(/"/g, '%22')}")`
-      const frame = el('div', 'ss-post-frame')
       frame.append(img)
-      node.append(back, frame)
-      if (o.postCaption) node.append(el('div', 'ss-post-caption', post.title))
-    } else if (slide.kind === 'ct') {
-      const a = slide.appointment
-      node = el('div', `ss-slide ss-slide-ct${a.image ? '' : ' no-image'}`)
-      if (a.image) node.append(await loadImage(sizedImage(a.image, root)))
-      const info = el('div', 'ss-ct-info')
-      info.append(el('div', 'ss-ct-when', whenText(a)), el('div', 'ss-ct-title', a.title))
-      if (a.subtitle) info.append(el('div', 'ss-ct-sub', a.subtitle))
-      const meta = [a.place, a.calendar].filter(Boolean).join(' · ')
-      if (meta) info.append(el('div', 'ss-ct-meta', meta))
-      node.append(info)
-    } else if (slide.kind === 'image') {
-      node = el('div', 'ss-slide')
-      const img = new Image()
-      img.alt = ''
-      img.decoding = 'async'
-      img.src = slide.url
-      // Erst zeigen, wenn das Bild fertig geladen ist – kein halbes Bild beim Überblenden
-      await img.decode().catch(() => {})
-      node.append(img)
-    } else {
-      node = el('div', 'ss-slide ss-slide-events')
-      node.append(eventsSlide(slide.events, o))
+    } else frame.append(el('div', 'ss-blank'))
+    node.append(back, frame)
+    if (caption) {
+      const cap = el('div', 'ss-caption')
+      if (caption.when) cap.append(el('div', 'ss-cap-when', caption.when))
+      if (caption.title) cap.append(el('div', 'ss-cap-title', caption.title))
+      if (caption.meta) cap.append(el('div', 'ss-cap-meta', caption.meta))
+      node.append(cap)
     }
+    return node
+  }
+
+  async function render(slide) {
+    if (slide.kind === 'web') return cardSlide(slide.url, slide.text ? { title: slide.text } : null)
+    if (slide.kind === 'post') {
+      const { post, image } = slide
+      return cardSlide(fittedImage(image.url, image.ratio, root), o.postCaption ? { title: post.title } : null)
+    }
+    if (slide.kind === 'ct') {
+      // Termin-Bilder sind meist Fotos ohne Text: immer mit Datum, Titel und Ort darunter
+      const a = slide.appointment
+      return cardSlide(a.image ? fittedImage(a.image, a.imageRatio || 16 / 9, root) : '', {
+        when: whenText(a),
+        title: a.title,
+        meta: [a.subtitle, a.place].filter(Boolean).join(' · '),
+      })
+    }
+    if (slide.kind === 'image') return cardSlide(slide.url, null)
+    const node = el('div', 'ss-slide ss-slide-events')
+    node.append(eventsSlide(slide.events, o))
     return node
   }
 
