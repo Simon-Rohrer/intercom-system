@@ -9,7 +9,7 @@ import { createYouTubeView } from './youtube.js'
 import { createProPresenterView, createPlaylistView, createPreacherView } from './propresenter.js'
 import { createStageView } from './stage.js'
 import {
-  attachDevice, attachNetworkStream, makeVideo, makeTestPattern, mediaKey, releaseUnusedStreams, listVideoDevices,
+  attachDevice, attachNetworkStream, makeVideo, makeTestPattern, mediaKey, releaseUnusedStreams, listVideoDevices, permissionGranted,
 } from './media.js'
 
 // ?id=<ID, Name oder Nummer> wählt den Ausgang, ?embed=1 für die Vorschau auf der Webseite.
@@ -498,7 +498,12 @@ async function reportDevices() {
   // iPad/iPhone: nicht nach der Kamera fragen – dort hängen keine Capture-Karten
   if (matchMedia('(pointer: coarse)').matches) return
   try {
-    const devices = await listVideoDevices()
+    // Nur am Server selbst (Kiosk über 127.0.0.1, dort hängen die Capture-Karten) nach der Kamera
+    // fragen. Anderswo – z. B. die Monitor-Ansicht in einem Tab am Laptop – nur nachsehen, wenn sie
+    // schon erlaubt ist, sonst käme bei jedem Öffnen die Kamera-Abfrage.
+    const onServer = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(location.hostname)
+    if (!onServer && !(await permissionGranted())) return
+    const devices = await listVideoDevices({ ask: onServer })
     if (devices.length) ws.send({ type: 'devices', devices: devices.map((d) => d.label) })
   } catch {
     // Kein Gerät oder kein Zugriff
