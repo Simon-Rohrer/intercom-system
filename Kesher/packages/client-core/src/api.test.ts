@@ -355,6 +355,15 @@ describe("api helpers", () => {
     expect(data.self.id).toBe("u1");
   });
 
+  it("keeps the mirror flag of a secondary session (Kesher tile in JMS Control)", async () => {
+    server.use(
+      http.get("http://localhost/api/bootstrap", () =>
+        HttpResponse.json({ self: { id: "mv", username: "Multiview", roleId: "op" }, users: [], roles: [], rooms: [], broadcastGroups: [], secondary: true }),
+      ),
+    );
+    expect((await bootstrap("token-123")).secondary).toBe(true);
+  });
+
   it("marks unauthorized bootstrap failures for session recovery", async () => {
     server.use(
       http.get("http://localhost/api/bootstrap", () => {

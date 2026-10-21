@@ -822,6 +822,8 @@ export function useIntercomSession({
   const [presence, setPresence] = useState<Presence[]>([]);
   // Spiegel: Zustand des echten Geräts der Rolle, direkt vom Server (null = keins verbunden)
   const [mirrorPresence, setMirrorPresence] = useState<Presence | null>(null);
+  // undefined = noch keine Meldung vom Server (dann schickt ein Spiegel keine Kanalwahl)
+  const mirrorPresenceRef = useRef<Presence | null | undefined>(undefined);
   const [chatMessages, setChatMessages] = useState<
     UseIntercomSessionResult["chatMessages"]
   >([]);
@@ -2465,11 +2467,15 @@ export function useIntercomSession({
         // wait for permissions, while chat is already usable as soon as the
         // socket opens. WebSocket ordering guarantees a following chat message
         // reaches the server after this matrix update.
-        sendRoomMatrix(
-          listenRoomIdsRef.current,
-          talkRoomIdsRef.current,
-          true,
-        );
+        // Ein Spiegel nicht: Der Server leitete das an das Gerät mit Headset weiter und stellte
+        // dort beim Öffnen jedes Multiviews die Kanäle zurück.
+        if (!appDataRef.current?.secondary) {
+          sendRoomMatrix(
+            listenRoomIdsRef.current,
+            talkRoomIdsRef.current,
+            true,
+          );
+        }
         sendAudioState();
         const pc = new RTCPeerConnection({ iceServers: [] });
         pcRef.current = pc;
@@ -2656,6 +2662,7 @@ export function useIntercomSession({
 
         if (msg.type === "mirror_state") {
           const next = msg.data ? normalizePresenceList([msg.data])[0] ?? null : null;
+          mirrorPresenceRef.current = next;
           setMirrorPresence((prev) =>
             prev && next && samePresenceList([prev], [next]) ? prev : next,
           );
@@ -3511,6 +3518,14 @@ export function useIntercomSession({
       if (pendingRoomMatrixEchoKeyRef.current === syncKey) {
         pendingRoomMatrixEchoKeyRef.current = null;
         return;
+      }
+      // Spiegel: nur senden, was in der Kachel umgestellt wurde – nicht die Standardkanäle beim
+      // Öffnen (sonst stellte jeder neu geladene Multiview das Gerät mit Headset zurück) und nicht
+      // den gerade vom Gerät übernommenen Stand
+      if (appDataRef.current?.secondary) {
+        const device = mirrorPresenceRef.current;
+        if (device === undefined) return;
+        if (device && roomMatrixSyncKey(device.listenRooms, device.talkRooms) === syncKey) return;
       }
       const anchorRoomId = matrixAnchorRoomId(listenRoomIds, talkRoomIds);
       sendRoomMatrix(listenRoomIds, talkRoomIds);

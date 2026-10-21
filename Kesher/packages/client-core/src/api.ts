@@ -254,6 +254,9 @@ function normalizeBootstrap(data: unknown): Bootstrap {
     ...normalizedPublic,
     // Roles managed centrally in JMS Control (otherwise dropped here)
     ...(raw.centralRoles === true ? { centralRoles: true } : {}),
+    // Spiegel (Kesher-Kachel in JMS Control) – ohne das blieb die ganze Spiegel-Logik aus:
+    // eigene Kanalwahl statt der des Geräts mit Headset, Ton und Mikrofon am Server
+    ...(raw.secondary === true ? { secondary: true } : {}),
     self: {
       ...self,
       id: typeof self.id === "string" ? self.id : "",
