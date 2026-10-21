@@ -1,0 +1,126 @@
+/* Kachel „YouTube Live“ – gleiche Gestaltung wie die Kacheln „Upload / Stream“ und Ablauf */
+
+.youtube {
+  --yt-bg: #000000;
+  --yt-line: #2c2c2e;
+  --yt-ink: #eceff3;
+  --yt-ink-2: #a9b2be;
+  --yt-ink-3: #6c7581;
+  --yt-live: #ff3b30;
+  --yt-ok: #30d158;
+  --yt-warn: #ffb020;
+  --yt-bad: #ff5a4f;
+
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--yt-bg);
+  color: var(--yt-ink);
+  font-family: "Barlow", "Segoe UI", system-ui, sans-serif;
+  font-size: calc(clamp(10px, min(2.6cqw, 5cqh), 34px) * var(--yt-scale, 1));
+  overflow: hidden;
+  text-align: left;
+  transition: background 0.4s ease;
+}
+
+.yt-header {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  padding: 0.55em 1.1em;
+  background: #0a0a0a;
+  border-bottom: 1px solid var(--yt-line);
+  min-width: 0;
+  flex: none;
+}
+.yt-title {
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 1.25em;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.yt-pill {
+  margin-left: auto;
+  padding: 0.2em 0.7em;
+  border: 1px solid var(--yt-line);
+  border-radius: 999px;
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 0.75em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--yt-ink-2);
+  white-space: nowrap;
+}
+.youtube.live .yt-pill { background: var(--yt-live); border-color: var(--yt-live); color: #fff; animation: yt-pulse 1.6s ease-in-out infinite alternate; }
+
+.yt-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3em;
+  padding: 0.35em 0.45em 0;
+  line-height: 1;
+  min-width: 0;
+  flex: none;
+}
+.yt-value {
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-weight: 700;
+  font-size: 3.4em;
+  color: var(--yt-ok);
+  font-variant-numeric: tabular-nums;
+}
+.youtube.stale .yt-value { color: var(--yt-ink-2); }
+.yt-unit { font-size: 1.1em; color: var(--yt-ink-2); font-weight: 600; }
+.yt-runtime {
+  margin-left: auto;
+  padding-right: 0.65em;
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-weight: 600;
+  font-size: 1.5em;
+  color: var(--yt-ink);
+  font-variant-numeric: tabular-nums;
+}
+.yt-sub, .yt-name, .yt-atem { padding: 0.3em 1.1em 0; font-size: 0.85em; color: var(--yt-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
+.yt-name { color: var(--yt-ink); font-weight: 600; }
+.yt-name:empty, .yt-sub:empty { display: none; }
+.yt-atem::before { content: "●"; margin-right: 0.45em; color: var(--yt-ink-3); }
+.yt-atem.on::before { color: var(--yt-ok); }
+
+.yt-problems { list-style: none; margin: 0.45em 0 0; padding: 0 1.1em; display: flex; flex-direction: column; gap: 0.25em; flex: none; }
+.yt-problems:empty { display: none; }
+.yt-problems li { font-weight: 700; font-size: 0.95em; padding-left: 1.2em; position: relative; }
+.yt-problems li::before { content: "▲"; position: absolute; left: 0; top: 0.1em; font-size: 0.8em; }
+.yt-problems li.error { color: var(--yt-bad); }
+.yt-problems li.warn { color: var(--yt-warn); }
+.youtube.alarm { background: #2a0505; }
+.youtube.alarm .yt-problems li.error { animation: yt-pulse 1.2s ease-in-out infinite alternate; }
+
+.yt-chat {
+  list-style: none;
+  margin: 0.6em 0 0;
+  padding: 0.5em 1.1em 0.6em;
+  border-top: 1px solid var(--yt-line);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.3em;
+  font-size: 0.85em;
+}
+.yt-chat li { line-height: 1.25; overflow-wrap: anywhere; }
+.yt-author { font-weight: 700; color: var(--yt-ink-2); margin-right: 0.45em; }
+.yt-chat li.owner .yt-author { color: var(--yt-warn); }
+.yt-chat li.mod .yt-author { color: #64d2ff; }
+.yt-chat li.super { color: var(--yt-warn); }
+.yt-chat-empty { color: var(--yt-ink-3); }
+
+@keyframes yt-pulse { from { opacity: 1; } to { opacity: 0.55; } }

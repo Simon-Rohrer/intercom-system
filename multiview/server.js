@@ -15,6 +15,7 @@ const { createNeighbors } = require('./neighbors')
 const { normalizeRaspberry, parsePiRequest, createPiRegistry } = require('./raspberry-pis')
 const { createChurchTools } = require('./churchtools')
 const { createUplink, normalizeUplink } = require('./uplink')
+const { createYouTube } = require('./youtube')
 const { createMessageLinks } = require('./message-links')
 const QRCode = require('qrcode')
 const { normalizeDayQr, normalizeOutputDayQr } = require('./day-qr')
@@ -1182,6 +1183,16 @@ function applyUplink() {
   uplinkKey = key
 }
 
+// YouTube Live (API-Schlüssel, ohne Google-Anmeldung) für die Kachel „YouTube Live“ und jms-watch.
+// Den technischen Zustand liefert der ATEM, wenn er streamt (atem.state.streaming).
+const youtube = createYouTube({
+  dataDir: DATA_DIR,
+  getAtem: () => ({ connected: atem.status === 2, streaming: atem.state?.streaming ?? null }),
+  wantChat: () => (config.layouts || []).some((layout) => (layout.tiles || []).some((tile) => tile.kind === 'youtube' && tile.youtube?.chat === true)),
+  onUpdate: broadcast,
+  log: console.log,
+})
+
 const kesherChat = createKesherChat({
   getConfig: () => config.chat,
   getHeaders: () => kesherDeviceHeaders(),
@@ -1212,6 +1223,7 @@ function configChanged(origin = null) {
   applyProPresenter()
   churchTools.datesChanged()
   applyUplink()
+  youtube.layoutsChanged()
   if (mediamtx.proc) writeMediamtxConfig()
 }
 
@@ -1317,6 +1329,7 @@ wss.on('connection', (ws, req) => {
   send(ws, kesherChat.snapshot())
   send(ws, churchTools.snapshot())
   send(ws, uplink.snapshot())
+  send(ws, youtube.snapshot())
   send(ws, { type: 'propresenter', ...ppState })
   send(ws, { type: 'ppstage', ...stageState })
 
@@ -2017,6 +2030,27 @@ function writeServiceCredentials(data) {
   fs.writeFileSync(tmp, JSON.stringify(data), { mode: 0o600 })
   fs.renameSync(tmp, SERVICE_CREDENTIALS_FILE)
 }
+
+// YouTube: Einstellungen (nur Admin). Der API-Schlüssel liegt in youtube-secret.json im Datenordner
+// (nur für den Server lesbar) und geht nie an den Browser zurück.
+app.get('/api/youtube', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json(youtube.settings()))
+app.put('/api/youtube', requireAdmin, async (req, res) => {
+  try {
+    const { apiKey, channel, video } = req.body || {}
+    res.json({ ok: true, ...(await youtube.configure({ apiKey, channel, video })) })
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message })
+  }
+})
+app.delete('/api/youtube', requireAdmin, (req, res) => {
+  youtube.disconnect()
+  res.json({ ok: true })
+})
+// Für jms-watch auf dem Server selbst (Telegram): nur vom Server, nicht über Caddy von außen
+app.get('/api/youtube/status', (req, res) => {
+  if (!/^(127\.|::1$|::ffff:127\.)/.test(clientIp(req))) return res.status(403).json({ ok: false })
+  res.set('Cache-Control', 'no-store').json(youtube.status())
+})
 
 app.get('/api/service-credentials', requireAdmin, (req, res) => {
   const stored = readServiceCredentials()
@@ -2808,6 +2842,7 @@ server.listen(PORT, HOST, () => {
   applyProPresenter()
   startMediamtx()
   churchTools.start()
+  youtube.start()
   applyUplink()
   uplink.start()
 })

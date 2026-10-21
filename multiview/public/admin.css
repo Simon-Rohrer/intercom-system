@@ -2328,3 +2328,11 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 
 /* Kesher-Kachel im Editor mit Live-Bildern: echtes Kesher in Monitorgröße, nicht bedienbar */
 .etile-media > iframe.kesher-live { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; pointer-events: none; }
+
+/* Einstellungen → YouTube */
+.yt-form { grid-template-columns: 1fr 1fr; }
+.yt-form .field:nth-of-type(3) { grid-column: 1 / -1; }
+.yt-steps { margin: 4px 0 8px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+#yt-status { display: flex; flex-direction: column; gap: 4px; }
+.yt-summary { margin-top: 6px; line-height: 1.5; }
+@media (max-width: 760px) { .yt-form { grid-template-columns: 1fr; } }

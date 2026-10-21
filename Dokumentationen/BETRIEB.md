@@ -173,6 +173,16 @@ Weitere Befehle: `sudo jms-watch --status` (Zustand im Terminal), `sudo jms-watc
 
 Wird ein Container absichtlich länger gestoppt, meldet der Bot das nach 3 Minuten einmal. Soll das nicht passieren, den Container in `IGNORE_CONTAINERS` eintragen.
 
+## YouTube Live
+
+JMS Control fragt den YouTube-Kanal mit einem **API-Schlüssel** ab (YouTube Data API v3, ohne Anmeldung mit dem YouTube-Konto). Einrichten: JMS Control → Einstellungen → **YouTube** (Kanal-Link und Schlüssel; dort steht auch, wie man den Schlüssel bekommt). Der Schlüssel liegt nur in `youtube-secret.json` im Datenordner (Rechte 600) und geht nie an den Browser.
+
+- **Kachel „YouTube Live“**: LIVE/geplant/beendet, Zuschauer, Laufzeit, Spitze, Aufrufe, Likes, Zustand des ATEM-Streams (sendet, Bitrate, Puffer), Warnungen und auf Wunsch der Live-Chat.
+- **Telegram** (`jms-watch`, Gruppe „📺 YouTube“): Störung, wenn ein geplanter Stream 5 Minuten nach Beginn nicht läuft oder der ATEM während des Streams nicht mehr sendet; Warnung bei vollem ATEM-Puffer (Upload zu langsam) oder wenn der ATEM sendet, YouTube den Stream aber nicht als live zeigt. Nach dem Stream kommt eine Zusammenfassung (Spitze, Dauer, Störungen).
+- Geplante Streams werden automatisch gefunden, wenn sie öffentlich sind. Für nicht gelistete Streams den Video-Link in den Einstellungen eintragen.
+- Kontingent: 10 000 Einheiten am Tag, ein Sonntag braucht gut 3 000. Ist es aufgebraucht, steht das in der Kachel; ab 9 Uhr geht es wieder.
+- Den Zustand, den YouTube selbst über die Verbindung kennt („Stream-Zustand“ im Studio, z. B. „Bitrate zu niedrig“), gibt es nur mit Google-Anmeldung (OAuth) – noch nicht eingebaut.
+
 ## Chat automatisch leeren
 
 Kommt 6 Stunden lang keine neue Chat-Nachricht, leert Kesher den Chat für alle: Verlauf auf dem Server, Stationen und Chat-Anzeige. Der Server prüft das einmal pro Minute. Jede neue Nachricht (auch per Stream Deck oder Telegram) startet die 6 Stunden neu. Manuell geht es weiterhin im Admin-Bereich unter `Chatverlauf`.

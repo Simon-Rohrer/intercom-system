@@ -57,6 +57,8 @@ DEFAULTS = {
     "IGNORE_UNITS": "",
     "IGNORE_CONTAINERS": "",
     "HTTP_CHECKS": "Companion=http://127.0.0.1:8000",
+    # YouTube-Stream über JMS Control (Einstellungen → YouTube); leer = nicht prüfen
+    "YOUTUBE_STATUS_URL": "http://127.0.0.1:8090/api/youtube/status",
     # Warnung (⚠️ statt 🔴), wenn Festplatte, USB-Sicherungsdatenträger bzw. Arbeitsspeicher so voll sind
     "DISK_WARN_PERCENT": "80",
     "MEM_WARN_PERCENT": "80",
@@ -77,6 +79,7 @@ GROUPS = [
     ("container", "🐳 Container", "Container"),
     ("unit", "⚙️ Dienste", "Dienst"),
     ("http", "🖥 Weboberflächen", "Weboberfläche"),
+    ("stream", "📺 YouTube", ""),
     ("system", "💻 System", ""),
 ]
 
@@ -90,6 +93,8 @@ def group_of(key):
         return "unit"
     if key.startswith("http:"):
         return "http"
+    if key == "youtube":
+        return "stream"
     return "system"
 
 
@@ -575,6 +580,47 @@ def check_http(cfg):
     return results
 
 
+# Letzter Stand von JMS Control (für die Zusammenfassung nach dem Gottesdienst)
+YOUTUBE_STATUS = {}
+
+
+def check_youtube(cfg, unknown):
+    """YouTube-Stream über JMS Control: läuft er, bricht er ab, meldet der ATEM Probleme.
+    Nur wenn in JMS Control unter Einstellungen → YouTube eingerichtet."""
+    url = cfg["YOUTUBE_STATUS_URL"].strip()
+    YOUTUBE_STATUS.clear()
+    if not url:
+        return {}
+    try:
+        with urllib.request.urlopen(url, timeout=6) as resp:
+            data = json.loads(resp.read().decode("utf-8") or "{}")
+    except Exception:  # noqa: BLE001 – JMS Control nicht erreichbar: das meldet schon der Container
+        unknown.add("youtube")
+        return {}
+    YOUTUBE_STATUS.update(data)
+    if not data.get("configured"):
+        return {}
+    problem = data.get("problem")
+    info = data.get("info", "")
+    if problem:
+        return {"youtube": result(False, "YouTube-Stream", f"{problem.get('text', '')}\n{info}",
+                                  warn=problem.get("level") != "error")}
+    return {"youtube": result(True, "YouTube-Stream", info)}
+
+
+def youtube_summary(state, now):
+    """Nach dem Stream einmal die Zusammenfassung schicken (Spitze, Dauer, Störungen)."""
+    summary = YOUTUBE_STATUS.get("summary") or {}
+    if not summary.get("id") or state.get("youtube_summary") == summary["id"]:
+        return
+    first = "youtube_summary" not in state
+    state["youtube_summary"] = summary["id"]
+    # Beim ersten Lauf keine alte Zusammenfassung nachschicken
+    if first and now - (summary.get("at") or 0) / 1000 > 3600:
+        return
+    queue(state, f"📺 <b>Stream beendet</b>\n{esc(summary.get('text', ''))}")
+
+
 def check_system(cfg, active=frozenset()):
     results = {}
     usage = shutil.disk_usage("/")
@@ -723,6 +769,7 @@ def collect(cfg, during_backup, active=frozenset()):
         results.update(check_containers(cfg, unknown))
         results.update(check_units(cfg, unknown))
         results.update(check_http(cfg))
+        results.update(check_youtube(cfg, unknown))
     results.update(check_system(cfg, active))
     results.update(check_clock())
     results.update(check_backup(cfg, active))
@@ -1057,6 +1104,7 @@ def main_round(cfg):
 
     results, unknown = collect(cfg, backup_running(), frozenset(state["checks"]))
     evaluate(cfg, state, results, unknown, now)
+    youtube_summary(state, now)
     # Für /status: was diese Runde nicht geprüft wurde (Sicherung), mit dem letzten Stand zeigen
     kept = {k: v for k, v in state["last"].items() if k.startswith(tuple(unknown)) and k not in results}
     state["last"] = {**results, **kept}

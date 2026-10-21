@@ -2,6 +2,7 @@ import { isPortrait, layoutSize, isStandardLayout, setPreviewSize, LAYOUT_MIN_PX
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
 import { createUplinkView, mergeUplink, uplinkOptions } from './uplink.js'
+import { createYouTubeView, youtubeOptions } from './youtube.js'
 import { createAgendaView, agendaOptions, AGENDA_ACCENTS, AGENDA_CCLI_COLORS } from './agenda.js'
 import {
   createProPresenterView, createPlaylistView, createPreacherView, ppOptions, playlistOptions, preacherOptions,
@@ -25,7 +26,7 @@ const CLIENT_ID = uid('c')
 const PAGES = ['uebersicht', 'multiviews', 'layouts', 'einstellungen', 'services']
 const ADMIN_PAGES = ['einstellungen', 'services']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
-const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'eingaenge', 'raspberry', 'companion', 'bildschirme', 'geraete', 'zugang']
+const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'youtube', 'eingaenge', 'raspberry', 'companion', 'bildschirme', 'geraete', 'zugang']
 // Unterseiten von Benutzer & Rechte: #/einstellungen/zugang/rollen …
 const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste', 'zugangsdaten', 'nachrichten']
 const SOURCE_TYPES = {
@@ -91,6 +92,8 @@ let churchtools = { state: 'connecting', events: [] }
 const agendaViews = new Set()
 const uplinkViews = new Set()
 let uplink = null
+const youtubeViews = new Set()
+let youtube = null
 let templates = [] // gespeicherte Layouts { id, name, savedAt, owner, tiles, own }
 
 // Wer ist angemeldet? Wird in start() geladen, bevor die Verbindung zum Server aufgeht.
@@ -127,6 +130,14 @@ function onMessage(msg) {
     }
     const hint = inspector.querySelector('[data-uplink-state]')
     if (hint) hint.textContent = uplinkStateText()
+  } else if (msg.type === 'youtube') {
+    youtube = msg
+    for (const view of youtubeViews) {
+      if (view.el.isConnected) view.update(youtube)
+      else youtubeViews.delete(view)
+    }
+    renderYouTubeSettings()
+    renderStatusStrip()
   } else if (msg.type === 'churchtools') {
     churchtools = msg
     renderChurchTools()
@@ -316,6 +327,7 @@ function showPage() {
   // Auch für den Status-Punkt der Raspberry Pis in der Leiste, nicht nur auf ihrer Unterseite
   if (page === 'einstellungen') loadRaspberryStatus()
   if (page === 'einstellungen' && settingsSection === 'zugang') loadGateway()
+  if (page === 'einstellungen' && settingsSection === 'youtube') loadYouTubeSettings()
   if (page === 'einstellungen' && settingsSection === 'zugang' && accessSection === 'nachrichten') loadMessageLinks()
   if (page === 'services') renderServices()
   renderAll()
@@ -1533,6 +1545,8 @@ function syncTileMedia(el, tile) {
       ? JSON.stringify(['chat', tile.chatRole ?? '', chatOptions(tile.chat)])
       : tile.kind === 'uplink'
         ? JSON.stringify(['uplink', uplinkOptions(tile.uplink)])
+      : tile.kind === 'youtube'
+        ? JSON.stringify(['youtube', youtubeOptions(tile.youtube)])
       : tile.kind === 'churchtools'
         ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctSongInfo, tile.ctCcli, tile.ctDate, tile.ctMode, agendaOptions(tile.agendaLook)])
         : livePreview && source
@@ -1544,7 +1558,7 @@ function syncTileMedia(el, tile) {
   el.dataset.mediaKey = key
   el.querySelector('.etile-media')?.remove()
   el.classList.toggle('live', Boolean(key))
-  el.classList.toggle('chat-tile', tile.kind === 'chat' || tile.kind === 'churchtools' || tile.kind === 'uplink')
+  el.classList.toggle('chat-tile', ['chat', 'churchtools', 'uplink', 'youtube'].includes(tile.kind))
   if (!key) return
   const media = document.createElement('div')
   media.className = 'etile-media'
@@ -1563,6 +1577,11 @@ function syncTileMedia(el, tile) {
     const view = createUplinkView(tile.uplink)
     view.update(uplink)
     uplinkViews.add(view)
+    media.append(view.el)
+  } else if (tile.kind === 'youtube') {
+    const view = createYouTubeView(tile.youtube)
+    view.update(youtube)
+    youtubeViews.add(view)
     media.append(view.el)
   } else if (tile.kind === 'kesher') {
     // Echtes Kesher als Spiegel der Rolle – im Editor nur zum Ansehen, Ziehen und Größe bleiben möglich
@@ -1627,6 +1646,7 @@ function describeTile(tile) {
     return { title: 'ChurchTools-Ablauf', sub: [day, tile.ctFilter].filter(Boolean).join(' · ') }
   }
   if (tile.kind === 'uplink') return { title: 'Upload / Stream', sub: 'Internet-Upload (FRITZ!Box)' }
+  if (tile.kind === 'youtube') return { title: 'YouTube Live', sub: youtubeOptions(tile.youtube).chat ? 'Zuschauer, Stream und Chat' : 'Zuschauer und Stream' }
   if (tile.kind === 'propresenter') return { title: 'ProPresenter', sub: 'Folien' }
   if (tile.kind === 'playlist') return { title: 'Playlist', sub: 'ProPresenter' }
   if (tile.kind === 'preacher') return { title: 'Prediger', sub: 'ProPresenter-Steuerung' }
@@ -2205,6 +2225,25 @@ function uplinkSection(tile) {
     }`
 }
 
+/** Kachel „YouTube Live“ */
+function youtubeSection(tile) {
+  const o = youtubeOptions(tile.youtube)
+  const state =
+    !youtube || youtube.state === 'unconfigured'
+      ? 'Noch nicht eingerichtet – API-Schlüssel und Kanal unter <a href="#/einstellungen/youtube">Einstellungen → YouTube</a>.'
+      : youtube.state === 'error'
+        ? `Fehler: ${esc(youtube.error)}`
+        : `Kanal: <b>${esc(youtube.channelTitle)}</b>`
+  return `
+    <label class="field"><span>Titel</span><input type="text" data-yt="title" value="${esc(o.title)}" maxlength="40"></label>
+    <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+      <input type="range" min="0.5" max="2.5" step="0.1" data-yt="size" value="${o.size}"></label>
+    <label class="check"><input type="checkbox" data-yt="atem" ${o.atem ? 'checked' : ''}> Zustand des ATEM-Streams zeigen</label>
+    <label class="check"><input type="checkbox" data-yt="chat" ${o.chat ? 'checked' : ''}> Live-Chat zeigen</label>
+    <p class="muted small">${state}</p>
+    <p class="muted small">Zeigt, ob der Stream läuft, Zuschauer, Laufzeit und Warnungen – z. B. wenn der ATEM nicht mehr sendet oder der Upload zu langsam ist. Der Live-Chat kostet etwas mehr vom YouTube-Kontingent und wird nur abgefragt, solange eine Kachel ihn zeigt.</p>`
+}
+
 /** Ablauf-Kachel: Schriftgröße, Abstände und was angezeigt wird. */
 function agendaLookSection(tile) {
   const o = agendaOptions(tile.agendaLook)
@@ -2321,6 +2360,7 @@ function tileInspector(tile, layout) {
         <option value="kesher" ${kind === 'kesher' ? 'selected' : ''}>Kesher-Intercom (Spiegel)</option>
         <option value="churchtools" ${kind === 'churchtools' ? 'selected' : ''}>ChurchTools-Ablauf</option>
         <option value="uplink" ${kind === 'uplink' ? 'selected' : ''}>Upload / Stream (Internet)</option>
+        <option value="youtube" ${kind === 'youtube' ? 'selected' : ''}>YouTube Live (Zuschauer, Stream, Chat)</option>
         <option value="propresenter" ${kind === 'propresenter' ? 'selected' : ''}>ProPresenter (Folien / Hintergründe)</option>
         <option value="playlist" ${kind === 'playlist' ? 'selected' : ''}>ProPresenter-Playlist</option>
         <option value="preacher" ${kind === 'preacher' ? 'selected' : ''}>ProPresenter-Prediger (Folien steuern)</option>
@@ -2361,6 +2401,7 @@ function tileInspector(tile, layout) {
         : ''
     }
     ${kind === 'uplink' ? uplinkSection(tile) : ''}
+    ${kind === 'youtube' ? youtubeSection(tile) : ''}
     ${kind === 'chat' ? chatSection(tile) : ''}
     ${kind === 'kesher' ? kesherSection(tile) : ''}
     ${kind === 'audio' ? bankSection(tile) : ''}
@@ -2406,6 +2447,19 @@ function onInspectorField(e) {
       if (out) out.textContent = `${Math.round(o.size * 100)} %`
     }
     tile.stage = o
+    renderCanvas()
+    changed()
+    return
+  }
+
+  if (el.dataset.yt) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const key = el.dataset.yt
+    const value = el.type === 'checkbox' ? el.checked : key === 'title' ? el.value : Number(el.value)
+    tile.youtube = { ...youtubeOptions(tile.youtube), [key]: value }
+    const out = el.closest('label').querySelector('output')
+    if (out) out.textContent = `${Math.round(value * 100)} %`
     renderCanvas()
     changed()
     return
@@ -2823,6 +2877,83 @@ function localDay() {
 // ---------------------------------------------------------------------------
 // Einstellungen: ChurchTools
 // ---------------------------------------------------------------------------
+
+// --- YouTube (API-Schlüssel, ohne Google-Anmeldung) --------------------------------------------
+
+let youtubeSettings = null
+
+async function loadYouTubeSettings() {
+  const res = await fetch('/api/youtube', { cache: 'no-store' }).catch(() => null)
+  if (!res?.ok) return
+  youtubeSettings = await res.json()
+  const channel = $('#yt-channel')
+  const video = $('#yt-video')
+  if (document.activeElement !== channel) channel.value = youtubeSettings.channel || ''
+  if (document.activeElement !== video) video.value = youtubeSettings.video || ''
+  renderYouTubeSettings()
+}
+
+function renderYouTubeSettings() {
+  const box = $('#yt-status')
+  if (!box) return
+  const yt = youtube
+  const configured = youtubeSettings ? youtubeSettings.configured : yt && yt.state !== 'unconfigured'
+  $('#yt-disconnect').hidden = !configured
+  $('#yt-key').placeholder = youtubeSettings?.keySet ? 'gespeichert – nur zum Ändern neu eintragen' : 'AIza…'
+  if (!configured) {
+    box.innerHTML = '<span class="muted">Nicht eingerichtet.</span>'
+    return
+  }
+  const time = (ms) => new Date(ms).toLocaleString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })
+  const v = yt?.video
+  const what =
+    v?.status === 'live'
+      ? `<b style="color:var(--red)">LIVE</b> – „${esc(v.title)}“${v.viewers != null ? ` · ${v.viewers} Zuschauer` : ''}`
+      : v?.status === 'upcoming'
+        ? `Nächster Stream: „${esc(v.title)}“ · ${esc(time(v.scheduledStart))}`
+        : v?.status === 'ended'
+          ? `Zuletzt: „${esc(v.title)}“ · beendet ${esc(time(v.actualEnd))}`
+          : 'Kein Stream geplant (öffentliche Streams des Kanals werden automatisch gefunden)'
+  const head =
+    yt?.state === 'error'
+      ? `<span style="color:var(--red)">●</span> ${esc(yt.error)}`
+      : yt?.state === 'connecting'
+        ? '<span class="muted">Verbinde …</span>'
+        : `<span style="color:var(--green)">●</span> Verbunden mit <b>${esc(yt?.channelTitle || youtubeSettings?.channelTitle || '')}</b>`
+  const problems = (yt?.problems || []).map((p) => `<div style="color:var(${p.level === 'error' ? '--red' : '--amber'})">▲ ${esc(p.text)}</div>`).join('')
+  const last = yt?.summary ? `<div class="muted small yt-summary"><b>Letzte Zusammenfassung:</b><br>${esc(yt.summary.text).replace(/\n/g, '<br>')}</div>` : ''
+  box.innerHTML = `<div>${head}</div><div>${what}</div>${problems}${last}`
+}
+
+$('#yt-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const error = $('#yt-error')
+  const button = $('#yt-save')
+  error.textContent = ''
+  button.disabled = true
+  try {
+    const res = await fetch('/api/youtube', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: $('#yt-key').value.trim(), channel: $('#yt-channel').value.trim(), video: $('#yt-video').value.trim() }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    $('#yt-key').value = ''
+    toast(`YouTube verbunden: ${data.channelTitle}`)
+    await loadYouTubeSettings()
+  } catch (err) {
+    error.textContent = err.message
+  } finally {
+    button.disabled = false
+  }
+})
+
+$('#yt-disconnect').addEventListener('click', async () => {
+  if (!confirm('YouTube trennen? Der API-Schlüssel wird vom Server gelöscht.')) return
+  await fetch('/api/youtube', { method: 'DELETE' }).catch(() => null)
+  await loadYouTubeSettings()
+})
 
 function renderChurchTools() {
   const ct = churchtools
@@ -3398,6 +3529,7 @@ const SEARCH_ENTRIES = [
   { label: 'ATEM', href: '#/einstellungen/atem', admin: true, words: 'einstellungen tally mischer ip' },
   { label: 'ProPresenter', href: '#/einstellungen/propresenter', admin: true, words: 'einstellungen folien stage display beamer nachricht' },
   { label: 'Kesher-Chat', href: '#/einstellungen/kesher', admin: true, words: 'einstellungen intercom chat rolle' },
+  { label: 'YouTube (Live-Stream)', href: '#/einstellungen/youtube', admin: true, words: 'youtube stream zuschauer live chat api schlüssel' },
   { label: 'ChurchTools', href: '#/einstellungen/churchtools', admin: true, words: 'einstellungen ablauf agenda gottesdienst' },
   { label: 'Raspberry Pis', href: '#/einstellungen/raspberry', admin: true, words: 'einstellungen raspberry pi station kiosk intercom rolle mac fernsteuern' },
   { label: 'Companion', href: '#/einstellungen/companion', admin: true, words: 'einstellungen stream deck tasten' },
@@ -3662,6 +3794,20 @@ function renderStatusStrip() {
     ct.state === 'unconfigured'
       ? tile('off', 'ChurchTools', 'nicht verbunden', '#/einstellungen/churchtools')
       : tile(ct.state === 'connected' ? 'ok' : 'bad', 'ChurchTools', ct.state === 'connected' ? 'verbunden' : ct.error || 'Fehler', '#/einstellungen/churchtools'),
+    !youtube || youtube.state === 'unconfigured'
+      ? ''
+      : tile(
+          youtube.state === 'error' || youtube.problems?.some((p) => p.level === 'error') ? 'bad' : 'ok',
+          'YouTube',
+          youtube.state === 'error'
+            ? youtube.error
+            : youtube.video?.status === 'live'
+              ? `LIVE · ${youtube.video.viewers ?? '–'} Zuschauer`
+              : youtube.video?.status === 'upcoming'
+                ? `geplant ${new Date(youtube.video.scheduledStart).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })}`
+                : 'kein Stream',
+          '#/einstellungen/youtube',
+        ),
   ].join('')
   // Derselbe Zustand als Punkt in den Reitern der Einstellungen
   const pis = piNavState()
@@ -3670,6 +3816,7 @@ function renderStatusStrip() {
     propresenter: !config.propresenter?.host ? 'off' : pp.connected ? 'ok' : 'bad',
     kesher: chat.state === 'connected' ? 'ok' : 'bad',
     churchtools: ct.state === 'unconfigured' ? 'off' : ct.state === 'connected' ? 'ok' : 'bad',
+    youtube: !youtube || youtube.state === 'unconfigured' ? 'off' : youtube.state === 'error' ? 'bad' : 'ok',
     raspberry: pis.state,
   }
   const stateText = { ok: 'Verbunden', bad: 'Getrennt', off: 'Nicht eingerichtet' }
@@ -3678,7 +3825,9 @@ function renderStatusStrip() {
     if (!link) continue
     link.dataset.state = state
     const text = link.querySelector('.settings-nav-state-text')
-    if (text) text.textContent = section === 'raspberry' ? pis.text : stateText[state]
+    if (text)
+      text.textContent =
+        section === 'raspberry' ? pis.text : section === 'youtube' && youtube?.video?.status === 'live' ? 'Live' : stateText[state]
   }
 }
 

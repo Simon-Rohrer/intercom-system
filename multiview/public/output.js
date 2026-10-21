@@ -5,6 +5,7 @@ import { chatFor, chatRoleFor } from './rights.js'
 import { createComposer } from './chat-compose.js'
 import { createAgendaView } from './agenda.js'
 import { createUplinkView, mergeUplink } from './uplink.js'
+import { createYouTubeView } from './youtube.js'
 import { createProPresenterView, createPlaylistView, createPreacherView } from './propresenter.js'
 import { createStageView } from './stage.js'
 import {
@@ -77,6 +78,8 @@ let bootId = null
 const agendaViews = new Set() // ChurchTools-Kacheln
 const uplinkViews = new Set() // Upload-Kacheln (FRITZ!Box)
 let uplink = null
+const youtubeViews = new Set() // Kacheln „YouTube Live“
+let youtube = null
 let churchtools = { state: 'connecting', events: [] }
 const frames = new Map() // Kesher-Intercom: tile.id → { wrap, url }
 
@@ -103,6 +106,9 @@ const ws = connect(
     } else if (msg.type === 'churchtools') {
       churchtools = msg
       for (const view of agendaViews) view.update(churchtools)
+    } else if (msg.type === 'youtube') {
+      youtube = msg
+      for (const view of youtubeViews) view.update(youtube)
     } else if (msg.type === 'uplink') {
       uplink = mergeUplink(uplink, msg)
       for (const view of uplinkViews) view.update(uplink)
@@ -167,6 +173,7 @@ function render() {
   composers.clear()
   agendaViews.clear()
   uplinkViews.clear()
+  youtubeViews.clear()
   stageViews.clear()
 
   syncFrames(layout)
@@ -268,6 +275,12 @@ function buildTile(tile, layout, usedStreams) {
     // Die Kesher-Seite selbst liegt in der Ebene #frames (syncFrames) über dieser Kachel
     media.classList.add('chat')
     media.append(placeholder(`Kesher-Intercom\n${kesherUrl(tile) ? 'wird geladen …' : kesherMissing(tile)}`))
+  } else if (tile.kind === 'youtube') {
+    const view = createYouTubeView(tile.youtube)
+    view.update(youtube)
+    youtubeViews.add(view)
+    media.classList.add('chat')
+    media.append(view.el)
   } else if (tile.kind === 'uplink') {
     const view = createUplinkView(tile.uplink)
     view.update(uplink)
