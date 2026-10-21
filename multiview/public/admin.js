@@ -3392,7 +3392,7 @@ const SEARCH_ENTRIES = [
   { label: 'Rollen', href: '#/einstellungen/zugang/rollen', admin: true, words: 'benutzer rechte sehen bearbeiten licht ton' },
   { label: 'Anmeldung & Admin-PIN', href: '#/einstellungen/zugang/anmeldung', admin: true, words: 'benutzer pin passwort admin' },
   { label: 'Anmeldung für alle Dienste', href: '#/einstellungen/zugang/dienste', admin: true, words: 'benutzer tagescode qr feste geräte gateway' },
-  { label: 'Nachrichten-Links (Ordner, ohne Anmeldung)', href: '#/einstellungen/zugang/nachrichten', admin: true, words: 'ordner beamer stage display bühne meldung qr helfer' },
+  { label: 'Link für Ordner (Meldung ohne Anmeldung)', href: '#/einstellungen/zugang/nachrichten', admin: true, words: 'ordner beamer stage display bühne meldung qr helfer' },
   { label: 'Zugangsdaten der Dienste (Portainer, Router)', href: '#/einstellungen/zugang/zugangsdaten', admin: true, words: 'passwort portainer router speedport automatisch anmelden' },
   { label: 'Darstellung', open: 'appearance-dialog', words: 'hintergrund hell dunkel farbe wallpaper theme' },
   { label: 'Handy-Fernsteuerung', open: 'qr-dialog', words: 'handy anmelden scannen qr-codes qr fernsteuerung' },
@@ -4462,7 +4462,7 @@ function renderMessageLinks() {
     .join('')
   card.innerHTML = `<div class="card-head">
       <div>
-        <h2>Nachrichten-Links</h2>
+        <h2>Link für Ordner</h2>
         <p class="muted">Für Ordner und andere Helfer ohne Anmeldung: Wer den Link oder QR-Code hat, gibt nur seinen Namen ein und schickt eine Meldung auf den <b>Beamer</b> (die Technik gibt sie in ProPresenter frei) oder das <b>Stage Display</b> (erscheint sofort). Jede Nachricht kommt mit Namen in den Kesher-Chat. Pro Link höchstens eine Nachricht alle 10 Sekunden.</p>
         <p class="muted">Gibt jemand den Link weiter, einfach <b>Neuen Link erzeugen</b> oder sperren.</p>
       </div>
@@ -4473,7 +4473,7 @@ function renderMessageLinks() {
       <label class="check"><input type="checkbox" name="stage"> Stage Display</label>
       <button class="btn primary small" type="submit">+ Link anlegen</button>
     </form>
-    ${messageLinks === null ? '<p class="muted">Lädt …</p>' : rows || '<p class="muted">Noch keine Nachrichten-Links.</p>'}`
+    ${messageLinks === null ? '<p class="muted">Lädt …</p>' : rows || '<p class="muted">Noch keine Links für Ordner.</p>'}`
 }
 
 async function messageLinkRequest(method, url, body) {

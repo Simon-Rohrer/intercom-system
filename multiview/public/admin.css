@@ -2075,18 +2075,26 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 #page-einstellungen[data-access-view="list"] .access-section-stack { display: none; }
 #page-einstellungen[data-access-view="detail"] .settings-list,
 #page-einstellungen[data-access-view="detail"] .access-section-head { display: none; }
+/* Deutlich als Knopf erkennbar und etwas abgesetzt über der Unterseite */
 #page-einstellungen[data-access-view="detail"] .access-back {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  min-height: 44px;
-  margin: -6px 0 6px -8px;
-  padding-right: 8px;
-  color: var(--accent-text);
-  font-size: 17px;
-  font-weight: 500;
+  align-self: flex-start;
+  gap: 4px;
+  min-height: 40px;
+  margin: 18px 0 16px;
+  padding: 0 16px 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
   text-decoration: none;
+  box-shadow: var(--shadow-sm);
 }
+#page-einstellungen[data-access-view="detail"] .access-back:hover { background: var(--surface-3); }
+#page-einstellungen[data-access-view="detail"] .access-back svg { width: 20px; height: 20px; }
 @media (max-width: 760px) {
   /* In einer Unterseite von Benutzer & Rechte nur „‹ Benutzer & Rechte“ zeigen */
   #page-einstellungen[data-access-view="detail"] .settings-back:not(.access-back) { display: none; }

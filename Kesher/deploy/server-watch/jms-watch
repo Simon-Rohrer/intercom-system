@@ -376,6 +376,9 @@ UNIT_HINTS = {
 
 # Bekannte Fehlermeldungen → was das auf Deutsch heißt (erste passende gewinnt)
 REASON_PATTERNS = [
+    # Vor „timed out“: fwupd meldet z. B. „server response was 503 … Timed out while waiting“
+    (r"server response was 5\d\d|transient failure|\b50[0234]\b|service unavailable|bad gateway",
+     "Server im Internet war gestört bzw. überlastet (Fehler auf der Gegenseite, nicht bei uns)"),
     (r"could not resolve|name resolution|resolve host|name or service not known|NXDOMAIN",
      "Server konnte die Internet-Adresse nicht auflösen – kein Internet oder DNS gestört"),
     (r"network is unreachable|no route to host|failed to connect to|couldn't connect",
