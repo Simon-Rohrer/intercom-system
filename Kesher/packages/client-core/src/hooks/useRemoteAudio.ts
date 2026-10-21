@@ -127,6 +127,8 @@ export function useRemoteAudio({
   // Apply output device when it changes
   useEffect(() => {
     for (const audio of remoteAudioRef.current.values()) {
+      // Silent mirror (Kesher tile in JMS Control): never route sound to a speaker
+      if (audio.dataset.silentMirror) continue;
       void (async () => {
         const sinkApplied = await applyOutputDeviceToAudio(
           audio,

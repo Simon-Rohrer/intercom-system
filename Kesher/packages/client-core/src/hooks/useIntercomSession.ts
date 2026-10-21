@@ -2512,12 +2512,16 @@ export function useIntercomSession({
           );
           trySetReceiverPlayoutDelayHint(event.receiver, delayHint);
           let audio = remote.remoteAudioRef.current.get(key);
+          // A mirror without a microphone (Kesher tile in JMS Control) never plays sound: it runs on
+          // the server behind the HDMI monitors, the headset is on the device that really uses the role.
+          const silentMirror = mirrorWithoutMic(appDataRef.current);
           if (!audio) {
             audio = document.createElement("audio");
             audio.autoplay = true;
-            audio.muted = false;
+            audio.muted = silentMirror;
             remote.remoteAudioRef.current.set(key, audio);
           }
+          if (silentMirror) audio.dataset.silentMirror = "1";
           const stream = event.streams[0] ?? new MediaStream([event.track]);
           if (
             !lowPowerMode &&
@@ -2547,6 +2551,12 @@ export function useIntercomSession({
           audio.srcObject = stream;
           remote.applyVolumeToRemoteAudio(key);
           void (async () => {
+            if (silentMirror) {
+              // Muted playback keeps the level meters running (Chrome feeds WebAudio only while playing)
+              audio.muted = true;
+              await audio.play();
+              return;
+            }
             const outputDeviceId = selectedOutputDeviceIdRef.current;
             const sinkApplied = await remote.applyOutputDeviceToAudio(
               audio,

@@ -356,3 +356,54 @@ export function applyLayoutBorder(el, layout) {
   el.style.setProperty('--tile-bc', b.color)
   el.style.setProperty('--frame-bw', `${b.frame}px`)
 }
+
+// ---------------------------------------------------------------------------
+// Kesher-Intercom-Kachel: immer ein Spiegel der gewählten Rolle (Zweitgerät). Sie belegt die
+// Rolle nie und nimmt weder Mikrofon noch Lautsprecher – das Headset hängt am echten Gerät der
+// Rolle (Laptop, Handy). Die Kachel zeigt dessen Kanäle, und was man hier drückt, schaltet dort.
+// ---------------------------------------------------------------------------
+const isLoopback = (host) => ['localhost', '127.0.0.1', '[::1]', '::1'].includes(host)
+
+export function kesherBase(tile, config) {
+  const own = String(tile.kesherUrl || '').trim()
+  if (own) return own.replace(/\/+$/, '')
+  const server = String(config?.chat?.url || 'http://127.0.0.1:8080').replace(/\/+$/, '')
+  let host = ''
+  try {
+    host = new URL(server).hostname
+  } catch {
+    return server
+  }
+  // Kesher lauscht auf dem Server nur lokal: am Kiosk direkt, von anderen Rechnern über Caddy (https, Port 8443)
+  if (!isLoopback(host) || isLoopback(location.hostname)) return server
+  return `https://${location.hostname}:8443`
+}
+
+/** Rolle und Name, mit denen die Kachel spiegelt – "@user": die angemeldete Person (person). */
+function kesherIdentity(tile, person) {
+  const asViewer = tile.kesherRoleId === '@user'
+  return {
+    roleId: asViewer ? (person?.roleId ?? '') : String(tile.kesherRoleId ?? ''),
+    username: asViewer ? String(person?.name ?? '').trim() : String(tile.kesherUser ?? 'Multiview').trim() || 'Multiview',
+  }
+}
+
+/** Adresse der Kesher-Seite für die Kachel, null ohne Rolle (dann zeigt die Kachel einen Hinweis). */
+export function kesherTileUrl(tile, config, person) {
+  const { roleId, username } = kesherIdentity(tile, person)
+  if (!roleId || !username) return null
+  // embed: Kesher passt sich dem Kachelfenster an (alle Kanäle sichtbar, nichts scrollt)
+  const params = new URLSearchParams({ viewMode: tile.kesherView || 'station', embed: '1' })
+  if (tile.kesherHideControls) params.set('controls', '0')
+  params.set('autoLogin', '1')
+  // Kesher erlaubt keine Leerzeichen im Namen – geschütztes Leerzeichen sieht gleich aus
+  params.set('username', username.replace(/\s+/g, '\u00a0'))
+  params.set('roleId', roleId)
+  params.set('secondary', '1')
+  return `${kesherBase(tile, config)}/?${params}`
+}
+
+/** Warum eine Kesher-Kachel nichts zeigt. */
+export function kesherMissing(tile) {
+  return tile.kesherRoleId === '@user' ? 'niemand mit Rolle angemeldet' : 'keine Rolle gewählt'
+}

@@ -2325,3 +2325,6 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 }
 .qr-box .segmented { background: var(--surface); }
 .qr-option .segmented button, .insp-tabs button { justify-content: center; }
+
+/* Kesher-Kachel im Editor mit Live-Bildern: echtes Kesher in Monitorgröße, nicht bedienbar */
+.etile-media > iframe.kesher-live { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; pointer-events: none; }

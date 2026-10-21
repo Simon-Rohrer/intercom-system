@@ -1,4 +1,4 @@
-import { isPortrait, layoutSize, isStandardLayout, setPreviewSize, LAYOUT_MIN_PX, LAYOUT_MAX_PX, previewMetrics, connect, reloadWhenIdle, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder } from './common.js'
+import { isPortrait, layoutSize, isStandardLayout, setPreviewSize, LAYOUT_MIN_PX, LAYOUT_MAX_PX, previewMetrics, connect, reloadWhenIdle, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder, kesherTileUrl } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
 import { createUplinkView, mergeUplink, uplinkOptions } from './uplink.js'
@@ -1537,7 +1537,9 @@ function syncTileMedia(el, tile) {
         ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctSongInfo, tile.ctCcli, tile.ctDate, tile.ctMode, agendaOptions(tile.agendaLook)])
         : livePreview && source
         ? JSON.stringify([source.type, source.device, source.url, source.name])
-        : ''
+        : livePreview && tile.kind === 'kesher' && editorKesherUrl(tile)
+          ? JSON.stringify(['kesher', editorKesherUrl(tile)])
+          : ''
   if (el.dataset.mediaKey === key) return
   el.dataset.mediaKey = key
   el.querySelector('.etile-media')?.remove()
@@ -1562,6 +1564,15 @@ function syncTileMedia(el, tile) {
     view.update(uplink)
     uplinkViews.add(view)
     media.append(view.el)
+  } else if (tile.kind === 'kesher') {
+    // Echtes Kesher als Spiegel der Rolle – im Editor nur zum Ansehen, Ziehen und Größe bleiben möglich
+    const iframe = document.createElement('iframe')
+    iframe.className = 'kesher-live'
+    iframe.title = 'Kesher-Intercom'
+    iframe.allow = 'autoplay'
+    iframe.tabIndex = -1
+    iframe.src = editorKesherUrl(tile)
+    media.append(iframe)
   } else if (source.type === 'device') {
     const hint = document.createElement('span')
     hint.className = 'placeholder'
@@ -1588,6 +1599,11 @@ function syncTileMedia(el, tile) {
   el.prepend(media)
 }
 
+/** Kesher-Adresse für die Vorschau im Editor; „angemeldeter Nutzer“ = wer gerade hier angemeldet ist. */
+function editorKesherUrl(tile) {
+  return kesherTileUrl(tile, config, user && !user.admin && !user.open ? user : null)
+}
+
 function describeTile(tile) {
   if (tile.kind === 'clock') return { title: 'Uhr', sub: 'aktuelle Uhrzeit' }
   if (tile.kind === 'text') return { title: tile.text || 'Text', sub: 'Text' }
@@ -1599,8 +1615,8 @@ function describeTile(tile) {
         ? 'angemeldeter Nutzer'
         : tile.kesherRoleId
           ? chat.roles?.find((r) => r.id === tile.kesherRoleId)?.name || tile.kesherRoleId
-          : 'ohne Rolle'
-    return { title: 'Kesher-Intercom', sub: `${role} · in Vorschau und Vollbild bedienbar` }
+          : 'keine Rolle gewählt'
+    return { title: 'Kesher-Intercom', sub: tile.kesherRoleId ? `Spiegel von ${role}` : role }
   }
   if (tile.kind === 'churchtools') {
     const day = tile.ctDate
@@ -2260,8 +2276,8 @@ function chatLookSection(tile) {
 function kesherSection(tile) {
   const roles = chat.roles || []
   const roleOptions = [
-    `<option value="">– selbst anmelden –</option>`,
-    `<option value="@user" ${tile.kesherRoleId === '@user' ? 'selected' : ''}>– angemeldeter Nutzer (Name und Rolle) –</option>`,
+    `<option value="" ${tile.kesherRoleId ? '' : 'selected'}>– Rolle wählen –</option>`,
+    `<option value="@user" ${tile.kesherRoleId === '@user' ? 'selected' : ''}>– angemeldeter Nutzer (seine Rolle) –</option>`,
     ...roles.map((r) => `<option value="${esc(r.id)}" ${r.id === tile.kesherRoleId ? 'selected' : ''}>${esc(r.name)}</option>`),
   ]
   // Gespeicherte Rolle, die Kesher (noch) nicht gemeldet hat, nicht stillschweigend verlieren
@@ -2269,22 +2285,20 @@ function kesherSection(tile) {
     roleOptions.push(`<option value="${esc(tile.kesherRoleId)}" selected>${esc(tile.kesherRoleId)}</option>`)
   const view = tile.kesherView || 'station'
   return `
-      <label class="field"><span>Rolle (automatisch anmelden)</span><select data-t="kesherRoleId">${roleOptions.join('')}</select></label>
-      <label class="field"><span>Name der Station</span><input type="text" data-t="kesherUser" value="${esc(tile.kesherUser ?? 'Multiview')}" placeholder="Multiview"></label>
+      <label class="field"><span>Rolle, die gespiegelt wird</span><select data-t="kesherRoleId">${roleOptions.join('')}</select></label>
+      <p class="muted small">Die Kachel ist nur ein <b>Spiegel</b> dieser Rolle: Sie belegt die Rolle nie und nutzt weder Mikrofon noch Lautsprecher am Server. Melde dich an deinem eigenen Gerät mit Headset (Laptop, Handy) mit derselben Rolle an – die Kachel zeigt dann dessen Kanäle, wer spricht und den Chat. Was du in der Kachel drückst, schaltet Kesher auf deinem Gerät.</p>
       <label class="field"><span>Ansicht</span>
         <select data-t="kesherView">
           <option value="station" ${view === 'station' ? 'selected' : ''}>Station (alle Kanäle)</option>
           <option value="simple" ${view === 'simple' ? 'selected' : ''}>Einfach (große Tasten)</option>
-          <option value="chat" ${view === 'chat' ? 'selected' : ''}>Nur Chat (ohne Mikrofon)</option>
+          <option value="chat" ${view === 'chat' ? 'selected' : ''}>Nur Chat</option>
         </select>
       </label>
-      <p class="muted small">Die Kachel <b>spiegelt</b> die Rolle nur und belegt sie nie: Melde dich mit derselben Rolle an deinem Gerät mit Headset an (Laptop, Handy) – die Kachel zeigt dann dessen Kanäle, und was du hier umstellst oder drückst, schaltet Kesher dort.</p>
       <label class="check"><input type="checkbox" data-t="kesherHideControls" ${tile.kesherHideControls ? 'checked' : ''}> Sprechtasten ausblenden (Hold to talk, Reply, Always on)</label>
-      <p class="muted">Die Kanäle passen sich immer der Kachelgröße an. Ohne Sprechtasten spricht man über Stream Deck oder Tastatur – oder in Kesher unter Einstellungen „Direct PTT Mode“ einschalten, dann ist jede Kanal-Taste eine Sprechtaste.</p>
-      <label class="field"><span>Mikrofon (Name enthält, leer = Standard)</span><input type="text" data-t="kesherAudioIn" value="${esc(tile.kesherAudioIn)}" placeholder="z. B. USB"></label>
-      <label class="field"><span>Lautsprecher (Name enthält, leer = Standard)</span><input type="text" data-t="kesherAudioOut" value="${esc(tile.kesherAudioOut)}" placeholder="z. B. HDMI"></label>
+      <p class="muted">Die Kanäle passen sich immer der Kachelgröße an.</p>
+      <label class="field"><span>Name in Kesher (wie die Kachel dort erscheint)</span><input type="text" data-t="kesherUser" value="${esc(tile.kesherUser ?? 'Multiview')}" placeholder="Multiview"></label>
       <label class="field"><span>Kesher-Adresse (leer = automatisch)</span><input type="text" data-t="kesherUrl" value="${esc(tile.kesherUrl)}" placeholder="automatisch"></label>
-      <p class="muted">Zeigt Kesher mit Sprechtasten, Kanälen und Chat in der Multiview-Vorschau, im Vollbild und in der Monitor-Ansicht. Vorschauen melden sich als Zweitgerät an und übernehmen keine laufende Station. Im Layout-Editor bleibt die Kachel zum Anordnen als Platzhalter dargestellt. Für das Mikrofon muss die Seite über <code>127.0.0.1</code> oder <code>https</code> geöffnet und der Mikrofonzugriff im Browser erlaubt sein.</p>`
+      <p class="muted">Im Editor ist die Kachel mit <b>Live-Bilder</b> echt zu sehen (hier nicht bedienbar), sonst als Platzhalter.</p>`
 }
 
 function tileInspector(tile, layout) {
@@ -2304,7 +2318,7 @@ function tileInspector(tile, layout) {
         <option value="text" ${kind === 'text' ? 'selected' : ''}>Text</option>
         <option value="audio" ${kind === 'audio' ? 'selected' : ''}>Pegel-Fenster (Audio)</option>
         <option value="chat" ${kind === 'chat' ? 'selected' : ''}>Kesher-Chat</option>
-        <option value="kesher" ${kind === 'kesher' ? 'selected' : ''}>Kesher-Intercom (bedienbar)</option>
+        <option value="kesher" ${kind === 'kesher' ? 'selected' : ''}>Kesher-Intercom (Spiegel)</option>
         <option value="churchtools" ${kind === 'churchtools' ? 'selected' : ''}>ChurchTools-Ablauf</option>
         <option value="uplink" ${kind === 'uplink' ? 'selected' : ''}>Upload / Stream (Internet)</option>
         <option value="propresenter" ${kind === 'propresenter' ? 'selected' : ''}>ProPresenter (Folien / Hintergründe)</option>

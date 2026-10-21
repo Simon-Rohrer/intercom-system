@@ -1,4 +1,4 @@
-import { layoutSize, isStandardLayout, TIME_ZONE, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder, watchLogin, loginKey } from './common.js'
+import { layoutSize, isStandardLayout, TIME_ZONE, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder, watchLogin, loginKey, kesherTileUrl, kesherMissing } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions } from './meters.js'
 import { createChatView } from './chat.js'
 import { chatFor, chatRoleFor } from './rights.js'
@@ -267,7 +267,7 @@ function buildTile(tile, layout, usedStreams) {
   } else if (tile.kind === 'kesher') {
     // Die Kesher-Seite selbst liegt in der Ebene #frames (syncFrames) über dieser Kachel
     media.classList.add('chat')
-    media.append(placeholder('Kesher-Intercom\nwird geladen …'))
+    media.append(placeholder(`Kesher-Intercom\n${kesherUrl(tile) ? 'wird geladen …' : kesherMissing(tile)}`))
   } else if (tile.kind === 'uplink') {
     const view = createUplinkView(tile.uplink)
     view.update(uplink)
@@ -341,24 +341,6 @@ function buildTile(tile, layout, usedStreams) {
 // Kesher-Intercom (bedienbare Kesher-Weboberfläche)
 // ---------------------------------------------------------------------------
 
-const isLoopback = (host) => ['localhost', '127.0.0.1', '[::1]', '::1'].includes(host)
-
-/** Adresse der Kesher-Weboberfläche aus Sicht dieses Browsers. */
-function kesherBase(tile) {
-  const own = String(tile.kesherUrl || '').trim()
-  if (own) return own.replace(/\/+$/, '')
-  const server = String(config.chat?.url || 'http://127.0.0.1:8080').replace(/\/+$/, '')
-  let host = ''
-  try {
-    host = new URL(server).hostname
-  } catch {
-    return server
-  }
-  // Kesher lauscht auf dem Server nur lokal: am Kiosk direkt, von anderen Rechnern über Caddy (https, Port 8443)
-  if (!isLoopback(host) || isLoopback(location.hostname)) return server
-  return `https://${location.hostname}:8443`
-}
-
 /** Person für Kesher-Kacheln mit „angemeldeter Nutzer“: hier angemeldet, sonst die des Multiviews. */
 function kesherPerson() {
   if (viewer) return viewer.admin ? null : viewer
@@ -387,27 +369,7 @@ async function refreshStationUser() {
 setInterval(refreshStationUser, 10_000)
 
 function kesherUrl(tile) {
-  // embed: Kesher passt sich dem Kachelfenster an (alle Kanäle sichtbar, nichts scrollt)
-  const params = new URLSearchParams({ viewMode: tile.kesherView || 'station', embed: '1' })
-  if (tile.kesherHideControls) params.set('controls', '0')
-  // "@user": mit Namen und Rolle des angemeldeten Nutzers (nur wenn hier jemand mit Rolle angemeldet ist)
-  const asViewer = tile.kesherRoleId === '@user'
-  const person = kesherPerson()
-  const roleId = asViewer ? (person?.roleId ?? '') : tile.kesherRoleId
-  const username = asViewer ? String(person?.name ?? '').trim() : String(tile.kesherUser ?? 'Multiview').trim()
-  if (roleId && username) {
-    params.set('autoLogin', '1')
-    // Kesher erlaubt keine Leerzeichen im Namen – geschütztes Leerzeichen sieht gleich aus
-    params.set('username', username.replace(/\s+/g, '\u00a0'))
-    params.set('roleId', roleId)
-    // Immer als Spiegel (Zweitgerät): Die Kachel belegt die Rolle in Kesher nie. Ist die Rolle auf
-    // einem echten Gerät angemeldet (z. B. Laptop mit Headset), zeigt die Kachel dessen Kanäle und
-    // Sprechtasten, und was man hier umstellt, schaltet Kesher dort.
-    params.set('secondary', '1')
-  }
-  if (tile.kesherAudioIn) params.set('audioInputMatch', tile.kesherAudioIn)
-  if (tile.kesherAudioOut) params.set('audioOutputMatch', tile.kesherAudioOut)
-  return `${kesherBase(tile)}/?${params}`
+  return kesherTileUrl(tile, config, kesherPerson())
 }
 
 /**
@@ -423,7 +385,7 @@ function syncFrames(layout) {
   const wanted =
     !layout || !viewerReady
       ? []
-      : layout.tiles.filter((t) => t.kind === 'kesher')
+      : layout.tiles.filter((t) => t.kind === 'kesher' && kesherUrl(t))
   refreshStationUser()
   const keep = new Set()
   for (const tile of wanted) {
@@ -438,7 +400,8 @@ function syncFrames(layout) {
       wrap.className = 'frame-tile'
       const iframe = document.createElement('iframe')
       iframe.title = 'Kesher-Intercom'
-      iframe.allow = 'microphone; camera; autoplay; speaker-selection; fullscreen'
+      // Nur Spiegel: kein Mikrofon, kein Lautsprecher – das Headset hängt am Gerät der Rolle
+      iframe.allow = 'autoplay; fullscreen'
       iframe.src = url
       wrap.append(iframe)
       frameLayer.append(wrap)

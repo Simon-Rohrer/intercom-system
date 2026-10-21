@@ -10,7 +10,9 @@ const vm = require('node:vm')
 // No network, credentials, audio devices or production sessions are used.
 const publicDir = path.join(__dirname, '../public')
 const source = fs.readFileSync(path.join(publicDir, 'output.js'), 'utf8')
-const frameSource = source.slice(source.indexOf('const isLoopback ='), source.indexOf('\nfunction placeholder('))
+const common = fs.readFileSync(path.join(publicDir, 'common.js'), 'utf8')
+const kesherSource = common.slice(common.indexOf('const isLoopback =')).replace(/^export /gm, '')
+const frameSource = kesherSource + source.slice(source.indexOf('/** Person für Kesher-Kacheln'), source.indexOf('\nfunction placeholder('))
 const user = { name: 'Test Licht', roleId: 'licht-2', admin: false }
 const tile = { id: 'intercom', kind: 'kesher', kesherRoleId: '@user', kesherTakeover: true }
 const layout = { id: 'layout', tiles: [tile] }
@@ -45,7 +47,9 @@ test('Eingebettete Multiviews zeigen die echte Intercom-Kachel', () => {
   assert.equal(iframe.tag, 'iframe')
   assert.equal(iframe.title, 'Kesher-Intercom')
   assert.equal(new URL(iframe.src).searchParams.get('roleId'), user.roleId)
-  for (const permission of ['microphone', 'speaker-selection', 'autoplay', 'fullscreen']) assert.ok(iframe.allow.includes(permission))
+  // Reiner Spiegel der Rolle: Mikrofon und Lautsprecher gehören zum echten Gerät der Rolle
+  assert.ok(!iframe.allow.includes('microphone'))
+  assert.ok(!iframe.allow.includes('speaker-selection'))
 })
 
 test('Vorschau und Vollbild behalten beim erneuten Aufbau dasselbe Intercom-Fenster', () => {
@@ -66,28 +70,30 @@ test('Vorschauen mit Nutzer- oder fester Rolle sind Zweitgeräte ohne Übernahme
   }
 })
 
-test('Monitor-Ansicht erhält ihre bisherige Rollenlogik und Geräteauswahl', () => {
+test('Kachel mit fester Rolle spiegelt immer, ohne eigenes Mikrofon oder Lautsprecher', () => {
   const { url } = setup({ embedded: false })
   assert.equal(url().searchParams.get('secondary'), '1')
+  // Alte Kacheln mit Geräteauswahl: die Angaben werden nicht mehr an Kesher gegeben
   const fixed = url({ ...tile, kesherRoleId: 'licht-1', kesherUser: 'Test', kesherAudioIn: 'USB', kesherAudioOut: 'HDMI', kesherHideControls: true })
-  assert.equal(fixed.searchParams.get('autoTakeover'), '1')
-  assert.equal(fixed.searchParams.has('secondary'), false)
-  assert.equal(fixed.searchParams.get('audioInputMatch'), 'USB')
-  assert.equal(fixed.searchParams.get('audioOutputMatch'), 'HDMI')
+  assert.equal(fixed.searchParams.get('secondary'), '1')
+  assert.equal(fixed.searchParams.get('roleId'), 'licht-1')
+  assert.equal(fixed.searchParams.has('autoTakeover'), false)
+  assert.equal(fixed.searchParams.has('audioInputMatch'), false)
+  assert.equal(fixed.searchParams.has('audioOutputMatch'), false)
   assert.equal(fixed.searchParams.get('controls'), '0')
-  assert.equal(url({ ...tile, kesherRoleId: 'licht-1', kesherTakeover: false }).searchParams.has('autoTakeover'), false)
 })
 
-test('Ohne Nutzerrolle wird die echte Intercom-Anmeldung ohne erfundene Identität geladen', () => {
+test('Ohne Rolle lädt die Kachel kein Kesher (keine eigene Station am Server)', () => {
   for (const viewer of [null, { ...user, admin: true }]) {
     const { context, frameLayer } = setup({ viewer })
     context.syncFrames(layout)
-    assert.equal(frameLayer.children.length, 1)
-    const params = new URL(frameLayer.children[0].children[0].src).searchParams
-    assert.equal(params.has('autoLogin'), false)
-    assert.equal(params.has('roleId'), false)
-    assert.equal(params.has('username'), false)
+    assert.equal(frameLayer.children.length, 0)
+    assert.equal(context.kesherMissing(tile), 'niemand mit Rolle angemeldet')
   }
+  const { context, frameLayer } = setup()
+  context.syncFrames({ ...layout, tiles: [{ ...tile, kesherRoleId: '' }] })
+  assert.equal(frameLayer.children.length, 0)
+  assert.equal(context.kesherMissing({ ...tile, kesherRoleId: '' }), 'keine Rolle gewählt')
 })
 
 test('Der erste Intercom-Aufruf wartet auf die aufgelöste Nutzeridentität', () => {
