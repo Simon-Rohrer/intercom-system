@@ -380,16 +380,13 @@ export function kesherBase(tile, config) {
 }
 
 /**
- * Kesher über Caddy, passend zur Adresse von JMS Control: über die IP auf Port 8443, über einen
- * Namen (jmscontrol.internal, multiview.jms.de, jmscontrol.local …) unter intercom.<gleiche Endung>.
- * Vorher hieß es immer <Name>:8443 – für Namen gibt es dort keine Seite, die Kachel blieb weiß.
+ * Kesher über Caddy auf Port 8443 derselben Adresse wie JMS Control (IP oder Name). Gleiche Adresse
+ * heißt: Der Browser schickt die Anmeldung von JMS Control mit (Cookies gelten für alle Ports einer
+ * Adresse). Unter intercom.internal o. ä. wäre die Kachel eine fremde Seite ohne Anmeldung – dort
+ * käme nur „Gerät freischalten“. Die Namen auf :8443 stehen im Caddyfile (Kesher/server-config).
  */
 export function kesherPublicOrigin(hostname) {
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.includes(':')) return `https://${hostname.includes(':') ? `[${hostname}]` : hostname}:8443`
-  if (hostname.endsWith('.jms.de')) return 'https://intercom.jms.de'
-  if (hostname.endsWith('.internal')) return 'https://intercom.internal'
-  if (hostname.endsWith('.local')) return 'https://intercom.local'
-  return `https://${hostname}:8443`
+  return `https://${hostname.includes(':') ? `[${hostname}]` : hostname}:8443`
 }
 
 /** Rolle und Name, mit denen die Kachel spiegelt – "@user": die angemeldete Person (person). */

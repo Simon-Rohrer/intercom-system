@@ -256,6 +256,14 @@ https://192.168.0.21:8443 {
 	import kesher_web
 }
 
+# Kesher-Kacheln in JMS Control: Kesher auf Port 8443 unter demselben Namen wie JMS Control.
+# Gleicher Name = der Browser schickt die Anmeldung von JMS Control mit (Cookies gelten für alle
+# Ports eines Namens). Unter intercom.internal wäre die Kachel eine fremde Seite ohne Anmeldung.
+https://jmscontrol.internal:8443, https://multiview.internal:8443, https://multiview.jms.de:8443, https://jmscontrol.local:8443 {
+	import lan_port
+	import kesher_web
+}
+
 # Multiview (Container mit HOST=127.0.0.1)
 https://192.168.0.21:8090 {
 	import lan_port

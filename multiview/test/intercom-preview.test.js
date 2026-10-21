@@ -144,12 +144,10 @@ test('Beide äußeren Vorschau-Frames delegieren Mikrofon und Lautsprecher', () 
   assert.ok(!source.includes('nur auf dem Monitor bedienbar'))
 })
 
-test('Kesher-Adresse passt zur Adresse von JMS Control (IP oder Name)', () => {
+test('Kesher liegt auf derselben Adresse wie JMS Control (Port 8443), damit die Anmeldung mitgeht', () => {
   const { context } = setup()
   assert.equal(context.kesherPublicOrigin('192.168.0.21'), 'https://192.168.0.21:8443')
-  assert.equal(context.kesherPublicOrigin('jmscontrol.internal'), 'https://intercom.internal')
-  assert.equal(context.kesherPublicOrigin('multiview.jms.de'), 'https://intercom.jms.de')
-  assert.equal(context.kesherPublicOrigin('jmscontrol.local'), 'https://intercom.local')
-  context.location.hostname = 'jmscontrol.internal'
-  assert.equal(new URL(context.kesherUrl({ ...tile, kesherRoleId: 'licht-multiview' })).origin, 'https://intercom.internal')
+  assert.equal(context.kesherPublicOrigin('jmscontrol.internal'), 'https://jmscontrol.internal:8443')
+  context.location.hostname = 'multiview.jms.de'
+  assert.equal(new URL(context.kesherUrl({ ...tile, kesherRoleId: 'licht-multiview' })).origin, 'https://multiview.jms.de:8443')
 })
