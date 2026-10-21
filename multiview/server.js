@@ -16,6 +16,7 @@ const { normalizeRaspberry, parsePiRequest, createPiRegistry } = require('./rasp
 const { createChurchTools } = require('./churchtools')
 const { createUplink, normalizeUplink } = require('./uplink')
 const { createYouTube } = require('./youtube')
+const { createSlideshow } = require('./slideshow')
 const { createMessageLinks } = require('./message-links')
 const QRCode = require('qrcode')
 const { normalizeDayQr, normalizeOutputDayQr } = require('./day-qr')
@@ -595,7 +596,10 @@ async function pollProPresenterOnce(target) {
     next.connected = false
   }
   if (target !== ppBase()) return // Adresse wurde inzwischen geändert
-  if (next.connected && !ppState.connected) console.log(`ProPresenter: verbunden (${next.version ?? next.host})`)
+  if (next.connected && !ppState.connected) {
+    console.log(`ProPresenter: verbunden (${next.version ?? next.host})`)
+    slideshow.ppReachable()
+  }
   if (JSON.stringify(next) !== JSON.stringify(ppState)) {
     ppState = next
     broadcast({ type: 'propresenter', ...ppState })
@@ -1134,16 +1138,29 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 })
 const socketGuard = createSocketGuard()
 const knownDevices = new Set()
 
-function send(ws, msg) {
+// Pegel kommen 15-mal pro Sekunde: Ein Gerät, das mit dem Empfang nicht hinterherkommt (schwaches
+// WLAN, schlafender Tab), bekommt keine weiteren, bis es aufgeholt hat – sonst wüchse der Puffer im Server
+const LEVELS_BACKLOG_BYTES = 256 * 1024
+
+function send(ws, msg, encoded = null) {
   if (ws.readyState !== 1) return
   if (msg.type === 'session_revoked') return ws.send(JSON.stringify(msg))
+  if (msg.type === 'levels' && ws.bufferedAmount > LEVELS_BACKLOG_BYTES) return
   if (!ws.authRequest || !access.trusted(clientIp(ws.authRequest), ws.authRequest)) return ws.close(4401, 'Bitte anmelden')
   const filtered = messageForRequest(msg, ws.authRequest)
-  if (filtered) ws.send(JSON.stringify(filtered))
+  if (!filtered) return
+  // Dieselbe (ungefilterte) Meldung für viele Geräte nur einmal in Text umwandeln
+  let text = encoded?.get(filtered)
+  if (!text) {
+    text = JSON.stringify(filtered)
+    encoded?.set(filtered, text)
+  }
+  ws.send(text)
 }
 
 function broadcast(msg) {
-  for (const ws of wss.clients) send(ws, msg)
+  const encoded = new Map()
+  for (const ws of wss.clients) send(ws, msg, encoded)
 }
 
 let sessionsTimer = null
@@ -1192,6 +1209,9 @@ const youtube = createYouTube({
   onUpdate: broadcast,
   log: console.log,
 })
+
+// Diashow (Kachel „Diashow“): hochgeladene Bilder und zwischengespeicherte ProPresenter-Folien
+const slideshow = createSlideshow({ dataDir: DATA_DIR, getPpBase: () => ppBase(), onUpdate: broadcast, log: console.log })
 
 const kesherChat = createKesherChat({
   getConfig: () => config.chat,
@@ -1330,6 +1350,7 @@ wss.on('connection', (ws, req) => {
   send(ws, churchTools.snapshot())
   send(ws, uplink.snapshot())
   send(ws, youtube.snapshot())
+  send(ws, slideshow.snapshot())
   send(ws, { type: 'propresenter', ...ppState })
   send(ws, { type: 'ppstage', ...stageState })
 
@@ -2030,6 +2051,32 @@ function writeServiceCredentials(data) {
   fs.writeFileSync(tmp, JSON.stringify(data), { mode: 0o600 })
   fs.renameSync(tmp, SERVICE_CREDENTIALS_FILE)
 }
+
+// Diashow: Bilder für Monitore und Editor (feste Namen aus der Liste, nie ein Pfad vom Browser)
+for (const [route, kind] of [['/diashow/bild/:file', 'bild'], ['/diashow/pp/:file', 'pp']]) {
+  app.get(route, requireTrusted, requireDisplayReader, (req, res) => {
+    const file = slideshow.filePath(kind, req.params.file)
+    if (!file) return res.status(404).end()
+    // Name ändert sich mit dem Inhalt – darf lange im Browser bleiben
+    res.sendFile(file, { maxAge: '7d', immutable: true })
+  })
+}
+const slideshowRoute = (handler) => async (req, res) => {
+  try {
+    res.json({ ok: true, ...((await handler(req)) || {}), ...slideshow.snapshot() })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
+}
+app.get('/api/slideshow', requireTrusted, requireDisplayReader, (req, res) => res.json(slideshow.snapshot()))
+app.post('/api/slideshow/images', requireAdmin, express.raw({ type: () => true, limit: '26mb' }), slideshowRoute((req) => ({
+  image: slideshow.addImage(req.body, { title: req.query.title, from: req.query.from, to: req.query.to }),
+})))
+app.patch('/api/slideshow/images/:id', requireAdmin, slideshowRoute((req) => ({ image: slideshow.updateImage(req.params.id, req.body || {}) })))
+app.delete('/api/slideshow/images/:id', requireAdmin, slideshowRoute((req) => slideshow.removeImage(req.params.id)))
+app.put('/api/slideshow/order', requireAdmin, slideshowRoute((req) => slideshow.reorder(req.body?.ids)))
+app.put('/api/slideshow/propresenter', requireAdmin, slideshowRoute((req) => slideshow.setPpPlaylist(req.body?.playlist)))
+app.post('/api/slideshow/propresenter/refresh', requireAdmin, slideshowRoute(() => slideshow.refreshPp()))
 
 // YouTube: Einstellungen (nur Admin). Der API-Schlüssel liegt in youtube-secret.json im Datenordner
 // (nur für den Server lesbar) und geht nie an den Browser zurück.
@@ -2848,6 +2895,7 @@ server.listen(PORT, HOST, () => {
   startMediamtx()
   churchTools.start()
   youtube.start()
+  slideshow.start()
   applyUplink()
   uplink.start()
 })

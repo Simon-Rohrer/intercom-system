@@ -275,6 +275,28 @@ def parse_docker_time(value):
         return None
 
 
+def container_load():
+    """CPU und Arbeitsspeicher je Container (docker stats). CPU als Anteil am ganzen Server."""
+    code, out, _ = run(["docker", "stats", "--no-stream", "--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"], timeout=25)
+    if code != 0:
+        return {}
+    cores = os.cpu_count() or 1
+    loads = {}
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        try:
+            cpu = float(parts[1].strip().rstrip("%").replace(",", "."))
+        except ValueError:
+            continue
+        mem = parts[2].split("/")[0].strip()
+        mem = re.sub(r"\s*([KMG])iB$", r" \1B", mem).replace(".", ",")
+        # docker zählt 100 % je Kern – auf den ganzen Server umrechnen
+        loads[parts[0].strip()] = f"CPU {cpu / cores:.0f} % · {mem} RAM".replace("CPU 0 %", "CPU < 1 %")
+    return loads
+
+
 def check_containers(cfg, unknown):
     code, out, err = run(["docker", "ps", "-aq"], timeout=15)
     if code == 127:
@@ -294,6 +316,7 @@ def check_containers(cfg, unknown):
     now = time.time()
     results = {}
     tailscale_containers = []
+    loads = container_load()
     for c in sorted(json.loads(out), key=lambda c: c.get("Name", "")):
         name = c.get("Name", "").lstrip("/")
         if not name or name in ignore:
@@ -324,6 +347,8 @@ def check_containers(cfg, unknown):
             parts.append("startet")
         if restarts:
             parts.append(f"{restarts}× neu gestartet")
+        if name in loads:
+            parts.append(loads[name])
         results[key] = result(True, name, " · ".join(parts))
         if "tailscale" in c.get("Config", {}).get("Image", ""):
             tailscale_containers.append(name)
