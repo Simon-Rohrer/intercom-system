@@ -78,3 +78,48 @@ test('ProPresenter-Folien werden zwischengespeichert und bleiben, wenn ProPresen
 test('Playlists in Ordnern werden gefunden', () => {
   assert.deepEqual(flattenPlaylists([{ field_type: 'group', id: { uuid: 'g' }, children: [{ field_type: 'playlist', id: { uuid: 'a', name: 'A' } }] }]), [{ uuid: 'a', name: 'A' }])
 })
+
+test('Slider der Webseite: großes Bild, Link und Text je Folie', () => {
+  const { parseWebsiteSlides } = require('../slideshow')
+  const html = `<div class="hero swiper--hero"><div class="swiper-wrapper">
+    <div class="swiper-slide"> <a class="swiper-slide-content has-mobile-image" href="/gruppen/1-test" target="_blank">
+      <picture class="slide__image-desktop"><source media="(min-width: 1100px)" srcset="/img/a.w-1920.png 1x, /img/a.dpr-2.png 2x"><img src="data:x"></picture>
+      <picture class="slide__image-mobile"><source srcset="/img/a-mobil.png 1x"></picture></a></div>
+    <div class="swiper-slide"> <span class="swiper-slide-content">
+      <picture class="slide__image-desktop"><source srcset="/img/b.png 1x"></picture>
+      <h2>GOTT erleben &amp; feiern</h2><p>Jeden Sonntag</p> Weiterlesen</span></div>
+  </div><div class="swiper-pagination"></div></div><main>Rest</main>`
+  const slides = parseWebsiteSlides(html, 'https://www.example.org/')
+  assert.deepEqual(slides, [
+    { url: 'https://www.example.org/img/a.dpr-2.png', link: 'https://www.example.org/gruppen/1-test', text: '' },
+    { url: 'https://www.example.org/img/b.png', link: '', text: 'GOTT erleben & feiern Jeden Sonntag' },
+  ])
+  assert.deepEqual(parseWebsiteSlides('<html>kein Slider</html>', 'https://x.org/'), [])
+})
+
+test('ChurchTools-Termine: je Termin nur der nächste, ohne interne und vergangene', () => {
+  const { mapAppointments } = require('../slideshow')
+  const now = Date.parse('2026-10-21T12:00:00Z')
+  const entry = (id, start, extra = {}) => ({
+    appointment: {
+      base: { id, title: `Termin ${id}`, calendar: { name: 'Jugend' }, address: { meetingAt: 'HISplace' }, image: { imageUrl: `https://jms.church.tools/images/${id}/abc123` }, ...extra },
+      calculated: { startDate: start, endDate: start },
+    },
+  })
+  const list = mapAppointments(
+    [
+      entry(1, '2026-10-28T17:00:00Z'),
+      entry(1, '2026-10-22T17:00:00Z'), // gleicher Termin, früher → dieser zählt
+      entry(2, '2026-10-20T17:00:00Z'), // vorbei
+      entry(3, '2026-10-23T17:00:00Z', { isInternal: true }),
+      entry(4, '2026-10-24T17:00:00Z', { image: { imageUrl: 'javascript:alert(1)' } }),
+    ],
+    now,
+  )
+  assert.deepEqual(list.map((a) => [a.id, a.start, Boolean(a.image)]), [
+    [1, '2026-10-22T17:00:00Z', true],
+    [4, '2026-10-24T17:00:00Z', false],
+  ])
+  assert.equal(list[0].place, 'HISplace')
+  assert.equal(list[0].calendar, 'Jugend')
+})

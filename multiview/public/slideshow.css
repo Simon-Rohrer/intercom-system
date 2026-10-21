@@ -69,3 +69,54 @@
 .ss-event-day { font-weight: 700; font-size: 0.95em; }
 .ss-event-time { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 0.85em; color: #a9b2be; }
 .ss-event-name { font-size: 1.35em; font-weight: 600; line-height: 1.15; overflow-wrap: anywhere; }
+
+/* Folien der Webseite (Slider der Startseite, sehr breit): ganz zeigen, dahinter unscharf dasselbe Bild */
+.ss-slide-web { place-items: center; }
+.ss-web-back {
+  position: absolute;
+  inset: -6%;
+  background-size: cover;
+  background-position: center;
+  filter: blur(28px) brightness(0.45) saturate(1.2);
+}
+.ss-slide-web img { position: relative; width: 100%; height: 100%; object-fit: contain; }
+.ss-web-text {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: 6%;
+  font-size: clamp(12px, min(3.4cqw, 6cqh), 72px);
+  font-weight: 700;
+  line-height: 1.15;
+  text-shadow: 0 0.08em 0.4em rgba(0, 0, 0, 0.8);
+}
+
+/* Termine aus ChurchTools: Bild füllt die Fläche, unten Datum, Titel, Ort */
+.ss-slide-ct { place-items: stretch; background: #000; }
+.ss-slide-ct img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ss-slide-ct.no-image { background: radial-gradient(120% 120% at 0% 0%, #1b2430 0%, #0b0d10 55%, #000 100%); }
+.ss-ct-info {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.18em;
+  padding: 3.2em 1.4em 1.1em;
+  font-size: clamp(10px, min(2.6cqw, 4.6cqh), 56px);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.6) 55%, rgba(0, 0, 0, 0) 100%);
+  text-shadow: 0 0.06em 0.3em rgba(0, 0, 0, 0.6);
+}
+.ss-slide-ct.no-image .ss-ct-info { top: 0; justify-content: center; background: none; }
+.ss-ct-when {
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 1.05em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #00d1ff;
+}
+.ss-ct-title { font-size: 2.1em; font-weight: 700; line-height: 1.05; overflow-wrap: anywhere; }
+.ss-ct-sub { font-size: 1.05em; color: #e3e6ea; line-height: 1.25; }
+.ss-ct-meta { font-size: 0.85em; color: #a9b2be; }

@@ -2252,12 +2252,30 @@ function uplinkSection(tile) {
 /** Kachel „Diashow“ */
 function slideshowSection(tile) {
   const o = slideshowOptions(tile.slideshow)
-  const count = slideshowData ? `${slideshowData.images.filter((i) => i.enabled).length} Bilder, ${slideshowData.pp.slides.length} ProPresenter-Folien` : '…'
+  const count = slideshowData
+    ? `${slideshowData.website?.slides?.length || 0} Folien der Webseite, ${slideshowData.ct?.appointments?.length || 0} Termine aus ChurchTools, ${slideshowData.images.filter((i) => i.enabled).length} Bilder, ${slideshowData.pp.slides.length} ProPresenter-Folien`
+    : '…'
   return `
     <label class="field"><span>Jede Folie <output>${o.seconds} s</output></span>
       <input type="range" min="3" max="60" step="1" data-ss="seconds" value="${o.seconds}"></label>
     <label class="field"><span>Bilder einpassen</span>
       <select data-ss="fit"><option value="contain" ${o.fit === 'contain' ? 'selected' : ''}>Ganz zeigen (schwarze Ränder möglich)</option><option value="cover" ${o.fit === 'cover' ? 'selected' : ''}>Füllen (Ränder werden abgeschnitten)</option></select></label>
+    <label class="check"><input type="checkbox" data-ss="website" ${o.website ? 'checked' : ''}> Slider der Webseite</label>
+    <label class="check"><input type="checkbox" data-ss="ct" ${o.ct ? 'checked' : ''}> Termine aus ChurchTools (je Termin eine Folie mit Bild)</label>
+    ${
+      o.ct
+        ? `<div class="meter-settings">
+      <h4>Termine aus ChurchTools</h4>
+      <div class="row">
+        <label class="field"><span>Tage voraus</span><input type="number" min="1" max="42" data-ss="ctDays" value="${o.ctDays}"></label>
+        <label class="field"><span>Höchstens</span><input type="number" min="1" max="40" data-ss="ctMax" value="${o.ctMax}"></label>
+      </div>
+      <label class="check"><input type="checkbox" data-ss="ctImageOnly" ${o.ctImageOnly ? 'checked' : ''}> Nur Termine mit Bild</label>
+      <label class="field"><span>Nur diese (Titel oder Kalender enthält, mit Komma getrennt; leer = alle)</span><input type="text" data-ss="ctFilter" value="${esc(o.ctFilter)}" placeholder="z. B. Gottesdienst, Jugend, Worship"></label>
+      <p class="muted small">Aus allen öffentlichen Kalendern – wie auf der Webseite unter „Termine“. Regelmäßige Termine erscheinen nur einmal (der nächste).</p>
+    </div>`
+        : ''
+    }
     <label class="check"><input type="checkbox" data-ss="images" ${o.images ? 'checked' : ''}> Hochgeladene Bilder</label>
     <label class="check"><input type="checkbox" data-ss="pp" ${o.pp ? 'checked' : ''}> Folien aus ProPresenter</label>
     <label class="check"><input type="checkbox" data-ss="events" ${o.events ? 'checked' : ''}> Nächste Veranstaltungen (ChurchTools)</label>
@@ -2994,6 +3012,21 @@ function renderSlideshowSettings() {
           .join('')
       : '<li class="muted">Noch keine Bilder.</li>'
   }
+  // Webseite und ChurchTools-Termine
+  const web = slideshowData.website || { url: '', slides: [], state: 'off' }
+  const webInput = $('#ss-web-url')
+  if (webInput && document.activeElement !== webInput) webInput.value = web.url || ''
+  const stamp = (at) => (at ? new Date(at).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }) : '')
+  const dot = (state) => (state === 'ok' ? '<span style="color:var(--green)">●</span>' : '<span style="color:var(--amber)">●</span>')
+  if ($('#ss-web-state'))
+    $('#ss-web-state').innerHTML =
+      web.state === 'off'
+        ? 'Aus – keine Folien von der Webseite.'
+        : `${dot(web.state)} ${web.slides.length} Folien${web.at ? ` · Stand ${esc(stamp(web.at))}` : ''}${web.error ? ` · ${esc(web.error)}` : ''}`
+  if ($('#ss-web-thumbs')) $('#ss-web-thumbs').innerHTML = web.slides.map((slide) => `<img src="${esc(slide.url)}" alt="" title="${esc(slide.text)}" loading="lazy">`).join('')
+  const ct = slideshowData.ct || { appointments: [], state: 'error' }
+  if ($('#ss-ct-state'))
+    $('#ss-ct-state').innerHTML = `${dot(ct.state)} ${ct.appointments.length} Termine in den nächsten 6 Wochen, ${ct.appointments.filter((a) => a.image).length} davon mit Bild${ct.at ? ` · Stand ${esc(stamp(ct.at))}` : ''}${ct.error ? ` · ${esc(ct.error)}` : ''}`
   const pp = slideshowData.pp
   const input = $('#ss-pp-playlist')
   if (document.activeElement !== input) input.value = pp.playlist || ''
@@ -3070,6 +3103,18 @@ $('#ss-list').addEventListener('click', async (e) => {
   } catch (err) {
     $('#ss-error').textContent = err.message
   }
+})
+
+$('#ss-web-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  $('#ss-web-state').textContent = 'Lese die Webseite …'
+  await slideshowRequest('PUT', '/api/slideshow/website', { url: $('#ss-web-url').value.trim() }).catch((err) => ($('#ss-error').textContent = err.message))
+  renderSlideshowSettings()
+})
+$('#ss-ext-refresh').addEventListener('click', async () => {
+  $('#ss-web-state').textContent = 'Hole Webseite und Termine …'
+  await slideshowRequest('POST', '/api/slideshow/refresh').catch((err) => ($('#ss-error').textContent = err.message))
+  renderSlideshowSettings()
 })
 
 $('#ss-pp-form').addEventListener('submit', async (e) => {

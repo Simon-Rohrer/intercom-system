@@ -323,7 +323,7 @@
               <div class="card-head">
                 <div>
                   <h2>Diashow</h2>
-                  <p class="muted">Für die Kachel <b>Diashow</b>, z. B. auf dem Bildschirm in der Empfangshalle. Sie zeigt nacheinander die Bilder hier, die Folien einer ProPresenter-Playlist und – in der Kachel einstellbar – die nächsten Veranstaltungen aus ChurchTools. Änderungen erscheinen sofort auf allen Bildschirmen.</p>
+                  <p class="muted">Für die Kachel <b>Diashow</b>, z. B. auf dem Bildschirm in der Empfangshalle. Sie zeigt nacheinander die Slider-Bilder der Webseite, die Termine aus ChurchTools (mit Bild), die Bilder hier, die Folien einer ProPresenter-Playlist und – in der Kachel einstellbar – eine Liste der nächsten Veranstaltungen. Änderungen erscheinen sofort auf allen Bildschirmen.</p>
                 </div>
               </div>
               <label class="ss-drop" id="ss-drop">
@@ -333,6 +333,20 @@
               </label>
               <p class="form-error" id="ss-error" role="alert"></p>
               <ul class="ss-list" id="ss-list"></ul>
+              <div class="meter-settings ss-pp">
+                <h4>Webseite und ChurchTools</h4>
+                <p class="muted small">Die Bilder im Slider der Startseite und die Termine aus den öffentlichen ChurchTools-Kalendern (je Termin mit seinem Bild) – beides wird alle 15 Minuten geholt. Was davon eine Kachel zeigt, stellst du in der Kachel ein.</p>
+                <form id="ss-web-form" class="ss-pp-form" autocomplete="off">
+                  <label class="field"><span>Adresse der Webseite</span><input type="url" id="ss-web-url" placeholder="https://www.jms-altensteig.de/ (leer = aus)" maxlength="300"></label>
+                  <div class="btn-row">
+                    <button class="btn primary small" type="submit">Speichern</button>
+                    <button class="btn small" type="button" id="ss-ext-refresh">Jetzt holen</button>
+                  </div>
+                </form>
+                <p class="muted small" id="ss-web-state"></p>
+                <div class="ss-pp-thumbs" id="ss-web-thumbs"></div>
+                <p class="muted small" id="ss-ct-state"></p>
+              </div>
               <div class="meter-settings ss-pp">
                 <h4>ProPresenter</h4>
                 <p class="muted small">Die Folien dieser Playlist werden auf dem Server gespeichert und alle 10 Minuten aktualisiert, solange ProPresenter läuft. Ist ProPresenter aus, laufen die zuletzt gespeicherten weiter.</p>
