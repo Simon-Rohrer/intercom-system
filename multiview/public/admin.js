@@ -1,4 +1,4 @@
-import { isPortrait, layoutSize, isStandardLayout, setPreviewSize, LAYOUT_MIN_PX, LAYOUT_MAX_PX, previewMetrics, connect, reloadWhenIdle, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder, kesherTileUrl } from './common.js'
+import { isPortrait, layoutSize, isStandardLayout, setPreviewSize, LAYOUT_MIN_PX, LAYOUT_MAX_PX, previewMetrics, connect, reloadWhenIdle, watchLogin, loginKey, uid, sourceLabel, hasAtemInput, audioInputName, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, LINE_COLOR, LINE_WIDTH, applyLayoutBorder, kesherTileUrl, startUrlIsName } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
 import { createUplinkView, mergeUplink, uplinkOptions } from './uplink.js'
@@ -4085,7 +4085,7 @@ setInterval(() => document.visibilityState === 'visible' && loadGateway(), 60_00
 
 /** Adresse im QR-Code: öffnet die Startseite (Dashboard) und übernimmt dabei den Code. */
 const gatewayCodeUrl = (info) => {
-  const base = (info.startUrl || publicOrigin(server)).replace(/\/+$/, '')
+  const base = publicOrigin(server, info.startUrl).replace(/\/+$/, '')
   return `${base}/.jms-auth/code?c=${encodeURIComponent(info.code)}&next=${encodeURIComponent('/remote.html')}`
 }
 
@@ -4175,7 +4175,8 @@ function renderGateway() {
     <form id="gateway-form" class="gateway-form" autocomplete="off">
       <label class="field"><span>Startseite nach dem Scannen</span>
         <input type="url" name="startUrl" value="${esc(info.startUrl)}" placeholder="${esc(publicOrigin(server))}">
-        <small class="muted">Das ist die Basisadresse des JMS-Control-Servers. Nach dem Scan öffnet sich die Handyansicht.</small>
+        <small class="muted">QR-Codes zeigen immer auf die IP-Adresse des Servers – leer lassen, außer der Server hat eine andere IP. Nach dem Scan öffnet sich die Handyansicht.</small>
+        ${startUrlIsName(info.startUrl) ? '<small class="form-error">Hier steht ein Name statt einer IP-Adresse – für QR-Codes wird stattdessen die IP genommen.</small>' : ''}
       </label>
       <div class="btn-row"><button class="btn primary" type="submit">Speichern</button></div>
       <p class="form-error" id="gateway-error" role="alert"></p>

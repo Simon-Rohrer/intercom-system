@@ -417,3 +417,41 @@ export function kesherTileUrl(tile, config, person) {
 export function kesherMissing(tile) {
   return tile.kesherRoleId === '@user' ? 'niemand mit Rolle angemeldet' : 'keine Rolle gewählt'
 }
+
+// ---------------------------------------------------------------------------
+// QR-Codes: immer die IP-Adresse des Servers im LAN (https://192.168.0.21:8090), nie Namen wie
+// jmscontrol.local – die lösen viele Handys nicht auf. Gilt für alle QR-Codes (Monitore, Editor,
+// Handy-Fernsteuerung, Link für Ordner, Tagescode).
+// ---------------------------------------------------------------------------
+const JMS_CONTROL_PORT = 8090
+const isIPv4 = (host) => /^\d{1,3}(\.\d{1,3}){3}$/.test(host)
+
+function hostOf(url) {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * addresses: IPv4-Adressen des Servers (vom Server gemeldet). startUrl: eigene Startadresse aus
+ * „Anmeldung für alle Dienste“ – nur wenn sie selbst eine IP-Adresse ist, sonst gilt die LAN-IP.
+ */
+export function qrOrigin(addresses, startUrl = '') {
+  const own = String(startUrl || '').trim().replace(/\/+$/, '')
+  if (own && isIPv4(hostOf(own))) return own
+  // Schon über die IP geöffnet (nicht 127.0.0.1 am Kiosk): genau diese Adresse
+  if (isIPv4(location.hostname) && !location.hostname.startsWith('127.')) return location.origin
+  const list = (addresses ?? []).filter(isIPv4)
+  // Das LAN zuerst – nicht Docker (172.x), VPN (10.8.x) oder Tailscale (100.x)
+  const address = list.find((a) => a.startsWith('192.168.')) ?? list.find((a) => !/^(172\.|10\.8\.|100\.)/.test(a))
+  if (!address) return location.origin
+  // Über einen Namen oder am Kiosk (127.0.0.1) geöffnet: JMS Control über Caddy auf der IP
+  return `https://${address}:${JMS_CONTROL_PORT}`
+}
+
+/** Ist die eingetragene Startadresse ein Name statt einer IP (wird dann für QR-Codes nicht genutzt)? */
+export function startUrlIsName(startUrl) {
+  return Boolean(String(startUrl || '').trim()) && !isIPv4(hostOf(String(startUrl).trim()))
+}

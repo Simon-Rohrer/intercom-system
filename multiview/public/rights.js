@@ -1,3 +1,5 @@
+import { qrOrigin } from './common.js'
+
 // Rechte im Browser – dieselben Regeln wie auf dem Server (access.js). Der Server prüft
 // selbst; hier geht es nur darum, nichts anzubieten, was dann doch nicht gespeichert wird.
 
@@ -63,15 +65,9 @@ export function claimLayouts(config, user) {
 }
 
 /** Adresse dieses Servers, wie sie ein Handy im Netz erreicht (nicht 127.0.0.1). */
-export function publicOrigin(serverInfo) {
-  const loopback = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(location.hostname)
-  // Das LAN zuerst – nicht Docker (172.x), VPN (10.8.x) oder Tailscale (100.x)
-  const list = (serverInfo?.addresses ?? []).filter((a) => /^\d+\.\d+\.\d+\.\d+$/.test(a))
-  const address =
-    list.find((a) => a.startsWith('192.168.')) ??
-    list.find((a) => !a.startsWith('172.') && !a.startsWith('10.8.') && !a.startsWith('100.'))
-  if (!loopback || !address) return location.origin
-  return `${location.protocol}//${address}${location.port ? `:${location.port}` : ''}`
+/** Adresse für QR-Codes und Links zum Weitergeben: immer die IP im LAN (siehe qrOrigin). */
+export function publicOrigin(serverInfo, startUrl = '') {
+  return qrOrigin(serverInfo?.addresses, startUrl)
 }
 
 /**

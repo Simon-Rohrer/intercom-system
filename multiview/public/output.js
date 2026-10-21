@@ -1,4 +1,4 @@
-import { layoutSize, isStandardLayout, TIME_ZONE, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder, watchLogin, loginKey, kesherTileUrl, kesherMissing } from './common.js'
+import { layoutSize, isStandardLayout, TIME_ZONE, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder, watchLogin, loginKey, kesherTileUrl, kesherMissing, qrOrigin } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions } from './meters.js'
 import { createChatView } from './chat.js'
 import { chatFor, chatRoleFor } from './rights.js'
@@ -574,12 +574,9 @@ dayQr.hidden = true
 dayQr.innerHTML = '<img alt="QR-Code von heute"><figcaption></figcaption>'
 document.body.append(dayQr)
 
-/** Adresse, unter der Handys diesen Server erreichen (wie publicOrigin im Editor). */
-function lanOrigin() {
-  const loopback = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(location.hostname)
-  const address = serverAddresses.find((a) => /^192\.168\./.test(a)) || serverAddresses.find((a) => /^\d+\.\d+\.\d+\.\d+$/.test(a) && !/^(172\.|10\.8\.|100\.)/.test(a))
-  if (!loopback || !address) return location.origin
-  return `${location.protocol}//${address}${location.port ? `:${location.port}` : ''}`
+/** Adresse für den QR-Code: immer die IP des Servers im LAN (qrOrigin in common.js). */
+function lanOrigin(startUrl = '') {
+  return qrOrigin(serverAddresses, startUrl)
 }
 
 async function refreshDayQr() {
@@ -600,7 +597,7 @@ async function refreshDayQr() {
     dayQrKey = ''
     return
   }
-  const base = (data.startUrl || lanOrigin()).replace(/\/+$/, '')
+  const base = lanOrigin(data.startUrl).replace(/\/+$/, '')
   const target = `${base}/.jms-auth/code?c=${encodeURIComponent(data.code)}&next=${encodeURIComponent('/remote.html')}`
   const key = JSON.stringify([target, data.corner, data.size])
   dayQr.dataset.corner = data.corner || 'br'
