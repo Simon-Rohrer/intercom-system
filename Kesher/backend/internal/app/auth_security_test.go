@@ -131,6 +131,7 @@ func TestWebSocketOriginsBehindCentralProxy(t *testing.T) {
 	for _, origin := range []string{
 		"https://intercom.internal", "https://kesher.internal", "https://192.168.0.21:8443",
 		"https://intercom.local", "https://kesher.local",
+		"https://jmscontrol.internal:8443", "https://multiview.jms.de:8443", "https://jmscontrol.local:8443",
 	} {
 		t.Run(origin, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/ws", nil)
@@ -145,6 +146,7 @@ func TestWebSocketOriginsBehindCentralProxy(t *testing.T) {
 	for _, origin := range []string{
 		"https://intercom.internal.attacker.example", "https://kesher.internal.attacker.example",
 		"http://intercom.internal", "https://intercom.internal:9443", "https://kesher.internal/path",
+		"https://jmscontrol.internal", "https://jmscontrol.internal:9443", "http://jmscontrol.internal:8443",
 		"https://attacker.example@kesher.internal", "https://kesher.internal?query=1", "null", "",
 	} {
 		t.Run("reject "+origin, func(t *testing.T) {

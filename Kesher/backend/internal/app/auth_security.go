@@ -194,6 +194,10 @@ func allowedWebSocketOrigin(r *http.Request) bool {
 	switch origin {
 	case "https://intercom.internal", "https://kesher.internal", "https://intercom.jms.de", "https://kesher.jms.de", "https://intercom.local", "https://kesher.local", "https://192.168.0.21:8443", "https://192.168.178.185":
 		return true
+	// Kesher-Kacheln in JMS Control: Kesher unter dem Namen von JMS Control auf Port 8443, damit die
+	// Anmeldung von JMS Control mitgeht (siehe Caddyfile.jms)
+	case "https://jmscontrol.internal:8443", "https://multiview.internal:8443", "https://multiview.jms.de:8443", "https://jmscontrol.local:8443":
+		return true
 	}
 	return false
 }
