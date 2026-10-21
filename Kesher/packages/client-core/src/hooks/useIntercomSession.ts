@@ -80,6 +80,7 @@ type NavigatorWithAudioSession = Navigator & {
 
 type WsMessage =
   | { type: "presence"; data: Presence[] }
+  | { type: "mirror_state"; data: Presence | null }
   | { type: "chat"; data: RoutedEvent }
   | { type: "chat_ack"; data: ChatAckUpdate }
   | { type: "chat_history_cleared"; data: { timestamp?: number } }
@@ -819,6 +820,8 @@ export function useIntercomSession({
   const [audioError, setAudioError] = useState("");
   const [webrtcState, setWebrtcState] = useState("");
   const [presence, setPresence] = useState<Presence[]>([]);
+  // Spiegel: Zustand des echten Geräts der Rolle, direkt vom Server (null = keins verbunden)
+  const [mirrorPresence, setMirrorPresence] = useState<Presence | null>(null);
   const [chatMessages, setChatMessages] = useState<
     UseIntercomSessionResult["chatMessages"]
   >([]);
@@ -2651,6 +2654,13 @@ export function useIntercomSession({
         const msg = JSON.parse(ev.data) as WsMessage;
         const ad = appDataRef.current;
 
+        if (msg.type === "mirror_state") {
+          const next = msg.data ? normalizePresenceList([msg.data])[0] ?? null : null;
+          setMirrorPresence((prev) =>
+            prev && next && samePresenceList([prev], [next]) ? prev : next,
+          );
+          return;
+        }
         if (msg.type === "presence") {
           const nextPresence = normalizePresenceList(msg.data);
           setPresence((prev) =>
@@ -3427,7 +3437,8 @@ export function useIntercomSession({
     // Spiegel (Kesher-Kachel in JMS Control): den Zustand des Geräts zeigen, das die Rolle
     // wirklich nutzt (z. B. Laptop mit Headset) – Änderungen leitet der Server dorthin weiter.
     const mirrored = appData.secondary
-      ? presence.find(
+      ? mirrorPresence ??
+        presence.find(
           (entry) =>
             entry.roleId === appData.self.roleId && entry.userId !== appData.self.id,
         )
@@ -3488,7 +3499,7 @@ export function useIntercomSession({
       setdirectPttPressedUserId(null);
       setBroadcastPttPressed(null);
     }
-  }, [presence, appData]);
+  }, [presence, mirrorPresence, appData]);
 
   // ── Room matrix → server sync ──
   useEffect(() => {

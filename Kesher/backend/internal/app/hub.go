@@ -182,6 +182,9 @@ type Hub struct {
 	presencePending     bool
 	presenceSnapshotMu  sync.Mutex
 	lastPresenceHash    uint64
+	// Spiegel (Kesher-Kacheln in JMS Control): zuletzt gemeldeter Zustand des echten Geräts je Spiegel
+	mirrorHashMu        sync.Mutex
+	mirrorHashes        map[string]uint64
 	hasLastPresenceHash bool
 	droppedCritical     atomic.Uint64
 	droppedNormal       atomic.Uint64
@@ -1457,8 +1460,69 @@ func (h *Hub) presenceListLocked() []PresenceState {
 	return list
 }
 
+// presenceOfClient: Zustand eines Geräts mit der Rolle, mit der es gerade angemeldet ist.
+func presenceOfClient(c *client) PresenceState {
+	return PresenceState{
+		UserID:          c.user.ID,
+		Username:        c.user.Username,
+		RoleID:          c.session.RoleID,
+		ListenRooms:     roomSetToSortedSlice(c.listenRooms),
+		TalkRooms:       roomSetToSortedSlice(c.talkRooms),
+		VoiceMode:       c.voiceMode,
+		MicEnabled:      c.micEnabled,
+		BroadcastActive: len(c.broadcastGroups) > 0,
+		AudioState:      cloneAudioStatePtr(c.audioState),
+	}
+}
+
+// syncMirrorsLocked schickt jedem Spiegel (Zweitgerät, z. B. Kesher-Kachel im Multiview) den
+// Zustand des Geräts, das seine Rolle wirklich nutzt (das neueste echte Gerät der Rolle) – sobald
+// er sich ändert. Die allgemeine Anwesenheitsliste reicht dafür nicht: Sie führt je Person nur
+// eine Sitzung und die Rolle des Benutzerkontos, nicht die der Sitzung. force: auch ohne Änderung
+// (neu verbundener Spiegel). Aufrufer hält h.mu (Lesesperre).
+func (h *Hub) syncMirrorsLocked(force string) {
+	primaries := make(map[string]*client)
+	for _, c := range h.clients {
+		if c.session.Secondary {
+			continue
+		}
+		if p := primaries[c.session.RoleID]; p == nil || c.connectedAt.After(p.connectedAt) {
+			primaries[c.session.RoleID] = c
+		}
+	}
+	h.mirrorHashMu.Lock()
+	defer h.mirrorHashMu.Unlock()
+	if h.mirrorHashes == nil {
+		h.mirrorHashes = make(map[string]uint64)
+	}
+	for token := range h.mirrorHashes {
+		if _, ok := h.clients[token]; !ok {
+			delete(h.mirrorHashes, token)
+		}
+	}
+	for token, c := range h.clients {
+		if !c.session.Secondary {
+			continue
+		}
+		var state *PresenceState
+		var sum uint64
+		if p := primaries[c.session.RoleID]; p != nil {
+			value := presenceOfClient(p)
+			state = &value
+			sum = hashPresenceSnapshot([]PresenceState{value}) | 1
+		}
+		last, known := h.mirrorHashes[token]
+		if known && last == sum && token != force {
+			continue
+		}
+		h.mirrorHashes[token] = sum
+		h.enqueueOutbound(c, WSOutbound{Type: "mirror_state", Data: state})
+	}
+}
+
 func (h *Hub) broadcastPresence() {
 	h.mu.RLock()
+	h.syncMirrorsLocked("")
 	list := h.presenceListLocked()
 	snapshotHash := hashPresenceSnapshot(list)
 	h.presenceSnapshotMu.Lock()
@@ -1492,6 +1556,7 @@ func (h *Hub) broadcastPresence() {
 // This ensures new clients are immediately visible to all other connected clients.
 func (h *Hub) broadcastPresenceForced() {
 	h.mu.RLock()
+	h.syncMirrorsLocked("")
 	list := h.presenceListLocked()
 	// Update hash for next deduplication
 	snapshotHash := hashPresenceSnapshot(list)
@@ -1528,6 +1593,9 @@ func (h *Hub) SendPresenceSnapshot(token string) {
 	list := h.presenceListLocked()
 	msg := WSOutbound{Type: "presence", Data: list}
 	h.enqueueOutbound(targetClient, msg)
+	if targetClient.session.Secondary {
+		h.syncMirrorsLocked(token)
+	}
 	h.mu.RUnlock()
 }
 
