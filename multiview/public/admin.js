@@ -3299,6 +3299,8 @@ function renderDropboxSettings() {
         : s.state === 'connecting'
           ? `<span class="muted">Verbinde${who} …</span>`
           : `<span style="color:var(--green)">●</span> Verbunden${who} · lauscht auf <code>${esc(s.folder || '/')}</code> · ${s.images?.length || 0} Bilder${at ? ` · zuletzt neu ${esc(at)}` : ''}`
+  // Verbunden, aber noch kein Ordner: gleich die Ordner zum Auswählen zeigen
+  if (connected && s.state === 'nofolder' && $('#dbx-folders').hidden && !dropboxBrowsing) void showDropboxFolders('')
   $('#dbx-thumbs').innerHTML = (s.images || []).slice(0, 24).map((image) => `<img src="${esc(image.url)}" alt="" title="${esc(image.name)}" loading="lazy">`).join('')
 }
 
@@ -3349,8 +3351,11 @@ $('#dbx-folder-form').addEventListener('submit', async (e) => {
   toast(`Lausche auf ${data.folder || '/'}.`)
 })
 
+let dropboxBrowsing = false
+
 /** Ordner zum Anklicken: eine Ebene, mit „zurück“ */
 async function showDropboxFolders(path) {
+  dropboxBrowsing = true
   const box = $('#dbx-folders')
   box.hidden = false
   box.innerHTML = '<p class="muted small">Lade Ordner …</p>'
