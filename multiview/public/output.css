@@ -164,6 +164,9 @@ body.idle .controls { opacity: 0; pointer-events: none; }
 .controls button:hover { background: rgba(50, 50, 50, 0.9); }
 .controls-hint { font-size: 12px; color: rgba(255, 255, 255, 0.6); text-shadow: 0 1px 2px #000; }
 body.embedded .controls-hint { display: none; }
+/* Vorschau auf der Webseite: Diashow ohne bildschirmgroßen Unschärfe-Hintergrund – der kostet
+   viel Grafikspeicher (auf dem Handy stürzte die Übersicht mit mehreren Vorschauen ab) */
+body.embedded .ss-back { filter: none; background-image: none !important; }
 
 #badges {
   position: fixed;

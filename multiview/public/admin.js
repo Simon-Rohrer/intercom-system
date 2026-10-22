@@ -564,11 +564,32 @@ const previewScaler =
     ? new ResizeObserver((entries) => entries.forEach((entry) => scalePreview(entry.target)))
     : { observe: (el) => requestAnimationFrame(() => scalePreview(el)) }
 
+const phoneLayout = matchMedia('(max-width: 760px)')
+// Vorschauen erst laden, wenn sie ins Bild kommen; auf dem Handy wieder entladen, sobald sie
+// herausscrollen. Jede Vorschau ist ein ganzer Monitor (Videos, Kesher, Diashow) – alle auf
+// einmal brachten Safari auf dem Handy zum Absturz (Seite lädt neu, dann „keine Verbindung“).
+const previewLoader =
+  typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const iframe = entry.target.querySelector('iframe')
+            if (!iframe) continue
+            if (entry.isIntersecting) {
+              if (iframe.getAttribute('src') !== iframe.dataset.src) iframe.src = iframe.dataset.src
+            } else if (phoneLayout.matches && iframe.getAttribute('src') === iframe.dataset.src) {
+              iframe.src = 'about:blank'
+            }
+          }
+        },
+        { rootMargin: '200px 0px' },
+      )
+    : { observe: (el) => { const f = el.querySelector('iframe'); if (f) f.src = f.dataset.src }, disconnect() {} }
+
 // Multiviews: Karten mit Vorschau in echter Monitorgröße (verkleinert), Einstellungen des
 // gewählten Multiviews rechts – auf dem Handy als Blatt von unten
 let selectedOutputId = null
 let outputSheetOpen = false
-const phoneLayout = matchMedia('(max-width: 760px)')
 const QR_CORNERS = [['tl', 'oben links'], ['tr', 'oben rechts'], ['bl', 'unten links'], ['br', 'unten rechts']]
 const QR_SIZES = [['s', 'Klein'], ['m', 'Mittel'], ['l', 'Groß']]
 const iconFullscreen = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>'
@@ -583,6 +604,7 @@ function renderOutputs() {
   const grid = $('#output-cards')
   // Vorschauen (iframes) nur laden, solange die Seite Multiviews offen ist
   if (page !== 'multiviews') {
+    previewLoader.disconnect()
     if (outputsKey) grid.replaceChildren()
     outputsKey = ''
     renderOutputPanel()
@@ -593,12 +615,13 @@ function renderOutputs() {
   const key = outputs.map((o) => o.id).join('|')
   if (key !== outputsKey) {
     outputsKey = key
+    previewLoader.disconnect()
     grid.innerHTML =
       outputs
         .map(
           (o) => `<article class="output-card" data-id="${esc(o.id)}">
           <div class="output-preview">
-            <iframe src="${esc(outputUrl(o, true))}" allow="microphone; camera; fullscreen; autoplay; speaker-selection; clipboard-write" title="${esc(o.name)}"></iframe>
+            <iframe data-src="${esc(outputUrl(o, true))}" allow="microphone; camera; fullscreen; autoplay; speaker-selection; clipboard-write" title="${esc(o.name)}"></iframe>
             <button class="output-preview-hit" type="button" data-action="select" aria-label="${esc(o.name)} auswählen"></button>
           </div>
           <div class="output-body">
@@ -619,7 +642,10 @@ function renderOutputs() {
   }
   // Felder aktualisieren, ohne die Vorschauen neu zu laden
   // Vorschau in Monitorgröße rendern und verkleinern – sieht so aus wie am Monitor
-  for (const preview of grid.querySelectorAll('.output-preview')) previewScaler.observe(preview)
+  for (const preview of grid.querySelectorAll('.output-preview')) {
+    previewScaler.observe(preview)
+    previewLoader.observe(preview)
+  }
   for (const card of grid.querySelectorAll('.output-card')) {
     const output = config.outputs.find((o) => o.id === card.dataset.id)
     // Format des Layouts (16:9, Hochformat, eigene Pixel): Vorschau im selben Seitenverhältnis
