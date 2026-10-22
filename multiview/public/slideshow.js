@@ -8,6 +8,7 @@ const TIME_ZONE = 'Europe/Berlin'
 
 /** Einstellungen der Kachel (tile.slideshow) mit Standardwerten */
 export function slideshowOptions(o = {}) {
+  const names = (list) => (Array.isArray(list) ? [...new Set(list.filter((n) => typeof n === 'string' && n).map((n) => n.slice(0, 80)))].slice(0, 100) : [])
   const num = (v, d, min, max) => {
     const n = Number(v)
     return v != null && v !== '' && Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : d
@@ -19,7 +20,7 @@ export function slideshowOptions(o = {}) {
     events: o.events !== false,
     eventDays: num(o.eventDays, 14, 1, 42),
     eventMax: num(o.eventMax, 6, 1, 10),
-    eventFilter: String(o.eventFilter ?? '').slice(0, 80),
+    eventHidden: names(o.eventHidden), // ausgeschaltete Bereiche (Kalender) – neue sind an
     eventTitle: String(o.eventTitle ?? 'Nächste Veranstaltungen').slice(0, 60),
     fit: o.fit === 'cover' ? 'cover' : 'contain',
     website: o.website !== false, // Slider der Startseite
@@ -28,7 +29,7 @@ export function slideshowOptions(o = {}) {
     ct: o.ct !== false, // Termine aus ChurchTools als eigene Folien
     ctDays: num(o.ctDays, 14, 1, 42),
     ctMax: num(o.ctMax, 12, 1, 40),
-    ctFilter: String(o.ctFilter ?? '').slice(0, 120),
+    ctHidden: names(o.ctHidden),
     ctImageOnly: o.ctImageOnly !== false, // nur Termine mit Bild
   }
 }
@@ -37,19 +38,12 @@ const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: TIME_ZONE
 
 /** Nächste Veranstaltungen aus den ChurchTools-Daten (overview: Events der nächsten 4 Wochen) */
 export function upcomingEvents(churchtools, o, now = Date.now()) {
-  const words = o.eventFilter
-    .toLowerCase()
-    .split(',')
-    .map((w) => w.trim())
-    .filter(Boolean)
   return (churchtools?.overview || [])
     .filter((e) => {
       const start = Date.parse(e.startDate)
       // Läuft gerade (bis 2 Std. nach Beginn) oder beginnt in den nächsten Tagen
       if (!Number.isFinite(start) || start < now - 2 * 3600e3 || start > now + o.eventDays * 86400e3) return false
-      if (!words.length) return true
-      const hay = `${e.name} ${e.calendar || ''}`.toLowerCase()
-      return words.some((w) => hay.includes(w))
+      return !o.eventHidden.includes(e.calendar || '')
     })
     .sort((a, b) => Date.parse(a.startDate) - Date.parse(b.startDate))
     .slice(0, o.eventMax)
@@ -57,20 +51,13 @@ export function upcomingEvents(churchtools, o, now = Date.now()) {
 
 /** Termine aus ChurchTools, die als eigene Folie laufen (läuft gerade oder in den nächsten Tagen) */
 export function ctAppointments(slideshow, o, now = Date.now()) {
-  const words = o.ctFilter
-    .toLowerCase()
-    .split(',')
-    .map((w) => w.trim())
-    .filter(Boolean)
   return (slideshow?.ct?.appointments || [])
     .filter((a) => {
       const start = Date.parse(a.start)
       const end = Date.parse(a.end || a.start)
       if (!Number.isFinite(start) || end < now || start > now + o.ctDays * 86400e3) return false
       if (o.ctImageOnly && !a.image) return false
-      if (!words.length) return true
-      const hay = `${a.title} ${a.subtitle} ${a.calendar}`.toLowerCase()
-      return words.some((w) => hay.includes(w))
+      return !o.ctHidden.includes(a.calendar || '')
     })
     .slice(0, o.ctMax)
 }

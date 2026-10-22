@@ -209,6 +209,8 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
   let ct = {
     appointments: Array.isArray(saved.ct?.appointments) ? saved.ct.appointments : [],
     posts: Array.isArray(saved.ct?.posts) ? saved.ct.posts : [],
+    // Namen aller öffentlichen Kalender – die „Bereiche“, die man in der Kachel einzeln schaltet
+    calendars: Array.isArray(saved.ct?.calendars) ? saved.ct.calendars.filter((c) => typeof c === 'string') : [],
     at: Number(saved.ct?.at) || 0,
     state: 'cached',
     error: '',
@@ -220,7 +222,7 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
     const tmp = `${stateFile}.tmp`
     fs.writeFileSync(
       tmp,
-      JSON.stringify({ images, ppPlaylist, ppSlides, ppAt, websiteUrl, website: { slides: website.slides, at: website.at, postIds }, ct: { appointments: ct.appointments, posts: ct.posts, at: ct.at } }, null, 2),
+      JSON.stringify({ images, ppPlaylist, ppSlides, ppAt, websiteUrl, website: { slides: website.slides, at: website.at, postIds }, ct: { appointments: ct.appointments, posts: ct.posts, calendars: ct.calendars, at: ct.at } }, null, 2),
     )
     fs.renameSync(tmp, stateFile)
   }
@@ -238,7 +240,7 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
         slides: ppSlides.map((s) => ({ url: `/diashow/pp/${s.file}`, name: s.name })),
       },
       website: { url: websiteUrl, state: websiteUrl ? website.state : 'off', error: website.error, at: website.at, slides: websiteUrl ? website.slides : [] },
-      ct: { state: ct.state, error: ct.error, at: ct.at, appointments: ct.appointments, posts: ct.posts },
+      ct: { state: ct.state, error: ct.error, at: ct.at, appointments: ct.appointments, posts: ct.posts, calendars: ct.calendars },
     }
   }
 
@@ -413,7 +415,8 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
       } catch (err) {
         log(`Diashow: Beiträge nicht geladen: ${err.message}`)
       }
-      ct = { appointments, posts, at: now(), state: 'ok', error: '' }
+      const names = [...new Set(calendars.map((c) => text(c.name || c.nameTranslated, 80)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'de'))
+      ct = { appointments, posts, calendars: names, at: now(), state: 'ok', error: '' }
     } catch (err) {
       ct = { ...ct, state: ct.appointments.length ? 'cached' : 'error', error: err.message }
     }

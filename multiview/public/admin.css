@@ -2331,3 +2331,8 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
   .ss-item-actions { flex-direction: row; align-items: center; justify-content: space-between; }
   .ss-pp-form { grid-template-columns: 1fr; }
 }
+
+/* Diashow: Bereiche (Kalender) einzeln schalten */
+.ss-areas > summary .muted { margin-left: 6px; font-weight: 500; }
+.ss-area-list { display: grid; gap: 10px; }
+.ss-area-list .switch { font-weight: 500; }

@@ -2318,6 +2318,46 @@ function uplinkSection(tile) {
     }`
 }
 
+// Aufgeklappte Karten „Bereiche“ (bleibt beim Neuzeichnen des Inspektors offen)
+const ssAreasOpen = new Set()
+document.addEventListener(
+  'toggle',
+  (e) => {
+    const key = e.target?.dataset?.ssAreas
+    if (!key) return
+    if (e.target.open) ssAreasOpen.add(key)
+    else ssAreasOpen.delete(key)
+  },
+  true,
+)
+
+/** Alle Bereiche (öffentliche ChurchTools-Kalender), die die Diashow kennt */
+function slideshowAreaNames(kind) {
+  const names = new Set(slideshowData?.ct?.calendars || [])
+  if (kind === 'ct') for (const a of slideshowData?.ct?.appointments || []) if (a.calendar) names.add(a.calendar)
+  if (kind === 'event') for (const e of churchtools.overview || []) if (e.calendar) names.add(e.calendar)
+  return [...names].sort((a, b) => a.localeCompare(b, 'de'))
+}
+
+/** Aufklappbare Karte „Bereiche“: je Kalender ein Schalter (aus = keine Folien aus diesem Bereich) */
+function slideshowAreasCard(kind, hidden) {
+  const names = slideshowAreaNames(kind)
+  const shown = names.filter((n) => !hidden.includes(n)).length
+  return `<details class="disclosure inner ss-areas" data-ss-areas="${kind}" ${ssAreasOpen.has(kind) ? 'open' : ''}>
+      <summary>Bereiche <span class="muted">${names.length ? `${shown} von ${names.length} an` : 'noch keine geladen'}</span></summary>
+      ${
+        names.length
+          ? `<div class="ss-area-list">${names
+              .map(
+                (name) =>
+                  `<label class="switch"><input type="checkbox" data-ss-area="${kind}" data-name="${esc(name)}" ${hidden.includes(name) ? '' : 'checked'}><span class="switch-track"></span><span>${esc(name)}</span></label>`,
+              )
+              .join('')}</div>`
+          : '<p class="muted small">Die Kalender kommen von ChurchTools, sobald es verbunden ist.</p>'
+      }
+    </details>`
+}
+
 /** Kachel „Diashow“ */
 function slideshowSection(tile) {
   const o = slideshowOptions(tile.slideshow)
@@ -2342,7 +2382,7 @@ function slideshowSection(tile) {
         <label class="field"><span>Höchstens</span><input type="number" min="1" max="40" data-ss="ctMax" value="${o.ctMax}"></label>
       </div>
       <label class="check"><input type="checkbox" data-ss="ctImageOnly" ${o.ctImageOnly ? 'checked' : ''}> Nur Termine mit Bild</label>
-      <label class="field"><span>Nur diese (Titel oder Kalender enthält, mit Komma getrennt; leer = alle)</span><input type="text" data-ss="ctFilter" value="${esc(o.ctFilter)}" placeholder="z. B. Gottesdienst, Jugend, Worship"></label>
+      ${slideshowAreasCard('ct', o.ctHidden)}
       <p class="muted small">Aus allen öffentlichen Kalendern – wie auf der Webseite unter „Termine“. Regelmäßige Termine erscheinen nur einmal (der nächste).</p>
     </div>`
         : ''
@@ -2359,7 +2399,7 @@ function slideshowSection(tile) {
         <label class="field"><span>Tage voraus</span><input type="number" min="1" max="28" data-ss="eventDays" value="${o.eventDays}"></label>
         <label class="field"><span>Höchstens</span><input type="number" min="1" max="10" data-ss="eventMax" value="${o.eventMax}"></label>
       </div>
-      <label class="field"><span>Nur diese (Name oder Kalender enthält, mit Komma getrennt; leer = alle)</span><input type="text" data-ss="eventFilter" value="${esc(o.eventFilter)}" placeholder="z. B. Gottesdienst, Jugend"></label>
+      ${slideshowAreasCard('event', o.eventHidden)}
     </div>`
         : ''
     }
@@ -2591,6 +2631,20 @@ function onInspectorField(e) {
     }
     tile.stage = o
     renderCanvas()
+    changed()
+    return
+  }
+
+  if (el.dataset.ssArea) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const o = slideshowOptions(tile.slideshow)
+    const key = el.dataset.ssArea === 'ct' ? 'ctHidden' : 'eventHidden'
+    const hidden = o[key].filter((n) => n !== el.dataset.name)
+    if (!el.checked) hidden.push(el.dataset.name)
+    tile.slideshow = { ...o, [key]: hidden }
+    renderCanvas()
+    renderInspector()
     changed()
     return
   }
