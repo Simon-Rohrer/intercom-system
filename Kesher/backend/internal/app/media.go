@@ -701,12 +701,6 @@ func (m *MediaManager) SetChannelAudioFeed(sourceToken, sourceID, roomID, trackI
 	return roomID
 }
 
-func (m *MediaManager) recomputeAllSourcesLocked() {
-	for sourceToken := range m.sources {
-		m.recomputeSourceRoutingLocked(sourceToken)
-	}
-}
-
 func (m *MediaManager) recomputePendingSourcesLocked() int {
 	snapshot := m.buildHubSnapshotLocked()
 	if m.syncForceAll || len(m.dirtySources) == 0 {

@@ -518,4 +518,4 @@ function createYouTube({ dataDir, getAtem = () => ({ connected: false, streaming
   }
 }
 
-module.exports = { createYouTube, parseChannel, parseVideo, pickVideo, toVideo, atemStreaming, findProblems, summaryText, apiError }
+module.exports = { createYouTube, parseChannel, parseVideo, pickVideo, atemStreaming, findProblems }

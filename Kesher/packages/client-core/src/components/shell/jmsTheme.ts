@@ -27,7 +27,7 @@ type Wallpaper = {
   bg: string;
 };
 
-export const JMS_WALLPAPERS: Wallpaper[] = [
+const JMS_WALLPAPERS: Wallpaper[] = [
   { id: "graphit", file: "graphit", light: "graphit-hell", accent: "#8e8e93", glass: "rgba(36, 36, 38, 0.55)", side: "rgba(12, 12, 13, 0.55)", dialog: "rgba(34, 34, 36, 0.92)", bg: "#0a0a0b" },
   { id: "blau", file: null, accent: "#007aff", glass: "rgba(18, 36, 98, 0.5)", side: "rgba(8, 22, 70, 0.45)", dialog: "rgba(14, 30, 86, 0.88)", bg: "#0a1d57" },
   { id: "ozean", file: "ozean", light: "ozean-hell", accent: "#3478f6", glass: "rgba(16, 26, 92, 0.48)", side: "rgba(8, 14, 60, 0.45)", dialog: "rgba(14, 22, 78, 0.88)", bg: "#0b1050" },

@@ -50,13 +50,10 @@
   --k-talk: #ff3b30;
   --k-talk-deep: #5a1410;
   --k-listen: #30d158;
-  --k-listen-deep: #0c3d1b;
   --k-call: #ffb020;
   --k-call-deep: #4a3205;
   --k-direct: #b79bff;
-  --k-direct-deep: #241f33;
   --k-bcast: #5b9bff;
-  --k-bcast-deep: #12264a;
   --k-ok: #30d158;
   --k-bad: #ff5a4f;
 
@@ -78,28 +75,20 @@
      Older stylesheet sections still use these names;
      they now resolve to the tokens above.
      ========================================== */
-  --bg: var(--k-bg);
   --surface: var(--k-bg);
   --surface-light: var(--k-face-hi);
   --accent: var(--k-accent);
   --talk: var(--k-talk);
   --listen: var(--k-listen);
   --call: var(--k-call);
-  --p2p: var(--k-direct);
   --text: var(--k-ink);
-  --text-dim: var(--k-ink-2);
   --muted: var(--k-ink-3);
   --forced: var(--k-listen);
 
-  --accent-dark: #00a3cc;
-  --accent-primary: var(--k-accent);
-  --surface-dark: var(--k-bg);
   --surface-darker: #060709;
 
   --color-success: var(--k-ok);
-  --color-error: var(--k-bad);
   --color-warning: var(--k-call);
-  --color-info: var(--k-accent);
 
   --text-primary: var(--k-ink);
   --text-secondary: var(--k-ink-2);
@@ -112,99 +101,32 @@
 
   --border: var(--k-line-soft);
   --border-light: var(--k-line);
-  --border-medium: var(--k-line);
   --border-strong: var(--k-line-strong);
-  --border-dim: var(--k-line-soft);
   --border-subtle: var(--k-line);
 
   --panel: var(--k-face);
-  --panel-2: var(--k-face-hi);
-  --card-bg: var(--k-rack);
 
   --btn-bg: var(--k-face);
   --btn-bg-hover: var(--k-face-hi);
-  --btn-bg-active: rgba(255, 255, 255, 0.12);
-  --btn-disabled-bg: var(--k-rack);
-  --btn-disabled-text: var(--k-ink-off);
-
-  --hover-overlay: rgba(255, 255, 255, 0.06);
-  --active-overlay: rgba(255, 255, 255, 0.12);
-
-  --delete-bg: #c1121f;
-  --delete-bg-hover: #a70f1c;
-  --delete-bg-active: #8b0a16;
-  --delete-border: #a00;
 
   --input-bg: var(--k-face);
   --input-border: var(--k-line);
   --input-border-hover: var(--k-line-strong);
 
-  --option-bg: var(--k-face);
-  --option-border: var(--k-line);
-  --option-border-hover: var(--k-line-strong);
-
   --meter-bg: #232932;
-  --meter-low: var(--k-listen);
   --meter-med: var(--k-call);
-  --meter-high: var(--k-talk);
 
-  --dropdown-bg: var(--k-face);
-  --dropdown-hover: var(--k-face-hi);
-
-  --station-pin-active-bg: var(--k-call);
-  --station-pin-active-text: #1a1205;
-  --station-card-head-active-bg: var(--k-talk);
-  --station-card-head-ptt-active-bg: var(--k-talk);
-  --station-listen-on-bg: var(--k-listen-deep);
-  --station-call-bg: var(--k-face);
   --station-call-text: var(--k-call);
   --station-call-active-bg: var(--k-call);
   --station-call-active-text: #1a1205;
-  --station-call-active-icon: #40330c;
-  --station-tab-bg: var(--k-face);
-  --station-dock-bg: var(--k-rack);
-  --station-broadcast-border: #22365a;
-  --station-broadcast-border-alt: #22365a;
-  --station-broadcast-bg: var(--k-bcast-deep);
-  --station-broadcast-text: var(--k-ink);
-  --station-broadcast-active-border: var(--k-bcast);
-  --station-broadcast-active-bg-from: var(--k-bcast-deep);
-  --station-broadcast-active-bg-to: var(--k-face);
-  --station-broadcast-active-hover-bg: #1d3c6e;
-  --station-broadcast-active-hover-border: var(--k-bcast);
-  --station-broadcast-active-badge: var(--k-ink);
-  --station-direct-selected-bg: var(--k-face-hi);
-  --station-direct-selected-border: var(--k-direct);
-  --station-direct-selected-text: var(--k-ink);
-  --station-direct-removed-bg: #221218;
-  --station-direct-removed-border: #4a2632;
-  --station-direct-removed-text: #ff6a6a;
-  --station-direct-reply-active-border: var(--k-line-strong);
-  --station-direct-reply-active-bg: var(--k-face-hi);
-  --station-direct-reply-active-badge: var(--k-ink-2);
-  --station-ptt-border: var(--k-line);
-  --station-reply-border: var(--k-line);
-  --station-section-border: var(--k-line-soft);
-  --station-section-accent: var(--k-accent);
-  --station-section-soft-bg: var(--k-rack);
-
-  --simple-ptt-bg: var(--k-face);
-  --simple-ptt-border: var(--k-line);
 
   --admin-title: var(--k-ink);
   --admin-error: #ffb3b3;
   --admin-pin-note: var(--k-ink-2);
   --admin-status-online: var(--k-ok);
-  --admin-status-offline: var(--k-bad);
-  --admin-modal-bg-from: #1b1114;
-  --admin-modal-bg-to: #0f0a0c;
   --admin-modal-text: #ff6b6b;
 
-  --disconnected-bg: #dc3232;
-  --disconnected-text-highlight: #ffe7e7;
-
   --modal-dropdown-bg-from: var(--k-face);
-  --modal-dropdown-bg-to: var(--k-rack);
 }
 * {
   box-sizing: border-box;

@@ -15,8 +15,9 @@ app/data/
 .env
 .env.local
 
-# macOS
+# macOS (auch die AppleDouble-Begleitdateien ._*, die beim Kopieren von einem Mac entstehen)
 .DS_Store
+._*
 
 # Companion/Kesher Runtime
 .cache/

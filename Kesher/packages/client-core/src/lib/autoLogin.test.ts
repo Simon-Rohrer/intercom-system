@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { centralMirrorFor, resolveAutoLoginConfiguration, urlRequestsMirror } from "./autoLogin";
 
+// Sitzungsdaten der zentralen Anmeldung – für diese Tests ohne Bedeutung
+const SESSION = { sessionId: "s1", version: "v1", expiresAt: Number.MAX_SAFE_INTEGER };
+
 const roles = [
   { id: "audio", name: "Audio" },
   { id: "stage-left", name: "Stage Left" },
@@ -55,6 +58,7 @@ describe("resolveAutoLoginConfiguration", () => {
       name: "Tim",
       roleId: "audio",
       admin: false,
+      ...SESSION,
     });
     expect(config).toEqual({
       enabled: true,
@@ -71,7 +75,7 @@ describe("resolveAutoLoginConfiguration", () => {
     const config = resolveAutoLoginConfiguration(
       "?autoLogin=1&username=FOH&roleId=stage-left",
       roles,
-      { name: "Tim", roleId: "audio", admin: false },
+      { name: "Tim", roleId: "audio", admin: false, ...SESSION },
     );
     expect(config.username).toBe("FOH");
     expect(config.central).toBe(false);
@@ -79,12 +83,13 @@ describe("resolveAutoLoginConfiguration", () => {
 
   it("ignores the central admin and unknown central roles", () => {
     expect(
-      resolveAutoLoginConfiguration("", roles, { name: "Simon", roleId: "admin", admin: true }).enabled,
+      resolveAutoLoginConfiguration("", roles, { name: "Simon", roleId: "admin", admin: true, ...SESSION }).enabled,
     ).toBe(false);
     const unknown = resolveAutoLoginConfiguration("", roles, {
       name: "Tim",
       roleId: "gibts-nicht",
       admin: false,
+      ...SESSION,
     });
     expect(unknown.enabled).toBe(true);
     expect(unknown.roleId).toBe("");
@@ -95,6 +100,7 @@ describe("resolveAutoLoginConfiguration", () => {
       name: "Tim",
       roleId: "audio",
       admin: false,
+      ...SESSION,
     });
     expect(config.enabled).toBe(false);
     expect(config.central).toBe(false);
@@ -115,7 +121,7 @@ describe("mirror tiles with the central login", () => {
   });
 
   it("uses the normal central login without a mirror request", () => {
-    expect(centralMirrorFor(resolveAutoLoginConfiguration("", roles, { ...central, admin: false }))).toBeUndefined();
+    expect(centralMirrorFor(resolveAutoLoginConfiguration("", roles, { ...central, admin: false, ...SESSION }))).toBeUndefined();
     expect(centralMirrorFor(resolveAutoLoginConfiguration("?autoLogin=1&username=FOH&roleId=audio", roles, central))).toBeUndefined();
     expect(urlRequestsMirror("?autoLogin=1&username=FOH&roleId=audio")).toBe(false);
   });

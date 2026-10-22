@@ -505,8 +505,6 @@ body.booting .rm-main { opacity: 0; }
 }
 .rm-primary:disabled { opacity: 0.55; }
 .rm-primary:active { transform: scale(0.98); }
-.rm-check { display: flex; align-items: center; gap: 10px; margin: 16px 4px 0; font-size: 14.5px; color: var(--text-2); }
-.rm-check input { width: 20px; height: 20px; accent-color: var(--accent); }
 
 /* Wichtige Meldung (Bühnennachricht, Beamer-Meldung): rot */
 .rm-bubble.alert { background: #dc2626; color: #fff; box-shadow: 0 8px 18px -10px rgba(220, 38, 38, 0.8); }

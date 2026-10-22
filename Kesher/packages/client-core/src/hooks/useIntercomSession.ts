@@ -3599,8 +3599,3 @@ export function useIntercomSession({
     applyBootstrapData,
   };
 }
-
-// Re-export bootstrap helper for use in App.tsx
-export async function loadBootstrap(token: string): Promise<Bootstrap> {
-  return bootstrap(token);
-}

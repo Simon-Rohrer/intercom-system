@@ -162,6 +162,4 @@ function createPiRegistry({ now = Date.now, max = 50 } = {}) {
   }
 }
 
-module.exports = {
-  normalizeRaspberry, launcherConfig, parsePiRequest, createPiRegistry, deviceIdFromName, clientComplete,
-}
+module.exports = { normalizeRaspberry, launcherConfig, parsePiRequest, createPiRegistry }

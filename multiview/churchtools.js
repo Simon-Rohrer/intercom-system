@@ -538,4 +538,4 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
   return { start: refresh, refresh, connect, disconnect, snapshot, stop, datesChanged }
 }
 
-module.exports = { createChurchTools, normalizeUrl, dateIn }
+module.exports = { createChurchTools }

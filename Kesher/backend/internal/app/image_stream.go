@@ -745,11 +745,6 @@ func NewImageStreamCoordinator(logger *slog.Logger) (*ImageStreamCoordinator, er
 	}, nil
 }
 
-// BroadcastImageUpdate sends an image update to all connected clients.
-func (c *ImageStreamCoordinator) BroadcastImageUpdate(state ButtonState, bank, buttonIndex int) {
-	c.BroadcastImageUpdateForTarget("", "", state, bank, buttonIndex)
-}
-
 // ResetTargetCache clears dedup signatures for matching clients so subsequent image
 // emissions are always re-sent even if signatures are unchanged.
 func (c *ImageStreamCoordinator) ResetTargetCache(roleID, username string) {

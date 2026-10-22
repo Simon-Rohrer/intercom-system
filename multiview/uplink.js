@@ -129,4 +129,4 @@ function createUplink({ getConfig, onUpdate, log = () => {} }) {
   }
 }
 
-module.exports = { createUplink, normalizeUplink, soapValue }
+module.exports = { createUplink, normalizeUplink }

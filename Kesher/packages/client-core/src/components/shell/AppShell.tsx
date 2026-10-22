@@ -115,7 +115,7 @@ function readCollapsed(): boolean {
   }
 }
 
-export function ShellIcon({ name }: { name: ShellIconName | "menu" | "sidebar" }) {
+function ShellIcon({ name }: { name: ShellIconName | "menu" | "sidebar" }) {
   const common = {
     viewBox: "0 0 24 24",
     className: "k-icon",

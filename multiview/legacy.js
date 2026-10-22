@@ -225,4 +225,4 @@ function legacyMiddleware(publicDir) {
   }
 }
 
-module.exports = { legacyMiddleware, isLegacyBrowser, transformCss }
+module.exports = { legacyMiddleware }

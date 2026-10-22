@@ -11,7 +11,10 @@ test('Every internal SSO origin has a protected HTTPS vhost; setup is separate',
   const mappings = { intercom: 'kesher', kesher: 'kesher', jmscontrol: null, multiview: null,
     technik: 'dashboard', dashboard: 'dashboard', companion: 'companion', glances: 'glances',
     portainer: 'portainer', dns: 'dns', router: 'router' }
-  const blocks = config.match(/^https:\/\/[^\n]+ \{\n[\s\S]*?^\}/gm)
+  // Bausteine wie (kesher_web) aufgelöst: "import kesher_web" zählt wie dessen Inhalt
+  const snippets = Object.fromEntries([...config.matchAll(/^\(([a-z_]+)\) \{\n([\s\S]*?)^\}/gm)].map((m) => [m[1], m[2]]))
+  const expand = (text) => text.replace(/import ([a-z_]+)\s*$/gm, (line, name) => (snippets[name] && name !== 'jms_auth' ? `${line}\n${snippets[name]}` : line))
+  const blocks = config.match(/^https:\/\/[^\n]+ \{\n[\s\S]*?^\}/gm).map(expand)
   for (const [host, service] of Object.entries(mappings)) {
     const origin = `https://${host}.internal`
     assert.ok(DEFAULT_ORIGINS.includes(origin), origin)

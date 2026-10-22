@@ -4,8 +4,8 @@ export const globalSettingsStorageKey = "intercom-global-settings";
 export const favoritesStorageKey = "intercom-favorites";
 export const keyboardShortcutsStorageKey = "intercom-keyboard-shortcuts";
 export const defaultAdminPin = "123456";
-export const defaultAudioGateEnabled = false;
-export const defaultAudioGateThresholdDb = -52;
+const defaultAudioGateEnabled = false;
+const defaultAudioGateThresholdDb = -52;
 
 // ── Keyboard shortcut types ──────────────────────────────────────────
 
