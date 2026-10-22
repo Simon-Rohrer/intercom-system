@@ -69,3 +69,80 @@
 .ss-event-day { font-weight: 700; font-size: 0.95em; }
 .ss-event-time { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 0.85em; color: #a9b2be; }
 .ss-event-name { font-size: 1.35em; font-weight: 600; line-height: 1.15; overflow-wrap: anywhere; }
+
+/* Einheitliche Bild-Folie (alle Quellen): unscharfer Hintergrund, Bild ganz und mittig im
+   immer gleichen Rahmen, darunter bei Bedarf die Beschriftung im immer gleichen Stil */
+.ss-card { place-items: stretch; font-size: clamp(10px, min(2.3cqw, 4cqh), 52px); }
+.ss-back {
+  position: absolute;
+  inset: -6%;
+  background: #0b0d10 center / cover no-repeat;
+  filter: blur(30px) brightness(0.4) saturate(1.15);
+}
+.ss-frame {
+  position: absolute;
+  inset: 4% 4%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+}
+.ss-card.has-caption .ss-frame { bottom: 20%; }
+.ss-card .ss-frame img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 0.6em;
+  box-shadow: 0 0.8em 2.6em rgba(0, 0, 0, 0.6);
+}
+.ss-blank {
+  width: min(100cqw, calc(100cqh * 16 / 9));
+  aspect-ratio: 16 / 9;
+  border-radius: 0.6em;
+  background: radial-gradient(120% 120% at 0% 0%, #1b2430 0%, #0b0d10 60%, #000 100%);
+  box-shadow: 0 0.8em 2.6em rgba(0, 0, 0, 0.6);
+}
+.ss-caption {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: 3%;
+  height: 15%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.12em;
+  text-align: center;
+  text-shadow: 0 0.06em 0.3em rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+.ss-cap-when {
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 0.95em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #00d1ff;
+}
+.ss-cap-title {
+  font-size: 1.6em;
+  font-weight: 700;
+  line-height: 1.1;
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.ss-caption:not(:has(.ss-cap-when)) .ss-cap-title { font-size: 1.35em; }
+.ss-cap-meta { font-size: 0.85em; color: #c3c9d1; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* „Füllen“: Bild füllt die ganze Kachel (wird beschnitten), Beschriftung liegt unten darüber */
+.slideshow[data-fit="cover"] .ss-frame { inset: 0; }
+.slideshow[data-fit="cover"] .ss-card .ss-frame img { width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; border-radius: 0; box-shadow: none; }
+.slideshow[data-fit="cover"] .ss-blank { width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; }
+.slideshow[data-fit="cover"] .ss-caption { left: 0; right: 0; bottom: 0; height: 22%; padding: 0 4%; background: linear-gradient(to top, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0)); }

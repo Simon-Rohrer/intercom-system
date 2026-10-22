@@ -1211,7 +1211,14 @@ const youtube = createYouTube({
 })
 
 // Diashow (Kachel „Diashow“): hochgeladene Bilder und zwischengespeicherte ProPresenter-Folien
-const slideshow = createSlideshow({ dataDir: DATA_DIR, getPpBase: () => ppBase(), onUpdate: broadcast, log: console.log })
+const slideshow = createSlideshow({
+  dataDir: DATA_DIR,
+  getPpBase: () => ppBase(),
+  // Termine aus ChurchTools – nur, wenn ChurchTools verbunden ist
+  getCtApi: () => (churchTools.snapshot().state === 'unconfigured' ? null : churchTools.api),
+  onUpdate: broadcast,
+  log: console.log,
+})
 
 const kesherChat = createKesherChat({
   getConfig: () => config.chat,
@@ -2115,6 +2122,8 @@ app.delete('/api/slideshow/images/:id', requireAdmin, slideshowRoute((req) => sl
 app.put('/api/slideshow/order', requireAdmin, slideshowRoute((req) => slideshow.reorder(req.body?.ids)))
 app.put('/api/slideshow/propresenter', requireAdmin, slideshowRoute((req) => slideshow.setPpPlaylist(req.body?.playlist)))
 app.post('/api/slideshow/propresenter/refresh', requireAdmin, slideshowRoute(() => slideshow.refreshPp()))
+app.put('/api/slideshow/website', requireAdmin, slideshowRoute((req) => slideshow.setWebsiteUrl(req.body?.url)))
+app.post('/api/slideshow/refresh', requireAdmin, slideshowRoute(() => slideshow.refreshExternal()))
 
 // YouTube: Einstellungen (nur Admin). Der API-Schlüssel liegt in youtube-secret.json im Datenordner
 // (nur für den Server lesbar) und geht nie an den Browser zurück.

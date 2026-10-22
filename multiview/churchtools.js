@@ -535,7 +535,14 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
     clearTimeout(timer)
   }
 
-  return { start: refresh, refresh, connect, disconnect, snapshot, stop, datesChanged }
+  /** GET auf die ChurchTools-API mit dem gespeicherten Zugang (für die Diashow: Kalendertermine) */
+  async function api(pathname) {
+    if (!secret?.token || !secret?.url) throw new Error('ChurchTools ist nicht verbunden')
+    const { data } = await request(secret.url, pathname, { token: secret.token })
+    return data
+  }
+
+  return { start: refresh, refresh, connect, disconnect, snapshot, stop, datesChanged, api }
 }
 
 module.exports = { createChurchTools }

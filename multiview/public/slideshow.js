@@ -1,6 +1,7 @@
 // Kachel „Diashow“ (z. B. Bildschirm in der Empfangshalle): hochgeladene Bilder mit „zeigen
 // von/bis“, die zwischengespeicherten Folien einer ProPresenter-Playlist (laufen auch, wenn
-// ProPresenter aus ist) und eine Folie „Nächste Veranstaltungen“ aus ChurchTools.
+// ProPresenter aus ist), die Slider-Bilder der Webseite, die Termine aus den öffentlichen
+// ChurchTools-Kalendern (je Termin eine Folie mit seinem Bild) und eine Folie „Nächste Veranstaltungen“.
 // Die Folien blenden weich ineinander über.
 
 const TIME_ZONE = 'Europe/Berlin'
@@ -21,6 +22,14 @@ export function slideshowOptions(o = {}) {
     eventFilter: String(o.eventFilter ?? '').slice(0, 80),
     eventTitle: String(o.eventTitle ?? 'Nächste Veranstaltungen').slice(0, 60),
     fit: o.fit === 'cover' ? 'cover' : 'contain',
+    website: o.website !== false, // Slider der Startseite
+    posts: o.posts !== false, // Beiträge der Startseite (Ankündigungen mit Flyer)
+    postCaption: o.postCaption === true, // Titel unter dem Flyer (meist steht er schon drauf)
+    ct: o.ct !== false, // Termine aus ChurchTools als eigene Folien
+    ctDays: num(o.ctDays, 14, 1, 42),
+    ctMax: num(o.ctMax, 12, 1, 40),
+    ctFilter: String(o.ctFilter ?? '').slice(0, 120),
+    ctImageOnly: o.ctImageOnly !== false, // nur Termine mit Bild
   }
 }
 
@@ -46,10 +55,38 @@ export function upcomingEvents(churchtools, o, now = Date.now()) {
     .slice(0, o.eventMax)
 }
 
-/** Alle Folien, die gerade dran sind – in dieser Reihenfolge: Bilder, ProPresenter, Veranstaltungen */
+/** Termine aus ChurchTools, die als eigene Folie laufen (läuft gerade oder in den nächsten Tagen) */
+export function ctAppointments(slideshow, o, now = Date.now()) {
+  const words = o.ctFilter
+    .toLowerCase()
+    .split(',')
+    .map((w) => w.trim())
+    .filter(Boolean)
+  return (slideshow?.ct?.appointments || [])
+    .filter((a) => {
+      const start = Date.parse(a.start)
+      const end = Date.parse(a.end || a.start)
+      if (!Number.isFinite(start) || end < now || start > now + o.ctDays * 86400e3) return false
+      if (o.ctImageOnly && !a.image) return false
+      if (!words.length) return true
+      const hay = `${a.title} ${a.subtitle} ${a.calendar}`.toLowerCase()
+      return words.some((w) => hay.includes(w))
+    })
+    .slice(0, o.ctMax)
+}
+
+/** Alle Folien, die gerade dran sind – in dieser Reihenfolge: Webseite, Termine, Bilder, ProPresenter, Veranstaltungen */
 export function buildSlides(data, o, now = Date.now()) {
   const slides = []
   const day = today()
+  if (o.website)
+    for (const slide of data?.slideshow?.website?.slides || []) slides.push({ key: `web:${slide.url}`, kind: 'web', url: slide.url, text: slide.text })
+  if (o.posts)
+    for (const post of data?.slideshow?.ct?.posts || []) {
+      if (post.expires && Date.parse(post.expires) <= now) continue
+      for (const image of post.images) slides.push({ key: `post:${post.id}:${image.url}`, kind: 'post', post, image })
+    }
+  if (o.ct) for (const a of ctAppointments(data?.slideshow, o, now)) slides.push({ key: `ct:${a.id}:${a.start}`, kind: 'ct', appointment: a })
   if (o.images)
     for (const image of data?.slideshow?.images || []) {
       if (!image.enabled || (image.from && image.from > day) || (image.to && image.to < day)) continue
@@ -68,6 +105,48 @@ function el(tag, className, text) {
   if (className) node.className = className
   if (text != null) node.textContent = text
   return node
+}
+
+/** "Heute · 18:00 Uhr", "Sa., 24.10. · 19:30 Uhr", "Mo., 26.10. – Mi., 28.10." */
+function whenText(a, now = new Date()) {
+  const start = new Date(a.start)
+  const end = new Date(a.end || a.start)
+  const dayOf = (d) => d.toLocaleDateString('sv-SE', { timeZone: TIME_ZONE })
+  const todayDay = dayOf(now)
+  const tomorrowDay = dayOf(new Date(now.getTime() + 86400e3))
+  const dayLabel = (d) =>
+    dayOf(d) === todayDay ? 'Heute' : dayOf(d) === tomorrowDay ? 'Morgen' : d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', timeZone: TIME_ZONE })
+  const time = (d) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: TIME_ZONE })
+  // Ganztägig endet bei ChurchTools am Ende des letzten Tages; mehrtägig: Zeitraum
+  const lastDay = a.allDay ? new Date(end.getTime() - 1000) : end
+  if (dayOf(lastDay) !== dayOf(start)) return `${dayLabel(start)} – ${dayLabel(lastDay)}`
+  if (a.allDay) return `${dayLabel(start)} · ganztägig`
+  return `${dayLabel(start)} · ${time(start)} Uhr`
+}
+
+/** Bild von ChurchTools im gewünschten Seitenverhältnis so groß anfordern, wie es in die Kachel passt */
+function fittedImage(url, ratio, box) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2)
+  const bw = (box.clientWidth || 1920) * dpr
+  const bh = (box.clientHeight || 1080) * dpr
+  const r = ratio || bw / bh
+  let w = bw / bh > r ? bh * r : bw
+  let h = w / r
+  const scale = Math.min(1, 1920 / Math.max(w, h))
+  w = Math.max(40, Math.round((w * scale) / 20) * 20)
+  h = Math.max(40, Math.round((h * scale) / 20) * 20)
+  return `${url}?w=${w}&h=${h}`
+}
+
+function loadImage(url) {
+  const img = new Image()
+  img.alt = ''
+  img.decoding = 'async'
+  img.src = url
+  return img.decode().then(
+    () => img,
+    () => img,
+  )
 }
 
 function eventsSlide(events, o) {
@@ -110,21 +189,49 @@ export function createSlideshowView(options) {
   let current = null
   let changing = false
 
-  async function render(slide) {
-    let node
-    if (slide.kind === 'image') {
-      node = el('div', 'ss-slide')
-      const img = new Image()
-      img.alt = ''
-      img.decoding = 'async'
-      img.src = slide.url
-      // Erst zeigen, wenn das Bild fertig geladen ist – kein halbes Bild beim Überblenden
-      await img.decode().catch(() => {})
-      node.append(img)
-    } else {
-      node = el('div', 'ss-slide ss-slide-events')
-      node.append(eventsSlide(slide.events, o))
+  /**
+   * Einheitliche Bild-Folie für alle Quellen: dasselbe Bild unscharf als Hintergrund, davor das
+   * Bild ganz und mittig im immer gleichen Rahmen; wo nötig darunter eine Beschriftung im
+   * immer gleichen Stil (Datum, Titel, Ort).
+   */
+  async function cardSlide(url, caption) {
+    const node = el('div', `ss-slide ss-card${caption ? ' has-caption' : ''}`)
+    const back = el('div', 'ss-back')
+    const frame = el('div', 'ss-frame')
+    if (url) {
+      const img = await loadImage(url)
+      back.style.backgroundImage = `url("${url.replace(/"/g, '%22')}")`
+      frame.append(img)
+    } else frame.append(el('div', 'ss-blank'))
+    node.append(back, frame)
+    if (caption) {
+      const cap = el('div', 'ss-caption')
+      if (caption.when) cap.append(el('div', 'ss-cap-when', caption.when))
+      if (caption.title) cap.append(el('div', 'ss-cap-title', caption.title))
+      if (caption.meta) cap.append(el('div', 'ss-cap-meta', caption.meta))
+      node.append(cap)
     }
+    return node
+  }
+
+  async function render(slide) {
+    if (slide.kind === 'web') return cardSlide(slide.url, slide.text ? { title: slide.text } : null)
+    if (slide.kind === 'post') {
+      const { post, image } = slide
+      return cardSlide(fittedImage(image.url, image.ratio, root), o.postCaption ? { title: post.title } : null)
+    }
+    if (slide.kind === 'ct') {
+      // Termin-Bilder sind meist Fotos ohne Text: immer mit Datum, Titel und Ort darunter
+      const a = slide.appointment
+      return cardSlide(a.image ? fittedImage(a.image, a.imageRatio || 16 / 9, root) : '', {
+        when: whenText(a),
+        title: a.title,
+        meta: [a.subtitle, a.place].filter(Boolean).join(' · '),
+      })
+    }
+    if (slide.kind === 'image') return cardSlide(slide.url, null)
+    const node = el('div', 'ss-slide ss-slide-events')
+    node.append(eventsSlide(slide.events, o))
     return node
   }
 
@@ -160,7 +267,7 @@ export function createSlideshowView(options) {
     if (!force && Date.now() - shownAt < o.seconds * 1000) return
     if (slides.length === 1) {
       // Nur eine Folie: Veranstaltungen trotzdem auffrischen (Tageswechsel, „Heute“/„Morgen“)
-      if (slides[0].kind === 'events' && Date.now() - shownAt > 60_000) show(slides[0])
+      if ((slides[0].kind === 'events' || slides[0].kind === 'ct') && Date.now() - shownAt > 60_000) show(slides[0])
       return
     }
     show(slides[(index + 1) % slides.length])
