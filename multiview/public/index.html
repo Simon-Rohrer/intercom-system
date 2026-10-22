@@ -319,6 +319,22 @@
               </div>
               <div id="access-sessions"></div>
             </div>
+            <div class="card" id="set-permanent" data-section="geraete">
+              <div class="card-head">
+                <div>
+                  <h2>Dauerhaft freigeschaltete Geräte</h2>
+                  <p class="muted">Diese Geräte brauchen <b>keinen Tagescode und keinen QR-Code</b> – Name und Rolle wählt man wie gewohnt. Freischalten geht nur auf dem Gerät selbst, als Admin angemeldet. Die Freigabe gilt ein Jahr für diesen Browser: ein anderer Browser oder gelöschte Website-Daten brauchen eine neue Freischaltung. Ein QR-Code von so einem Gerät gibt einem Handy nur die Freigabe für heute.</p>
+                </div>
+              </div>
+              <form id="perm-form" class="perm-form" autocomplete="off">
+                <label class="field"><span>Name für dieses Gerät</span>
+                  <input id="perm-name" type="text" maxlength="40" placeholder="z. B. Regie-Mac">
+                </label>
+                <button class="btn primary" type="submit" id="perm-save">Dieses Gerät dauerhaft freischalten</button>
+              </form>
+              <p class="form-error" id="perm-error" role="alert"></p>
+              <div id="perm-list"></div>
+            </div>
             <div class="card" id="set-diashow" data-section="diashow">
               <div class="card-head">
                 <div>

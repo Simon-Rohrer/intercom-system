@@ -1919,6 +1919,18 @@ app.delete('/api/access/sessions/:id', requireAdmin, (req, res) => {
   res.json({ ok: true })
 })
 
+// Dauerhaft freigeschaltete Geräte: brauchen keinen Tagescode mehr (Name und Rolle weiterhin).
+// Freischalten geht nur auf dem Gerät selbst, in einer Admin-Sitzung.
+app.get('/api/access/devices', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json(access.permanentDevices(req)))
+app.post('/api/access/devices', requireAdmin, (req, res) => {
+  try { res.json({ ok: true, devices: access.approvePermanent(req.body?.name, req, res) }) }
+  catch (error) { res.status(error.status || 400).json({ ok: false, error: error.message }) }
+})
+app.delete('/api/access/devices/:id', requireAdmin, (req, res) => {
+  try { access.revokePermanent(req.params.id); res.json({ ok: true }) }
+  catch (error) { res.status(error.status || 400).json({ ok: false, error: error.message }) }
+})
+
 // ---------------------------------------------------------------------------
 // Zentrale Anmeldung für die anderen Dienste (Kesher, Dashboard, Companion …)
 // Caddy fragt vor jeder Anfrage an einen Dienst /.jms-auth/check (forward_auth) und leitet

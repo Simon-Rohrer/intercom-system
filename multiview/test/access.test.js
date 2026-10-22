@@ -611,3 +611,51 @@ test('Sessionstatus liefert keine Tokens und abgelaufene Sessions werden ausdrü
   access.endSession(user.sessionId)
   assert.equal(access.sessionStatusById(user.sessionId).active, false)
 })
+
+test('Dauerhafte Freischaltung: kein Tagescode mehr, widerrufbar, nicht per QR weitergegeben', async () => {
+  const { access, dataDir } = await setup()
+  access.setGateway({ enabled: true })
+  const admin = await loginAs(access, 'admin')
+  // Nur ein Admin, nur mit Namen
+  const video0 = await loginAs(access, 'video', approve(access))
+  assert.throws(() => access.approvePermanent('Regie-Mac', request(video0), response()), /Nur ein Admin/)
+  assert.throws(() => access.approvePermanent('  ', request(admin), response()), /Namen/)
+
+  const res = response()
+  access.approvePermanent('Regie-Mac', request(admin), res)
+  const device = { jms_device: res.cookies.jms_device }
+  assert.match(res.headers[0][1], /Max-Age=315\d{5}/) // ein Jahr
+  assert.equal(access.deviceStatus(CLIENT, request(device)).approved, true)
+  assert.equal(access.deviceStatus(CLIENT, request(device)).permanent.name, 'Regie-Mac')
+  assert.equal(access.check({ service: 'kesher', ip: CLIENT }, request(device)).action, 'login')
+  const video = await loginAs(access, 'ton', device)
+  assert.equal(access.userOf(request(video)).roleId, 'ton')
+
+  // „Neuen Code erzeugen“ betrifft dauerhafte Geräte nicht
+  access.renewDayCode()
+  assert.equal(access.userOf(request(video)).roleId, 'ton')
+  assert.equal(access.devicesToday(), 0)
+
+  // Ein QR-Code von diesem Gerät gibt dem Handy nur die Freigabe für heute
+  const ticket = access.createQrToken(access.userOf(request(video)), request(video))
+  const phone = response()
+  assert.equal(access.redeemQrToken(ticket.token, request({}, '192.168.0.91'), phone), true)
+  assert.equal(access.deviceStatus('192.168.0.91', request(phone.cookies, '192.168.0.91')).permanent, null)
+  access.renewDayCode()
+  assert.equal(access.deviceStatus('192.168.0.91', request({ jms_device: phone.cookies.jms_device }, '192.168.0.91')).approved, false)
+
+  // Bleibt über einen Neustart, gleicher Browser bekommt beim zweiten Mal kein zweites Gerät
+  const list = access.permanentDevices(request(device))
+  assert.deepEqual(list.map((d) => [d.name, d.current]), [['Regie-Mac', true]])
+  access.approvePermanent('Regie', request({ ...admin, ...device }), response())
+  assert.deepEqual(access.permanentDevices(request()).map((d) => d.name), ['Regie'])
+  access.flush()
+  const restarted = create({ dataDir })
+  assert.equal(restarted.deviceStatus(CLIENT, request(device)).permanent.name, 'Regie')
+
+  // Widerrufen: Freigabe und Rollen-Anmeldung enden sofort
+  restarted.revokePermanent(list[0].id)
+  assert.equal(restarted.deviceStatus(CLIENT, request(device)).approved, false)
+  assert.equal(restarted.userOf(request(video)), null)
+  assert.throws(() => restarted.revokePermanent(list[0].id), /nicht gefunden/)
+})

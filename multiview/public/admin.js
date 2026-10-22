@@ -335,7 +335,10 @@ function showPage() {
   document.querySelectorAll('.site-nav a').forEach((a) => a.classList.toggle('active', a.dataset.page === navPage))
   document.body.classList.remove('nav-open')
   if (inputsVisible()) autoScanDevices()
-  if (page === 'einstellungen' && settingsSection === 'geraete') loadSessions()
+  if (page === 'einstellungen' && settingsSection === 'geraete') {
+    loadSessions()
+    loadPermanentDevices()
+  }
   // Auch für den Status-Punkt der Raspberry Pis in der Leiste, nicht nur auf ihrer Unterseite
   if (page === 'einstellungen') loadRaspberryStatus()
   if (page === 'einstellungen' && settingsSection === 'zugang') loadGateway()
@@ -4755,6 +4758,66 @@ async function loadSessions() {
   }
 }
 
+// --- Dauerhaft freigeschaltete Geräte (ohne Tagescode) -------------------------
+
+async function loadPermanentDevices() {
+  const box = $('#perm-list')
+  if (!isAdmin() || !box) return
+  let list
+  try {
+    list = await fetch('/api/access/devices', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : Promise.reject(new Error())))
+  } catch {
+    box.innerHTML = '<p class="muted">Konnte die Liste nicht laden.</p>'
+    return
+  }
+  const own = list.find((d) => d.current)
+  const name = $('#perm-name')
+  if (document.activeElement !== name && !name.value) name.value = own?.name || ''
+  $('#perm-save').textContent = own ? 'Umbenennen und um ein Jahr verlängern' : 'Dieses Gerät dauerhaft freischalten'
+  const day = (ms) => new Date(ms).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const when = (ms) => new Date(ms).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const note = me.access?.enabled ? '' : '<p class="muted small">Die Anmeldung für alle Dienste ist gerade aus – die Freigaben wirken, sobald sie an ist.</p>'
+  box.innerHTML = `${note}<div class="table-wrap"><table class="table">
+    <thead><tr><th>Gerät</th><th>IP-Adresse (zuletzt)</th><th>Zuletzt benutzt</th><th>Gültig bis</th><th></th></tr></thead>
+    <tbody>${
+      list
+        .map(
+          (d) => `<tr><td><b>${esc(d.name)}</b>${d.current ? ' <span class="badge accent">dieses Gerät</span>' : ''}</td>
+          <td>${d.ip ? `<code class="ip">${esc(d.ip)}</code>` : '<span class="muted">–</span>'}</td>
+          <td class="muted">${esc(when(d.seen))}</td><td class="muted">${esc(day(d.expiresAt))}</td>
+          <td style="text-align:right"><button class="btn small danger" data-perm-revoke="${esc(d.id)}" data-name="${esc(d.name)}">Widerrufen</button></td></tr>`,
+        )
+        .join('') || '<tr><td colspan="5" class="muted">Noch kein Gerät dauerhaft freigeschaltet.</td></tr>'
+    }</tbody></table></div>`
+}
+
+$('#perm-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const error = $('#perm-error')
+  const button = $('#perm-save')
+  error.textContent = ''
+  button.disabled = true
+  try {
+    const res = await fetch('/api/access/devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('#perm-name').value }) })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    toast(`„${$('#perm-name').value.trim()}“ ist dauerhaft freigeschaltet.`)
+    await loadPermanentDevices()
+  } catch (err) {
+    error.textContent = err.message
+  } finally {
+    button.disabled = false
+  }
+})
+
+$('#perm-list').addEventListener('click', async (e) => {
+  const button = e.target.closest('[data-perm-revoke]')
+  if (!button) return
+  if (!confirm(`Freigabe für „${button.dataset.name}“ widerrufen? Das Gerät braucht dann wieder den Tagescode, Anmeldungen darauf enden sofort.`)) return
+  await fetch(`/api/access/devices/${encodeURIComponent(button.dataset.permRevoke)}`, { method: 'DELETE' }).catch(() => null)
+  await loadPermanentDevices()
+})
+
 // --- Anmeldung für alle Dienste: Tagescode und feste Geräte -------------------
 
 let gatewayInfo = null
@@ -4881,7 +4944,7 @@ function renderGateway() {
       <div class="btn-row"><button class="btn primary" type="submit">Speichern</button></div>
       <p class="form-error" id="gateway-error" role="alert"></p>
     </form>
-    <div class="section-head"><div><h3>Registrierte Geräte</h3><p class="muted">Zertifikate ersetzen alle IP-Ausnahmen. Ein Widerruf sperrt das Gerät und beendet seine gebundenen Verbindungen. Dienstschlüssel werden ausschließlich direkt auf dem Server eingerichtet.</p></div></div>
+    <div class="section-head"><div><h3>Registrierte Geräte</h3><p class="muted">Für Pis, Kiosk und Dienste mit Zertifikat oder Dienstschlüssel. Normale Rechner ohne Zertifikat schaltest du unter <a href="#/einstellungen/geraete">Angemeldete Geräte → Dauerhaft freigeschaltete Geräte</a> frei. Ein Widerruf sperrt das Gerät und beendet seine gebundenen Verbindungen. Dienstschlüssel werden ausschließlich direkt auf dem Server eingerichtet.</p></div></div>
     <p class="form-error" id="machine-list-error" role="alert"></p>
     <div class="pi-list">${info.machines?.length ? info.machines.map(machineRow).join('') : '<p class="muted">Noch keine Geräte registriert. Stelle ein Gerätezertifikat aus und registriere anschließend seinen Fingerprint.</p>'}</div>
     ${machineCreateForm()}`
