@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { RaspberryPiStationsPanel } from "./RaspberryPiStationsPanel";
 import type { RaspberryPiStationStatus } from "../types";
 
@@ -167,5 +167,46 @@ describe("RaspberryPiStationsPanel", () => {
     expect(screen.getAllByText("Browser startet").length).toBeGreaterThan(0);
     expect(screen.getByText("Startet")).toBeInTheDocument();
     expect(screen.queryByText("Anmeldefehler")).not.toBeInTheDocument();
+  });
+
+  it("shows the power switch only for Raspberry Pis JMS Control knows", () => {
+    const onPower = vi.fn();
+    render(
+      <RaspberryPiStationsPanel
+        stations={[baseStation, { ...baseStation, deviceId: "unknown-pi", name: "Fremd" }]}
+        roleNames={new Map([["cam1", "Kamera 1"]])}
+        power={{
+          standbyFor: (deviceId) => (deviceId === "kamera-1-pi" ? false : undefined),
+          busyDeviceId: "",
+          error: "",
+          onPower,
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText("Rolle: Kamera 1").length).toBe(2);
+    const toggle = screen.getByRole("switch", { name: "Kamera-1 eingeschaltet" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("switch", { name: "Fremd eingeschaltet" })).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(onPower).toHaveBeenCalledWith(expect.objectContaining({ deviceId: "kamera-1-pi" }), "off");
+    fireEvent.click(screen.getByRole("button", { name: "Neu starten" }));
+    expect(onPower).toHaveBeenLastCalledWith(expect.objectContaining({ deviceId: "kamera-1-pi" }), "reboot");
+  });
+
+  it("shows a Raspberry in standby as switched off", () => {
+    const onPower = vi.fn();
+    render(
+      <RaspberryPiStationsPanel
+        stations={[baseStation]}
+        power={{ standbyFor: () => true, busyDeviceId: "", error: "", onPower }}
+      />,
+    );
+
+    expect(screen.getByText("Ruhemodus")).toBeInTheDocument();
+    expect(screen.getByText("Ausgeschaltet")).toBeInTheDocument();
+    expect(screen.queryByText("CPU")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch"));
+    expect(onPower).toHaveBeenCalledWith(expect.objectContaining({ deviceId: "kamera-1-pi" }), "on");
   });
 });

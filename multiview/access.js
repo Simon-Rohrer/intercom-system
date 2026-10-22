@@ -68,6 +68,7 @@ function normalizeRole(r) {
   return {
     outputs, edit, editLayouts: Boolean(r && typeof r === 'object' && r.editLayouts !== false),
     controlSlides: r?.controlSlides === true,
+    controlPis: r?.controlPis === true,
   }
 }
 

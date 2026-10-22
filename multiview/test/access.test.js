@@ -169,7 +169,7 @@ test('ungültige oder doppelte Cookies verursachen keinen Absturz und keine Anme
 
 test('unbekannte Rolle hat keine Rechte zum Erstellen von Layouts', () => {
   const rights = roleRights({ access: { roles: {} } }, { roleId: 'unknown', admin: false })
-  assert.deepEqual(rights, { admin: false, outputs: [], edit: [], editLayouts: false, controlSlides: false })
+  assert.deepEqual(rights, { admin: false, outputs: [], edit: [], editLayouts: false, controlSlides: false, controlPis: false })
   assert.equal(roleRights({ access: { roles: {} } }, { roleId: '__proto__', admin: false }).editLayouts, false)
 })
 
@@ -182,6 +182,17 @@ test('Foliensteuerung ist ein ausdrückliches Recht und kann von normalen Rollen
   const changed = applyRestrictedChanges(config, { ...config, access: { roles: { lighting: { controlSlides: true } } } }, { roleId: 'lighting', admin: false })
   assert.equal(changed.access.roles.lighting.controlSlides, false)
   assert.equal(changed.access.roles.video.controlSlides, true)
+})
+
+test('Raspberry Pis schalten ist ein ausdrückliches Recht, das normale Rollen nicht selbst vergeben', () => {
+  const access = normalizeAccess({ roles: { technik: { controlPis: true }, lighting: {} } })
+  assert.equal(access.roles.technik.controlPis, true)
+  assert.equal(access.roles.lighting.controlPis, false)
+  assert.equal(normalizeAccess({ roles: { technik: { controlPis: 1 } } }).roles.technik.controlPis, false)
+  const config = { access, layouts: [], outputs: [] }
+  const changed = applyRestrictedChanges(config, { ...config, access: { roles: { lighting: { controlPis: true } } } }, { roleId: 'lighting', admin: false })
+  assert.equal(changed.access.roles.lighting.controlPis, false)
+  assert.equal(changed.access.roles.technik.controlPis, true)
 })
 
 test('Anmeldung prüft gültige Rollen und Gerätefreigabe vor Sessionausgabe', async () => {

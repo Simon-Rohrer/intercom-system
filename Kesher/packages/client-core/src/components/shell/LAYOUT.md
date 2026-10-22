@@ -35,17 +35,21 @@
   - Kopfleiste: Rolle, Name, Live-Punkt und Mikrofon-Pegel (immer sichtbar, oben fixiert).
   - Sprechleiste (Sprechen gedrückt halten · Anrufer antworten · Dauerhaft an) direkt unter
     der Kopfleiste, auf dem PC oben, auf dem Handy als Daumenleiste unten (wie bisher).
-  - Darunter die Tasten: Party Lines, Direkt, Durchsage – links; Chat + Raspberry Pis rechts
-    (ab 1101 px nebeneinander, darunter untereinander). Farben: Rot = Sprechen,
-    Grün = Hören, Gelb = Rufen – in hell und dunkel mit gutem Kontrast.
+  - Darunter die Tasten als Karten: Party Lines, Direkt, Durchsage – links; Chat und
+    Raspberry Pis rechts als eigene Karten (ab 1101 px nebeneinander, darunter untereinander).
+    Farben: Rot = Sprechen, Grün = Hören, Gelb = Rufen – in hell und dunkel mit gutem Kontrast.
+  - Raspberry-Karte: Zustand, IP, Launcher, Prüfungen (Pi/Browser/Intercom), Messwerte;
+    unten Ein/Aus (Ruhemodus) und Neu starten – nur mit dem Recht „Raspberry Pis“ in JMS Control.
   - Die Seitenleiste nimmt auf dem PC Platz weg; sie lässt sich ausblenden (wird pro Gerät
     gemerkt). Während einer Sendung kann man so die ganze Breite für die Tasten nutzen.
 
   Einstellungen (Bediener)
   ------------------------
-  Das frühere Fenster „Station-Setup“ ist jetzt eine normale Seite „Einstellungen“ mit
-  einer Unter-Navigation (Pillen wie in JMS Control):
-    Layout · Bedienung · System · Tastenkürzel · Stream Deck · Ton & Mikrofon
+  Das frühere Fenster „Station-Setup“ ist jetzt eine normale Seite „Einstellungen“ mit dem
+  Menü wie in JMS Control: links Gruppen mit farbigen Icon-Einträgen, rechts der Bereich als Karte.
+    Ansicht: Layout · Bedienung: Sprechen & Antworten, Tastenkürzel ·
+    Ton: Ton & Mikrofon · Geräte: Stream Deck, System
+  Handy: erst die Liste, nach der Wahl nur der Bereich mit „‹ Einstellungen“ zurück.
   Die Intercom-Seite bleibt im Hintergrund geladen (Ton, Chat und Tasten laufen weiter);
   ein Klick auf „Intercom“ führt sofort zurück. Auf dem PC bleibt die Sprechleiste auch auf
   der Einstellungsseite sichtbar, auf dem Handy wird sie dort ausgeblendet.
@@ -62,7 +66,10 @@
     (mit Schleier, Tippen daneben oder Esc schließt sie). Dashboard oben, Benutzerkarte
     unten – an denselben Stellen wie auf dem PC.
   - Nach der Wahl eines Eintrags schließt sich die Seitenleiste.
-  - Die Sprechleiste liegt als Daumenleiste unten (≤ 720 px), die Tasten zweispaltig.
+  - Die Sprechleiste liegt als Daumenleiste unten (≤ 720 px): Sprechtaste groß oben,
+    Antworten und Dauerhaft an darunter.
+  - Reiter oben: Kanäle (Party Lines + Durchsage) · Direkt · Chat (mit Raspberry Pis);
+    Party Lines als Zeilen mit Hören/Rufen rechts.
 
   Ohne neue Seitenleiste (unverändert wie bisher)
   -----------------------------------------------
@@ -78,7 +85,7 @@
 Der Plan steht im Kommentarblock oben in dieser Datei. Kurz:
 
 - **Gerüst:** `AppShell` (Seitenleiste + Kopfleiste + Seite) – gleich auf PC und Handy.
-- **Bediener:** Dashboard · Intercom · Einstellungen (Unter-Navigation als Pillen).
+- **Bediener:** Dashboard · Intercom · Einstellungen (gruppiertes Menü wie in JMS Control).
 - **Admin:** Dashboard · Admin mit gruppierten Bereichen in der Seitenleiste.
 - **Benutzerkarte** unten links: Name, Rolle, „Konto wechseln“, „Abmelden“.
 - **Sonderfälle ohne Seitenleiste:** Kiosk (lowPower/autoLogin/viewMode), embed,

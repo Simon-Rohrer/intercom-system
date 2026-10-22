@@ -28,6 +28,8 @@
   --k-rack: #0d0d0e;
   --k-face: #1c1c1e;
   --k-face-hi: #2c2c2e;
+  /* kleine Flächen auf Karten (Chips, Knöpfe) */
+  --k-chip: var(--k-face-hi);
   --k-line: #2c2c2e;
   --k-line-soft: #1c1c1e;
   --k-line-strong: #48484a;
@@ -41,6 +43,8 @@
   /* Accent (JMS) */
   --k-accent: #00d1ff;
   --k-accent-ink: #001218;
+  /* Schrift auf Flächen in Textfarbe (Sprechtaste, Senden) */
+  --k-on-ink: #000000;
 
   /* Status */
   --k-talk: #ff3b30;

@@ -54,6 +54,7 @@ for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`rea
       outputs: [{ id: 'light-output', name: 'Licht', layoutId: 'light-layout' }, { id: 'video-output', name: 'Regie', layoutId: 'video-layout' }],
       access: { roles: { lighting: { outputs: ['light-output'], edit: ['light-output'], editLayouts: false } } },
       chat: { url: `http://127.0.0.1:${mock.address().port}`, username: 'Fixture', roleId: 'chat-monitor' },
+      raspberry: { clients: [{ id: 'pi1', name: 'Buehne', roleId: 'lighting', deviceId: 'pi-buehne', ipAddress: '192.168.0.41' }] },
     }))
     child = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
       env: { ...process.env, DATA_DIR: directory, HOST: '127.0.0.1', PORT: String(port), JMS_DISABLE_HARDWARE: '1', JMS_AUTH_SECRET: 'isolated-fixture-secret', JMS_SSO_ORIGIN: 'https://192.168.0.21:8090', JMS_DEVICE_PROXY_SECRET: proxySecret },
@@ -163,6 +164,24 @@ for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`rea
     assert.equal((await request('/api/output/light-output/layout/light-layout', { jar: userJar })).status, 405)
     assert.equal((await request('/api/logout', { method: 'POST', jar: userJar, origin: 'https://attacker.invalid', body: {} })).status, 403)
     assert.equal((await request('/api/display/day-code', { jar: userJar })).status, 403)
+    // Raspberry Pis ein-/ausschalten aus dem Intercom: nur Admin oder Rollen mit dem Recht
+    const piControl = '/.jms-auth/api/raspberry-pis/control'
+    assert.deepEqual((await request(piControl, { jar: userJar })).data, { ok: true, allowed: false, pis: [] })
+    assert.equal((await request(piControl, { method: 'POST', jar: userJar, body: { deviceId: 'pi-buehne', action: 'off' } })).status, 403)
+    assert.equal((await request(piControl, { jar: {} })).status, 401)
+    assert.equal((await request(piControl, { method: 'POST', jar: adminJar, body: { deviceId: 'pi-buehne', action: 'shutdown' } })).status, 400)
+    assert.equal((await request(piControl, { method: 'POST', jar: adminJar, body: { deviceId: 'unknown', action: 'off' } })).status, 404)
+    assert.equal((await request(piControl, { method: 'POST', jar: adminJar, origin: 'https://attacker.invalid', body: { deviceId: 'pi-buehne', action: 'off' } })).status, 403)
+    const piOff = await request(piControl, { method: 'POST', jar: adminJar, body: { deviceId: 'pi-buehne', action: 'off' } })
+    assert.deepEqual(piOff.data, { ok: true, standby: true, waitSeconds: 15 })
+    assert.equal(JSON.parse(fs.readFileSync(path.join(directory, 'config.json'), 'utf8')).raspberry.clients[0].standby, true)
+    assert.deepEqual((await request(piControl, { jar: adminJar })).data.pis, [{ id: 'pi1', deviceId: 'pi-buehne', name: 'Buehne', standby: true }])
+    const piRights = (await request('/api/config', { jar: adminJar })).data
+    piRights.access.roles.lighting.controlPis = true
+    assert.equal((await request('/api/config', { method: 'PUT', jar: adminJar, body: piRights })).status, 200)
+    assert.equal((await request(piControl, { jar: userJar })).data.allowed, true)
+    assert.equal((await request(piControl, { method: 'POST', jar: userJar, body: { deviceId: 'pi-buehne', action: 'on' } })).data.standby, false)
+    assert.equal((await request(piControl, { method: 'POST', jar: userJar, body: { deviceId: 'pi-buehne', action: 'reboot' } })).status, 200)
     const centralJar = {}
     let next = (await request('/.jms-auth/sso/push?next=%2F', { jar: userJar })).headers.get('location')
     for (let step = 0; step < 5 && next?.startsWith('https://'); step++) {

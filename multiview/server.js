@@ -1431,13 +1431,50 @@ app.post('/api/raspberry-pis/config', (req, res) => {
   res.set('Cache-Control', 'no-store').json(answer)
 })
 
+function queuePiPower(client, action) {
+  piPowerCommands.set(client.id, { id: require('crypto').randomUUID(), action, at: Date.now() })
+}
+
 app.post('/api/raspberry-pis/power', requireAdmin, (req, res) => {
   const { clientId, action } = req.body ?? {}
   if (!PI_POWER_ACTIONS.includes(action)) return res.status(400).json({ ok: false, error: 'Unbekannte Aktion' })
   const client = (config.raspberry.clients || []).find((c) => c.id === clientId)
   if (!client) return res.status(404).json({ ok: false, error: 'Raspberry Pi nicht gefunden' })
-  piPowerCommands.set(client.id, { id: require('crypto').randomUUID(), action, at: Date.now() })
+  queuePiPower(client, action)
   res.json({ ok: true, waitSeconds: 15 })
+})
+
+// Ein/Aus (Ruhemodus) und Neu starten aus dem Intercom: für den Admin und Rollen mit dem Recht
+// „Raspberry Pis“ (Benutzer & Rechte). Kesher ruft das über /.jms-auth auf der eigenen Adresse auf
+// und ordnet die Einträge über die Geräte-ID seinen Raspberry-Karten zu.
+function piControlAllowed(user) {
+  const rights = roleRights(config, user)
+  return Boolean(rights?.admin || rights?.controlPis)
+}
+
+app.get(['/api/raspberry-pis/control', '/.jms-auth/api/raspberry-pis/control'], requireUser, (req, res) => {
+  const allowed = piControlAllowed(req.user)
+  res.set('Cache-Control', 'no-store').json({
+    ok: true,
+    allowed,
+    pis: allowed ? (config.raspberry.clients || []).map((c) => ({ id: c.id, deviceId: c.deviceId, name: c.name, standby: c.standby === true })) : [],
+  })
+})
+
+app.post(['/api/raspberry-pis/control', '/.jms-auth/api/raspberry-pis/control'], requireUser, (req, res) => {
+  if (!piControlAllowed(req.user)) return res.status(403).json({ ok: false, error: 'Keine Berechtigung, Raspberry Pis zu schalten' })
+  const { deviceId, action } = req.body ?? {}
+  if (!['on', 'off', 'reboot'].includes(action)) return res.status(400).json({ ok: false, error: 'Unbekannte Aktion' })
+  const client = (config.raspberry.clients || []).find((c) => typeof deviceId === 'string' && c.deviceId === deviceId)
+  if (!client) return res.status(404).json({ ok: false, error: 'Raspberry Pi nicht gefunden' })
+  if (action === 'reboot') {
+    queuePiPower(client, 'reboot')
+  } else if (client.standby !== (action === 'off')) {
+    client.standby = action === 'off'
+    console.log(`Raspberry Pi ${client.name || client.id}: ${client.standby ? 'Ruhemodus' : 'eingeschaltet'} (${req.user.name})`)
+    configChanged()
+  }
+  res.json({ ok: true, standby: client.standby === true, waitSeconds: 15 })
 })
 
 // Für den Reiter in den Einstellungen: welche Pis gefragt haben und wie Kesher sie gerade sieht
@@ -1623,6 +1660,7 @@ app.get(['/api/me', '/.jms-auth/api/me'], (req, res) => {
       admin: rights.admin,
       editLayouts: rights.admin || rights.editLayouts,
       controlSlides: rights.admin || rights.controlSlides,
+      controlPis: rights.admin || rights.controlPis,
       outputs: [...allowedOutputs(config, user)],
       edit: [...editableOutputs(config, user)],
       layouts: visibleLayouts(config, user).map((l) => l.id),

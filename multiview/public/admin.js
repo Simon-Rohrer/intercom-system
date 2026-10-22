@@ -4159,7 +4159,7 @@ function renderAccess() {
     $('#access-roles').innerHTML = !roles.length
       ? `<p class="muted">Keine Rollen – ist Kesher verbunden? (Einstellungen → Kesher-Chat)</p>`
       : `<div class="table-wrap"><table class="table role-table">
-          <thead><tr><th>Rolle</th><th>Hört in Kesher (Chat)</th><th>Multiviews <span class="muted" style="font-weight:500">– antippen: aus → sehen → bearbeiten</span></th><th>Neue Layouts anlegen</th><th>Folien steuern</th></tr></thead>
+          <thead><tr><th>Rolle</th><th>Hört in Kesher (Chat)</th><th>Multiviews <span class="muted" style="font-weight:500">– antippen: aus → sehen → bearbeiten</span></th><th>Neue Layouts anlegen</th><th>Folien steuern</th><th>Raspberry Pis</th></tr></thead>
           <tbody>${roles
             .map((r) => {
               const rights = roleRights(config, { roleId: r.id })
@@ -4184,6 +4184,7 @@ function renderAccess() {
                 }</div></td>
                 <td><label class="switch"><input type="checkbox" data-role-edit ${rights.editLayouts ? 'checked' : ''}><span class="switch-track"></span><span class="muted">einrichten</span></label></td>
                 <td><label class="switch"><input type="checkbox" data-role-slides ${rights.controlSlides ? 'checked' : ''}><span class="switch-track"></span><span class="muted">ProPresenter</span></label></td>
+                <td><label class="switch"><input type="checkbox" data-role-pis ${rights.controlPis ? 'checked' : ''}><span class="switch-track"></span><span class="muted">ein/aus</span></label></td>
               </tr>`
             })
             .join('')}</tbody></table></div>
@@ -4234,11 +4235,13 @@ $('#settings-access-content').addEventListener('change', (e) => {
   const row = e.target.closest('tr[data-role]')
   if (!row) return
   const roleId = row.dataset.role
-  const current = config.access.roles[roleId] ?? { outputs: [], editLayouts: false, controlSlides: false }
+  const current = config.access.roles[roleId] ?? { outputs: [], editLayouts: false, controlSlides: false, controlPis: false }
   if ('roleEdit' in e.target.dataset) {
     current.editLayouts = e.target.checked
   } else if ('roleSlides' in e.target.dataset) {
     current.controlSlides = e.target.checked
+  } else if ('rolePis' in e.target.dataset) {
+    current.controlPis = e.target.checked
   } else return
   config.access.roles[roleId] = current
   accessKey = JSON.stringify([kesherRoles(), config.outputs.map((o) => [o.id, o.name]), config.access.roles])

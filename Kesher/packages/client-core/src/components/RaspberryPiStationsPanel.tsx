@@ -1,3 +1,4 @@
+import type { PiPowerControl } from "../hooks/usePiControl";
 import type { RaspberryPiStationStatus } from "../types";
 
 type RaspberryPiStationsPanelProps = {
@@ -6,6 +7,10 @@ type RaspberryPiStationsPanelProps = {
   emptyText?: string;
   loadingText?: string;
   className?: string;
+  /** Rollennamen statt IDs („Rolle: Bühne“) */
+  roleNames?: ReadonlyMap<string, string>;
+  /** Ein/Aus und Neu starten (nur mit dem Recht dazu, siehe usePiControl) */
+  power?: PiPowerControl | null;
 };
 
 function formatSecondsSinceSeen(seconds: number): string {
@@ -105,20 +110,13 @@ function launcherVersionLabel(value: string): string {
   return `Launcher ${normalized}`;
 }
 
-type StatusTone = "ok" | "wait" | "warn";
+type StatusTone = "ok" | "wait" | "warn" | "off";
 
 function stationStatusTone(station: RaspberryPiStationStatus): StatusTone {
   if (station.intercomConnected) return "ok";
   if (!station.online) return "warn";
   if (isFailureStatus(station.effectiveStatus)) return "warn";
   return "wait";
-}
-
-function stationStatusClass(station: RaspberryPiStationStatus): string {
-  if (station.intercomConnected) return "admin-status-ok";
-  if (!station.online) return "admin-status-warn";
-  if (isFailureStatus(station.effectiveStatus)) return "admin-status-warn";
-  return "admin-status-wait";
 }
 
 function statusToneClass(tone: StatusTone): string {
@@ -196,6 +194,8 @@ export function RaspberryPiStationsPanel({
   emptyText = "Noch kein Lebenszeichen von einem Raspberry.",
   loadingText = "Lädt",
   className = "",
+  roleNames,
+  power,
 }: RaspberryPiStationsPanelProps) {
   const countLabel = stations ? `${stations.length} bekannt` : loadingText;
 
@@ -208,29 +208,30 @@ export function RaspberryPiStationsPanel({
         <span>{title}</span>
         <small>{countLabel}</small>
       </div>
+      {power?.error ? <p className="admin-pi-error">{power.error}</p> : null}
       {stations && stations.length > 0 ? (
         stations.map((station) => {
-          const tone = stationStatusTone(station);
+          const standby = power?.standbyFor(station.deviceId);
+          const tone = standby ? "off" : stationStatusTone(station);
+          const statusLabel = standby ? "Ruhemodus" : stationStatusLabel(station);
           const launcherLabel = launcherVersionLabel(station.launcherVersion);
+          const roleLabel = station.roleId
+            ? `Rolle: ${roleNames?.get(station.roleId) || station.roleId}`
+            : "";
+          const busy = power?.busyDeviceId === station.deviceId;
           return (
-            <div
+            <article
               className={`admin-pi-station ${statusToneClass(tone)}`}
               key={station.deviceId}
-              aria-label={`${station.name}: ${stationStatusLabel(station)}; ${stationDetailLabel(station)}`}
+              aria-label={`${station.name}: ${statusLabel}; ${stationDetailLabel(station)}`}
             >
               <div className="admin-pi-station-head">
-                <div className="admin-pi-station-title">
-                  <StatusDot tone={tone} />
-                  <div className="admin-pi-station-main">
-                    <strong>{station.name}</strong>
-                    <span>{station.roleId}</span>
-                  </div>
+                <StatusDot tone={tone} />
+                <div className="admin-pi-station-main">
+                  <strong>{station.name}</strong>
+                  {roleLabel ? <span>{roleLabel}</span> : null}
                 </div>
-                <span
-                  className={`admin-pi-status-pill ${stationStatusClass(station)}`}
-                >
-                  {stationStatusLabel(station)}
-                </span>
+                <span className="admin-pi-status-pill">{statusLabel}</span>
               </div>
               <div className="admin-pi-station-meta">
                 <span>
@@ -243,63 +244,79 @@ export function RaspberryPiStationsPanel({
                   Zuletzt gesehen {formatSecondsSinceSeen(station.secondsSinceSeen)}
                 </span>
               </div>
-              <div className="admin-pi-station-checks">
-                <span
-                  className={statusToneClass(station.online ? "ok" : "warn")}
-                >
-                  <small>Pi</small>
-                  <strong>{station.online ? "Verbunden" : "Offline"}</strong>
-                </span>
-                <span className={statusToneClass(browserStatusTone(station))}>
-                  <small>Browser</small>
-                  <strong>{statusValue(station.browserStatus)}</strong>
-                </span>
-                <span className={statusToneClass(intercomStatusTone(station))}>
-                  <small>Intercom</small>
-                  <strong>
-                    {station.intercomConnected
-                      ? station.intercomUsername || "Verbunden"
-                      : statusValue(station.loginStatus)}
-                  </strong>
-                </span>
-              </div>
-              <div className="admin-pi-station-metrics">
-                <span
-                  className={statusToneClass(
-                    metricTone(station.cpuPercent, 85, 70),
-                  )}
-                >
-                  <small>CPU</small>
-                  <strong>{formatPercent(station.cpuPercent)}</strong>
-                </span>
-                {hasMetricValue(station.gpuPercent) ? (
-                  <span
-                    className={statusToneClass(
-                      metricTone(station.gpuPercent, 85, 70),
-                    )}
-                  >
-                    <small>GPU</small>
-                    <strong>{formatPercent(station.gpuPercent)}</strong>
+              {standby ? (
+                <p className="admin-pi-standby-hint">
+                  Kein Intercom, Bildschirm aus. Der Pi bleibt im Netz und ist nach dem
+                  Einschalten in etwa 15 Sekunden wieder da.
+                </p>
+              ) : (
+                <>
+                  <div className="admin-pi-station-checks">
+                    <span className={statusToneClass(station.online ? "ok" : "warn")}>
+                      <small>Pi</small>
+                      <strong>{station.online ? "Verbunden" : "Offline"}</strong>
+                    </span>
+                    <span className={statusToneClass(browserStatusTone(station))}>
+                      <small>Browser</small>
+                      <strong>{statusValue(station.browserStatus)}</strong>
+                    </span>
+                    <span className={statusToneClass(intercomStatusTone(station))}>
+                      <small>Intercom</small>
+                      <strong>
+                        {station.intercomConnected
+                          ? station.intercomUsername || "Verbunden"
+                          : statusValue(station.loginStatus)}
+                      </strong>
+                    </span>
+                  </div>
+                  <div className="admin-pi-station-metrics">
+                    <span className={statusToneClass(metricTone(station.cpuPercent, 85, 70))}>
+                      <small>CPU</small>
+                      <strong>{formatPercent(station.cpuPercent)}</strong>
+                    </span>
+                    {hasMetricValue(station.gpuPercent) ? (
+                      <span className={statusToneClass(metricTone(station.gpuPercent, 85, 70))}>
+                        <small>GPU</small>
+                        <strong>{formatPercent(station.gpuPercent)}</strong>
+                      </span>
+                    ) : null}
+                    <span className={statusToneClass(metricTone(station.memoryPercent, 90, 75))}>
+                      <small>RAM</small>
+                      <strong>{formatPercent(station.memoryPercent)}</strong>
+                    </span>
+                    <span className={statusToneClass(metricTone(station.temperatureC, 80, 70))}>
+                      <small>Temp</small>
+                      <strong>{formatTemperature(station.temperatureC)}</strong>
+                    </span>
+                  </div>
+                </>
+              )}
+              {power && standby !== undefined ? (
+                <div className="admin-pi-power">
+                  <span className="admin-pi-power-copy">
+                    <strong>{standby ? "Ausgeschaltet" : "Eingeschaltet"}</strong>
+                    <small>{standby ? "Einschalten weckt den Pi" : "Aus = Ruhemodus"}</small>
                   </span>
-                ) : null}
-                <span
-                  className={statusToneClass(
-                    metricTone(station.memoryPercent, 90, 75),
-                  )}
-                >
-                  <small>RAM</small>
-                  <strong>{formatPercent(station.memoryPercent)}</strong>
-                </span>
-                <span
-                  className={statusToneClass(
-                    metricTone(station.temperatureC, 80, 70),
-                  )}
-                >
-                  <small>Temp</small>
-                  <strong>{formatTemperature(station.temperatureC)}</strong>
-                </span>
-              </div>
-            </div>
+                  <button
+                    type="button"
+                    className="admin-pi-reboot"
+                    disabled={busy}
+                    onClick={() => power.onPower(station, "reboot")}
+                  >
+                    Neu starten
+                  </button>
+                  <button
+                    type="button"
+                    role="switch"
+                    className="admin-pi-switch"
+                    aria-checked={!standby}
+                    aria-label={`${station.name} eingeschaltet`}
+                    disabled={busy}
+                    onClick={() => power.onPower(station, standby ? "on" : "off")}
+                  />
+                </div>
+              ) : null}
+            </article>
           );
         })
       ) : (

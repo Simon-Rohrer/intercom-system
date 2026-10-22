@@ -46,6 +46,7 @@
   --k-rack: rgba(255, 255, 255, 0.55);
   --k-face: rgba(255, 255, 255, 0.92);
   --k-face-hi: #ffffff;
+  --k-chip: rgba(20, 40, 90, 0.07);
   --k-line: rgba(20, 40, 90, 0.15);
   --k-line-soft: rgba(20, 40, 90, 0.08);
   --k-line-strong: rgba(20, 40, 90, 0.28);
@@ -55,6 +56,7 @@
   --k-ink-off: #aeaeb2;
   --k-accent: #007aff;
   --k-accent-ink: #ffffff;
+  --k-on-ink: #ffffff;
   --k-talk: #d70015;
   --k-talk-deep: #fde4e2;
   --k-listen: #1e7f37;
@@ -122,6 +124,7 @@
   --k-rack: var(--j-surface);
   --k-face: rgba(22, 22, 26, 0.78);
   --k-face-hi: rgba(58, 58, 64, 0.85);
+  --k-chip: var(--k-face-hi);
   --k-line: rgba(255, 255, 255, 0.13);
   --k-line-soft: rgba(255, 255, 255, 0.07);
   --k-line-strong: rgba(255, 255, 255, 0.24);
@@ -131,6 +134,7 @@
   --k-ink-off: #5a5a5f;
   --k-accent: #00d1ff;
   --k-accent-ink: #001218;
+  --k-on-ink: #000000;
   --k-talk: #ff3b30;
   --k-talk-deep: #5a1410;
   --k-listen: #30d158;
@@ -639,49 +643,6 @@
 }
 
 /* Unter-Navigation als Glas-Pillen (wie die Einstellungen in JMS Control) */
-.k-subnav {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding: 4px 0 16px;
-  margin-bottom: 4px;
-}
-.k-subnav::-webkit-scrollbar {
-  display: none;
-}
-.k-shell .k-subnav-pill {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 34px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--j-surface-3);
-  box-shadow: inset 0 1px 0 var(--j-lg-rim-soft);
-  color: var(--j-text-2);
-  font: inherit;
-  font-size: 13.5px;
-  font-weight: 600;
-  letter-spacing: normal;
-  text-transform: none;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.k-shell .k-subnav-pill:hover {
-  color: var(--j-text);
-}
-.k-shell .k-subnav-pill.active {
-  background: var(--j-accent);
-  color: var(--j-on-accent);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 4px 14px rgba(0, 122, 255, 0.3);
-}
-.k-subnav-pill svg {
-  width: 16px;
-  height: 16px;
-}
 
 /* Knöpfe in der Kopfleiste (z. B. „Aktualisieren“) */
 .k-shell .k-btn {
@@ -726,11 +687,13 @@
 
 /* ==========================================================
    Intercom-Seite (StationIntercomView) in der Seitenleiste
+   Kopfleiste: Rolle groß wie ein Seitentitel, Name, Live-Pill, Mikrofon-Pegel.
+   Darunter Sprechleiste, links die Tasten, rechts Chat und Raspberry Pis als Karten.
    ========================================================== */
 .k-station-status {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
   flex: 1 1 auto;
 }
@@ -740,31 +703,27 @@
   min-width: 0;
 }
 .k-station-who strong {
-  font-family: var(--k-font-label);
+  font-family: var(--j-font-display);
   font-weight: 700;
-  font-size: 18px;
-  line-height: 1.05;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .k-station-who span {
   color: var(--j-muted);
-  font-size: 12.5px;
+  font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.k-station-status .station-live-name {
-  border-color: var(--j-line-strong);
-  color: var(--j-text);
-  background: var(--j-surface-2);
-}
 .k-station-status .station-top-stats {
   margin-left: auto;
   flex: none;
+  background: var(--j-surface-2);
+  border-color: var(--j-line);
 }
 
 .root.station-shell.station-in-shell {
@@ -782,25 +741,19 @@
   z-index: 20;
 }
 .station-in-shell .station-controls {
-  border-bottom: 0;
-  background: transparent;
-  padding-top: 2px;
+  padding-top: 4px;
 }
-.station-in-shell .station-content-grid {
-  margin: 0 10px 10px;
-  border-radius: 22px;
-  background: var(--k-rack);
+/* Glas wie die Karten in JMS Control */
+.station-in-shell .station-chat-section,
+.station-in-shell .panel.station-pi-monitoring-panel {
   -webkit-backdrop-filter: blur(30px) saturate(160%);
   backdrop-filter: blur(30px) saturate(160%);
   box-shadow: inset 0 1px 0 var(--j-lg-rim), inset 0 0 0 1px var(--j-lg-rim-soft), var(--j-lg-shadow);
-  overflow: hidden;
+  border: 0;
 }
-.station-in-shell .station-secondary-column {
-  background: transparent;
-  border-left: 1px solid var(--k-line-soft);
-}
-.station-in-shell .station-settings-page {
-  padding-top: 4px;
+.station-in-shell .station-card {
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
 }
 
 /* breit: genau ein Bildschirm, die Tasten scrollen für sich (wie bisher) */
@@ -820,29 +773,22 @@
     position: static;
   }
 }
-@media (max-width: 1100px) {
-  .station-in-shell .station-secondary-column {
-    border-left: 0;
-    border-top: 1px solid var(--k-line-soft);
-  }
-}
 @media (max-width: 980px) {
-  .station-in-shell .station-content-grid {
-    margin: 0 6px 8px;
-    border-radius: 18px;
-  }
   .k-station-who strong {
-    font-size: 16px;
+    font-size: 20px;
+  }
+  .k-station-who span {
+    font-size: 12.5px;
   }
 }
-/* Handy: Daumenleiste unten (wie bisher), oben nur Live-Punkt und Rolle */
+/* Handy: Daumenleiste unten, oben nur Rolle und Live-Pill */
 @media (max-width: 720px) {
   .station-in-shell .station-header {
     position: static;
   }
   .station-in-shell .station-controls {
     background: var(--j-bg);
-    padding-top: 10px;
+    padding-top: 12px;
   }
   .station-in-shell .station-controls::before {
     content: "";
@@ -858,91 +804,9 @@
     display: none;
   }
 }
-@media (max-width: 480px) {
-  .k-station-status .station-live-name {
-    font-size: 0;
-    gap: 0;
-    padding: 6px;
-  }
-}
 
 .station-in-shell .station-content-grid[hidden] {
   display: none;
-}
-
-/* Einstellungen als Seite statt Fenster */
-.station-in-shell .station-settings-page .station-modal-body {
-  max-height: none;
-  overflow: visible;
-  padding: 0;
-  background: transparent;
-}
-.station-in-shell .station-settings-page .station-settings-card {
-  border: 0;
-  border-radius: 22px;
-  padding: 18px;
-  background: var(--k-rack);
-  -webkit-backdrop-filter: blur(30px) saturate(160%);
-  backdrop-filter: blur(30px) saturate(160%);
-  box-shadow: inset 0 1px 0 var(--j-lg-rim), inset 0 0 0 1px var(--j-lg-rim-soft), var(--j-lg-shadow);
-}
-.station-in-shell .station-settings-page .station-modal-hint {
-  margin: 4px 4px 0;
-  color: var(--j-muted);
-  font-size: 13px;
-}
-.station-settings-page input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-.station-settings-page select {
-  border-radius: 8px;
-  border: 1px solid var(--k-line);
-  background-color: var(--k-face);
-  color: var(--k-ink);
-}
-.station-settings-page input:focus,
-.station-settings-page select:focus {
-  border-color: var(--k-accent);
-  outline: none;
-}
-.station-settings-page input[type="checkbox"] {
-  accent-color: var(--k-accent);
-}
-
-/* ---------- Kontrast im hellen Modus: feste dunkle Farben aus station.css ersetzen ---------- */
-.k-shell .station-mic-meter span,
-.k-shell .station-channel-meter-segment {
-  background: var(--meter-bg);
-}
-.k-shell .station-always-on-indicator {
-  background: var(--k-line-strong);
-}
-.k-shell .station-listen-led {
-  background: var(--k-line-strong);
-  box-shadow: none;
-}
-.k-shell .station-card-actions .listen.on,
-.k-shell .station-card-actions .listen.forced,
-.k-shell .station-card-actions .listen.forced:disabled {
-  color: var(--k-listen);
-}
-.k-shell .station-broadcast-card[data-talk="off"][data-can-talk="true"] {
-  border-color: var(--station-broadcast-border);
-}
-.k-shell .station-gain-control input[type="range"]::-webkit-slider-runnable-track {
-  background: linear-gradient(90deg, var(--k-ink-2) var(--fill, 70%), var(--k-line-strong) var(--fill, 70%));
-}
-.k-shell .station-gain-control input[type="range"]::-moz-range-track {
-  background: linear-gradient(90deg, var(--k-ink-2) var(--fill, 70%), var(--k-line-strong) var(--fill, 70%));
-}
-.k-shell .station-gain-control input[type="range"]::-webkit-slider-thumb {
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-}
-.k-shell .station-card[data-talk="armed"] {
-  box-shadow: inset 0 0 0 1px var(--k-talk), var(--k-key-shadow);
-}
-.k-shell .station-reply.has-caller.active,
-.k-shell .station-reply.has-caller.active strong,
-.k-shell .station-reply.has-caller.active small {
-  color: var(--station-call-active-text);
 }
 
 /* ==========================================================

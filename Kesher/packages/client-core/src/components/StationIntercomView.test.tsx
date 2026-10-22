@@ -345,7 +345,7 @@ describe("StationIntercomView", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Bedienung" }));
+    await user.click(screen.getByRole("button", { name: "Sprechen & Antworten" }));
     await user.click(
       screen.getByRole("checkbox", { name: "Sprechen und Antworten tauschen" }),
     );
@@ -1309,7 +1309,7 @@ describe("StationIntercomView", () => {
       const subnav = screen.getByRole("navigation", {
         name: "Bereiche der Einstellungen",
       });
-      await user.click(within(subnav).getByRole("button", { name: "Bedienung" }));
+      await user.click(within(subnav).getByRole("button", { name: "Sprechen & Antworten" }));
       expect(
         screen.getByRole("checkbox", { name: "Sprechen und Antworten tauschen" }),
       ).toBeInTheDocument();

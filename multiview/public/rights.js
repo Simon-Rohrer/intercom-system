@@ -7,13 +7,14 @@ import { qrOrigin } from './common.js'
 export function roleRights(config, user) {
   if (!user) return null
   const all = config.outputs.map((o) => o.id)
-  if (user.admin) return { admin: true, editLayouts: true, controlSlides: true, outputs: all, edit: all }
+  if (user.admin) return { admin: true, editLayouts: true, controlSlides: true, controlPis: true, outputs: all, edit: all }
   const r = config.access?.roles?.[user.roleId]
   const outputs = (r?.outputs ?? []).filter((id) => all.includes(id))
   return {
     admin: false,
     editLayouts: Boolean(r && r.editLayouts !== false),
     controlSlides: Boolean(r?.controlSlides),
+    controlPis: Boolean(r?.controlPis),
     outputs,
     // Bearbeiten (umschalten, laufendes Layout ändern); ohne Angabe wie früher: alles Freigegebene
     edit: Array.isArray(r?.edit) ? r.edit.filter((id) => outputs.includes(id)) : outputs,

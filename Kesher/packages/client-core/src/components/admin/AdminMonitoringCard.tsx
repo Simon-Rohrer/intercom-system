@@ -5,6 +5,7 @@ import type {
   RealtimeStatsResponse,
 } from "../../types";
 import { RaspberryPiStationsPanel } from "../RaspberryPiStationsPanel";
+import { usePiControl } from "../../hooks/usePiControl";
 import { AdminCardHeader } from "./AdminCardHeader";
 import { useAdminCardOpenState } from "./adminCardOpen";
 
@@ -36,6 +37,7 @@ export function AdminMonitoringCard({
 }: AdminMonitoringCardProps) {
   const [isOpen, setIsOpen] = useAdminCardOpenState();
   const [isRaspberryOpen, setIsRaspberryOpen] = React.useState(false);
+  const piPower = usePiControl(isRaspberryOpen);
   const [stats, setStats] = React.useState<RealtimeStatsResponse | null>(null);
   const [raspberryStations, setRaspberryStations] = React.useState<
     RaspberryPiStationStatus[] | null
@@ -197,7 +199,7 @@ export function AdminMonitoringCard({
               </small>
               <span className={`chev ${isRaspberryOpen ? "open" : ""}`}>▾</span>
             </button>
-            {isRaspberryOpen ? <RaspberryPiStationsPanel stations={raspberryStations} /> : null}
+            {isRaspberryOpen ? <RaspberryPiStationsPanel stations={raspberryStations} power={piPower} /> : null}
           </div>
 
           <details className="admin-details">

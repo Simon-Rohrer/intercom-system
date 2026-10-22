@@ -37,6 +37,7 @@ import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { LowPowerModeBadge } from "./LowPowerModeBadge";
 import { PanelResizer, useStoredSize } from "./PanelResizer";
 import { RaspberryPiStationsPanel } from "./RaspberryPiStationsPanel";
+import { usePiControl } from "../hooks/usePiControl";
 import { ChatPopoutSection } from "./panels/ChatPopoutSection";
 import { AppShell, type ShellUser } from "./shell/AppShell";
 
@@ -476,17 +477,33 @@ type SettingsPageId =
   | "streamdeck"
   | "audio";
 
-const SETTINGS_NAV_ITEMS: {
-  id: SettingsPageId;
+// Menü der Einstellungen wie in JMS Control: Gruppen mit farbigen Icon-Einträgen
+const SETTINGS_NAV_GROUPS: {
   label: string;
-  icon: SettingsIconName;
+  items: { id: SettingsPageId; label: string; hint: string; icon: SettingsIconName }[];
 }[] = [
-  { id: "layout", label: "Layout", icon: "layout" },
-  { id: "interaction", label: "Bedienung", icon: "controls" },
-  { id: "system", label: "System", icon: "system" },
-  { id: "shortcuts", label: "Tastenkürzel", icon: "keyboard" },
-  { id: "streamdeck", label: "Stream Deck", icon: "hardware" },
-  { id: "audio", label: "Ton & Mikrofon", icon: "audio" },
+  {
+    label: "Ansicht",
+    items: [{ id: "layout", label: "Layout", hint: "Favoriten, Regler, Reiter", icon: "layout" }],
+  },
+  {
+    label: "Bedienung",
+    items: [
+      { id: "interaction", label: "Sprechen & Antworten", hint: "Direkt sprechen, Tasten tauschen", icon: "controls" },
+      { id: "shortcuts", label: "Tastenkürzel", hint: "Tasten auf der Tastatur", icon: "keyboard" },
+    ],
+  },
+  {
+    label: "Ton",
+    items: [{ id: "audio", label: "Ton & Mikrofon", hint: "Mikrofon, Ausgabe, Rauschsperre", icon: "audio" }],
+  },
+  {
+    label: "Geräte",
+    items: [
+      { id: "streamdeck", label: "Stream Deck", hint: "Tasten am Stream Deck", icon: "hardware" },
+      { id: "system", label: "System", hint: "Wach halten, Version", icon: "system" },
+    ],
+  },
 ];
 
 function SettingsIcon({
@@ -856,6 +873,23 @@ function StationSectionHeader({
   );
 }
 
+function MicIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.1}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+    </svg>
+  );
+}
+
 function LockIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -874,9 +908,50 @@ function LockIcon({ className }: { className?: string }) {
   );
 }
 
+function SettingsNav({
+  activePage,
+  onSelectPage,
+}: {
+  activePage: SettingsPageId;
+  onSelectPage: (page: SettingsPageId) => void;
+}) {
+  return (
+    <nav className="station-settings-nav" aria-label="Bereiche der Einstellungen">
+      {SETTINGS_NAV_GROUPS.map((group) => (
+        <div key={group.label} className="station-settings-nav-group">
+          <span className="station-settings-nav-title">{group.label}</span>
+          <div className="station-settings-nav-list">
+            {group.items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                data-page={item.id}
+                className={activePage === item.id ? "active" : ""}
+                aria-current={activePage === item.id ? "page" : undefined}
+                aria-controls={`settings-${item.id}`}
+                onClick={() => onSelectPage(item.id)}
+              >
+                <span className="station-settings-nav-icon" aria-hidden="true">
+                  <SettingsIcon name={item.icon} />
+                </span>
+                <span className="station-settings-nav-copy">
+                  <strong>{item.label}</strong>
+                  <small aria-hidden="true">{item.hint}</small>
+                </span>
+                <span className="station-settings-nav-chevron" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
 /**
- * Station settings: a modal "Station-Setup" (kiosk) or, inside the sidebar
- * frame, the normal page "Einstellungen" with its sub-navigation as pills.
+ * Station settings: a modal "Station-Setup" (kiosk) or, inside the sidebar frame, the
+ * normal page "Einstellungen". Both use the grouped menu like JMS Control; on the phone
+ * the page shows the menu first and the chosen area on its own with "‹ Einstellungen".
  */
 function StationSettingsFrame({
   asPage,
@@ -893,36 +968,38 @@ function StationSettingsFrame({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const [showMenu, setShowMenu] = useState(true);
   if (asPage) {
     return (
       <section
-        className="k-page station-settings-page"
+        className={`k-page station-settings-page ${showMenu ? "is-menu" : "is-detail"}`}
         aria-labelledby="user-settings-title"
       >
         <div className="k-page-head">
           <div>
             <h1 id="user-settings-title">Einstellungen</h1>
-            <p className="k-lead">
-              Ansicht, Bedienung, Ton und Stream Deck für diese Station.
-            </p>
+            <p className="k-lead">Gelten für dich auf diesem Gerät.</p>
           </div>
         </div>
-        <nav className="k-subnav" aria-label="Bereiche der Einstellungen">
-          {SETTINGS_NAV_ITEMS.map((item) => (
+        <div className="station-settings-shell">
+          <SettingsNav
+            activePage={activePage}
+            onSelectPage={(page) => {
+              onSelectPage(page);
+              setShowMenu(false);
+            }}
+          />
+          <div className="station-settings-detail">
             <button
-              key={item.id}
               type="button"
-              className={`k-subnav-pill ${activePage === item.id ? "active" : ""}`.trim()}
-              aria-current={activePage === item.id ? "page" : undefined}
-              aria-controls={`settings-${item.id}`}
-              onClick={() => onSelectPage(item.id)}
+              className="station-settings-back"
+              onClick={() => setShowMenu(true)}
             >
-              <SettingsIcon name={item.icon} />
-              <span>{item.label}</span>
+              Einstellungen
             </button>
-          ))}
-        </nav>
-        <div className="station-modal-body">{children}</div>
+            <div className="station-modal-body">{children}</div>
+          </div>
+        </div>
       </section>
     );
   }
@@ -954,24 +1031,7 @@ function StationSettingsFrame({
           </button>
         </header>
         <div className="station-settings-shell">
-          <nav
-            className="station-settings-nav"
-            aria-label="Bereiche der Einstellungen"
-          >
-            {SETTINGS_NAV_ITEMS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={activePage === item.id ? "active" : ""}
-                aria-current={activePage === item.id ? "page" : undefined}
-                aria-controls={`settings-${item.id}`}
-                onClick={() => onSelectPage(item.id)}
-              >
-                <SettingsIcon name={item.icon} />
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
+          <SettingsNav activePage={activePage} onSelectPage={onSelectPage} />
           <div className="station-modal-body">{children}</div>
         </div>
       </section>
@@ -1750,6 +1810,10 @@ export function StationIntercomView({
     () => embedMode && resolveHideTalkControls(window.location.search),
     [embedMode],
   );
+  // Ein/Aus der Pis – nur wenn JMS Control es der angemeldeten Person erlaubt
+  const piPower = usePiControl(!embedMode && !remoteControl);
+  // Handy: Reiter statt einer langen Seite (Party Lines + Durchsage · Direkt · Chat + Pis)
+  const [mobileTab, setMobileTab] = useState<"lines" | "direct" | "chat">("lines");
   const talkGridRef = useRef<HTMLDivElement>(null);
   const [talkFit, setTalkFit] = useState<KeyGridFit | null>(null);
   useLayoutEffect(() => {
@@ -2861,18 +2925,53 @@ export function StationIntercomView({
             type="button"
             role="switch"
             aria-checked={voiceMode === "always_on"}
+            aria-label="Dauerhaft an"
             className={`station-always-on ${voiceMode === "always_on" ? "active" : ""}`}
             onClick={() => setAlwaysOn(voiceMode !== "always_on")}
           >
+            <span className="station-always-on-icon" aria-hidden="true">
+              <MicIcon />
+            </span>
+            <span className="station-always-on-copy">
+              <span className="station-always-on-text">Dauerhaft an</span>
+              <small aria-hidden="true">Ohne Halten sprechen</small>
+            </span>
             <span className="station-always-on-indicator" aria-hidden="true" />
-            <span className="station-always-on-text">Dauerhaft an</span>
           </button>
         </section>
         )}
       </div>
 
+      {embedMode ? null : (
+        <div
+          className="station-mobile-tabs"
+          role="tablist"
+          aria-label="Ansicht"
+          hidden={inShell && isUserSettingsOpen}
+        >
+          {(
+            [
+              ["lines", "Kanäle"],
+              ["direct", "Direkt"],
+              ...(hasChatAndSignalPanel ? [["chat", "Chat"]] : []),
+            ] as ["lines" | "direct" | "chat", string][]
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={mobileTab === id}
+              className={mobileTab === id ? "active" : ""}
+              onClick={() => setMobileTab(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       <div
         className="station-content-grid"
+        data-mobile-tab={embedMode ? undefined : mobileTab}
         hidden={inShell && isUserSettingsOpen}
         ref={contentGridRef}
         style={
@@ -3067,7 +3166,7 @@ export function StationIntercomView({
                           title={`${listenerCount} Hörer`}
                         >
                           <span className="station-presence-dot" />
-                          {listenerCount}
+                          {listenerCount} {listenerCount === 1 ? "hört" : "hören"}
                         </span>
                       ) : null}
                     </button>
@@ -3115,9 +3214,7 @@ export function StationIntercomView({
                       >
                         {isForced ? (
                           <LockIcon className="station-listen-lock" />
-                        ) : (
-                          <span className="station-listen-led" aria-hidden="true" />
-                        )}
+                        ) : null}
                         Hören
                       </button>
                       <button
@@ -3334,6 +3431,8 @@ export function StationIntercomView({
                   title="Raspberry Pis"
                   emptyText="Kein Raspberry verbunden."
                   className="station-pi-stations"
+                  roleNames={roleNameById}
+                  power={piPower}
                 />
                 {raspberryPiStationsError ? (
                   <small className="streamdeck-error">
