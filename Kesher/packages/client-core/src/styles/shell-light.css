@@ -388,44 +388,13 @@
   color: var(--k-ink);
 }
 :where(.k-shell[data-scheme="light"]) .streamdeck-confirm-backdrop {
-  background: rgba(255, 255, 255, 0.838);
-}
-:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-dialog {
-  border: 1px solid rgba(169, 178, 190, 0.28);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.942), rgba(255, 255, 255, 0.942)),
-    var(--panel);
-}
-:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-icon {
-  color: var(--k-ink);
-  border: 1px solid rgba(169, 178, 190, 0.34);
-  background: linear-gradient(180deg, rgba(169, 178, 190, 0.24), rgba(255, 255, 255, 0.622)),
-    rgba(20, 40, 90, 0.052);
+  background: rgba(255, 255, 255, 0.77);
 }
 :where(.k-shell[data-scheme="light"]) .streamdeck-confirm-icon.success {
-  color: var(--k-ok);
-  border-color: rgba(34, 197, 94, 0.4);
-  background: linear-gradient(180deg, rgba(20, 198, 75, 0.2), rgba(255, 255, 255, 0.61)),
-    rgba(20, 40, 90, 0.052);
+  background: var(--k-ok);
 }
 :where(.k-shell[data-scheme="light"]) .streamdeck-confirm-icon.error {
-  color: var(--k-ink-2);
-  border-color: rgba(239, 68, 68, 0.4);
-  background: linear-gradient(180deg, rgba(239, 68, 68, 0.2), rgba(255, 255, 255, 0.61)),
-    rgba(20, 40, 90, 0.052);
-}
-:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-content h4 {
-  color: var(--k-ink);
-}
-:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-content strong {
-  color: var(--k-ink);
-}
-:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-summary > div,
-:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-path {
-  border: 1px solid rgba(169, 178, 190, 0.16);
-  background: rgba(255, 255, 255, 0.734);
-}
-:where(.k-shell[data-scheme="light"]) .streamdeck-confirm-path {
-  color: var(--k-ink);
+  background: var(--k-bad);
 }
 :where(.k-shell[data-scheme="light"]) .streamdeck-page-bar {
   border: 1px solid rgba(169, 178, 190, 0.13);
@@ -476,18 +445,10 @@
   border: 1px solid rgba(20, 40, 90, 0.15);
   color: var(--k-ink);
 }
-:where(.k-shell[data-scheme="light"]) .shortcut-btn {
-  background: rgba(20, 40, 90, 0.091);
-  border: 1px solid rgba(20, 40, 90, 0.12);
-  color: var(--k-ink);
-}
-:where(.k-shell[data-scheme="light"]) .shortcut-btn:hover {
-  background: rgba(20, 40, 90, 0.182);
-}
 :where(.k-shell[data-scheme="light"]) .shortcut-btn.active {
+  border-color: var(--k-call);
+  background: var(--k-call);
   color: var(--station-call-active-text);
-  border-color: rgba(255, 204, 0, 0.62);
-  background: var(--station-call-active-bg);
 }
 @media (max-width: 640px) {
   :where(.k-shell[data-scheme="light"]) .shortcuts-table tr {
@@ -512,14 +473,6 @@
   border: 1px solid rgba(20, 40, 90, 0.3);
   background: rgba(255, 255, 255, 0.902);
 }
-:where(.k-shell[data-scheme="light"]) .streamdeck-tools .shortcut-btn {
-  background: transparent;
-  color: var(--k-ink-2);
-}
-:where(.k-shell[data-scheme="light"]) .streamdeck-tools .shortcut-btn:hover:not(:disabled) {
-  background: var(--k-face);
-  color: var(--k-ink);
-}
 :where(.k-shell[data-scheme="light"]) .streamdeck-panel .streamdeck-page-bar {
   border-color: var(--k-line);
   background: var(--k-rack);
@@ -528,9 +481,6 @@
 :where(.k-shell[data-scheme="light"]) .streamdeck-panel .streamdeck-editor.panel {
   border-color: var(--k-line);
   background: var(--k-rack);
-}
-:where(.k-shell[data-scheme="light"]) .streamdeck-panel .streamdeck-editor-actions .shortcut-btn {
-  background: transparent;
 }
 :where(.k-shell[data-scheme="light"]) .streamdeck-toast.success {
   border-color: color-mix(in srgb, var(--k-ok) 55%, var(--k-line));

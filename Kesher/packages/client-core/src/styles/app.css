@@ -2167,166 +2167,120 @@ button.secondary {
   line-height: 1.25;
 }
 
+/* Rückfrage „An Companion senden?“ – Karte wie die Dialoge in JMS Control */
 .streamdeck-confirm-backdrop {
   position: fixed;
   inset: 0;
   z-index: 100;
   display: grid;
   place-items: center;
-  padding: clamp(1rem, 4vw, 2rem);
-  background: rgba(13, 13, 14, 0.72);
+  padding: clamp(16px, 4vw, 32px);
+  background: rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
-
 .streamdeck-confirm-dialog {
-  width: min(520px, 100%);
+  width: min(540px, 100%);
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 0.95rem;
-  padding: 1.1rem;
-  border: 1px solid rgba(169, 178, 190, 0.28);
-  border-radius: 9px;
-  background:
-    linear-gradient(180deg, rgba(46, 50, 55, 0.98), rgba(13, 13, 14, 0.98)),
-    var(--panel);
-  box-shadow:
-    0 24px 70px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 16px;
+  padding: 24px;
+  border-radius: 26px;
+  border: 1px solid var(--k-line-soft);
+  background: var(--k-rack);
+  color: var(--k-ink);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  backdrop-filter: blur(30px) saturate(160%);
 }
-
 .streamdeck-confirm-icon {
-  width: 42px;
-  height: 42px;
+  width: 48px;
+  height: 48px;
   display: inline-grid;
   place-items: center;
-  color: #eceff3;
-  border: 1px solid rgba(169, 178, 190, 0.34);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(169, 178, 190, 0.24), rgba(10, 80, 145, 0.18)),
-    rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  background: #0a84ff;
+  color: #fff;
 }
-
 .streamdeck-confirm-icon.success {
-  color: #a8f3c2;
-  border-color: rgba(34, 197, 94, 0.4);
-  background:
-    linear-gradient(180deg, rgba(20, 198, 75, 0.2), rgba(11, 102, 35, 0.15)),
-    rgba(255, 255, 255, 0.04);
+  background: var(--k-ok);
 }
-
 .streamdeck-confirm-icon.error {
-  color: #ffcccc;
-  border-color: rgba(239, 68, 68, 0.4);
-  background:
-    linear-gradient(180deg, rgba(239, 68, 68, 0.2), rgba(153, 27, 27, 0.15)),
-    rgba(255, 255, 255, 0.04);
+  background: var(--k-bad);
 }
-
 .streamdeck-confirm-icon svg {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
 }
-
 .streamdeck-confirm-content {
   min-width: 0;
 }
-
 .streamdeck-confirm-eyebrow {
   display: block;
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
+  color: var(--k-ink-3);
 }
-
 .streamdeck-confirm-content h4 {
-  margin: 0.2rem 0 0;
-  color: #fff;
-  font-size: 1rem;
+  margin: 2px 0 0;
+  font-size: 20px;
+  font-weight: 700;
   line-height: 1.25;
+  color: var(--k-ink);
 }
-
 .streamdeck-confirm-content p {
-  margin: 0.55rem 0 0;
-  color: var(--text-secondary);
-  font-size: 0.9rem;
+  margin: 8px 0 0;
+  font-size: 14px;
   line-height: 1.45;
+  color: var(--k-ink-2);
 }
-
-.streamdeck-confirm-content strong {
-  color: #fff;
-}
-
+/* Was passiert: Zeilen einer Gruppe wie in den Einstellungen */
 .streamdeck-confirm-summary {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem;
-  margin-top: 0.85rem;
+  margin-top: 16px;
+  border-radius: 16px;
+  background: var(--k-face);
+  overflow: hidden;
 }
-
-.streamdeck-confirm-summary > div,
-.streamdeck-confirm-path {
-  min-width: 0;
-  border: 1px solid rgba(169, 178, 190, 0.16);
-  border-radius: 8px;
-  background: rgba(13, 13, 14, 0.46);
-}
-
 .streamdeck-confirm-summary > div {
-  padding: 0.62rem 0.7rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 16px;
 }
-
+.streamdeck-confirm-summary > div + div {
+  box-shadow: inset 0 1px 0 var(--k-line-soft);
+}
 .streamdeck-confirm-summary span {
-  display: block;
-  color: var(--text-muted);
-  font-size: 0.68rem;
-  font-weight: 850;
-  letter-spacing: 0.08em;
-  line-height: 1.1;
-  text-transform: uppercase;
+  flex: none;
+  font-size: 14px;
+  color: var(--k-ink-3);
 }
-
 .streamdeck-confirm-summary strong {
-  display: block;
-  margin-top: 0.22rem;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: right;
   overflow-wrap: anywhere;
-  font-size: 0.86rem;
-  line-height: 1.25;
+  color: var(--k-ink);
 }
-
 .streamdeck-confirm-path {
-  margin-top: 0.5rem;
-  padding: 0.62rem 0.7rem;
-  color: #eceff3;
-  font-size: 0.84rem;
-  font-weight: 800;
-  line-height: 1.35;
+  margin-top: 8px;
+  padding: 0 4px;
+  font-size: 13px;
+  color: var(--k-ink-3);
   overflow-wrap: anywhere;
 }
-
 .streamdeck-confirm-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1rem;
+  gap: 10px;
+  margin-top: 20px;
   flex-wrap: wrap;
-}
-
-.streamdeck-confirm-actions .shortcut-btn {
-  min-height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.42rem;
-  padding-inline: 0.78rem;
-}
-
-.streamdeck-confirm-actions .shortcut-btn svg {
-  width: 15px;
-  height: 15px;
-  flex: 0 0 15px;
 }
 
 .streamdeck-editor-shell {
@@ -2688,40 +2642,51 @@ button.secondary {
 }
 
 .shortcut-btn {
-  min-height: 34px;
-  padding: 0.38em 0.68em;
-  font-size: 0.82rem;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 7px;
-  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid var(--k-line);
+  border-radius: 999px;
+  background: var(--k-chip);
+  color: var(--k-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s;
 }
-
-.shortcut-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
+.shortcut-btn svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
 }
-
+.shortcut-btn:hover:not(:disabled) {
+  background: var(--k-face-hi);
+}
+.shortcut-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .shortcut-btn.active {
+  border-color: var(--k-call);
+  background: var(--k-call);
   color: var(--station-call-active-text);
-  border-color: rgba(255, 204, 0, 0.62);
-  background: var(--station-call-active-bg);
 }
-
 .shortcut-btn-primary {
-  border-color: rgba(169, 178, 190, 0.42);
-  background: linear-gradient(180deg, rgba(169, 178, 190, 0.95), rgba(16, 100, 180, 0.95));
-  color: #fff;
-  box-shadow: 0 8px 22px rgba(169, 178, 190, 0.26);
+  border-color: transparent;
+  background: var(--k-ink);
+  color: var(--k-on-ink);
 }
-
-.shortcut-btn-primary:hover {
-  background: linear-gradient(180deg, rgba(169, 178, 190, 0.98), rgba(22, 117, 198, 0.98));
+.shortcut-btn-primary:hover:not(:disabled) {
+  background: var(--k-ink);
+  opacity: 0.88;
 }
-
 .shortcut-btn-clear {
-  color: var(--muted);
+  border-color: transparent;
+  background: transparent;
+  color: var(--k-ink-2);
 }
 
 .shortcuts-hint {
@@ -2976,36 +2941,10 @@ button.secondary {
   display: flex;
   gap: 8px;
 }
-.streamdeck-panel .shortcut-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 36px;
-  padding: 0 14px;
-  border-radius: 8px;
-  font-weight: 600;
-}
-.streamdeck-panel .shortcut-btn svg {
-  width: 16px;
-  height: 16px;
-}
-.streamdeck-panel .shortcut-btn-primary {
-  border-color: var(--k-accent);
-  background: var(--k-accent);
-  color: var(--k-accent-ink);
-  box-shadow: none;
-}
-.streamdeck-panel .shortcut-btn-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--k-accent) 85%, #fff);
-}
 .streamdeck-panel .streamdeck-publish-btn {
   border-color: color-mix(in srgb, var(--k-accent) 55%, var(--k-line));
   color: var(--k-accent);
   background: transparent;
-}
-.streamdeck-panel .shortcut-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 .streamdeck-tools {
   display: flex;

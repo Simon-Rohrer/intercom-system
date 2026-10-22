@@ -21,8 +21,8 @@
 
 /* Shared resets for controls inside the station (the global button/input
    styles are tuned for forms, not for console keys). */
-.station-shell button,
-.chat-popout-shell button {
+/* :where – ohne Gewicht, damit Klassen wie .shortcut-btn ohne Sonderregeln gelten */
+:where(.station-shell, .chat-popout-shell) button {
   font: inherit;
   color: inherit;
   border-radius: 0;
@@ -31,8 +31,7 @@
   border: 0;
   transition: none;
 }
-.station-shell label,
-.chat-popout-shell label {
+:where(.station-shell, .chat-popout-shell) label {
   display: flex;
 }
 

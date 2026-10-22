@@ -704,6 +704,14 @@
   top: var(--j-topbar-h);
   z-index: 20;
 }
+/* bleibt beim Scrollen stehen – mit Glas, damit der Inhalt darunter nicht durchscheint.
+   Nur am PC: auf dem Handy wäre die Leiste sonst Bezugsrahmen der festen Daumenleiste. */
+@media (min-width: 721px) {
+  .station-in-shell .station-header {
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+  }
+}
 .station-in-shell .station-controls {
   padding-top: 4px;
 }
