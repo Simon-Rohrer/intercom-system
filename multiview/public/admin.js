@@ -82,7 +82,8 @@ let lastLevels = { inputs: {}, master: null }
 let propresenter = { connected: false }
 let ppStage = { connected: false, message: '', timers: [], videoCountdown: '', messages: [] }
 let localDevices = []
-let layoutId = null
+// Zuletzt bearbeitetes Layout – bleibt nach dem Neuladen ausgewählt
+let layoutId = readPref('layoutId', null)
 let selectedTileId = null
 let saveTimer = null
 let dragging = null
@@ -475,6 +476,7 @@ function renderAll() {
   config.access ??= { roles: {} }
   const layouts = myLayouts()
   if (!layouts.some((l) => l.id === layoutId)) layoutId = layouts[0]?.id ?? null
+  writePref('layoutId', layoutId)
   if (!currentLayout()?.tiles.some((t) => t.id === selectedTileId)) selectedTileId = null
   renderOutputs()
   renderScreens()
@@ -857,6 +859,7 @@ $('#output-panel').addEventListener('click', async (e) => {
       return
     case 'edit-layout':
       layoutId = output.layoutId
+      writePref('layoutId', layoutId)
       selectedTileId = null
       location.hash = '#/multiviews/layouts'
       return
@@ -1288,6 +1291,7 @@ function renderLayoutList() {
 $('#layout-select').addEventListener('change', (e) => {
   if (!e.target.value) return
   layoutId = e.target.value
+  writePref('layoutId', layoutId)
   selectedTileId = null
   renderLayoutList()
   renderCanvas()
