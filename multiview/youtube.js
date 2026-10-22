@@ -35,7 +35,7 @@ const TICK_MS = 5000
 const TIME_ZONE = 'Europe/Berlin'
 
 const ATEM_STATES = { 1: 'idle', 2: 'connecting', 4: 'streaming', 32: 'stopping' }
-const ATEM_LABELS = { off: 'nicht verbunden', idle: 'aus', connecting: 'verbindet', streaming: 'sendet', stopping: 'beendet' }
+const ATEM_LABELS = { off: 'nicht verbunden', nostream: 'ohne Streaming', idle: 'aus', connecting: 'verbindet', streaming: 'sendet', stopping: 'beendet' }
 
 /** Kanal aus Eingabe: Kanal-ID, Link oder @Name */
 function parseChannel(input) {
@@ -127,8 +127,9 @@ function pickVideo(videos, now) {
 }
 
 /** Zustand des ATEM-Streamings (atem.state.streaming von atem-connection) */
+// Ohne streaming-Zustand ist der ATEM ein Modell, das nicht selbst streamt (dann sendet z. B. ein Encoder).
 function atemStreaming(connected, streaming) {
-  if (!connected || !streaming) return { state: 'off', bitrate: null, cache: null, error: false, duration: null }
+  if (!connected || !streaming) return { state: connected ? 'nostream' : 'off', bitrate: null, cache: null, error: false, duration: null }
   const d = streaming.duration
   return {
     state: ATEM_STATES[streaming.status?.state] ?? 'idle',

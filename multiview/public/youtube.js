@@ -4,14 +4,18 @@
 
 const TIME_ZONE = 'Europe/Berlin'
 
+/** Was die Kachel einzeln zeigen kann – alles an, außer dem Live-Chat */
+export const YOUTUBE_PARTS = ['header', 'status', 'big', 'runtime', 'when', 'peak', 'views', 'likes', 'name', 'atem', 'atemDetails', 'problems']
+
 /** Einstellungen der Kachel (tile.youtube) mit Standardwerten */
 export function youtubeOptions(o = {}) {
   const n = Number(o.size)
+  const parts = Object.fromEntries(YOUTUBE_PARTS.map((key) => [key, o[key] !== false]))
   return {
     title: String(o.title ?? 'YouTube').slice(0, 40),
-    chat: o.chat === true,
-    atem: o.atem !== false,
     size: o.size != null && o.size !== '' && Number.isFinite(n) ? Math.min(2.5, Math.max(0.5, n)) : 1,
+    ...parts,
+    chat: o.chat === true,
   }
 }
 
@@ -41,7 +45,7 @@ function startsIn(ms) {
   return h < 24 ? `in ${h} Std. ${minutes % 60} Min.` : ''
 }
 
-const ATEM_TEXT = { off: 'ATEM nicht verbunden', idle: 'ATEM-Stream aus', connecting: 'ATEM verbindet …', streaming: 'ATEM sendet', stopping: 'ATEM beendet den Stream' }
+const ATEM_TEXT = { off: 'ATEM nicht verbunden', nostream: 'ATEM verbunden (streamt nicht selbst)', idle: 'ATEM-Stream aus', connecting: 'ATEM verbindet …', streaming: 'ATEM sendet', stopping: 'ATEM beendet den Stream' }
 
 export function createYouTubeView(options) {
   const o = youtubeOptions(options)
@@ -51,19 +55,26 @@ export function createYouTubeView(options) {
   const header = el('header', 'yt-header')
   const title = el('strong', 'yt-title', o.title)
   const pill = el('span', 'yt-pill', '–')
+  title.hidden = !o.header
+  pill.hidden = !o.status
   header.append(title, pill)
   const main = el('div', 'yt-main')
   const viewers = el('span', 'yt-value', '–')
   const unit = el('span', 'yt-unit', 'Zuschauer')
   const clockEl = el('span', 'yt-runtime')
+  viewers.hidden = unit.hidden = !o.big
+  clockEl.hidden = !o.runtime
   main.append(viewers, unit, clockEl)
   const sub = el('div', 'yt-sub')
   const name = el('div', 'yt-name')
   const atemLine = el('div', 'yt-atem')
   const problems = el('ul', 'yt-problems')
-  root.append(header, main, sub, name)
+  if (o.header || o.status) root.append(header)
+  if (o.big || o.runtime) root.append(main)
+  root.append(sub)
+  if (o.name) root.append(name)
   if (o.atem) root.append(atemLine)
-  root.append(problems)
+  if (o.problems) root.append(problems)
   const chatList = o.chat ? el('ol', 'yt-chat') : null
   if (chatList) root.append(chatList)
 
@@ -77,7 +88,7 @@ export function createYouTubeView(options) {
     const live = v?.status === 'live'
     root.classList.toggle('live', live)
     root.classList.toggle('stale', !live)
-    root.classList.toggle('alarm', Boolean(d?.problems?.some((p) => p.level === 'error')))
+    root.classList.toggle('alarm', o.problems && Boolean(d?.problems?.some((p) => p.level === 'error')))
 
     if (!d || d.state === 'unconfigured') {
       pill.textContent = 'Nicht eingerichtet'
@@ -92,7 +103,7 @@ export function createYouTubeView(options) {
       if (live) {
         viewers.textContent = v.viewers != null ? count(v.viewers) : '–'
         clockEl.textContent = v.actualStart ? runtime(now - v.actualStart) : ''
-        sub.textContent = [v.peak ? `Spitze ${count(v.peak)}` : '', v.views != null ? `${count(v.views)} Aufrufe` : '', v.likes != null ? `${count(v.likes)} Likes` : '']
+        sub.textContent = [o.peak && v.peak ? `Spitze ${count(v.peak)}` : '', o.views && v.views != null ? `${count(v.views)} Aufrufe` : '', o.likes && v.likes != null ? `${count(v.likes)} Likes` : '']
           .filter(Boolean)
           .join(' · ')
       } else if (v?.status === 'upcoming' && v.scheduledStart) {
@@ -100,11 +111,11 @@ export function createYouTubeView(options) {
         clockEl.textContent = ''
         const day = new Date(v.scheduledStart).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', timeZone: TIME_ZONE })
         const today = new Date(now).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', timeZone: TIME_ZONE })
-        sub.textContent = `${day === today ? 'Heute' : day} · ${v.scheduledStart > now ? startsIn(v.scheduledStart - now) : 'überfällig'}`.replace(/ · $/, '')
+        sub.textContent = o.when ? `${day === today ? 'Heute' : day} · ${v.scheduledStart > now ? startsIn(v.scheduledStart - now) : 'überfällig'}`.replace(/ · $/, '') : ''
       } else if (v?.status === 'ended') {
         viewers.textContent = v.actualStart && v.actualEnd ? runtime(v.actualEnd - v.actualStart).replace(/:\d\d$/, '') : '–'
         clockEl.textContent = ''
-        sub.textContent = `Beendet ${v.actualEnd ? clock(v.actualEnd) : ''}${v.views != null ? ` · ${count(v.views)} Aufrufe` : ''}`
+        sub.textContent = [o.when ? `Beendet ${v.actualEnd ? clock(v.actualEnd) : ''}`.trim() : '', o.views && v.views != null ? `${count(v.views)} Aufrufe` : ''].filter(Boolean).join(' · ')
       } else {
         viewers.textContent = '–'
         clockEl.textContent = ''
@@ -116,7 +127,7 @@ export function createYouTubeView(options) {
     if (o.atem) {
       const a = d?.atem
       const parts = [ATEM_TEXT[a?.state] ?? 'ATEM –']
-      if (a?.state === 'streaming') {
+      if (o.atemDetails && a?.state === 'streaming') {
         if (a.bitrate) parts.push(`${(a.bitrate / 1e6).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Mbit/s`)
         if (a.cache != null) parts.push(`Puffer ${Math.round(a.cache)} %`)
       }
@@ -124,7 +135,7 @@ export function createYouTubeView(options) {
       atemLine.classList.toggle('on', a?.state === 'streaming')
     }
 
-    problems.replaceChildren(...(d?.problems || []).map((p) => el('li', p.level, p.text)))
+    if (o.problems) problems.replaceChildren(...(d?.problems || []).map((p) => el('li', p.level, p.text)))
 
     if (chatList) {
       const messages = d?.chat || []

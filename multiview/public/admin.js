@@ -2347,7 +2347,7 @@ function slideshowAreasCard(kind, hidden) {
       <summary>Bereiche <span class="muted">${names.length ? `${shown} von ${names.length} an` : 'noch keine geladen'}</span></summary>
       ${
         names.length
-          ? `<div class="ss-area-list">${names
+          ? `<div class="switch-list">${names
               .map(
                 (name) =>
                   `<label class="switch"><input type="checkbox" data-ss-area="${kind}" data-name="${esc(name)}" ${hidden.includes(name) ? '' : 'checked'}><span class="switch-track"></span><span>${esc(name)}</span></label>`,
@@ -2415,14 +2415,45 @@ function youtubeSection(tile) {
       : youtube.state === 'error'
         ? `Fehler: ${esc(youtube.error)}`
         : `Kanal: <b>${esc(youtube.channelTitle)}</b>`
+  const toggle = (key, label, disabled = false) =>
+    `<label class="switch"><input type="checkbox" data-yt="${key}" ${o[key] ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span class="switch-track"></span><span>${label}</span></label>`
   return `
-    <label class="field"><span>Titel</span><input type="text" data-yt="title" value="${esc(o.title)}" maxlength="40"></label>
-    <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
-      <input type="range" min="0.5" max="2.5" step="0.1" data-yt="size" value="${o.size}"></label>
-    <label class="check"><input type="checkbox" data-yt="atem" ${o.atem ? 'checked' : ''}> Zustand des ATEM-Streams zeigen</label>
-    <label class="check"><input type="checkbox" data-yt="chat" ${o.chat ? 'checked' : ''}> Live-Chat zeigen</label>
+    <div class="meter-settings">
+      <h4>Darstellung</h4>
+      <label class="field"><span>Titel</span><input type="text" data-yt="title" value="${esc(o.title)}" maxlength="40"></label>
+      <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+        <input type="range" min="0.5" max="2.5" step="0.1" data-yt="size" value="${o.size}"></label>
+    </div>
+    <div class="meter-settings">
+      <h4>Kopfzeile</h4>
+      <div class="switch-list">
+        ${toggle('header', 'Titel der Kachel')}
+        ${toggle('status', 'Status: Live, Geplant, Beendet')}
+      </div>
+    </div>
+    <div class="meter-settings">
+      <h4>Zahlen</h4>
+      <div class="switch-list">
+        ${toggle('big', 'Zuschauer groß – vorher die Startzeit')}
+        ${toggle('runtime', 'Laufzeit des Streams')}
+        ${toggle('when', 'Tag und „beginnt in …“ / Ende')}
+        ${toggle('peak', 'Zuschauer-Spitze')}
+        ${toggle('views', 'Aufrufe')}
+        ${toggle('likes', 'Likes')}
+      </div>
+    </div>
+    <div class="meter-settings">
+      <h4>Stream</h4>
+      <div class="switch-list">
+        ${toggle('name', 'Titel des Videos')}
+        ${toggle('atem', 'Zustand des ATEM-Streams')}
+        ${toggle('atemDetails', 'Bitrate und Puffer vom ATEM', !o.atem)}
+        ${toggle('problems', 'Warnungen (bei Ausfall rot)')}
+        ${toggle('chat', 'Live-Chat')}
+      </div>
+    </div>
     <p class="muted small">${state}</p>
-    <p class="muted small">Zeigt, ob der Stream läuft, Zuschauer, Laufzeit und Warnungen – z. B. wenn der ATEM nicht mehr sendet oder der Upload zu langsam ist. Der Live-Chat kostet etwas mehr vom YouTube-Kontingent und wird nur abgefragt, solange eine Kachel ihn zeigt.</p>`
+    <p class="muted small">Warnungen melden z. B., wenn der ATEM nicht mehr sendet oder der Upload zu langsam ist. Der Live-Chat kostet etwas mehr vom YouTube-Kontingent und wird nur abgefragt, solange eine Kachel ihn zeigt.</p>`
 }
 
 /** Ablauf-Kachel: Schriftgröße, Abstände und was angezeigt wird. */
@@ -2672,6 +2703,7 @@ function onInspectorField(e) {
     const out = el.closest('label').querySelector('output')
     if (out) out.textContent = `${Math.round(value * 100)} %`
     renderCanvas()
+    if (el.type === 'checkbox') renderInspector()
     changed()
     return
   }

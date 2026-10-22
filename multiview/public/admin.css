@@ -2334,5 +2334,6 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 
 /* Diashow: Bereiche (Kalender) einzeln schalten */
 .ss-areas > summary .muted { margin-left: 6px; font-weight: 500; }
-.ss-area-list { display: grid; gap: 10px; }
-.ss-area-list .switch { font-weight: 500; }
+.switch-list { display: grid; gap: 10px; }
+.switch-list .switch { font-weight: 500; }
+.switch:has(input:disabled) { opacity: 0.45; cursor: default; }

@@ -74,6 +74,9 @@ test('Probleme: ATEM sendet nicht mehr, Puffer, Stream hat nicht begonnen', () =
   assert.deepEqual(findProblems({ state: 'ok', video: live, atem: slow, atemUsed: true }, now), [{ level: 'warn', text: 'Upload zu langsam: ATEM-Puffer 72 %' }])
   const late = { status: 'upcoming', scheduledStart: now - 10 * 60e3 }
   assert.equal(findProblems({ state: 'ok', video: late, atem: atemStreaming(false), atemUsed: false }, now)[0].level, 'error')
+  // Verbunden, aber ohne Streaming (Modell streamt nicht selbst) – nicht „nicht verbunden“
+  assert.equal(atemStreaming(true, undefined).state, 'nostream')
+  assert.equal(atemStreaming(false, undefined).state, 'off')
 })
 
 test('Stream mit Zuschauern, Abbruch des ATEM und Zusammenfassung am Ende', async () => {

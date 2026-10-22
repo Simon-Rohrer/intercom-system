@@ -88,6 +88,7 @@
   font-variant-numeric: tabular-nums;
 }
 .yt-sub, .yt-name, .yt-atem { padding: 0.3em 1.1em 0; font-size: 0.85em; color: var(--yt-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
+.youtube [hidden] { display: none; }
 .yt-name { color: var(--yt-ink); font-weight: 600; }
 .yt-name:empty, .yt-sub:empty { display: none; }
 .yt-atem::before { content: "●"; margin-right: 0.45em; color: var(--yt-ink-3); }
