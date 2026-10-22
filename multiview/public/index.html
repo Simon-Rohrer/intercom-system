@@ -488,7 +488,7 @@
               <div class="card-head">
                 <div>
                   <h2>YouTube</h2>
-                  <p class="muted">Für die Kachel <b>YouTube Live</b> und die Telegram-Meldungen: läuft der Stream, Zuschauer, Laufzeit, Live-Chat und am Ende eine kurze Zusammenfassung. Dafür reicht ein <b>API-Schlüssel</b> – keine Anmeldung mit dem YouTube-Konto. Den technischen Zustand (sendet, Bitrate, Puffer) liefert der ATEM.</p>
+                  <p class="muted">Für die Kachel <b>YouTube Live</b> und die Telegram-Meldungen: läuft der Stream, Zuschauer, Laufzeit, Live-Chat und am Ende eine kurze Zusammenfassung. Dafür reicht ein <b>API-Schlüssel</b>. Ob gesendet wird, liefert die <b>Monarch</b>; mit der <b>Google-Anmeldung</b> (optional) kommen nicht gelistete Streams und der Empfang bei YouTube dazu.</p>
                 </div>
               </div>
               <div id="yt-status" class="atem-status"></div>
@@ -517,8 +517,63 @@
                   <li>Den Schlüssel bearbeiten: bei <b>API-Einschränkungen</b> nur „YouTube Data API v3“ erlauben und speichern.</li>
                   <li>Schlüssel hier eintragen, dazu den Link zum Kanal der Gemeinde.</li>
                 </ol>
-                <p class="muted small">Kostenlos; Google stellt 10 000 Abfrage-Einheiten am Tag bereit, ein Sonntag braucht gut 3 000. Der Schlüssel liegt nur auf dem Server und wird hier nie wieder angezeigt. Geplante Streams findet JMS Control von selbst, wenn sie öffentlich sind – für nicht gelistete den Video-Link eintragen.</p>
+                <p class="muted small">Kostenlos; Google stellt 10 000 Abfrage-Einheiten am Tag bereit, ein Sonntag braucht gut 3 000. Der Schlüssel liegt nur auf dem Server und wird hier nie wieder angezeigt. Geplante Streams findet JMS Control von selbst, wenn sie öffentlich sind – für nicht gelistete den Video-Link eintragen oder mit Google anmelden.</p>
               </details>
+
+              <div class="section-head">
+                <div>
+                  <h3>Google-Anmeldung (optional)</h3>
+                  <p class="muted">Nur Leserecht. Damit findet JMS Control auch <b>nicht gelistete</b> und private Streams von selbst und zeigt, wie YouTube den Stream empfängt: gut / ok / schlecht, Auflösung, Bildrate und Hinweise wie „Bitrate zu niedrig“ – auch als Warnung per Telegram.</p>
+                </div>
+              </div>
+              <div id="yt-google-status" class="atem-status"></div>
+              <form id="yt-google-form" class="form-grid yt-form" autocomplete="off">
+                <label class="field"><span>Client-ID</span>
+                  <input id="yt-client-id" type="text" spellcheck="false" placeholder="….apps.googleusercontent.com">
+                </label>
+                <label class="field"><span>Clientschlüssel</span>
+                  <input id="yt-client-secret" type="password" autocomplete="off" spellcheck="false" placeholder="GOCSPX-…">
+                </label>
+                <div class="btn-row">
+                  <button class="btn primary" type="submit" id="yt-google-start">Mit Google anmelden</button>
+                </div>
+                <p class="form-error" id="yt-google-error" role="alert"></p>
+              </form>
+              <details class="disclosure inner">
+                <summary>So bekommst du Client-ID und Clientschlüssel (einmalig, ca. 5 Minuten)</summary>
+                <ol class="muted yt-steps">
+                  <li>In der <a href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noopener">Google Cloud Console</a> dasselbe Projekt wählen wie für den API-Schlüssel. Unter <b>Google Auth Platform</b> auf <b>Jetzt starten</b>: App-Name „JMS Control“, deine E-Mail-Adresse, Zielgruppe <b>Extern</b>, Kontakt-E-Mail, zustimmen, <b>Erstellen</b>.</li>
+                  <li>Unter <b>Zielgruppe</b> auf <b>App veröffentlichen</b> klicken (Status „In Produktion“). Wichtig: Im Status „Testen“ verfällt die Anmeldung nach 7 Tagen.</li>
+                  <li>Unter <b>Clients → Client erstellen</b> den Anwendungstyp <b>Fernseher und Geräte mit begrenzter Eingabe</b> wählen, Name „JMS Control“, <b>Erstellen</b>.</li>
+                  <li><b>Client-ID</b> und <b>Clientschlüssel</b> hier eintragen und <b>Mit Google anmelden</b> klicken. Dann erscheint ein Code: auf <a href="https://www.google.com/device" target="_blank" rel="noopener">google.com/device</a> eingeben und mit dem Google-Konto anmelden, dem der YouTube-Kanal gehört (bzw. der Brand-Account-Kanal auswählen).</li>
+                  <li>Google warnt „Google hat diese App nicht überprüft“ – bei einer eigenen App normal: <b>Erweitert → Zu JMS Control wechseln (unsicher)</b> und den Lesezugriff auf YouTube erlauben.</li>
+                </ol>
+                <p class="muted small">Der Clientschlüssel und die Anmeldung liegen nur auf dem Server. JMS Control kann damit nur lesen – nichts ändern, nichts veröffentlichen. Abmelden widerruft den Zugriff bei Google.</p>
+              </details>
+
+              <div class="section-head">
+                <div>
+                  <h3>Encoder: Matrox Monarch</h3>
+                  <p class="muted">Die Monarch sendet den Stream zu YouTube. JMS Control fragt alle 5 Sekunden ab, ob sie sendet und ob am Eingang ein Bild ankommt – fällt das während eines Streams weg, gibt es eine Warnung (auch per Telegram). Die gemessene Bitrate gibt die Monarch nicht heraus.</p>
+                </div>
+              </div>
+              <div id="mon-status" class="atem-status"></div>
+              <form id="mon-form" class="form-grid yt-form mon-form" autocomplete="off">
+                <label class="field"><span>Adresse</span>
+                  <input id="mon-host" type="text" spellcheck="false" placeholder="192.168.0.30">
+                </label>
+                <label class="field"><span>Benutzer</span>
+                  <input id="mon-user" type="text" spellcheck="false" placeholder="admin">
+                </label>
+                <label class="field"><span>Passwort (wie in der Weboberfläche der Monarch)</span>
+                  <input id="mon-password" type="password" autocomplete="off" spellcheck="false" placeholder="admin">
+                </label>
+                <div class="btn-row">
+                  <button class="btn primary" type="submit" id="mon-save">Speichern</button>
+                  <button class="btn danger" type="button" id="mon-disconnect">Entfernen</button>
+                </div>
+                <p class="form-error" id="mon-error" role="alert"></p>
+              </form>
             </div>
 
             <div class="card" id="set-raspberry" data-section="raspberry">

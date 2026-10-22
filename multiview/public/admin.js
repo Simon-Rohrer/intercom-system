@@ -2433,6 +2433,7 @@ function youtubeSection(tile) {
       <div class="switch-list">
         ${toggle('header', 'Titel der Kachel')}
         ${toggle('status', 'Status: Live, Geplant, Beendet')}
+        ${toggle('privacy', 'Hinweis „Nicht gelistet“ / „Privat“')}
       </div>
     </div>
     <div class="meter-settings">
@@ -2450,14 +2451,22 @@ function youtubeSection(tile) {
       <h4>Stream</h4>
       <div class="switch-list">
         ${toggle('name', 'Titel des Videos')}
-        ${toggle('atem', 'Zustand des ATEM-Streams')}
-        ${toggle('atemDetails', 'Bitrate und Puffer vom ATEM', !o.atem)}
         ${toggle('problems', 'Warnungen (bei Ausfall rot)')}
         ${toggle('chat', 'Live-Chat')}
       </div>
     </div>
+    <div class="meter-settings">
+      <h4>Technik</h4>
+      <div class="switch-list">
+        ${toggle('encoder', 'Monarch: sendet sie?')}
+        ${toggle('encoderInput', 'Monarch: Eingangssignal (z. B. SDI 1080p50)', !o.encoder)}
+        ${toggle('health', 'Empfang bei YouTube (mit Google-Anmeldung)')}
+        ${toggle('atem', 'Zustand des ATEM-Streams')}
+        ${toggle('atemDetails', 'Bitrate und Puffer vom ATEM', !o.atem)}
+      </div>
+    </div>
     <p class="muted small">${state}</p>
-    <p class="muted small">Warnungen melden z. B., wenn der ATEM nicht mehr sendet oder der Upload zu langsam ist. Der Live-Chat kostet etwas mehr vom YouTube-Kontingent und wird nur abgefragt, solange eine Kachel ihn zeigt.</p>`
+    <p class="muted small">Warnungen melden z. B., wenn die Monarch nicht mehr sendet, kein Bild ankommt oder YouTube den Empfang als schlecht meldet. Monarch und Google-Anmeldung richtest du unter <a href="#/einstellungen/youtube">Einstellungen → YouTube</a> ein. Der Live-Chat kostet etwas mehr vom YouTube-Kontingent und wird nur abgefragt, solange eine Kachel ihn zeigt.</p>`
 }
 
 /** Ablauf-Kachel: Schriftgröße, Abstände und was angezeigt wird. */
@@ -3290,24 +3299,150 @@ $('#ss-pp-refresh').addEventListener('click', async () => {
   renderSlideshowSettings()
 })
 
-// --- YouTube (API-Schlüssel, ohne Google-Anmeldung) --------------------------------------------
+// --- YouTube (API-Schlüssel, optional Google-Anmeldung) und Monarch ----------------------------
 
 let youtubeSettings = null
+let monarchSettings = null
+let googleWait = null
 
 async function loadYouTubeSettings() {
-  const res = await fetch('/api/youtube', { cache: 'no-store' }).catch(() => null)
+  const [res, mon] = await Promise.all([
+    fetch('/api/youtube', { cache: 'no-store' }).catch(() => null),
+    fetch('/api/monarch', { cache: 'no-store' }).catch(() => null),
+  ])
+  if (mon?.ok) {
+    monarchSettings = await mon.json()
+    for (const [id, value] of [['#mon-host', monarchSettings.host], ['#mon-user', monarchSettings.configured ? monarchSettings.user : '']])
+      if (document.activeElement !== $(id)) $(id).value = value || ''
+  }
   if (!res?.ok) return
   youtubeSettings = await res.json()
   const channel = $('#yt-channel')
   const video = $('#yt-video')
+  const clientId = $('#yt-client-id')
   if (document.activeElement !== channel) channel.value = youtubeSettings.channel || ''
   if (document.activeElement !== video) video.value = youtubeSettings.video || ''
+  if (document.activeElement !== clientId) clientId.value = youtubeSettings.google?.clientId || ''
+  // Während der Anmeldung nachsehen, bis Google sie bestätigt hat
+  clearTimeout(googleWait)
+  if (youtubeSettings.google?.pending && settingsSection === 'youtube') googleWait = setTimeout(loadYouTubeSettings, 3000)
   renderYouTubeSettings()
 }
+
+function renderGoogleSettings() {
+  const box = $('#yt-google-status')
+  const g = youtubeSettings?.google
+  if (!box || !g) return
+  const configured = youtubeSettings.configured
+  $('#yt-google-form').hidden = !configured || g.signedIn
+  $('#yt-client-secret').placeholder = g.clientSecretSet ? 'gespeichert – nur zum Ändern neu eintragen' : 'GOCSPX-…'
+  $('#yt-google-start').textContent = g.pending ? 'Neuen Code holen' : 'Mit Google anmelden'
+  const health = youtube?.health
+  const healthText = { good: 'gut', ok: 'ok', bad: 'schlecht', noData: 'keine Daten' }
+  box.innerHTML = !configured
+    ? '<span class="muted">Zuerst oben API-Schlüssel und Kanal speichern.</span>'
+    : g.signedIn
+      ? `<div><span style="color:var(--green)">●</span> Angemeldet als <b>${esc(g.account?.title || 'Google-Konto')}</b></div>
+         ${g.otherChannel ? `<div style="color:var(--amber)">▲ Das ist ein anderer Kanal als „${esc(youtubeSettings.channelTitle)}“ – nicht gelistete Streams und der Empfang kommen nur vom angemeldeten Kanal.</div>` : ''}
+         ${health ? `<div>Empfang bei YouTube: <b>${esc(healthText[health.status] || health.status)}</b>${health.resolution ? ` · ${esc(health.resolution)}` : ''}${health.frameRate ? ` · ${esc(health.frameRate.replace('fps', ' fps'))}` : ''}</div>` : '<div class="muted">Den Empfang zeigt YouTube, sobald ein Stream läuft.</div>'}
+         ${g.error ? `<div style="color:var(--amber)">▲ ${esc(g.error)}</div>` : ''}
+         <div><button class="btn danger small" type="button" data-google-logout>Abmelden</button></div>`
+      : g.pending
+        ? `<div>Auf <a href="${esc(g.pending.url)}" target="_blank" rel="noopener"><b>${esc(g.pending.url.replace(/^https?:\/\//, ''))}</b></a> diesen Code eingeben:</div>
+           <div class="yt-code">${esc(g.pending.userCode)}</div>
+           <div class="muted small">Gültig bis ${esc(new Date(g.pending.expiresAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }))} · Anmelden mit dem Konto, dem der YouTube-Kanal gehört. Diese Seite merkt von selbst, wenn es geklappt hat.</div>`
+        : `<span class="muted">Nicht angemeldet.</span>${g.error ? `<div style="color:var(--red)">▲ ${esc(g.error)}</div>` : ''}`
+}
+
+function renderMonarchSettings() {
+  const box = $('#mon-status')
+  if (!box) return
+  const m = monarchSettings
+  const e = youtube?.encoder ?? m
+  $('#mon-disconnect').hidden = !m?.configured
+  $('#mon-password').placeholder = m?.passwordSet ? 'gespeichert – nur zum Ändern neu eintragen' : 'admin'
+  if (!m?.configured || !e || e.state === 'unconfigured') {
+    box.innerHTML = '<span class="muted">Nicht eingerichtet.</span>'
+    return
+  }
+  const state = {
+    streaming: '<span style="color:var(--green)">●</span> Sendet',
+    ready: '<span class="muted">●</span> Bereit – sendet gerade nicht',
+    disabled: '<span class="muted">●</span> Kein Encoder für RTMP eingestellt',
+    connecting: '<span class="muted">Verbinde …</span>',
+    error: `<span style="color:var(--red)">●</span> ${esc(e.error || 'Nicht erreichbar')}`,
+  }[e.state]
+  const input = e.input ? (e.input.signal ? `Eingang: ${esc(e.input.text)}` : '<span style="color:var(--amber)">▲ Kein Bild am Eingang</span>') : ''
+  box.innerHTML = `<div>${state}${e.name ? ` · <b>${esc(e.name)}</b>` : ''}${e.encoder ? ` · ${esc(e.encoder)} (${esc(e.mode)})` : ''}</div>${input ? `<div>${input}</div>` : ''}`
+}
+
+$('#yt-google-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const error = $('#yt-google-error')
+  const button = $('#yt-google-start')
+  error.textContent = ''
+  button.disabled = true
+  try {
+    const res = await fetch('/api/youtube/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: $('#yt-client-id').value.trim(), clientSecret: $('#yt-client-secret').value.trim() }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    $('#yt-client-secret').value = ''
+    await loadYouTubeSettings()
+  } catch (err) {
+    error.textContent = err.message
+  } finally {
+    button.disabled = false
+  }
+})
+
+async function googleLogout() {
+  if (!confirm('Von Google abmelden? JMS Control findet dann nicht gelistete Streams nicht mehr von selbst.')) return
+  await fetch('/api/youtube/google', { method: 'DELETE' }).catch(() => null)
+  await loadYouTubeSettings()
+}
+$('#yt-google-status').addEventListener('click', (e) => {
+  if (e.target.closest('[data-google-logout]')) googleLogout()
+})
+
+$('#mon-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const error = $('#mon-error')
+  const button = $('#mon-save')
+  error.textContent = ''
+  button.disabled = true
+  try {
+    const res = await fetch('/api/monarch', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host: $('#mon-host').value.trim(), user: $('#mon-user').value.trim(), password: $('#mon-password').value }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    $('#mon-password').value = ''
+    toast(data.state === 'error' ? `Gespeichert, aber: ${data.error}` : 'Monarch verbunden.')
+    await loadYouTubeSettings()
+  } catch (err) {
+    error.textContent = err.message
+  } finally {
+    button.disabled = false
+  }
+})
+
+$('#mon-disconnect').addEventListener('click', async () => {
+  if (!confirm('Monarch entfernen? JMS Control fragt sie dann nicht mehr ab.')) return
+  await fetch('/api/monarch', { method: 'DELETE' }).catch(() => null)
+  await loadYouTubeSettings()
+})
 
 function renderYouTubeSettings() {
   const box = $('#yt-status')
   if (!box) return
+  renderGoogleSettings()
+  renderMonarchSettings()
   const yt = youtube
   const configured = youtubeSettings ? youtubeSettings.configured : yt && yt.state !== 'unconfigured'
   $('#yt-disconnect').hidden = !configured

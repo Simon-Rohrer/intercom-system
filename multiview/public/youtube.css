@@ -93,6 +93,21 @@
 .yt-name:empty, .yt-sub:empty { display: none; }
 .yt-atem::before { content: "●"; margin-right: 0.45em; color: var(--yt-ink-3); }
 .yt-atem.on::before { color: var(--yt-ok); }
+.yt-atem.warn::before { color: var(--yt-warn); }
+.yt-atem.bad { color: var(--yt-bad); }
+.yt-atem.bad::before { color: var(--yt-bad); }
+.yt-privacy {
+  padding: 0.2em 0.7em;
+  border-radius: 999px;
+  background: rgba(255, 176, 32, 0.16);
+  color: var(--yt-warn);
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 0.75em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 
 .yt-problems { list-style: none; margin: 0.45em 0 0; padding: 0 1.1em; display: flex; flex-direction: column; gap: 0.25em; flex: none; }
 .yt-problems:empty { display: none; }

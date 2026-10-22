@@ -1,11 +1,11 @@
-// Kachel „YouTube Live“: läuft der Stream, Zuschauer, Laufzeit, Zustand des ATEM-Streamings,
-// Warnungen und auf Wunsch der Live-Chat. Die Daten holt der Server (youtube.js) – mit
-// API-Schlüssel, ohne Google-Anmeldung.
+// Kachel „YouTube Live“: läuft der Stream, Zuschauer, Laufzeit, ob die Monarch (bzw. der ATEM)
+// sendet, wie YouTube den Stream empfängt, Warnungen und auf Wunsch der Live-Chat. Die Daten holt
+// der Server (youtube.js, monarch.js).
 
 const TIME_ZONE = 'Europe/Berlin'
 
 /** Was die Kachel einzeln zeigen kann – alles an, außer dem Live-Chat */
-export const YOUTUBE_PARTS = ['header', 'status', 'big', 'runtime', 'when', 'peak', 'views', 'likes', 'name', 'atem', 'atemDetails', 'problems']
+export const YOUTUBE_PARTS = ['header', 'status', 'privacy', 'big', 'runtime', 'when', 'peak', 'views', 'likes', 'name', 'encoder', 'encoderInput', 'health', 'atem', 'atemDetails', 'problems']
 
 /** Einstellungen der Kachel (tile.youtube) mit Standardwerten */
 export function youtubeOptions(o = {}) {
@@ -45,6 +45,9 @@ function startsIn(ms) {
   return h < 24 ? `in ${h} Std. ${minutes % 60} Min.` : ''
 }
 
+const PRIVACY_TEXT = { unlisted: 'Nicht gelistet', private: 'Privat' }
+const ENCODER_TEXT = { streaming: 'Monarch sendet', ready: 'Monarch bereit – sendet nicht', disabled: 'Monarch: Encoder aus', connecting: 'Monarch verbindet …' }
+const HEALTH_TEXT = { good: 'gut', ok: 'ok', bad: 'schlecht', noData: 'keine Daten' }
 const ATEM_TEXT = { off: 'ATEM nicht verbunden', nostream: 'ATEM verbunden (streamt nicht selbst)', idle: 'ATEM-Stream aus', connecting: 'ATEM verbindet …', streaming: 'ATEM sendet', stopping: 'ATEM beendet den Stream' }
 
 export function createYouTubeView(options) {
@@ -55,9 +58,11 @@ export function createYouTubeView(options) {
   const header = el('header', 'yt-header')
   const title = el('strong', 'yt-title', o.title)
   const pill = el('span', 'yt-pill', '–')
+  const privacy = el('span', 'yt-privacy')
   title.hidden = !o.header
   pill.hidden = !o.status
-  header.append(title, pill)
+  privacy.hidden = true
+  header.append(title, privacy, pill)
   const main = el('div', 'yt-main')
   const viewers = el('span', 'yt-value', '–')
   const unit = el('span', 'yt-unit', 'Zuschauer')
@@ -67,12 +72,16 @@ export function createYouTubeView(options) {
   main.append(viewers, unit, clockEl)
   const sub = el('div', 'yt-sub')
   const name = el('div', 'yt-name')
+  const encoderLine = el('div', 'yt-atem')
+  const healthLine = el('div', 'yt-atem')
   const atemLine = el('div', 'yt-atem')
   const problems = el('ul', 'yt-problems')
-  if (o.header || o.status) root.append(header)
+  if (o.header || o.status || o.privacy) root.append(header)
   if (o.big || o.runtime) root.append(main)
   root.append(sub)
   if (o.name) root.append(name)
+  if (o.encoder) root.append(encoderLine)
+  if (o.health) root.append(healthLine)
   if (o.atem) root.append(atemLine)
   if (o.problems) root.append(problems)
   const chatList = o.chat ? el('ol', 'yt-chat') : null
@@ -124,8 +133,43 @@ export function createYouTubeView(options) {
       name.textContent = v?.title || d.channelTitle || ''
     }
 
+    const privacyText = o.privacy ? PRIVACY_TEXT[v?.privacy] || '' : ''
+    privacy.textContent = privacyText
+    privacy.hidden = !privacyText
+    // Ist nur der Hinweis an, gibt es die Kopfzeile bloß bei nicht öffentlichen Videos
+    header.hidden = !o.header && !o.status && !privacyText
+
+    // Monarch: nur wenn eingerichtet
+    const e = d?.encoder
+    if (o.encoder) {
+      const shown = Boolean(e && e.state !== 'unconfigured')
+      encoderLine.hidden = !shown
+      if (shown) {
+        const parts = [e.state === 'error' ? e.error || 'Monarch nicht erreichbar' : ENCODER_TEXT[e.state] || 'Monarch –']
+        if (o.encoderInput && e.input && (e.state === 'streaming' || e.state === 'ready')) parts.push(e.input.signal ? e.input.label : 'kein Bild am Eingang')
+        encoderLine.textContent = parts.join(' · ')
+        encoderLine.classList.toggle('on', e.state === 'streaming' && e.input?.signal !== false)
+        encoderLine.classList.toggle('bad', e.state === 'error' || (e.state === 'streaming' && e.input?.signal === false))
+      }
+    }
+
+    // Empfang bei YouTube: nur mit Google-Anmeldung und während des Streams
+    if (o.health) {
+      const h = live ? d?.health : null
+      healthLine.hidden = !h
+      if (h) {
+        const quality = [h.resolution && h.resolution !== 'variable' ? h.resolution : '', h.frameRate && h.frameRate !== 'variable' ? h.frameRate.replace('fps', ' fps') : ''].filter(Boolean).join(' · ')
+        healthLine.textContent = h.stream && h.stream !== 'active' ? 'YouTube empfängt nichts' : `YouTube empfängt: ${HEALTH_TEXT[h.status] || h.status}${quality ? ` · ${quality}` : ''}`
+        healthLine.classList.toggle('on', h.status === 'good')
+        healthLine.classList.toggle('warn', h.status === 'ok')
+        healthLine.classList.toggle('bad', h.status === 'bad' || (h.stream && h.stream !== 'active'))
+      }
+    }
+
     if (o.atem) {
       const a = d?.atem
+      // Streamt der ATEM nicht selbst und sendet die Monarch, sagt die ATEM-Zeile nichts
+      atemLine.hidden = a?.state === 'nostream' && Boolean(e && e.state !== 'unconfigured')
       const parts = [ATEM_TEXT[a?.state] ?? 'ATEM –']
       if (o.atemDetails && a?.state === 'streaming') {
         if (a.bitrate) parts.push(`${(a.bitrate / 1e6).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Mbit/s`)

@@ -16,6 +16,7 @@ const { normalizeRaspberry, parsePiRequest, createPiRegistry } = require('./rasp
 const { createChurchTools } = require('./churchtools')
 const { createUplink, normalizeUplink } = require('./uplink')
 const { createYouTube } = require('./youtube')
+const { createMonarch } = require('./monarch')
 const { createSlideshow } = require('./slideshow')
 const { createMessageLinks } = require('./message-links')
 const QRCode = require('qrcode')
@@ -1200,11 +1201,15 @@ function applyUplink() {
   uplinkKey = key
 }
 
-// YouTube Live (API-Schlüssel, ohne Google-Anmeldung) für die Kachel „YouTube Live“ und jms-watch.
-// Den technischen Zustand liefert der ATEM, wenn er streamt (atem.state.streaming).
+// Matrox Monarch HDX: der Encoder, der zu YouTube sendet (sendet er, kommt ein Bild an)
+const monarch = createMonarch({ dataDir: DATA_DIR, log: console.log })
+
+// YouTube Live (API-Schlüssel, optional Google-Anmeldung) für die Kachel „YouTube Live“ und jms-watch.
+// Ob gesendet wird, liefern die Monarch und der ATEM, wenn er selbst streamt (atem.state.streaming).
 const youtube = createYouTube({
   dataDir: DATA_DIR,
   getAtem: () => ({ connected: atem.status === 2, streaming: atem.state?.streaming ?? null }),
+  getEncoder: () => monarch.snapshot(),
   wantChat: () => (config.layouts || []).some((layout) => (layout.tiles || []).some((tile) => tile.kind === 'youtube' && tile.youtube?.chat === true)),
   onUpdate: broadcast,
   log: console.log,
@@ -2140,6 +2145,31 @@ app.delete('/api/youtube', requireAdmin, (req, res) => {
   youtube.disconnect()
   res.json({ ok: true })
 })
+// Google-Anmeldung: liefert den Code für google.com/device; der Server wartet dann auf die Bestätigung
+app.post('/api/youtube/google', requireAdmin, async (req, res) => {
+  try {
+    const { clientId, clientSecret } = req.body || {}
+    res.json({ ok: true, ...(await youtube.googleStart({ clientId, clientSecret })) })
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message })
+  }
+})
+app.delete('/api/youtube/google', requireAdmin, async (req, res) => res.json({ ok: true, ...(await youtube.googleLogout()) }))
+
+// Monarch: Zugang (nur Admin). Das Passwort liegt in monarch.json im Datenordner und geht nie zurück.
+app.get('/api/monarch', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json(monarch.settings()))
+app.put('/api/monarch', requireAdmin, async (req, res) => {
+  try {
+    const { host, user, password } = req.body || {}
+    res.json({ ok: true, ...(await monarch.configure({ host, user, password })) })
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message })
+  }
+})
+app.delete('/api/monarch', requireAdmin, (req, res) => {
+  monarch.disconnect()
+  res.json({ ok: true })
+})
 // Für jms-watch auf dem Server selbst (Telegram): nur vom Server, nicht über Caddy von außen
 app.get('/api/youtube/status', (req, res) => {
   if (!/^(127\.|::1$|::ffff:127\.)/.test(clientIp(req))) return res.status(403).json({ ok: false })
@@ -2941,6 +2971,7 @@ server.listen(PORT, HOST, () => {
   applyProPresenter()
   startMediamtx()
   churchTools.start()
+  monarch.start()
   youtube.start()
   slideshow.start()
   applyUplink()

@@ -175,13 +175,28 @@ Wird ein Container absichtlich länger gestoppt, meldet der Bot das nach 3 Minut
 
 ## YouTube Live
 
-JMS Control fragt den YouTube-Kanal mit einem **API-Schlüssel** ab (YouTube Data API v3, ohne Anmeldung mit dem YouTube-Konto). Einrichten: JMS Control → Einstellungen → **YouTube** (Kanal-Link und Schlüssel; dort steht auch, wie man den Schlüssel bekommt). Der Schlüssel liegt nur in `youtube-secret.json` im Datenordner (Rechte 600) und geht nie an den Browser.
+JMS Control fragt den YouTube-Kanal mit einem **API-Schlüssel** ab (YouTube Data API v3). Einrichten: JMS Control → Einstellungen → **YouTube** (Kanal-Link und Schlüssel; dort steht auch, wie man den Schlüssel bekommt). Der Schlüssel liegt nur in `youtube-secret.json` im Datenordner (Rechte 600) und geht nie an den Browser.
 
-- **Kachel „YouTube Live“**: LIVE/geplant/beendet, Zuschauer, Laufzeit, Spitze, Aufrufe, Likes, Zustand des ATEM-Streams (sendet, Bitrate, Puffer), Warnungen und auf Wunsch der Live-Chat. Jeder Teil lässt sich im Layout-Editor einzeln ein- und ausschalten (Kachel wählen → Inhalt: Kopfzeile, Zahlen, Stream). Zeigt die Kachel „ATEM verbunden (streamt nicht selbst)“, ist der ATEM erreichbar, aber ein Modell ohne eigenes Streaming – dann kommt der Stream von einem anderen Gerät.
-- **Telegram** (`jms-watch`, Gruppe „📺 YouTube“): Störung, wenn ein geplanter Stream 5 Minuten nach Beginn nicht läuft oder der ATEM während des Streams nicht mehr sendet; Warnung bei vollem ATEM-Puffer (Upload zu langsam) oder wenn der ATEM sendet, YouTube den Stream aber nicht als live zeigt. Nach dem Stream kommt eine Zusammenfassung (Spitze, Dauer, Störungen).
-- Geplante Streams werden automatisch gefunden, wenn sie öffentlich sind. Für nicht gelistete Streams den Video-Link in den Einstellungen eintragen.
-- Kontingent: 10 000 Einheiten am Tag, ein Sonntag braucht gut 3 000. Ist es aufgebraucht, steht das in der Kachel; ab 9 Uhr geht es wieder.
-- Den Zustand, den YouTube selbst über die Verbindung kennt („Stream-Zustand“ im Studio, z. B. „Bitrate zu niedrig“), gibt es nur mit Google-Anmeldung (OAuth) – noch nicht eingebaut.
+- **Kachel „YouTube Live“**: LIVE/geplant/beendet, „Nicht gelistet“/„Privat“, Zuschauer, Laufzeit, Spitze, Aufrufe, Likes, ob die Monarch sendet (mit Eingangssignal), wie YouTube den Stream empfängt, Zustand des ATEM-Streams, Warnungen und auf Wunsch der Live-Chat. Jeder Teil lässt sich im Layout-Editor einzeln ein- und ausschalten (Kachel wählen → Inhalt: Kopfzeile, Zahlen, Stream, Technik). Der ATEM 2 M/E Constellation streamt nicht selbst; seine Zeile verschwindet, sobald die Monarch eingerichtet ist.
+- **Telegram** (`jms-watch`, Gruppe „📺 YouTube“): Störung, wenn ein geplanter Stream 5 Minuten nach Beginn nicht läuft, die Monarch während des Streams nicht mehr sendet oder nicht erreichbar ist, kein Bild am Eingang der Monarch ankommt oder YouTube den Empfang als schlecht meldet; Warnung bei Hinweisen von YouTube (z. B. „Bitrate zu niedrig“) oder wenn die Monarch sendet, YouTube den Stream aber nicht als live zeigt. Nach dem Stream kommt eine Zusammenfassung (Spitze, Dauer, Störungen).
+- Geplante Streams werden automatisch gefunden, wenn sie öffentlich sind. Nicht gelistete und private Streams findet JMS Control mit der Google-Anmeldung von selbst; ohne sie den Video-Link in den Einstellungen eintragen.
+- Kontingent: 10 000 Einheiten am Tag, ein Sonntag braucht gut 3 000 (mit Google-Anmeldung etwas mehr). Ist es aufgebraucht, steht das in der Kachel; ab 9 Uhr geht es wieder.
+
+### Matrox Monarch HDX
+
+Einstellungen → YouTube → **Encoder: Matrox Monarch**: Adresse `192.168.0.30`, Benutzer und Passwort wie in der Weboberfläche der Monarch (ab Werk `admin`/`admin`; leer = `admin`). Zugang in `monarch.json` im Datenordner (Rechte 600). JMS Control fragt alle 5 Sekunden über die HTTP-Steuerung der Monarch ab (`/Monarch/syncconnect/sdk.aspx?command=GetStatus` und `GetInputStatus`): sendet der RTMP-Encoder, welches Signal kommt am Eingang an. Die gemessene Bitrate liefert die Monarch nicht. Zum Prüfen vom Server aus:
+
+```bash
+curl -s -u admin:admin "http://192.168.0.30/Monarch/syncconnect/sdk.aspx?command=GetStatus"
+# ENC1:RTMP,ON,ENC2:NONE,DISABLED,NAME:MonarchHDX
+```
+
+### Google-Anmeldung (optional)
+
+Einstellungen → YouTube → **Google-Anmeldung**: Client-ID und Clientschlüssel eintragen (Anleitung steht dort), **Mit Google anmelden**, den angezeigten Code auf google.com/device eingeben. Nur Leserecht (`youtube.readonly`). Damit kommen dazu: nicht gelistete und private Streams des Kanals, die Sichtbarkeit und der Stream-Zustand bei YouTube (gut/ok/schlecht, Auflösung, Bildrate, Hinweise wie „Bitrate zu niedrig“). Client-Daten und Anmeldung liegen in `youtube-secret.json`; „Abmelden“ widerruft den Zugriff bei Google.
+
+- Die App muss in der Google Cloud Console **veröffentlicht** sein (Zielgruppe → „In Produktion“). Im Status „Testen“ verfällt die Anmeldung nach 7 Tagen – dann steht in den Einstellungen „Google-Anmeldung abgelaufen“, und man meldet sich neu an.
+- Anmelden mit dem Konto, dem der Kanal gehört (bei einem Brand-Account den Kanal auswählen). Passt der angemeldete Kanal nicht zum eingetragenen, zeigen die Einstellungen eine Warnung.
 
 ## Chat automatisch leeren
 
