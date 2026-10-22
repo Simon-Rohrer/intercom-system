@@ -1819,6 +1819,55 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 }
 .canvas-frame.sized > .canvas { width: var(--cw); height: var(--ch); }
 .output-preview iframe { width: var(--pw, 1920px); height: var(--ph, 1080px); left: var(--preview-left, 0px); top: var(--preview-top, 0px); }
+/* Skizze des Layouts (Handy, solange kein Live-Bild läuft): an derselben Stelle wie das Bild */
+.output-sketch {
+  display: none;
+  position: absolute;
+  left: var(--preview-left, 0px);
+  top: var(--preview-top, 0px);
+  width: calc(var(--pw, 1920px) * var(--preview-scale, 0.25));
+  height: calc(var(--ph, 1080px) * var(--preview-scale, 0.25));
+  overflow: hidden;
+}
+.output-sketch > span {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 5px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.output-live-btn { display: none; }
+@media (max-width: 760px) {
+  .output-preview:not(.live) .output-sketch { display: block; }
+  .output-preview:not(.live) iframe { visibility: hidden; }
+  .output-live-btn {
+    display: inline-flex;
+    align-items: center;
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    z-index: 3;
+    height: 32px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.72);
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+  .output-preview.live .output-live-btn { background: #ff3b30; }
+}
 .layout-size { display: flex; align-items: flex-end; gap: 8px; }
 .layout-size .field { flex: 1; min-width: 0; }
 .layout-size .times { padding-bottom: 12px; color: var(--muted, #8a8f98); }

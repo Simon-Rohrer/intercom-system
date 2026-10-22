@@ -565,26 +565,57 @@ const previewScaler =
     : { observe: (el) => requestAnimationFrame(() => scalePreview(el)) }
 
 const phoneLayout = matchMedia('(max-width: 760px)')
-// Vorschauen erst laden, wenn sie ins Bild kommen; auf dem Handy wieder entladen, sobald sie
-// herausscrollen. Jede Vorschau ist ein ganzer Monitor (Videos, Kesher, Diashow) – alle auf
-// einmal brachten Safari auf dem Handy zum Absturz (Seite lädt neu, dann „keine Verbindung“).
+// Jede Vorschau ist ein ganzer Monitor in Originalgröße (Videos, Kesher, Diashow). Mehrere davon
+// brachten Safari auf dem Handy zum Absturz (Seite lädt neu, dann „keine Verbindung“). Darum:
+// am PC erst laden, wenn die Vorschau ins Bild kommt; auf dem Handy eine Skizze des Layouts und
+// das Live-Bild nur auf „Live ansehen“ – immer nur für einen Multiview.
+function setPreviewLive(preview, live) {
+  const iframe = preview.querySelector('iframe')
+  if (!iframe) return
+  preview.classList.toggle('live', live)
+  const button = preview.querySelector('.output-live-btn')
+  if (button) button.textContent = live ? 'Live beenden' : 'Live ansehen'
+  if (live) {
+    if (iframe.getAttribute('src') !== iframe.dataset.src) iframe.src = iframe.dataset.src
+  } else if (iframe.getAttribute('src') === iframe.dataset.src) {
+    iframe.src = 'about:blank'
+  }
+}
+
 const previewLoader =
   typeof IntersectionObserver === 'function'
     ? new IntersectionObserver(
         (entries) => {
           for (const entry of entries) {
-            const iframe = entry.target.querySelector('iframe')
-            if (!iframe) continue
-            if (entry.isIntersecting) {
-              if (iframe.getAttribute('src') !== iframe.dataset.src) iframe.src = iframe.dataset.src
-            } else if (phoneLayout.matches && iframe.getAttribute('src') === iframe.dataset.src) {
-              iframe.src = 'about:blank'
+            if (!phoneLayout.matches) {
+              if (entry.isIntersecting) setPreviewLive(entry.target, true)
+            } else if (!entry.isIntersecting && entry.target.classList.contains('live')) {
+              setPreviewLive(entry.target, false)
             }
           }
         },
         { rootMargin: '200px 0px' },
       )
-    : { observe: (el) => { const f = el.querySelector('iframe'); if (f) f.src = f.dataset.src }, disconnect() {} }
+    : { observe: (el) => !phoneLayout.matches && setPreviewLive(el, true), disconnect() {} }
+
+/** Skizze des Layouts für die Karte: Kacheln als Kästchen mit Namen (kostet fast nichts). */
+function renderSketch(sketch, layout) {
+  if (!sketch) return
+  const tiles = layout?.tiles ?? []
+  const items = tiles.map((tile) => [tile, describeTile(tile).title])
+  const key = JSON.stringify([layout?.cols, layout?.rows, layout?.background, items.map(([t, title]) => [t.x, t.y, t.w, t.h, title])])
+  if (sketch.dataset.key === key) return
+  sketch.dataset.key = key
+  sketch.style.background = layout?.background || '#000'
+  sketch.replaceChildren(
+    ...items.map(([tile, title]) => {
+      const box = document.createElement('span')
+      applyBox(box, tile, layout)
+      box.textContent = title
+      return box
+    }),
+  )
+}
 
 // Multiviews: Karten mit Vorschau in echter Monitorgröße (verkleinert), Einstellungen des
 // gewählten Multiviews rechts – auf dem Handy als Blatt von unten
@@ -622,7 +653,9 @@ function renderOutputs() {
           (o) => `<article class="output-card" data-id="${esc(o.id)}">
           <div class="output-preview">
             <iframe data-src="${esc(outputUrl(o, true))}" allow="microphone; camera; fullscreen; autoplay; speaker-selection; clipboard-write" title="${esc(o.name)}"></iframe>
+            <div class="output-sketch" aria-hidden="true"></div>
             <button class="output-preview-hit" type="button" data-action="select" aria-label="${esc(o.name)} auswählen"></button>
+            <button class="output-live-btn" type="button" data-action="live">Live ansehen</button>
           </div>
           <div class="output-body">
             <button class="output-select" type="button" data-action="select">
@@ -650,7 +683,9 @@ function renderOutputs() {
     const output = config.outputs.find((o) => o.id === card.dataset.id)
     // Format des Layouts (16:9, Hochformat, eigene Pixel): Vorschau im selben Seitenverhältnis
     const preview = card.querySelector('.output-preview')
-    if (preview && setPreviewSize(preview, config.layouts.find((l) => l.id === output?.layoutId))) scalePreview(preview)
+    const layout = config.layouts.find((l) => l.id === output?.layoutId)
+    if (preview && setPreviewSize(preview, layout)) scalePreview(preview)
+    renderSketch(card.querySelector('.output-sketch'), layout)
     card.classList.toggle('selected', output.id === selectedOutputId && (!phoneLayout.matches || outputSheetOpen))
     card.querySelector('.output-name').textContent = output.name
     const layoutName = outputLayoutName(output)
@@ -786,8 +821,16 @@ $('#output-cards').addEventListener('click', (e) => {
   if (!btn) return
   const output = outputById(btn)
   if (!output) return
-  if (btn.dataset.action === 'fullscreen') outputFullscreen(output)
-  else if (btn.dataset.action === 'select') selectOutput(output.id)
+  if (btn.dataset.action === 'live') {
+    const preview = btn.closest('.output-preview')
+    const live = !preview.classList.contains('live')
+    // Immer nur ein Live-Bild auf dem Handy
+    if (live) for (const other of $('#output-cards').querySelectorAll('.output-preview.live')) setPreviewLive(other, false)
+    setPreviewLive(preview, live)
+  } else if (btn.dataset.action === 'fullscreen') {
+    setPreviewLive(btn.closest('.output-card').querySelector('.output-preview'), true)
+    outputFullscreen(output)
+  } else if (btn.dataset.action === 'select') selectOutput(output.id)
 })
 
 $('#output-panel').addEventListener('click', async (e) => {
