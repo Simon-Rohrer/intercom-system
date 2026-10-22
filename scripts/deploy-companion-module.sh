@@ -122,7 +122,19 @@ if [[ -e "$TARGET" ]]; then
 fi
 
 mv "$PACKAGE_ROOT" "$TARGET"
-chown -R companion:companion "$TARGET"
+# Module directory belongs to root, Companion only reads it (BETRIEB.md, Companion-Laufzeit)
+chown -R root:companion "$TARGET"
+chmod -R u=rwX,g=rX,o= "$TARGET"
+
+# The module signs in to Kesher/JMS with the device key next to its entry point. It is not
+# part of the package – take it over from the previous module, otherwise every request fails
+# ("credential missing") and Companion shows no presets.
+if [[ -n "$BACKUP" && -f "$BACKUP/jms-device.key" ]]; then
+  install -m 0640 -o root -g companion "$BACKUP/jms-device.key" "$TARGET/jms-device.key"
+  echo "Device key taken over from the previous module"
+else
+  echo "WARNING: no jms-device.key in the previous module – copy it to $TARGET/jms-device.key (0640 root:companion)" >&2
+fi
 
 if ! systemctl restart companion; then
   echo "Companion restart failed. Restoring the previous module." >&2
