@@ -17,6 +17,7 @@ const { createChurchTools } = require('./churchtools')
 const { createUplink, normalizeUplink } = require('./uplink')
 const { createYouTube } = require('./youtube')
 const { createMonarch } = require('./monarch')
+const { createDropbox } = require('./dropbox')
 const { createSlideshow } = require('./slideshow')
 const { createMessageLinks } = require('./message-links')
 const QRCode = require('qrcode')
@@ -1262,9 +1263,13 @@ const youtube = createYouTube({
   log: console.log,
 })
 
+// Dropbox-Ordner für die Diashow: neue Bilder dort erscheinen sofort (Longpoll von Dropbox)
+const dropbox = createDropbox({ dataDir: DATA_DIR, onUpdate: () => broadcast(slideshow.snapshot()), log: console.log })
+
 // Diashow (Kachel „Diashow“): hochgeladene Bilder und zwischengespeicherte ProPresenter-Folien
 const slideshow = createSlideshow({
   dataDir: DATA_DIR,
+  getDropbox: () => dropbox.snapshot(),
   getPpBase: () => ppBase(),
   // Termine aus ChurchTools – nur, wenn ChurchTools verbunden ist
   getCtApi: () => (churchTools.snapshot().state === 'unconfigured' ? null : churchTools.api),
@@ -2173,6 +2178,28 @@ for (const [route, kind] of [['/diashow/bild/:file', 'bild'], ['/diashow/pp/:fil
     res.sendFile(file, { maxAge: '7d', immutable: true })
   })
 }
+app.get('/diashow/dropbox/:file', requireTrusted, requireDisplayReader, (req, res) => {
+  const file = dropbox.filePath(req.params.file)
+  if (!file) return res.status(404).end()
+  res.sendFile(file, { maxAge: '7d', immutable: true })
+})
+
+// Dropbox (nur Admin): verbinden mit Code, Ordner wählen. Das Token bleibt auf dem Server.
+const dropboxRoute = (handler) => async (req, res) => {
+  try {
+    const extra = (await handler(req)) || {}
+    res.json({ ok: true, ...dropbox.settings(), ...extra })
+  } catch (err) {
+    res.status(err.status && err.status < 500 ? err.status : 400).json({ ok: false, error: err.message })
+  }
+}
+app.get('/api/dropbox', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json(dropbox.settings()))
+app.post('/api/dropbox/authorize', requireAdmin, dropboxRoute((req) => ({ url: dropbox.authorizeUrl(req.body?.appKey) })))
+app.post('/api/dropbox/connect', requireAdmin, dropboxRoute((req) => dropbox.connect(req.body?.code)))
+app.delete('/api/dropbox', requireAdmin, dropboxRoute(() => dropbox.disconnect()))
+app.get('/api/dropbox/folders', requireAdmin, dropboxRoute((req) => dropbox.browse(req.query.path)))
+app.put('/api/dropbox/folder', requireAdmin, dropboxRoute((req) => dropbox.setFolder(req.body?.folder)))
+
 const slideshowRoute = (handler) => async (req, res) => {
   try {
     res.json({ ok: true, ...((await handler(req)) || {}), ...slideshow.snapshot() })
@@ -3047,6 +3074,7 @@ server.listen(PORT, HOST, () => {
   monarch.start()
   youtube.start()
   slideshow.start()
+  dropbox.start()
   applyUplink()
   uplink.start()
 })

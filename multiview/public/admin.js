@@ -343,6 +343,7 @@ function showPage() {
   if (page === 'einstellungen') loadRaspberryStatus()
   if (page === 'einstellungen' && settingsSection === 'zugang') loadGateway()
   if (page === 'einstellungen' && settingsSection === 'youtube') loadYouTubeSettings()
+  if (page === 'einstellungen' && settingsSection === 'diashow') loadDropboxSettings()
   if (page === 'einstellungen' && settingsSection === 'zugang' && accessSection === 'nachrichten') loadMessageLinks()
   if (page === 'services') renderServices()
   renderAll()
@@ -2410,7 +2411,7 @@ function slideshowAreasCard(kind, hidden) {
 function slideshowSection(tile) {
   const o = slideshowOptions(tile.slideshow)
   const count = slideshowData
-    ? `${slideshowData.website?.slides?.length || 0} Folien der Webseite, ${slideshowData.ct?.posts?.length || 0} Beiträge, ${slideshowData.ct?.appointments?.length || 0} Termine aus ChurchTools, ${slideshowData.images.filter((i) => i.enabled).length} Bilder, ${slideshowData.pp.slides.length} ProPresenter-Folien`
+    ? `${slideshowData.website?.slides?.length || 0} Folien der Webseite, ${slideshowData.ct?.posts?.length || 0} Beiträge, ${slideshowData.ct?.appointments?.length || 0} Termine aus ChurchTools, ${slideshowData.images.filter((i) => i.enabled).length} Bilder, ${slideshowData.pp.slides.length} ProPresenter-Folien${slideshowData.dropbox?.images?.length ? `, ${slideshowData.dropbox.images.length} Bilder aus der Dropbox` : ''}`
     : '…'
   return `
     <label class="field"><span>Jede Folie <output>${o.seconds} s</output></span>
@@ -2437,6 +2438,8 @@ function slideshowSection(tile) {
     }
     <label class="check"><input type="checkbox" data-ss="images" ${o.images ? 'checked' : ''}> Hochgeladene Bilder</label>
     <label class="check"><input type="checkbox" data-ss="pp" ${o.pp ? 'checked' : ''}> Folien aus ProPresenter</label>
+    <label class="check"><input type="checkbox" data-ss="dropbox" ${o.dropbox ? 'checked' : ''}> Bilder aus dem Dropbox-Ordner${slideshowData?.dropbox?.state === 'unconfigured' ? ' <span class="muted">(unter Einstellungen → Diashow verbinden)</span>' : ''}</label>
+    ${o.dropbox ? `<label class="check"><input type="checkbox" data-ss="dropboxNow" ${o.dropboxNow ? 'checked' : ''}> Neues Bild in der Dropbox sofort zeigen</label>` : ''}
     <label class="check"><input type="checkbox" data-ss="events" ${o.events ? 'checked' : ''}> Nächste Veranstaltungen (ChurchTools)</label>
     ${
       o.events
@@ -3259,7 +3262,125 @@ function renderSlideshowSettings() {
       : `${pp.state === 'ok' ? '<span style="color:var(--green)">●</span>' : '<span style="color:var(--amber)">●</span>'} ${pp.slides.length} Folien${at ? ` · Stand ${esc(at)}` : ''}${pp.error ? ` · ${esc(pp.error)}` : ''}`
   $('#ss-pp-refresh').hidden = pp.state === 'off'
   $('#ss-pp-thumbs').innerHTML = pp.slides.slice(0, 24).map((slide) => `<img src="${esc(slide.url)}" alt="" title="${esc(slide.name)}" loading="lazy">`).join('')
+  renderDropboxSettings()
 }
+
+// --- Dropbox-Ordner für die Diashow ------------------------------------------------------------
+
+let dropboxSettings = null
+
+async function loadDropboxSettings() {
+  const res = await fetch('/api/dropbox', { cache: 'no-store' }).catch(() => null)
+  if (!res?.ok) return
+  dropboxSettings = await res.json()
+  renderDropboxSettings()
+}
+
+function renderDropboxSettings() {
+  const box = $('#ss-dropbox')
+  if (!box) return
+  const s = { ...(dropboxSettings || {}), ...(slideshowData?.dropbox || {}) }
+  const connected = Boolean(dropboxSettings?.connected)
+  $('#dbx-connect-form').hidden = connected
+  $('#dbx-folder-form').hidden = !connected
+  const key = $('#dbx-app-key')
+  if (document.activeElement !== key && !key.value) key.value = dropboxSettings?.appKey || ''
+  const folder = $('#dbx-folder')
+  if (document.activeElement !== folder && !folder.dataset.edited) folder.value = s.folder ?? ''
+  const who = dropboxSettings?.account?.name ? ` als <b>${esc(dropboxSettings.account.name)}</b>` : ''
+  const at = s.lastChange ? new Date(s.lastChange).toLocaleString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }) : ''
+  $('#dbx-state').innerHTML = !connected
+    ? `Nicht verbunden.${s.error ? ` <span style="color:var(--amber)">${esc(s.error)}</span>` : ''}`
+    : s.state === 'nofolder'
+      ? `<span style="color:var(--amber)">●</span> Verbunden${who} – jetzt einen Ordner wählen.`
+      : s.state === 'error'
+        ? `<span style="color:var(--red)">●</span> ${esc(s.error)}`
+        : s.state === 'connecting'
+          ? `<span class="muted">Verbinde${who} …</span>`
+          : `<span style="color:var(--green)">●</span> Verbunden${who} · lauscht auf <code>${esc(s.folder || '/')}</code> · ${s.images?.length || 0} Bilder${at ? ` · zuletzt neu ${esc(at)}` : ''}`
+  $('#dbx-thumbs').innerHTML = (s.images || []).slice(0, 24).map((image) => `<img src="${esc(image.url)}" alt="" title="${esc(image.name)}" loading="lazy">`).join('')
+}
+
+async function dropboxCall(url, method = 'GET', body) {
+  const error = $('#dbx-error')
+  error.textContent = ''
+  const res = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined }).catch(() => null)
+  const data = res ? await res.json().catch(() => ({})) : { error: 'Server nicht erreichbar' }
+  if (!res?.ok || !data.ok) {
+    error.textContent = data.error || `HTTP ${res?.status}`
+    return null
+  }
+  dropboxSettings = data
+  renderDropboxSettings()
+  return data
+}
+
+$('#dbx-authorize').addEventListener('click', async () => {
+  // Fenster gleich öffnen (sonst blockt der Browser es), die Adresse kommt vom Server
+  const popup = window.open('about:blank', '_blank')
+  const data = await dropboxCall('/api/dropbox/authorize', 'POST', { appKey: $('#dbx-app-key').value.trim() })
+  if (!data?.url) return popup?.close()
+  if (popup) popup.location.href = data.url
+  else window.open(data.url, '_blank')
+  $('#dbx-code-field').hidden = false
+  $('#dbx-code-row').hidden = false
+  $('#dbx-code').focus()
+})
+
+$('#dbx-connect-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const data = await dropboxCall('/api/dropbox/connect', 'POST', { code: $('#dbx-code').value.trim() })
+  if (!data) return
+  $('#dbx-code').value = ''
+  $('#dbx-code-field').hidden = true
+  $('#dbx-code-row').hidden = true
+  toast('Dropbox verbunden – jetzt den Ordner wählen.')
+  showDropboxFolders('')
+})
+
+$('#dbx-folder').addEventListener('input', (e) => (e.target.dataset.edited = '1'))
+$('#dbx-folder-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const data = await dropboxCall('/api/dropbox/folder', 'PUT', { folder: $('#dbx-folder').value })
+  if (!data) return
+  delete $('#dbx-folder').dataset.edited
+  $('#dbx-folders').hidden = true
+  toast(`Lausche auf ${data.folder || '/'}.`)
+})
+
+/** Ordner zum Anklicken: eine Ebene, mit „zurück“ */
+async function showDropboxFolders(path) {
+  const box = $('#dbx-folders')
+  box.hidden = false
+  box.innerHTML = '<p class="muted small">Lade Ordner …</p>'
+  const data = await dropboxCall(`/api/dropbox/folders?path=${encodeURIComponent(path)}`)
+  if (!data) {
+    box.hidden = true
+    return
+  }
+  const parent = data.path ? data.path.slice(0, data.path.lastIndexOf('/')) : null
+  box.innerHTML = `<div class="dbx-folders-head"><code>${esc(data.path || '/')}</code>
+      <button class="btn small primary" type="button" data-dbx-pick="${esc(data.path)}">Diesen Ordner nehmen</button></div>
+    <div class="dbx-folder-list">
+      ${parent !== null ? `<button class="btn small" type="button" data-dbx-open="${esc(parent)}">← zurück</button>` : ''}
+      ${data.folders.map((f) => `<button class="btn small" type="button" data-dbx-open="${esc(f.path)}">📁 ${esc(f.name)}</button>`).join('') || '<span class="muted small">Keine Unterordner</span>'}
+    </div>`
+}
+
+$('#dbx-browse').addEventListener('click', () => showDropboxFolders($('#dbx-folder').value.trim()))
+$('#dbx-folders').addEventListener('click', async (e) => {
+  const open = e.target.closest('[data-dbx-open]')
+  if (open) return showDropboxFolders(open.dataset.dbxOpen)
+  const pick = e.target.closest('[data-dbx-pick]')
+  if (!pick) return
+  $('#dbx-folder').value = pick.dataset.dbxPick
+  $('#dbx-folder-form').requestSubmit()
+})
+
+$('#dbx-disconnect').addEventListener('click', async () => {
+  if (!confirm('Dropbox trennen? Die Bilder aus dem Ordner verschwinden aus der Diashow, der Zugriff wird bei Dropbox widerrufen.')) return
+  await dropboxCall('/api/dropbox', 'DELETE')
+})
 
 async function uploadSlides(files) {
   const error = $('#ss-error')

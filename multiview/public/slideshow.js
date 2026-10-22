@@ -1,7 +1,8 @@
 // Kachel „Diashow“ (z. B. Bildschirm in der Empfangshalle): hochgeladene Bilder mit „zeigen
 // von/bis“, die zwischengespeicherten Folien einer ProPresenter-Playlist (laufen auch, wenn
 // ProPresenter aus ist), die Slider-Bilder der Webseite, die Termine aus den öffentlichen
-// ChurchTools-Kalendern (je Termin eine Folie mit seinem Bild) und eine Folie „Nächste Veranstaltungen“.
+// ChurchTools-Kalendern (je Termin eine Folie mit seinem Bild), die Bilder aus einem Dropbox-Ordner
+// (neue erscheinen sofort) und eine Folie „Nächste Veranstaltungen“.
 // Die Folien blenden weich ineinander über.
 
 const TIME_ZONE = 'Europe/Berlin'
@@ -31,6 +32,8 @@ export function slideshowOptions(o = {}) {
     ctMax: num(o.ctMax, 12, 1, 40),
     ctHidden: names(o.ctHidden),
     ctImageOnly: o.ctImageOnly !== false, // nur Termine mit Bild
+    dropbox: o.dropbox === true, // Bilder aus dem Dropbox-Ordner (Einstellungen → Diashow)
+    dropboxNow: o.dropboxNow !== false, // ein neu hineingezogenes Bild sofort zeigen
   }
 }
 
@@ -80,6 +83,7 @@ export function buildSlides(data, o, now = Date.now()) {
       slides.push({ key: `img:${image.url}`, kind: 'image', url: image.url })
     }
   if (o.pp) for (const slide of data?.slideshow?.pp?.slides || []) slides.push({ key: `pp:${slide.url}`, kind: 'image', url: slide.url })
+  if (o.dropbox) for (const image of data?.slideshow?.dropbox?.images || []) slides.push({ key: `dbx:${image.url}`, kind: 'image', url: image.url })
   if (o.events) {
     const events = upcomingEvents(data?.churchtools, o, now)
     if (events.length) slides.push({ key: `events:${events.map((e) => e.id + e.startDate).join('|')}`, kind: 'events', events })
@@ -173,6 +177,7 @@ export function createSlideshowView(options) {
   let slides = []
   let currentKey = ''
   let shownAt = 0
+  let dropboxKnown = null // Dropbox-Bilder, die schon da waren – ein neues wird sofort gezeigt
   let current = null
   let changing = false
 
@@ -265,6 +270,14 @@ export function createSlideshowView(options) {
     update(next) {
       data = { ...data, ...next }
       slides = buildSlides(data, o)
+      const dropboxSlides = slides.filter((s) => s.key.startsWith('dbx:'))
+      const fresh = dropboxKnown && o.dropboxNow ? dropboxSlides.find((s) => !dropboxKnown.has(s.key)) : null
+      if (data?.slideshow) dropboxKnown = new Set(dropboxSlides.map((s) => s.key))
+      if (fresh && fresh.key !== currentKey) {
+        empty.hidden = true
+        show(fresh)
+        return
+      }
       step()
     },
     tick: () => {

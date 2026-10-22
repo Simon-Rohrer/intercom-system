@@ -35,3 +35,12 @@ test('Bereiche (Kalender) lassen sich einzeln ausschalten, neue sind an', async 
   assert.deepEqual(slideshowOptions({}).ctHidden, [])
   assert.deepEqual(slideshowOptions({ ctHidden: 'Jugend', eventHidden: [1, '', 'A', 'A'] }).eventHidden, ['A'])
 })
+
+test('Diashow: Bilder aus der Dropbox nur, wenn in der Kachel eingeschaltet', async () => {
+  const { slideshowOptions, buildSlides } = await view
+  const data = { slideshow: { images: [], pp: { slides: [] }, dropbox: { images: [{ url: '/diashow/dropbox/a.jpg', name: 'a.jpg' }] } } }
+  assert.equal(buildSlides(data, slideshowOptions({}), now).filter((s) => s.key.startsWith('dbx:')).length, 0)
+  const o = slideshowOptions({ dropbox: true })
+  assert.equal(o.dropboxNow, true)
+  assert.deepEqual(buildSlides(data, o, now).filter((s) => s.key.startsWith('dbx:')).map((s) => s.url), ['/diashow/dropbox/a.jpg'])
+})

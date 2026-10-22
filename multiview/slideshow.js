@@ -182,7 +182,7 @@ function flattenPlaylists(list, out = []) {
   return out
 }
 
-function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null, onUpdate = () => {}, log = () => {}, fetchImpl = fetch, now = Date.now }) {
+function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null, getDropbox = () => null, onUpdate = () => {}, log = () => {}, fetchImpl = fetch, now = Date.now }) {
   const dir = path.join(dataDir, 'diashow')
   const ppDir = path.join(dir, 'pp')
   const stateFile = path.join(dir, 'diashow.json')
@@ -241,6 +241,7 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
       },
       website: { url: websiteUrl, state: websiteUrl ? website.state : 'off', error: website.error, at: website.at, slides: websiteUrl ? website.slides : [] },
       ct: { state: ct.state, error: ct.error, at: ct.at, appointments: ct.appointments, posts: ct.posts, calendars: ct.calendars },
+      dropbox: getDropbox() || { state: 'unconfigured', images: [] },
     }
   }
 

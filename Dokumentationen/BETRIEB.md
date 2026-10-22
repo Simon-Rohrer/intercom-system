@@ -173,6 +173,15 @@ Weitere Befehle: `sudo jms-watch --status` (Zustand im Terminal), `sudo jms-watc
 
 Wird ein Container absichtlich länger gestoppt, meldet der Bot das nach 3 Minuten einmal. Soll das nicht passieren, den Container in `IGNORE_CONTAINERS` eintragen.
 
+## Diashow: Dropbox-Ordner
+
+JMS Control → Einstellungen → **Diashow** → *Dropbox-Ordner*. Einmalig eine eigene Dropbox-App anlegen (Anleitung steht dort: *Scoped access*, *Full Dropbox*, Rechte `files.metadata.read` und `files.content.read`, nur der **App key** wird gebraucht). *Mit Dropbox verbinden* öffnet Dropbox; nach *Zulassen* zeigt Dropbox einen Code, den man in JMS Control einfügt (OAuth mit PKCE, ohne Weiterleitung – der Server braucht keine öffentliche Adresse). Danach den Ordner wählen.
+
+- JMS Control lauscht über das Longpoll von Dropbox auf den Ordner: Ein hineingezogenes Bild ist nach wenigen Sekunden in der Diashow, gelöschte verschwinden. Zur Sicherheit wird alle 30 Minuten komplett abgeglichen.
+- Bilder werden über die Vorschau-Schnittstelle von Dropbox als JPEG/PNG (bis 2048 × 1536) geholt – damit gehen auch HEIC-Fotos vom iPhone, TIFF und BMP; GIFs kommen im Original. Nur Bilder direkt im Ordner, höchstens 200, sortiert nach Dateiname (`01_…`, `02_…` legt die Reihenfolge fest). Zwischenspeicher: `dropbox/` im Datenordner.
+- In der Kachel „Diashow“: *Bilder aus dem Dropbox-Ordner* (aus, bis man es einschaltet) und *Neues Bild in der Dropbox sofort zeigen* (springt sofort auf ein neu hinzugekommenes Bild).
+- Anmeldung (Refresh-Token) in `dropbox-secret.json` (Rechte 600), nie im Browser; nur Leserechte. *Trennen* widerruft das Token bei Dropbox und leert den Zwischenspeicher.
+
 ## YouTube Live
 
 JMS Control fragt den YouTube-Kanal mit einem **API-Schlüssel** ab (YouTube Data API v3). Einrichten: JMS Control → Einstellungen → **YouTube** (Kanal-Link und Schlüssel; dort steht auch, wie man den Schlüssel bekommt). Der Schlüssel liegt nur in `youtube-secret.json` im Datenordner (Rechte 600) und geht nie an den Browser.
