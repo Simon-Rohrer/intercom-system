@@ -4,8 +4,9 @@
 //           'direct' = direkt folgende Folie
 export const PP_DEFAULTS = { show: 'both', content: 'image', showName: true, nextMode: 'background', showControls: false, blankMode: 'clearAll' }
 // source: '' = die gerade aktive Playlist, sonst die UUID einer festen Playlist (sourceName zur Anzeige)
-// view: 'list' = Einträge untereinander, 'slides' = alle Folien jedes Lieds als Bilder
-export const PLAYLIST_DEFAULTS = { thumbs: true, size: 1, source: '', sourceName: '', view: 'list' }
+// view: 'list' = Einträge untereinander, 'slides' = alle Folien jedes Lieds als Bilder,
+//       'show' = alle Folien nacheinander wie eine Diashow (seconds je Folie, fit wie bei der Diashow)
+export const PLAYLIST_DEFAULTS = { thumbs: true, size: 1, source: '', sourceName: '', view: 'list', seconds: 10, fit: 'contain' }
 
 const SHOW_MODES = ['both', 'current', 'next', 'backgrounds', 'nextBackground']
 
@@ -20,8 +21,23 @@ export function ppOptions(options) {
 export function playlistOptions(options) {
   const o = { ...PLAYLIST_DEFAULTS, ...options }
   if (typeof o.source !== 'string') o.source = ''
-  if (!['list', 'slides'].includes(o.view)) o.view = 'list'
+  if (!['list', 'slides', 'show'].includes(o.view)) o.view = 'list'
+  const seconds = Number(o.seconds)
+  o.seconds = Number.isFinite(seconds) ? Math.min(120, Math.max(3, Math.round(seconds))) : 10
+  if (!['contain', 'cover'].includes(o.fit)) o.fit = 'contain'
   return o
+}
+
+/** Folien für „Als Diashow“: alle eingeschalteten Folien der sichtbaren Lieder, in Reihenfolge */
+export function playlistShowSlides(pl) {
+  const out = []
+  for (const it of pl?.items || []) {
+    if (it.type === 'header' || it.hidden || !it.presentation) continue
+    ;(pl.songs?.[it.presentation] || []).forEach((cue, i) => {
+      if (cue.enabled !== false) out.push({ key: `${it.presentation}:${i}`, presentation: it.presentation, cue: i })
+    })
+  }
+  return out
 }
 
 /**
@@ -226,8 +242,89 @@ export function createProPresenterView(options, { interactive = false } = {}) {
 }
 
 /** Playlist-Kachel: alle Einträge, laufendes Lied hervorgehoben, nächstes markiert. */
+/** Playlist als Diashow: jede Folie `seconds` lang, mit Überblendung; das nächste Bild lädt vorher */
+function createPlaylistShow(o) {
+  const el = document.createElement('div')
+  el.className = 'pl-show'
+  el.dataset.fit = o.fit
+  const offline = document.createElement('div')
+  offline.className = 'pp-offline'
+  el.append(offline)
+  let slides = []
+  let current = null // { key, node }
+  let shownAt = 0
+  let loading = ''
+
+  function show(slide) {
+    if (loading === slide.key) return
+    loading = slide.key
+    const img = new Image()
+    img.alt = ''
+    img.decoding = 'async'
+    const done = () => {
+      if (loading !== slide.key) return
+      loading = ''
+      const node = document.createElement('div')
+      node.className = 'pl-show-slide'
+      node.append(img)
+      el.append(node)
+      const old = current?.node
+      requestAnimationFrame(() => node.classList.add('on'))
+      if (old) setTimeout(() => old.remove(), 1100)
+      current = { key: slide.key, node }
+      shownAt = Date.now()
+    }
+    img.onload = done
+    // Bild fehlt (Folie gelöscht, ProPresenter kurz weg): trotzdem weiter, sonst hängt die Schau
+    img.onerror = () => {
+      if (loading !== slide.key) return
+      loading = ''
+      current = { key: slide.key, node: current?.node }
+      shownAt = Date.now()
+    }
+    img.src = thumbUrl(slide, 1920)
+  }
+
+  function step() {
+    if (!slides.length) {
+      current?.node?.remove()
+      current = null
+      return
+    }
+    const index = slides.findIndex((s) => s.key === current?.key)
+    if (index === -1) return show(slides[0])
+    if (slides.length === 1 || Date.now() - shownAt < o.seconds * 1000) return
+    show(slides[(index + 1) % slides.length])
+  }
+
+  const view = {
+    el,
+    update(state) {
+      const pl = state?.connected ? shownPlaylist(state, o) : null
+      slides = playlistShowSlides(pl)
+      offline.hidden = slides.length > 0
+      offline.textContent = !state?.connected
+        ? state?.host ? 'ProPresenter nicht erreichbar' : 'ProPresenter nicht eingerichtet'
+        : !pl ? (o.source ? 'Playlist wird geladen …' : 'Keine Playlist aktiv') : 'Keine Folien in der Playlist'
+      step()
+    },
+    tick: step,
+  }
+  showViews.add(view)
+  return view
+}
+
+const showViews = new Set()
+setInterval(() => {
+  for (const view of showViews) {
+    if (!view.el.isConnected) showViews.delete(view)
+    else view.tick()
+  }
+}, 1000)
+
 export function createPlaylistView(options) {
   const o = playlistOptions(options)
+  if (o.view === 'show') return createPlaylistShow(o)
   const el = document.createElement('div')
   el.className = `pl-view${o.thumbs ? ' with-thumbs' : ''}${o.view === 'slides' ? ' pl-slides-view' : ''}`
   el.style.setProperty('--pl-size', String(o.size))

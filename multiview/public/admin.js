@@ -2137,11 +2137,26 @@ function playlistSection(tile) {
       <label class="field"><span>Anzeige</span><select data-pl="view">
         <option value="list" ${o.view === 'list' ? 'selected' : ''}>Liste der Einträge</option>
         <option value="slides" ${o.view === 'slides' ? 'selected' : ''}>Alle Folien als Bilder</option>
+        <option value="show" ${o.view === 'show' ? 'selected' : ''}>Folien als Diashow durchlaufen</option>
       </select></label>
-      <p class="muted" style="margin:0;font-size:12px">${o.source ? 'Zeigt immer diese Playlist, egal welche in ProPresenter gerade aktiv ist. Läuft ein Lied daraus, ist es rot markiert.' : 'Zeigt die aktive Playlist von ProPresenter. Das laufende Lied ist rot, das nächste grün markiert, gespielte sind abgeblendet.'}${o.view === 'slides' ? ' Die laufende Folie hat einen roten Rahmen; der Farbstrich unten ist die Gruppe (Strophe, Refrain …).' : ''}</p>
+      ${
+        o.view === 'show'
+          ? `<label class="field"><span>Jede Folie <output>${o.seconds} s</output></span>
+        <input type="range" min="3" max="60" step="1" data-pl="seconds" value="${o.seconds}"></label>
+      <label class="field"><span>Bilder einpassen</span><select data-pl="fit">
+        <option value="contain" ${o.fit === 'contain' ? 'selected' : ''}>Ganz zeigen (schwarze Ränder möglich)</option>
+        <option value="cover" ${o.fit === 'cover' ? 'selected' : ''}>Füllen (Ränder werden abgeschnitten)</option>
+      </select></label>`
+          : ''
+      }
+      <p class="muted" style="margin:0;font-size:12px">${o.source ? 'Zeigt immer diese Playlist, egal welche in ProPresenter gerade aktiv ist. Läuft ein Lied daraus, ist es rot markiert.' : 'Zeigt die aktive Playlist von ProPresenter. Das laufende Lied ist rot, das nächste grün markiert, gespielte sind abgeblendet.'}${o.view === 'slides' ? ' Die laufende Folie hat einen roten Rahmen; der Farbstrich unten ist die Gruppe (Strophe, Refrain …).' : ''}${o.view === 'show' ? ' Alle Folien laufen nacheinander durch, ausgeblendete Lieder und Folien werden übersprungen. Änderungen in ProPresenter kommen von selbst dazu.' : ''}</p>
       ${o.view === 'list' ? `<label class="check"><input type="checkbox" data-pl="thumbs" ${o.thumbs ? 'checked' : ''}> Hintergrund-Vorschau anzeigen</label>` : ''}
-      <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
-        <input type="range" min="0.6" max="2" step="0.1" data-pl="size" value="${o.size}"></label>
+      ${
+        o.view === 'show'
+          ? ''
+          : `<label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+        <input type="range" min="0.6" max="2" step="0.1" data-pl="size" value="${o.size}"></label>`
+      }
     </div>`
 }
 
@@ -2817,7 +2832,7 @@ function onInspectorField(e) {
     // Namen der festen Playlist mitspeichern – für die Anzeige, falls ProPresenter gerade aus ist
     if (el.dataset.pl === 'source') tile.playlist.sourceName = value ? el.selectedOptions[0]?.textContent.replace(/ \(gerade nicht in ProPresenter\)$/, '') || '' : ''
     const out = el.closest('label').querySelector('output')
-    if (out) out.textContent = `${Math.round(value * 100)} %`
+    if (out) out.textContent = el.dataset.pl === 'seconds' ? `${value} s` : `${Math.round(value * 100)} %`
     renderCanvas()
     if (el.tagName === 'SELECT') renderInspector()
     changed()

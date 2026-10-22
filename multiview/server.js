@@ -429,7 +429,7 @@ function playlistWants() {
       if (tile.kind !== 'playlist') continue
       const source = typeof tile.playlist?.source === 'string' ? tile.playlist.source : ''
       if (source) fixed.add(source)
-      if (tile.playlist?.view === 'slides') slides.add(source)
+      if (tile.playlist?.view === 'slides' || tile.playlist?.view === 'show') slides.add(source)
     }
   return { fixed, slides }
 }
