@@ -82,11 +82,12 @@ test('YouTube-Kachel: Monarch, Empfang bei YouTube und „Nicht gelistet“', as
     video: { ...live.video, privacy: 'unlisted' },
     atem: { state: 'nostream' },
     encoder: { state: 'streaming', input: { signal: true, label: 'SDI 1080p50' } },
+    upload: 8.43e6,
     health: { stream: 'active', status: 'good', resolution: '1080p', frameRate: '50fps', issues: [] },
     problems: [],
   })
   const lines = v.el.children.filter((c) => c.className.includes('yt-atem'))
-  assert.deepEqual(lines.map((l) => (l.hidden ? '' : l.textContent)), ['Monarch sendet · SDI 1080p50', 'YouTube empfängt: gut · 1080p · 50 fps', ''])
+  assert.deepEqual(lines.map((l) => (l.hidden ? '' : l.textContent)), ['Monarch sendet · SDI 1080p50', 'Upload 8,4 Mbit/s', 'YouTube empfängt: gut · 1080p · 50 fps', ''])
   const header = find(v.el, 'yt-header')
   assert.equal(header.children.find((c) => c.className === 'yt-privacy').textContent, 'Nicht gelistet')
 

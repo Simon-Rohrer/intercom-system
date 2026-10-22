@@ -114,6 +114,9 @@ test('Monarch: sendet sie nicht mehr oder fehlt das Bild, gibt es Alarm', () => 
   // Hat die Monarch in diesem Stream nie gesendet (anderer Encoder), ist das kein Problem
   assert.deepEqual(texts({ encoder: { state: 'ready' }, encoderUsed: false }), [])
   assert.deepEqual(texts({ encoder: { state: 'streaming', input: { signal: false } }, encoderUsed: true }), ['error:Kein Bild am Eingang der Monarch'])
+  // Upload (FRITZ!Box) bricht ein, obwohl die Monarch sendet
+  assert.deepEqual(texts({ encoder: { state: 'streaming', input: { signal: true } }, encoderUsed: true, upload: 0.2e6 }), ['error:Upload fast null (0,2 Mbit/s) – kommt der Stream bei YouTube an?'])
+  assert.deepEqual(texts({ encoder: { state: 'streaming', input: { signal: true } }, encoderUsed: true, upload: 8.4e6 }), [])
   const upcoming = { status: 'upcoming', scheduledStart: now + 3600e3 }
   assert.deepEqual(
     findProblems({ state: 'ok', video: upcoming, atem, encoder: { state: 'streaming', input: { signal: true } }, encoderSince: now - 3 * 60e3 }, now).map((p) => p.text),

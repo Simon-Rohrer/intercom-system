@@ -5,7 +5,7 @@
 const TIME_ZONE = 'Europe/Berlin'
 
 /** Was die Kachel einzeln zeigen kann – alles an, außer dem Live-Chat */
-export const YOUTUBE_PARTS = ['header', 'status', 'privacy', 'big', 'runtime', 'when', 'peak', 'views', 'likes', 'name', 'encoder', 'encoderInput', 'health', 'atem', 'atemDetails', 'problems']
+export const YOUTUBE_PARTS = ['header', 'status', 'privacy', 'big', 'runtime', 'when', 'peak', 'views', 'likes', 'name', 'encoder', 'encoderInput', 'upload', 'health', 'atem', 'atemDetails', 'problems']
 
 /** Einstellungen der Kachel (tile.youtube) mit Standardwerten */
 export function youtubeOptions(o = {}) {
@@ -73,6 +73,7 @@ export function createYouTubeView(options) {
   const sub = el('div', 'yt-sub')
   const name = el('div', 'yt-name')
   const encoderLine = el('div', 'yt-atem')
+  const uploadLine = el('div', 'yt-atem')
   const healthLine = el('div', 'yt-atem')
   const atemLine = el('div', 'yt-atem')
   const problems = el('ul', 'yt-problems')
@@ -81,6 +82,7 @@ export function createYouTubeView(options) {
   root.append(sub)
   if (o.name) root.append(name)
   if (o.encoder) root.append(encoderLine)
+  if (o.upload) root.append(uploadLine)
   if (o.health) root.append(healthLine)
   if (o.atem) root.append(atemLine)
   if (o.problems) root.append(problems)
@@ -150,6 +152,17 @@ export function createYouTubeView(options) {
         encoderLine.textContent = parts.join(' · ')
         encoderLine.classList.toggle('on', e.state === 'streaming' && e.input?.signal !== false)
         encoderLine.classList.toggle('bad', e.state === 'error' || (e.state === 'streaming' && e.input?.signal === false))
+      }
+    }
+
+    // Upload der Leitung (FRITZ!Box) – während des Streams fast ganz der Stream
+    if (o.upload) {
+      const up = d?.upload
+      uploadLine.hidden = up == null
+      if (up != null) {
+        uploadLine.textContent = `Upload ${(up / 1e6).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Mbit/s`
+        uploadLine.classList.toggle('on', up >= 1e6)
+        uploadLine.classList.toggle('bad', up < 1e6)
       }
     }
 

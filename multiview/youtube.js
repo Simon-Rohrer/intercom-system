@@ -35,6 +35,8 @@ const LATE_MAX_MS = 3 * 60 * 60 * 1000
 const ENDED_SHOW_MS = 12 * 60 * 60 * 1000
 const ATEM_GRACE_MS = 2 * 60 * 1000
 const CACHE_WARN = 50
+const UPLOAD_MIN = 1e6 // unter 1 Mbit/s Upload sendet die Monarch praktisch nichts
+const mbit = (bits) => `${(bits / 1e6).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Mbit/s`
 const END_GRACE_MS = 5 * 60 * 1000
 const TICK_MS = 5000
 const TIME_ZONE = 'Europe/Berlin'
@@ -189,7 +191,7 @@ function atemStreaming(connected, streaming) {
  * Was gerade nicht stimmt. level "error" = Ausfall (rot, Telegram), "warn" = Warnung.
  * atemUsed: Der ATEM hat in diesem Stream schon gesendet (dann muss er weiter senden).
  */
-function findProblems({ state, error, video, atem, atemUsed, atemStreamingSince, encoder = { state: 'unconfigured' }, encoderUsed, encoderSince, health }, now) {
+function findProblems({ state, error, video, atem, atemUsed, atemStreamingSince, encoder = { state: 'unconfigured' }, encoderUsed, encoderSince, health, upload = null }, now) {
   const problems = []
   if (state === 'error' && error) problems.push({ level: 'warn', text: `YouTube nicht abfragbar: ${error}` })
   if (video?.status === 'upcoming' && video.scheduledStart && now - video.scheduledStart > LATE_MS && now - video.scheduledStart < LATE_MAX_MS)
@@ -208,6 +210,8 @@ function findProblems({ state, error, video, atem, atemUsed, atemStreamingSince,
     if (encoder.state === 'error' || encoder.state === 'connecting') problems.push({ level: 'error', text: 'Monarch nicht erreichbar – sendet der Stream noch?' })
     else if (encoder.state !== 'streaming') problems.push({ level: 'error', text: 'Monarch sendet nicht mehr' })
   }
+  if (encoder.state === 'streaming' && upload != null && upload < UPLOAD_MIN)
+    problems.push({ level: 'error', text: `Upload fast null (${mbit(upload)}) – kommt der Stream bei YouTube an?` })
   if (encoder.state === 'streaming' && encoder.input && !encoder.input.signal) problems.push({ level: 'error', text: 'Kein Bild am Eingang der Monarch' })
   if (encoder.state === 'streaming' && encoderSince && now - encoderSince > ATEM_GRACE_MS && video && video.status !== 'live' && state === 'ok')
     problems.push({ level: 'warn', text: 'Monarch sendet, aber YouTube zeigt keinen laufenden Stream' })
@@ -236,7 +240,7 @@ function summaryText(session, video) {
   return lines.join('\n')
 }
 
-function createYouTube({ dataDir, getAtem = () => ({ connected: false, streaming: null }), getEncoder = () => ({ state: 'unconfigured' }), wantChat = () => false, onUpdate = () => {}, log = () => {}, fetchImpl = fetch, now = Date.now }) {
+function createYouTube({ dataDir, getAtem = () => ({ connected: false, streaming: null }), getEncoder = () => ({ state: 'unconfigured' }), getUpload = () => null, wantChat = () => false, onUpdate = () => {}, log = () => {}, fetchImpl = fetch, now = Date.now }) {
   const secretFile = path.join(dataDir, 'youtube-secret.json')
   const stateFile = path.join(dataDir, 'youtube-state.json')
 
@@ -268,6 +272,7 @@ function createYouTube({ dataDir, getAtem = () => ({ connected: false, streaming
   let atem = atemStreaming(false, null)
   let atemStreamingSince = null
   let encoder = { state: 'unconfigured' }
+  let upload = null // Upload der Internetleitung (FRITZ!Box) in Bit/s – im Stream fast ganz der Stream
   let encoderSince = null
   // Google-Anmeldung: laufende Anmeldung (Code), Zugriffstoken, Empfang bei YouTube
   const google = { pending: null, error: '', accessToken: '', expires: 0 }
@@ -472,10 +477,11 @@ function createYouTube({ dataDir, getAtem = () => ({ connected: false, streaming
     if (atem.state === 'streaming') atemStreamingSince ??= t
     else atemStreamingSince = null
     encoder = getEncoder() || { state: 'unconfigured' }
+    upload = video?.status === 'live' || encoder.state === 'streaming' ? getUpload() : null
     if (encoder.state === 'streaming') encoderSince ??= t
     else encoderSince = null
     trackSession()
-    problems = findProblems({ state, error, video, atem, atemUsed: session?.atemUsed, atemStreamingSince, encoder, encoderUsed: session?.encoderUsed, encoderSince, health }, t)
+    problems = findProblems({ state, error, video, atem, atemUsed: session?.atemUsed, atemStreamingSince, encoder, encoderUsed: session?.encoderUsed, encoderSince, health, upload }, t)
     if (session) {
       const current = new Set(problems.filter((p) => p.level === 'error' || !p.text.startsWith('YouTube nicht abfragbar')).map((p) => p.text))
       let changed = false
@@ -500,6 +506,7 @@ function createYouTube({ dataDir, getAtem = () => ({ connected: false, streaming
       video: video ? { ...video, liveChatId: undefined, chat: Boolean(video.liveChatId), peak: session?.videoId === video.id ? session.peak : null } : null,
       atem,
       encoder,
+      upload,
       health: video?.status === 'live' ? health : null,
       google: signedIn(),
       problems,
@@ -792,6 +799,7 @@ function createYouTube({ dataDir, getAtem = () => ({ connected: false, streaming
     else if (state === 'ok') info = 'kein Stream geplant'
     if (atem.state === 'streaming') info += ` · ATEM sendet${atem.bitrate ? ` ${(atem.bitrate / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Mbit/s` : ''}`
     if (encoder.state === 'streaming') info += ` · Monarch sendet${encoder.input?.signal ? ` (${encoder.input.label})` : ''}`
+    if (upload != null) info += ` · Upload ${mbit(upload)}`
     if (video?.status === 'live' && health) info += ` · YouTube-Empfang ${HEALTH_TEXT[health.status] || health.status}`
     return { configured: settings().configured, state, live: video?.status === 'live', info, problem: top, summary: lastSummary }
   }

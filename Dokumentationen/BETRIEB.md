@@ -184,7 +184,7 @@ JMS Control fragt den YouTube-Kanal mit einem **API-Schlüssel** ab (YouTube Dat
 
 ### Matrox Monarch HDX
 
-Einstellungen → YouTube → **Encoder: Matrox Monarch**: Adresse `192.168.0.30`, Benutzer und Passwort wie in der Weboberfläche der Monarch (ab Werk `admin`/`admin`; leer = `admin`). Zugang in `monarch.json` im Datenordner (Rechte 600). JMS Control fragt alle 5 Sekunden über die HTTP-Steuerung der Monarch ab (`/Monarch/syncconnect/sdk.aspx?command=GetStatus` und `GetInputStatus`): sendet der RTMP-Encoder, welches Signal kommt am Eingang an. Die gemessene Bitrate liefert die Monarch nicht. Zum Prüfen vom Server aus:
+Einstellungen → YouTube → **Encoder: Matrox Monarch**: Adresse `192.168.0.30`, Benutzer und Passwort wie in der Weboberfläche der Monarch (ab Werk `admin`/`admin`; leer = `admin`). Zugang in `monarch.json` im Datenordner (Rechte 600). JMS Control fragt alle 5 Sekunden über die HTTP-Steuerung der Monarch ab (`/Monarch/syncconnect/sdk.aspx?command=GetStatus` und `GetInputStatus`): sendet der RTMP-Encoder, welches Signal kommt am Eingang an. Die Bitrate liefert die Monarch nicht (`GetStreamingVideoDataRate` antwortet `FAILED`); stattdessen zeigt die Kachel den Upload der Leitung von der FRITZ!Box (wie die Kachel „Upload / Stream“) – während des Streams ist das fast ganz der Stream. Fällt er unter 1 Mbit/s, während die Monarch sendet, gibt es eine Störung. Zum Prüfen vom Server aus:
 
 ```bash
 curl -s -u admin:admin "http://192.168.0.30/Monarch/syncconnect/sdk.aspx?command=GetStatus"

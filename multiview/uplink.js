@@ -126,6 +126,13 @@ function createUplink({ getConfig, onUpdate, log = () => {} }) {
       error = ''
     },
     snapshot,
+    /** Mittlerer Upload der letzten Sekunden in Bit/s – null, wenn die FRITZ!Box nichts liefert */
+    upload(windowMs = 10_000) {
+      if (state !== 'ok') return null
+      const from = Date.now() - windowMs
+      const recent = history.filter((s) => s.t >= from)
+      return recent.length ? recent.reduce((sum, s) => sum + s.up, 0) / recent.length : null
+    },
   }
 }
 

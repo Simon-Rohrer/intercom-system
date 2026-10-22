@@ -2460,6 +2460,7 @@ function youtubeSection(tile) {
       <div class="switch-list">
         ${toggle('encoder', 'Monarch: sendet sie?')}
         ${toggle('encoderInput', 'Monarch: Eingangssignal (z. B. SDI 1080p50)', !o.encoder)}
+        ${toggle('upload', 'Upload der Leitung (FRITZ!Box) – im Stream ≈ Bitrate')}
         ${toggle('health', 'Empfang bei YouTube (mit Google-Anmeldung)')}
         ${toggle('atem', 'Zustand des ATEM-Streams')}
         ${toggle('atemDetails', 'Bitrate und Puffer vom ATEM', !o.atem)}

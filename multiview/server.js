@@ -1210,6 +1210,7 @@ const youtube = createYouTube({
   dataDir: DATA_DIR,
   getAtem: () => ({ connected: atem.status === 2, streaming: atem.state?.streaming ?? null }),
   getEncoder: () => monarch.snapshot(),
+  getUpload: () => uplink.upload(),
   wantChat: () => (config.layouts || []).some((layout) => (layout.tiles || []).some((tile) => tile.kind === 'youtube' && tile.youtube?.chat === true)),
   onUpdate: broadcast,
   log: console.log,
