@@ -173,9 +173,9 @@ Weitere Befehle: `sudo jms-watch --status` (Zustand im Terminal), `sudo jms-watc
 
 Wird ein Container absichtlich länger gestoppt, meldet der Bot das nach 3 Minuten einmal. Soll das nicht passieren, den Container in `IGNORE_CONTAINERS` eintragen.
 
-## Diashow: Dropbox-Ordner
+## Dropbox-Ordner für die Diashow
 
-JMS Control → Einstellungen → **Diashow** → *Dropbox-Ordner*. Einmalig eine eigene Dropbox-App anlegen (Anleitung steht dort: *Scoped access*, *Full Dropbox*, Rechte `files.metadata.read` und `files.content.read`, nur der **App key** wird gebraucht). *Mit Dropbox verbinden* öffnet Dropbox; nach *Zulassen* zeigt Dropbox einen Code, den man in JMS Control einfügt (OAuth mit PKCE, ohne Weiterleitung – der Server braucht keine öffentliche Adresse). Danach den Ordner wählen.
+JMS Control → Einstellungen → Verbindungen → **Dropbox**. Einmalig eine eigene Dropbox-App anlegen (Anleitung steht dort: *Scoped access*, *Full Dropbox*, Rechte `files.metadata.read` und `files.content.read`, nur der **App key** wird gebraucht). *Mit Dropbox verbinden* öffnet Dropbox; nach *Zulassen* zeigt Dropbox einen Code, den man in JMS Control einfügt (OAuth mit PKCE, ohne Weiterleitung – der Server braucht keine öffentliche Adresse). Danach den Ordner wählen.
 
 - JMS Control lauscht über das Longpoll von Dropbox auf den Ordner: Ein hineingezogenes Bild ist nach wenigen Sekunden in der Diashow, gelöschte verschwinden. Zur Sicherheit wird alle 30 Minuten komplett abgeglichen.
 - Bilder werden über die Vorschau-Schnittstelle von Dropbox als JPEG/PNG (bis 2048 × 1536) geholt – damit gehen auch HEIC-Fotos vom iPhone, TIFF und BMP; GIFs kommen im Original. Nur Bilder direkt im Ordner, höchstens 200, sortiert nach Dateiname (`01_…`, `02_…` legt die Reihenfolge fest). Zwischenspeicher: `dropbox/` im Datenordner.

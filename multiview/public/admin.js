@@ -27,7 +27,7 @@ const CLIENT_ID = uid('c')
 const PAGES = ['uebersicht', 'multiviews', 'layouts', 'einstellungen', 'services']
 const ADMIN_PAGES = ['einstellungen', 'services']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
-const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'youtube', 'eingaenge', 'raspberry', 'companion', 'bildschirme', 'diashow', 'geraete', 'zugang']
+const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'youtube', 'dropbox', 'eingaenge', 'raspberry', 'companion', 'bildschirme', 'diashow', 'geraete', 'zugang']
 // Unterseiten von Benutzer & Rechte: #/einstellungen/zugang/rollen …
 const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste', 'zugangsdaten', 'nachrichten']
 const SOURCE_TYPES = {
@@ -141,6 +141,7 @@ function onMessage(msg) {
       else slideshowViews.delete(view)
     }
     renderSlideshowSettings()
+    renderStatusStrip()
   } else if (msg.type === 'youtube') {
     youtube = msg
     for (const view of youtubeViews) {
@@ -343,7 +344,7 @@ function showPage() {
   if (page === 'einstellungen') loadRaspberryStatus()
   if (page === 'einstellungen' && settingsSection === 'zugang') loadGateway()
   if (page === 'einstellungen' && settingsSection === 'youtube') loadYouTubeSettings()
-  if (page === 'einstellungen' && settingsSection === 'diashow') loadDropboxSettings()
+  if (page === 'einstellungen' && settingsSection === 'dropbox') loadDropboxSettings()
   if (page === 'einstellungen' && settingsSection === 'zugang' && accessSection === 'nachrichten') loadMessageLinks()
   if (page === 'services') renderServices()
   renderAll()
@@ -2438,7 +2439,7 @@ function slideshowSection(tile) {
     }
     <label class="check"><input type="checkbox" data-ss="images" ${o.images ? 'checked' : ''}> Hochgeladene Bilder</label>
     <label class="check"><input type="checkbox" data-ss="pp" ${o.pp ? 'checked' : ''}> Folien aus ProPresenter</label>
-    <label class="check"><input type="checkbox" data-ss="dropbox" ${o.dropbox ? 'checked' : ''}> Bilder aus dem Dropbox-Ordner${slideshowData?.dropbox?.state === 'unconfigured' ? ' <span class="muted">(unter Einstellungen → Diashow verbinden)</span>' : ''}</label>
+    <label class="check"><input type="checkbox" data-ss="dropbox" ${o.dropbox ? 'checked' : ''}> Bilder aus dem Dropbox-Ordner${slideshowData?.dropbox?.state === 'unconfigured' ? ' <span class="muted">(unter <a href="#/einstellungen/dropbox">Einstellungen → Dropbox</a> verbinden)</span>' : ''}</label>
     ${o.dropbox ? `<label class="check"><input type="checkbox" data-ss="dropboxNow" ${o.dropboxNow ? 'checked' : ''}> Neues Bild in der Dropbox sofort zeigen</label>` : ''}
     <label class="check"><input type="checkbox" data-ss="events" ${o.events ? 'checked' : ''}> Nächste Veranstaltungen (ChurchTools)</label>
     ${
@@ -4250,6 +4251,7 @@ const SEARCH_ENTRIES = [
   { label: 'ProPresenter', href: '#/einstellungen/propresenter', admin: true, words: 'einstellungen folien stage display beamer nachricht' },
   { label: 'Kesher-Chat', href: '#/einstellungen/kesher', admin: true, words: 'einstellungen intercom chat rolle' },
   { label: 'YouTube (Live-Stream)', href: '#/einstellungen/youtube', admin: true, words: 'youtube stream zuschauer live chat api schlüssel' },
+  { label: 'Dropbox (Ordner für die Diashow)', href: '#/einstellungen/dropbox', admin: true, words: 'dropbox ordner bilder fotos diashow cloud' },
   { label: 'ChurchTools', href: '#/einstellungen/churchtools', admin: true, words: 'einstellungen ablauf agenda gottesdienst' },
   { label: 'Raspberry Pis', href: '#/einstellungen/raspberry', admin: true, words: 'einstellungen raspberry pi station kiosk intercom rolle mac fernsteuern' },
   { label: 'Companion', href: '#/einstellungen/companion', admin: true, words: 'einstellungen stream deck tasten' },
@@ -4478,6 +4480,11 @@ function layoutAccessFields(layout) {
 // --- Statusübersicht ---------------------------------------------------------
 
 /** Raspberry Pis in der Leiste: wirklich erreichbar (laut Kesher), nicht nur „hier verwaltet“. */
+function dropboxNavState() {
+  const state = slideshowData?.dropbox?.state
+  return !state || state === 'unconfigured' ? 'off' : state === 'error' || state === 'nofolder' ? 'bad' : 'ok'
+}
+
 function piNavState() {
   const clients = config.raspberry?.managed ? config.raspberry.clients ?? [] : []
   if (!clients.length) return { state: 'off', text: 'Nicht eingerichtet' }
@@ -4537,6 +4544,7 @@ function renderStatusStrip() {
     kesher: chat.state === 'connected' ? 'ok' : 'bad',
     churchtools: ct.state === 'unconfigured' ? 'off' : ct.state === 'connected' ? 'ok' : 'bad',
     youtube: !youtube || youtube.state === 'unconfigured' ? 'off' : youtube.state === 'error' ? 'bad' : 'ok',
+    dropbox: dropboxNavState(),
     raspberry: pis.state,
   }
   const stateText = { ok: 'Verbunden', bad: 'Getrennt', off: 'Nicht eingerichtet' }
@@ -4547,7 +4555,13 @@ function renderStatusStrip() {
     const text = link.querySelector('.settings-nav-state-text')
     if (text)
       text.textContent =
-        section === 'raspberry' ? pis.text : section === 'youtube' && youtube?.video?.status === 'live' ? 'Live' : stateText[state]
+        section === 'raspberry'
+          ? pis.text
+          : section === 'youtube' && youtube?.video?.status === 'live'
+            ? 'Live'
+            : section === 'dropbox' && slideshowData?.dropbox?.state === 'nofolder'
+              ? 'Ordner fehlt'
+              : stateText[state]
   }
 }
 

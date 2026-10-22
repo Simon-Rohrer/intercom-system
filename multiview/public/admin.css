@@ -2289,6 +2289,8 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 .perm-form .field { flex: 1 1 220px; margin: 0; }
 .perm-unlimited { height: 40px; }
 #perm-list { margin-top: 10px; }
+.dbx-body { display: grid; gap: 12px; }
+.dbx-body > p { margin: 0; }
 .dbx-folders { border: 1px solid var(--line, rgba(255,255,255,.1)); border-radius: 12px; padding: 10px; display: grid; gap: 8px; }
 .dbx-folders-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .dbx-folder-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 220px; overflow: auto; }

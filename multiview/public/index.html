@@ -220,6 +220,7 @@
                 <a href="#/einstellungen/kesher" data-section-link="kesher"><span class="app-icon green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg></span><span class="settings-nav-label">Kesher-Chat</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 <a href="#/einstellungen/churchtools" data-section-link="churchtools"><span class="app-icon purple"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></span><span class="settings-nav-label">ChurchTools</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 <a href="#/einstellungen/youtube" data-section-link="youtube"><span class="app-icon red"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/></svg></span><span class="settings-nav-label">YouTube</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+                <a href="#/einstellungen/dropbox" data-section-link="dropbox"><span class="app-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 2.5 7 7 10l5-3zM17 4l-5 3 5 3 4.5-3zM2.5 13 7 16l5-3-5-3zM17 10l-5 3 5 3 4.5-3zM7.5 17.5 12 20.5l4.5-3"/></svg></span><span class="settings-nav-label">Dropbox</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
               </div>
               <div class="settings-nav-group">
                 <h2 class="settings-nav-title">Geräte &amp; Steuerung</h2>
@@ -343,7 +344,7 @@
               <div class="card-head">
                 <div>
                   <h2>Diashow</h2>
-                  <p class="muted">Für die Kachel <b>Diashow</b>, z. B. auf dem Bildschirm in der Empfangshalle. Sie zeigt nacheinander die Slider-Bilder der Webseite, die Termine aus ChurchTools (mit Bild), die Bilder hier, die Folien einer ProPresenter-Playlist und – in der Kachel einstellbar – eine Liste der nächsten Veranstaltungen. Änderungen erscheinen sofort auf allen Bildschirmen.</p>
+                  <p class="muted">Für die Kachel <b>Diashow</b>, z. B. auf dem Bildschirm in der Empfangshalle. Sie zeigt nacheinander die Slider-Bilder der Webseite, die Termine aus ChurchTools (mit Bild), die Bilder hier, die Folien einer ProPresenter-Playlist, die Bilder aus einem Dropbox-Ordner (<a href="#/einstellungen/dropbox">Einstellungen → Dropbox</a>) und – in der Kachel einstellbar – eine Liste der nächsten Veranstaltungen. Änderungen erscheinen sofort auf allen Bildschirmen.</p>
                 </div>
               </div>
               <label class="ss-drop" id="ss-drop">
@@ -379,39 +380,6 @@
                 </form>
                 <p class="muted small" id="ss-pp-state"></p>
                 <div class="ss-pp-thumbs" id="ss-pp-thumbs"></div>
-              </div>
-              <div class="meter-settings ss-pp" id="ss-dropbox">
-                <h4>Dropbox-Ordner</h4>
-                <p class="muted small">JMS Control lauscht auf einen Ordner in deiner Dropbox: Ziehst du dort ein Bild hinein, ist es nach wenigen Sekunden in der Diashow – auf Wunsch wird es sofort gezeigt. Gelöschte Bilder verschwinden wieder. Auch iPhone-Fotos (HEIC) gehen. In der Kachel „Diashow“ schaltest du „Bilder aus dem Dropbox-Ordner“ ein.</p>
-                <p class="muted small" id="dbx-state"></p>
-                <form id="dbx-connect-form" class="ss-pp-form" autocomplete="off">
-                  <label class="field"><span>App-Key der Dropbox-App</span><input type="text" id="dbx-app-key" spellcheck="false" placeholder="z. B. a1b2c3d4e5f6g7h" maxlength="40"></label>
-                  <div class="btn-row"><button class="btn primary small" type="button" id="dbx-authorize">Mit Dropbox verbinden</button></div>
-                  <label class="field" id="dbx-code-field" hidden><span>Code von Dropbox</span><input type="text" id="dbx-code" spellcheck="false" placeholder="Nach „Zulassen“ zeigt Dropbox einen Code – hier einfügen"></label>
-                  <div class="btn-row" id="dbx-code-row" hidden><button class="btn primary small" type="submit">Verbinden</button></div>
-                </form>
-                <form id="dbx-folder-form" class="ss-pp-form" autocomplete="off" hidden>
-                  <label class="field"><span>Ordner in der Dropbox</span><input type="text" id="dbx-folder" spellcheck="false" placeholder="z. B. /Gemeinde/Diashow"></label>
-                  <div class="btn-row">
-                    <button class="btn primary small" type="submit">Speichern</button>
-                    <button class="btn small" type="button" id="dbx-browse">Ordner auswählen …</button>
-                    <button class="btn danger small" type="button" id="dbx-disconnect">Trennen</button>
-                  </div>
-                </form>
-                <div class="dbx-folders" id="dbx-folders" hidden></div>
-                <p class="form-error" id="dbx-error" role="alert"></p>
-                <div class="ss-pp-thumbs" id="dbx-thumbs"></div>
-                <details class="disclosure inner">
-                  <summary>So richtest du die Dropbox-App ein (einmalig, ca. 3 Minuten)</summary>
-                  <ol class="muted yt-steps">
-                    <li>Auf <a href="https://www.dropbox.com/developers/apps/create" target="_blank" rel="noopener">dropbox.com/developers/apps</a> mit dem Dropbox-Konto anmelden, dem der Ordner gehört (oder für das er freigegeben ist), und <b>Create app</b> wählen.</li>
-                    <li><b>Scoped access</b> und <b>Full Dropbox</b> wählen (damit geht jeder Ordner, auch ein freigegebener), Name z. B. „JMS Control Diashow“, <b>Create app</b>.</li>
-                    <li>Im Reiter <b>Permissions</b> <b>files.metadata.read</b> und <b>files.content.read</b> anhaken und unten <b>Submit</b> klicken.</li>
-                    <li>Im Reiter <b>Settings</b> den <b>App key</b> kopieren (das App-Secret braucht JMS Control nicht) und hier eintragen.</li>
-                    <li><b>Mit Dropbox verbinden</b> klicken, bei Dropbox <b>Zulassen</b> – dann zeigt Dropbox einen Code. Den hier einfügen und <b>Verbinden</b>. Danach den Ordner wählen.</li>
-                  </ol>
-                  <p class="muted small">JMS Control kann damit nur lesen – nichts ändern oder löschen. Die Anmeldung liegt nur auf dem Server; „Trennen“ widerruft sie bei Dropbox. Höchstens 200 Bilder, nur direkt im Ordner (nicht in Unterordnern).</p>
-                </details>
               </div>
             </div>
 
@@ -627,6 +595,46 @@
                 </div>
                 <p class="form-error" id="mon-error" role="alert"></p>
               </form>
+            </div>
+
+            <div class="card" id="set-dropbox" data-section="dropbox">
+              <div class="card-head">
+                <div>
+                  <h2>Dropbox</h2>
+                  <p class="muted">JMS Control lauscht auf einen Ordner in deiner Dropbox: Ziehst du dort ein Bild hinein, ist es nach wenigen Sekunden in der Diashow – auf Wunsch wird es sofort gezeigt. Gelöschte Bilder verschwinden wieder. Auch iPhone-Fotos (HEIC) gehen. Anzeigen: in der Kachel <b>Diashow</b> „Bilder aus dem Dropbox-Ordner“ einschalten.</p>
+                </div>
+              </div>
+              <div class="dbx-body" id="ss-dropbox">
+                <p class="muted small" id="dbx-state"></p>
+                <form id="dbx-connect-form" class="ss-pp-form" autocomplete="off">
+                  <label class="field"><span>App-Key der Dropbox-App</span><input type="text" id="dbx-app-key" spellcheck="false" placeholder="z. B. a1b2c3d4e5f6g7h" maxlength="40"></label>
+                  <div class="btn-row"><button class="btn primary small" type="button" id="dbx-authorize">Mit Dropbox verbinden</button></div>
+                  <label class="field" id="dbx-code-field" hidden><span>Code von Dropbox</span><input type="text" id="dbx-code" spellcheck="false" placeholder="Nach „Zulassen“ zeigt Dropbox einen Code – hier einfügen"></label>
+                  <div class="btn-row" id="dbx-code-row" hidden><button class="btn primary small" type="submit">Verbinden</button></div>
+                </form>
+                <form id="dbx-folder-form" class="ss-pp-form" autocomplete="off" hidden>
+                  <label class="field"><span>Ordner in der Dropbox</span><input type="text" id="dbx-folder" spellcheck="false" placeholder="z. B. /Gemeinde/Diashow"></label>
+                  <div class="btn-row">
+                    <button class="btn primary small" type="submit">Speichern</button>
+                    <button class="btn small" type="button" id="dbx-browse">Ordner auswählen …</button>
+                    <button class="btn danger small" type="button" id="dbx-disconnect">Trennen</button>
+                  </div>
+                </form>
+                <div class="dbx-folders" id="dbx-folders" hidden></div>
+                <p class="form-error" id="dbx-error" role="alert"></p>
+                <div class="ss-pp-thumbs" id="dbx-thumbs"></div>
+                <details class="disclosure inner">
+                  <summary>So richtest du die Dropbox-App ein (einmalig, ca. 3 Minuten)</summary>
+                  <ol class="muted yt-steps">
+                    <li>Auf <a href="https://www.dropbox.com/developers/apps/create" target="_blank" rel="noopener">dropbox.com/developers/apps</a> mit dem Dropbox-Konto anmelden, dem der Ordner gehört (oder für das er freigegeben ist), und <b>Create app</b> wählen.</li>
+                    <li><b>Scoped access</b> und <b>Full Dropbox</b> wählen (damit geht jeder Ordner, auch ein freigegebener), Name z. B. „JMS Control Diashow“, <b>Create app</b>.</li>
+                    <li>Im Reiter <b>Permissions</b> <b>files.metadata.read</b> und <b>files.content.read</b> anhaken und unten <b>Submit</b> klicken.</li>
+                    <li>Im Reiter <b>Settings</b> den <b>App key</b> kopieren (das App-Secret braucht JMS Control nicht) und hier eintragen.</li>
+                    <li><b>Mit Dropbox verbinden</b> klicken, bei Dropbox <b>Zulassen</b> – dann zeigt Dropbox einen Code. Den hier einfügen und <b>Verbinden</b>. Danach den Ordner wählen.</li>
+                  </ol>
+                  <p class="muted small">JMS Control kann damit nur lesen – nichts ändern oder löschen. Die Anmeldung liegt nur auf dem Server; „Trennen“ widerruft sie bei Dropbox. Höchstens 200 Bilder, nur direkt im Ordner (nicht in Unterordnern).</p>
+                </details>
+              </div>
             </div>
 
             <div class="card" id="set-raspberry" data-section="raspberry">
