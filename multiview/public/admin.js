@@ -4803,26 +4803,38 @@ async function loadPermanentDevices() {
     box.innerHTML = '<p class="muted">Konnte die Liste nicht laden.</p>'
     return
   }
-  const own = list.find((d) => d.current)
-  const name = $('#perm-name')
-  if (document.activeElement !== name && !name.value) name.value = own?.name || ''
-  $('#perm-save').textContent = own ? 'Umbenennen und um ein Jahr verlängern' : 'Dieses Gerät dauerhaft freischalten'
-  const day = (ms) => new Date(ms).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  const when = (ms) => new Date(ms).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  permanentList = list
+  updatePermanentButton()
+  const day = (ms) => (ms == null ? 'unbegrenzt' : new Date(ms).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }))
+  const when = (ms) => (ms ? new Date(ms).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'noch nie')
   const note = me.access?.enabled ? '' : '<p class="muted small">Die Anmeldung für alle Dienste ist gerade aus – die Freigaben wirken, sobald sie an ist.</p>'
   box.innerHTML = `${note}<div class="table-wrap"><table class="table">
-    <thead><tr><th>Gerät</th><th>IP-Adresse (zuletzt)</th><th>Zuletzt benutzt</th><th>Gültig bis</th><th></th></tr></thead>
+    <thead><tr><th>Gerät</th><th>Art</th><th>IP-Adresse</th><th>Zuletzt benutzt</th><th>Gültig bis</th><th></th></tr></thead>
     <tbody>${
       list
         .map(
           (d) => `<tr><td><b>${esc(d.name)}</b>${d.current ? ' <span class="badge accent">dieses Gerät</span>' : ''}</td>
-          <td>${d.ip ? `<code class="ip">${esc(d.ip)}</code>` : '<span class="muted">–</span>'}</td>
+          <td class="muted">${d.kind === 'ip' ? 'Feste IP' : 'Browser'}</td>
+          <td>${d.ip ? `<code class="ip">${esc(d.ip)}</code>${d.kind === 'ip' ? '' : ' <small class="muted">zuletzt</small>'}` : '<span class="muted">–</span>'}</td>
           <td class="muted">${esc(when(d.seen))}</td><td class="muted">${esc(day(d.expiresAt))}</td>
           <td style="text-align:right"><button class="btn small danger" data-perm-revoke="${esc(d.id)}" data-name="${esc(d.name)}">Widerrufen</button></td></tr>`,
         )
-        .join('') || '<tr><td colspan="5" class="muted">Noch kein Gerät dauerhaft freigeschaltet.</td></tr>'
+        .join('') || '<tr><td colspan="6" class="muted">Noch kein Gerät dauerhaft freigeschaltet.</td></tr>'
     }</tbody></table></div>`
 }
+
+let permanentList = []
+
+/** Knopf passend zur Eingabe: dieses Gerät, eine neue IP oder eine schon hinterlegte ändern */
+function updatePermanentButton() {
+  const ip = $('#perm-ip').value.trim()
+  const own = permanentList.find((d) => d.current && d.kind === 'browser')
+  const known = ip && permanentList.find((d) => d.kind === 'ip' && d.ip === ip)
+  $('#perm-save').textContent = ip ? (known ? `„${known.name}“ ändern` : 'Gerät mit dieser IP freischalten') : own ? 'Dieses Gerät umbenennen / Ablauf ändern' : 'Dieses Gerät dauerhaft freischalten'
+  const name = $('#perm-name')
+  if (document.activeElement !== name && !name.value) name.value = ip ? known?.name || '' : own?.name || ''
+}
+$('#perm-ip').addEventListener('input', updatePermanentButton)
 
 $('#perm-form').addEventListener('submit', async (e) => {
   e.preventDefault()
@@ -4831,10 +4843,19 @@ $('#perm-form').addEventListener('submit', async (e) => {
   error.textContent = ''
   button.disabled = true
   try {
-    const res = await fetch('/api/access/devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('#perm-name').value }) })
+    const ip = $('#perm-ip').value.trim()
+    const res = await fetch('/api/access/devices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: $('#perm-name').value, ip, unlimited: $('#perm-unlimited').checked }),
+    })
     const data = await res.json().catch(() => ({}))
     if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
-    toast(`„${$('#perm-name').value.trim()}“ ist dauerhaft freigeschaltet.`)
+    toast(`„${$('#perm-name').value.trim()}“ ist dauerhaft freigeschaltet${ip ? ` (IP ${ip})` : ''}.`)
+    if (ip) {
+      $('#perm-ip').value = ''
+      $('#perm-name').value = ''
+    }
     await loadPermanentDevices()
   } catch (err) {
     error.textContent = err.message

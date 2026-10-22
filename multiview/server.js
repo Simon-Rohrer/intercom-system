@@ -1709,6 +1709,8 @@ app.get('/api/output/:id/user', requireTrusted, requireDisplayReader, (req, res)
 })
 
 app.get(['/api/me', '/.jms-auth/api/me'], (req, res) => {
+  // Dauerhafte Gerätefreigabe ohne Ablauf: Cookie erneuern, damit der Browser es behält
+  access.refreshDeviceCookie(req, res)
   const user = access.userOf(req)
   const rights = roleRights(config, user)
   res.json({
@@ -1966,10 +1968,11 @@ app.delete('/api/access/sessions/:id', requireAdmin, (req, res) => {
 })
 
 // Dauerhaft freigeschaltete Geräte: brauchen keinen Tagescode mehr (Name und Rolle weiterhin).
-// Freischalten geht nur auf dem Gerät selbst, in einer Admin-Sitzung.
+// Ohne IP: dieser Browser (nur auf dem Gerät selbst, in einer Admin-Sitzung). Mit IP: ein anderes
+// Gerät über seine feste Adresse – die Adresse setzt Caddy, nicht der Browser.
 app.get('/api/access/devices', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json(access.permanentDevices(req)))
 app.post('/api/access/devices', requireAdmin, (req, res) => {
-  try { res.json({ ok: true, devices: access.approvePermanent(req.body?.name, req, res) }) }
+  try { res.json({ ok: true, devices: access.approvePermanent({ name: req.body?.name, ip: req.body?.ip, unlimited: req.body?.unlimited === true }, req, res) }) }
   catch (error) { res.status(error.status || 400).json({ ok: false, error: error.message }) }
 })
 app.delete('/api/access/devices/:id', requireAdmin, (req, res) => {
@@ -2365,6 +2368,7 @@ app.post('/.jms-auth/api/revoke-admin', (req, res) => {
 
 // Tagescode: braucht dieses Gerät ihn noch?
 app.get(['/api/device', '/.jms-auth/api/device'], (req, res) => {
+  access.refreshDeviceCookie(req, res)
   res.set('Cache-Control', 'no-store').json(access.deviceStatus(clientIp(req), req))
 })
 

@@ -2286,7 +2286,8 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 .yt-form:not(.mon-form) .field:nth-of-type(3) { grid-column: 1 / -1; }
 .mon-form { grid-template-columns: 1fr 1fr 1fr; }
 .perm-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 4px; }
-.perm-form .field { flex: 1 1 260px; margin: 0; }
+.perm-form .field { flex: 1 1 220px; margin: 0; }
+.perm-unlimited { height: 40px; }
 #perm-list { margin-top: 10px; }
 .yt-code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 22px; font-weight: 700; letter-spacing: 0.12em; user-select: all; }
 .yt-steps { margin: 4px 0 8px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }

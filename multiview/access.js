@@ -4,6 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const net = require('net')
+const os = require('os')
 
 const COOKIE = 'mv_session'
 const DEVICE_COOKIE = 'jms_device'
@@ -13,6 +14,10 @@ const MACHINE_CAPABILITIES = new Set(['display', 'day-code', 'pi-config', 'heart
 const QR_TTL_MS = 10 * 60 * 1000
 // Dauerhaft freigeschaltetes Gerät (vom Admin auf dem Gerät selbst): braucht keinen Tagescode
 const PERMANENT_MS = 365 * 24 * 60 * 60 * 1000
+// Ohne Ablauf: Browser halten Cookies höchstens 400 Tage – JMS Control erneuert es bei jedem Besuch
+const COOKIE_MAX_MS = 400 * 24 * 60 * 60 * 1000
+// Feste IP-Adressen nur aus dem eigenen Netz (und Tailscale, dort ist die IP an den Geräteschlüssel gebunden)
+const IP_GRANT_NETWORKS = ['192.168.0.0/16', '10.0.0.0/8', '172.16.0.0/12', '100.64.0.0/10'].map(parseNetwork)
 // Ticket für den Abgleich der Anmeldung zwischen den Adressen (nur für eine Weiterleitung)
 const SSO_TTL_MS = 60 * 1000
 // Tagescode: neu um Mitternacht (deutsche Zeit); wer ihn am Vortag eingegeben hat, bleibt bis
@@ -134,6 +139,11 @@ function nextMorning(now = Date.now()) {
 }
 
 /** „192.168.0.50“, „192.168.0.0/24“ oder eine IPv6-Adresse; sonst null. */
+/** IPv4-Adressen dieses Servers – die dürfen keine feste Freigabe bekommen */
+function ownAddresses() {
+  return Object.values(os.networkInterfaces()).flat().filter((i) => i && (i.family === 'IPv4' || i.family === 4)).map((i) => i.address)
+}
+
 function parseNetwork(entry) {
   const text = String(entry ?? '').trim()
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/(\d{1,2}))?$/.exec(text)
@@ -218,7 +228,7 @@ function createAccess({
       bootstrapping = true
       return {
         securityFormat: SECURITY_FORMAT, version: randomToken(), adminPin: null,
-        sessions: {}, gateway: normalizeGateway(null), dayCode: null, devices: {}, machines: {}, pinFails: {}, codeFails: {},
+        sessions: {}, gateway: normalizeGateway(null), dayCode: null, devices: {}, ipGrants: {}, machines: {}, pinFails: {}, codeFails: {},
       }
     }
     const pin = loaded?.adminPin
@@ -237,6 +247,7 @@ function createAccess({
       dayCode: loaded.dayCode && /^\d{4}-\d{2}-\d{2}$/.test(loaded.dayCode.day) &&
         /^\d{6}$/.test(loaded.dayCode.code) && typeof loaded.dayCode.gen === 'string' ? loaded.dayCode : null,
       devices: modern ? record(loaded.devices) : {},
+      ipGrants: modern ? record(loaded.ipGrants) : {},
       machines: modern ? record(loaded.machines) : {},
       pinFails: record(loaded.pinFails),
       codeFails: record(loaded.codeFails),
@@ -518,11 +529,15 @@ function createAccess({
     return current.day === previousDay(local.day) && generation === current.gen && local.hour < GRACE_UNTIL_HOUR
   }
 
+  const unexpired = (expiresAt, now) => expiresAt == null || (Number.isFinite(expiresAt) && expiresAt > now)
+
   function validGrant(grant, now = Date.now()) {
-    if (!grant || !Number.isFinite(grant.expiresAt) || grant.expiresAt <= now) return false
-    // Dauerhafte Freigabe gilt, solange der Admin sie nicht widerrufen hat (dann fehlt ihr Eintrag)
-    if (grant.permanent) return Boolean(grant.id) && Object.values(secret.devices).some((d) => d.permanent && d.id === grant.id && d.expiresAt > now)
-    return generationValid(grant.gen, now)
+    if (!grant) return false
+    // Dauerhafte Freigaben gelten, solange der Admin sie nicht widerrufen hat (dann fehlt ihr Eintrag);
+    // expiresAt null = ohne Ablauf
+    if (grant.ipGrant) return Boolean(secret.ipGrants[grant.id]) && unexpired(secret.ipGrants[grant.id].expiresAt, now)
+    if (grant.permanent) return Boolean(grant.id) && Object.values(secret.devices).some((d) => d.permanent && d.id === grant.id && unexpired(d.expiresAt, now))
+    return Number.isFinite(grant.expiresAt) && grant.expiresAt > now && generationValid(grant.gen, now)
   }
 
   /** Freigabe für heute (wie mit dem Tagescode) */
@@ -573,6 +588,10 @@ function createAccess({
       delete secret.devices[key]
       removedDevice = true
     }
+    for (const [id, grant] of Object.entries(secret.ipGrants)) if (!unexpired(grant.expiresAt, now)) {
+      delete secret.ipGrants[id]
+      removedDevice = true
+    }
     if (removedDevice) write()
   }
 
@@ -601,10 +620,23 @@ function createAccess({
     return session
   }
 
+  /** Hinterlegte feste IP-Adresse dieses Aufrufs (Adresse kommt von Caddy, nicht vom Browser) */
+  function ipGrantOf(req) {
+    const ip = String(ipOf(req) || '').replace(/^::ffff:/i, '')
+    if (!ip) return null
+    const grant = Object.values(secret.ipGrants).find((g) => g.ip === ip && unexpired(g.expiresAt, Date.now()))
+    if (!grant) return null
+    if (Date.now() - (grant.seen ?? 0) > 60_000) {
+      grant.seen = Date.now()
+      writeSoon()
+    }
+    return { ipGrant: true, id: grant.id, name: grant.name, ip: grant.ip, expiresAt: grant.expiresAt }
+  }
+
   function deviceGrant(req) {
     const token = parseCookies(req?.headers?.cookie)[DEVICE_COOKIE]
     const grant = token ? secret.devices[sha256(token)] : null
-    if (!validGrant(grant)) return null
+    if (!validGrant(grant)) return ipGrantOf(req)
     if (!grant.permanent) return { gen: grant.gen, expiresAt: grant.expiresAt }
     if (Date.now() - (grant.seen ?? 0) > 60_000) {
       grant.seen = Date.now()
@@ -804,6 +836,7 @@ function createAccess({
 
   function approveDevice(ip, req, res, grant) {
     if (!validGrant(grant)) throw fail(403, 'Die Gerätefreigabe ist nicht mehr gültig')
+    if (grant.ipGrant) return // gilt über die IP-Adresse, kein Cookie nötig
     const token = randomToken()
     if (grant.permanent) {
       // Derselbe Browser unter einer anderen Adresse (SSO): gleiche Freigabe, gemeinsam widerrufbar
@@ -813,8 +846,20 @@ function createAccess({
       secret.devices[sha256(token)] = { gen: grant.gen, expiresAt: grant.expiresAt, created: Date.now(), ip: String(ip ?? '') }
     }
     write()
-    const maxAge = Math.max(0, Math.ceil((grant.expiresAt - Date.now()) / 1000))
-    res.append('Set-Cookie', DEVICE_COOKIE + '=' + encodeURIComponent(token) + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + maxAge + secureSuffix(req))
+    res.append('Set-Cookie', deviceCookie(token, grant.expiresAt, req))
+  }
+
+  /** Cookie der Gerätefreigabe; ohne Ablauf so lange, wie Browser es halten (wird erneuert) */
+  function deviceCookie(token, expiresAt, req) {
+    const maxAge = Math.max(0, Math.ceil((expiresAt == null ? COOKIE_MAX_MS : Math.min(COOKIE_MAX_MS, expiresAt - Date.now())) / 1000))
+    return DEVICE_COOKIE + '=' + encodeURIComponent(token) + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + maxAge + secureSuffix(req)
+  }
+
+  /** Dauerhafte Freigabe ohne Ablauf: Cookie bei jedem Besuch erneuern, damit der Browser es nicht vergisst */
+  function refreshDeviceCookie(req, res) {
+    const token = parseCookies(req?.headers?.cookie)[DEVICE_COOKIE]
+    const grant = token ? secret.devices[sha256(token)] : null
+    if (grant?.permanent && validGrant(grant)) res.append('Set-Cookie', deviceCookie(token, grant.expiresAt, req))
   }
 
   function redeemQrToken(token, req, res) {
@@ -829,7 +874,7 @@ function createAccess({
     const own = lookupSession(req)
     if (own && own.id !== sourceSession.id && own.group !== sourceSession.group) endSessions([own], 'neu angemeldet')
     // Ein dauerhaft freigeschaltetes Gerät gibt per QR-Code nur die Freigabe für heute weiter
-    const device = entry.device?.permanent ? todayGrant() : entry.device
+    const device = entry.device?.permanent || entry.device?.ipGrant ? todayGrant() : entry.device
     const sessionToken = newSession({
       name: sourceSession.name, roleId: sourceSession.roleId, admin: sourceSession.admin, group: sourceSession.group,
       originSessionId: sourceSession.id, expiresAt: sourceSession.expiresAt, device, machine: entry.machine,
@@ -952,31 +997,51 @@ function createAccess({
     return Object.values(secret.devices).filter((device) => !device.permanent && validGrant(device)).length
   }
 
-  /** Dieses Gerät (Browser) dauerhaft freischalten – nur ein Admin, auf dem Gerät selbst */
-  function approvePermanent(name, req, res) {
+  /**
+   * Gerät dauerhaft freischalten (nur ein Admin): ohne IP diesen Browser (Cookie), mit IP ein
+   * anderes Gerät über seine feste Adresse. unlimited = ohne Ablauf, sonst ein Jahr.
+   */
+  function approvePermanent({ name, ip, unlimited } = {}, req, res) {
     if (!userOf(req)?.admin) throw fail(403, 'Nur ein Admin kann Geräte dauerhaft freischalten')
     const label = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 40)
     if (!label) throw fail(400, 'Bitte einen Namen für das Gerät eingeben, z. B. „Regie-Mac“')
-    const expiresAt = Date.now() + PERMANENT_MS
-    const current = deviceGrant(req)
-    if (current?.permanent) {
-      // Schon dauerhaft: umbenennen und verlängern
+    const now = Date.now()
+    const expiresAt = unlimited ? null : now + PERMANENT_MS
+    const address = String(ip ?? '').trim()
+    if (address) {
+      const parsed = parseNetwork(address)
+      if (!parsed?.v4 || parsed.bits !== 32) throw fail(400, 'Bitte eine einzelne IPv4-Adresse eingeben, z. B. 192.168.0.42')
+      const clean = parsed.text.split('.').map(Number).join('.')
+      if (!ipInNetworks(clean, IP_GRANT_NETWORKS)) throw fail(400, 'Nur Adressen aus dem eigenen Netz (192.168.x.x, 10.x.x.x, 172.16–31.x.x) oder von Tailscale (100.64–127.x.x)')
+      if (ownAddresses().includes(clean)) throw fail(400, 'Das ist die Adresse des Servers selbst')
+      const existing = Object.values(secret.ipGrants).find((g) => g.ip === clean)
+      if (existing) Object.assign(existing, { name: label, expiresAt })
+      else {
+        const id = crypto.randomBytes(9).toString('hex')
+        secret.ipGrants[id] = { id, name: label, ip: clean, created: now, seen: null, expiresAt }
+      }
+      write()
+      log(`Zugang: Gerät „${label}“ mit fester IP ${clean} dauerhaft freigeschaltet${unlimited ? ' (ohne Ablauf)' : ''}`)
+      return permanentDevices(req)
+    }
+    const token = parseCookies(req?.headers?.cookie)[DEVICE_COOKIE]
+    const current = token ? secret.devices[sha256(token)] : null
+    if (current?.permanent && validGrant(current)) {
+      // Schon dauerhaft: umbenennen und Ablauf neu setzen
       for (const device of Object.values(secret.devices)) if (device.permanent && device.id === current.id) Object.assign(device, { name: label, expiresAt })
       write()
-      const token = parseCookies(req?.headers?.cookie)[DEVICE_COOKIE]
-      res.append('Set-Cookie', DEVICE_COOKIE + '=' + encodeURIComponent(token) + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + Math.ceil(PERMANENT_MS / 1000) + secureSuffix(req))
+      res.append('Set-Cookie', deviceCookie(token, expiresAt, req))
     } else {
-      const token = randomToken()
-      const now = Date.now()
-      secret.devices[sha256(token)] = { permanent: true, id: crypto.randomBytes(9).toString('hex'), name: label, expiresAt, created: now, seen: now, ip: String(ipOf(req) ?? '') }
+      const fresh = randomToken()
+      secret.devices[sha256(fresh)] = { permanent: true, id: crypto.randomBytes(9).toString('hex'), name: label, expiresAt, created: now, seen: now, ip: String(ipOf(req) ?? '') }
       write()
-      res.append('Set-Cookie', DEVICE_COOKIE + '=' + encodeURIComponent(token) + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + Math.ceil(PERMANENT_MS / 1000) + secureSuffix(req))
+      res.append('Set-Cookie', deviceCookie(fresh, expiresAt, req))
     }
-    log(`Zugang: Gerät „${label}“ (${ipOf(req)}) dauerhaft freigeschaltet`)
+    log(`Zugang: Gerät „${label}“ (${ipOf(req)}) dauerhaft freigeschaltet${unlimited ? ' (ohne Ablauf)' : ''}`)
     return permanentDevices(req)
   }
 
-  /** Dauerhaft freigeschaltete Geräte – je Gerät einmal, auch wenn es unter mehreren Adressen offen war */
+  /** Dauerhaft freigeschaltete Geräte: Browser (je Gerät einmal, auch unter mehreren Adressen) und feste IPs */
   function permanentDevices(req) {
     prune()
     const own = deviceGrant(req)
@@ -984,10 +1049,14 @@ function createAccess({
     for (const d of Object.values(secret.devices)) {
       if (!d.permanent) continue
       const entry = byId.get(d.id)
-      if (!entry) byId.set(d.id, { id: d.id, name: d.name, created: d.created, expiresAt: d.expiresAt, seen: d.seen ?? d.created, ip: d.ip || null })
+      if (!entry) byId.set(d.id, { id: d.id, kind: 'browser', name: d.name, created: d.created, expiresAt: d.expiresAt ?? null, seen: d.seen ?? d.created, ip: d.ip || null })
       else if ((d.seen ?? 0) > entry.seen) Object.assign(entry, { seen: d.seen, ip: d.ip || entry.ip })
     }
-    return [...byId.values()].map((d) => ({ ...d, current: own?.permanent === true && own.id === d.id })).sort((a, b) => b.seen - a.seen)
+    for (const g of Object.values(secret.ipGrants))
+      byId.set(g.id, { id: g.id, kind: 'ip', name: g.name, created: g.created, expiresAt: g.expiresAt ?? null, seen: g.seen ?? null, ip: g.ip })
+    return [...byId.values()]
+      .map((d) => ({ ...d, current: Boolean(own && (own.permanent || own.ipGrant) && own.id === d.id) }))
+      .sort((a, b) => (b.seen ?? 0) - (a.seen ?? 0))
   }
 
   /** Widerrufen: Freigabe weg, Rollen-Anmeldungen dieses Geräts enden sofort */
@@ -998,6 +1067,10 @@ function createAccess({
         delete secret.devices[key]
         found = true
       }
+    if (secret.ipGrants[id]) {
+      delete secret.ipGrants[id]
+      found = true
+    }
     if (!found) throw fail(404, 'Gerät nicht gefunden')
     write()
     prune()
@@ -1031,7 +1104,7 @@ function createAccess({
     const grant = deviceGrant(req)
     return {
       required, approved: !required || Boolean(grant), hasGrant: Boolean(grant),
-      permanent: grant?.permanent ? { name: grant.name, expiresAt: grant.expiresAt } : null,
+      permanent: grant?.permanent || grant?.ipGrant ? { name: grant.name, expiresAt: grant.expiresAt ?? null, ip: grant.ipGrant ? grant.ip : null } : null,
       // Kann das Gerät freigeschaltet werden? Auch in einer Admin-Sitzung (die selbst keinen Code
       // braucht): Wechselt man zu einer Rolle, braucht das Gerät die Freigabe doch
       grantable: gatewayActive() && !machine && !grant,
@@ -1079,7 +1152,7 @@ function createAccess({
     enabled, pinSource, userOf, sessionOf, sessionIdOf, sessionStatusById, occupiedRoles, occupiedForLogin,
     login, createSsoTicket, redeemSsoTicket, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession, revokeAdmins,
     gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, check, trusted, createTicket,
-    approvePermanent, permanentDevices, revokePermanent,
+    approvePermanent, permanentDevices, revokePermanent, refreshDeviceCookie,
     listMachines, createMachine, rotateMachine, revokeMachine, machineOf, machineStatus, machineByFingerprint, machineServes,
     prune, sweep: prune, flush: write,
   }

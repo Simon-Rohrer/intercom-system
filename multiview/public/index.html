@@ -323,13 +323,17 @@
               <div class="card-head">
                 <div>
                   <h2>Dauerhaft freigeschaltete Geräte</h2>
-                  <p class="muted">Diese Geräte brauchen <b>keinen Tagescode und keinen QR-Code</b> – Name und Rolle wählt man wie gewohnt. Freischalten geht nur auf dem Gerät selbst, als Admin angemeldet. Die Freigabe gilt ein Jahr für diesen Browser: ein anderer Browser oder gelöschte Website-Daten brauchen eine neue Freischaltung. Ein QR-Code von so einem Gerät gibt einem Handy nur die Freigabe für heute.</p>
+                  <p class="muted">Diese Geräte brauchen <b>keinen Tagescode und keinen QR-Code</b> – Name und Rolle wählt man wie gewohnt. <b>Ohne IP-Adresse</b> wird dieser Browser freigeschaltet (an diesem Gerät, als Admin angemeldet; ein anderer Browser oder gelöschte Website-Daten brauchen eine neue Freischaltung). <b>Mit IP-Adresse</b> gilt die Freigabe für jedes Gerät mit dieser Adresse – dafür in der FRITZ!Box eine feste IP vergeben, sonst bekommt vielleicht ein anderes Gerät diese Adresse. Ein QR-Code von so einem Gerät gibt einem Handy nur die Freigabe für heute.</p>
                 </div>
               </div>
               <form id="perm-form" class="perm-form" autocomplete="off">
-                <label class="field"><span>Name für dieses Gerät</span>
+                <label class="field"><span>Name</span>
                   <input id="perm-name" type="text" maxlength="40" placeholder="z. B. Regie-Mac">
                 </label>
+                <label class="field"><span>Feste IP-Adresse (leer = dieses Gerät)</span>
+                  <input id="perm-ip" type="text" inputmode="decimal" spellcheck="false" placeholder="z. B. 192.168.0.42">
+                </label>
+                <label class="switch perm-unlimited"><input type="checkbox" id="perm-unlimited"><span class="switch-track"></span><span>Ohne Ablauf</span></label>
                 <button class="btn primary" type="submit" id="perm-save">Dieses Gerät dauerhaft freischalten</button>
               </form>
               <p class="form-error" id="perm-error" role="alert"></p>

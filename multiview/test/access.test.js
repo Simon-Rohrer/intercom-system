@@ -618,11 +618,11 @@ test('Dauerhafte Freischaltung: kein Tagescode mehr, widerrufbar, nicht per QR w
   const admin = await loginAs(access, 'admin')
   // Nur ein Admin, nur mit Namen
   const video0 = await loginAs(access, 'video', approve(access))
-  assert.throws(() => access.approvePermanent('Regie-Mac', request(video0), response()), /Nur ein Admin/)
-  assert.throws(() => access.approvePermanent('  ', request(admin), response()), /Namen/)
+  assert.throws(() => access.approvePermanent({ name: 'Regie-Mac' }, request(video0), response()), /Nur ein Admin/)
+  assert.throws(() => access.approvePermanent({ name: '  ' }, request(admin), response()), /Namen/)
 
   const res = response()
-  access.approvePermanent('Regie-Mac', request(admin), res)
+  access.approvePermanent({ name: 'Regie-Mac' }, request(admin), res)
   const device = { jms_device: res.cookies.jms_device }
   assert.match(res.headers[0][1], /Max-Age=315\d{5}/) // ein Jahr
   assert.equal(access.deviceStatus(CLIENT, request(device)).approved, true)
@@ -647,7 +647,7 @@ test('Dauerhafte Freischaltung: kein Tagescode mehr, widerrufbar, nicht per QR w
   // Bleibt über einen Neustart, gleicher Browser bekommt beim zweiten Mal kein zweites Gerät
   const list = access.permanentDevices(request(device))
   assert.deepEqual(list.map((d) => [d.name, d.current]), [['Regie-Mac', true]])
-  access.approvePermanent('Regie', request({ ...admin, ...device }), response())
+  access.approvePermanent({ name: 'Regie' }, request({ ...admin, ...device }), response())
   assert.deepEqual(access.permanentDevices(request()).map((d) => d.name), ['Regie'])
   access.flush()
   const restarted = create({ dataDir })
@@ -658,4 +658,52 @@ test('Dauerhafte Freischaltung: kein Tagescode mehr, widerrufbar, nicht per QR w
   assert.equal(restarted.deviceStatus(CLIENT, request(device)).approved, false)
   assert.equal(restarted.userOf(request(video)), null)
   assert.throws(() => restarted.revokePermanent(list[0].id), /nicht gefunden/)
+})
+
+test('Feste IP-Adresse und Freigabe ohne Ablauf', async () => {
+  const { access, dataDir } = await setup()
+  access.setGateway({ enabled: true })
+  const admin = await loginAs(access, 'admin')
+  const OTHER = '192.168.0.57'
+  assert.throws(() => access.approvePermanent({ name: 'Ton-PC', ip: '192.168.0.0/24' }, request(admin), response()), /einzelne IPv4/)
+  assert.throws(() => access.approvePermanent({ name: 'Ton-PC', ip: '8.8.8.8' }, request(admin), response()), /eigenen Netz/)
+  assert.throws(() => access.approvePermanent({ name: 'Ton-PC', ip: '127.0.0.1' }, request(admin), response()), /eigenen Netz/)
+  const res = response()
+  access.approvePermanent({ name: 'Ton-PC', ip: OTHER, unlimited: true }, request(admin), res)
+  assert.deepEqual(res.headers, []) // für eine fremde IP kein Cookie in diesem Browser
+  // Ohne Cookie, nur über die Adresse: kein Tagescode, Name und Rolle weiterhin
+  assert.equal(access.deviceStatus(OTHER, request({}, OTHER)).approved, true)
+  assert.equal(access.deviceStatus(OTHER, request({}, OTHER)).permanent.expiresAt, null)
+  assert.equal(access.check({ service: 'kesher', ip: OTHER }, request({}, OTHER)).action, 'login')
+  assert.equal(access.check({ service: 'kesher', ip: '192.168.0.58' }, request({}, '192.168.0.58')).action, 'code')
+  const ton = await loginAs(access, 'ton', {}, OTHER)
+  assert.equal(access.userOf(request(ton, OTHER)).roleId, 'ton')
+  // Die Sitzung gilt nicht von einer anderen Adresse aus
+  assert.equal(access.userOf(request(ton, '192.168.0.58')), null)
+  // QR von diesem Gerät: Handy bekommt nur heute
+  const ticket = access.createQrToken(access.userOf(request(ton, OTHER)), request(ton, OTHER))
+  const phone = response()
+  assert.equal(access.redeemQrToken(ticket.token, request({}, '192.168.0.91'), phone), true)
+  assert.equal(access.deviceStatus('192.168.0.91', request(phone.cookies, '192.168.0.91')).permanent, null)
+
+  // Dieser Browser ohne Ablauf: Cookie hält 400 Tage und wird erneuert
+  const own = response()
+  access.approvePermanent({ name: 'Regie-Mac', unlimited: true }, request(admin), own)
+  assert.match(own.headers[0][1], /Max-Age=34560000/)
+  const again = response()
+  access.refreshDeviceCookie(request({ jms_device: own.cookies.jms_device }), again)
+  assert.match(again.headers[0][1], /Max-Age=34560000/)
+  const list = access.permanentDevices(request({ jms_device: own.cookies.jms_device }))
+  assert.deepEqual(list.map((d) => [d.name, d.kind, d.expiresAt, d.current]).sort(), [['Regie-Mac', 'browser', null, true], ['Ton-PC', 'ip', null, false]])
+
+  // Gleiche IP noch einmal = umbenennen; nach Neustart noch da; Widerrufen beendet die Anmeldung
+  access.approvePermanent({ name: 'Ton-Pult', ip: OTHER }, request(admin), response())
+  access.flush()
+  const restarted = create({ dataDir })
+  const ip = restarted.permanentDevices(request()).find((d) => d.kind === 'ip')
+  assert.equal(ip.name, 'Ton-Pult')
+  assert.ok(ip.expiresAt > Date.now())
+  restarted.revokePermanent(ip.id)
+  assert.equal(restarted.deviceStatus(OTHER, request({}, OTHER)).approved, false)
+  assert.equal(restarted.userOf(request(ton, OTHER)), null)
 })
