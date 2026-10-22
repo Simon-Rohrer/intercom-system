@@ -4,8 +4,17 @@ import type { ModuleInstance } from "./main.js";
 export function UpdateActions(self: ModuleInstance): void {
   const actions: CompanionActionDefinitions = {
     trigger_synced_button: {
-      name: "Trigger synced Kesher slot",
+      name: "Kesher key (function is set in Kesher)",
+      description:
+        "Presses this key in Kesher. What it does, its colour and its picture are set in Kesher (Einstellungen → Stream Deck) and sent with „An Companion senden“.",
       options: [
+        {
+          id: "hint",
+          type: "static-text",
+          label: "Belegung",
+          value:
+            "Was diese Taste macht, wird in Kesher festgelegt (Einstellungen → Stream Deck). Danach in Kesher „An Companion senden“ – Bild und Funktion kommen dann automatisch hierher. Hier nur ändern, auf welche Kesher-Taste diese Companion-Taste zeigt.",
+        },
         {
           id: "buttonIndex",
           type: "number",

@@ -142,7 +142,8 @@ function buttonPresetName(
     self.resolveSyncedButtonLabel(button),
     `Key ${button.index + 1}`,
   );
-  return `Key ${button.index + 1} - ${resolvedLabel}`;
+  const fn = actionLabel(button.action?.type);
+  return `Key ${button.index + 1} - ${resolvedLabel}${fn && fn !== resolvedLabel ? ` (${fn})` : ""}`;
 }
 
 export function normalizePreviewImageBase64(value?: string): string | undefined {
@@ -159,7 +160,7 @@ function previewImageSignature(value?: string): string {
   return image ? `${image.length}:${image.slice(0, 64)}` : "";
 }
 
-function buildButtonStyle(label: string, baseBg: number) {
+function buildButtonStyle(label: string, baseBg: number, image?: string) {
   return {
     text: label,
     size: "14" as const,
@@ -167,8 +168,37 @@ function buildButtonStyle(label: string, baseBg: number) {
     bgcolor: baseBg,
     alignment: "center:center" as const,
     pngalignment: "center:center" as const,
+    ...(image ? { png64: image } : {}),
     show_topbar: false,
   };
+}
+
+// What a Kesher key does, in the words of the Kesher Stream Deck editor
+const ACTION_LABELS: Record<string, string> = {
+  ptt_room: "Sprechen auf Party Line",
+  select_talk_room: "Sprechkanal wählen",
+  select_listen_room: "Hörkanal wählen",
+  ptt_selected: "Sprechen (gewählte Kanäle)",
+  listen_room: "Hören an/aus",
+  call_room: "Rufen",
+  direct_user: "Direkt (Person)",
+  direct_role: "Direkt (Rolle)",
+  reply_to_caller: "Anrufer antworten",
+  incoming_call_indicator: "Eingehender Ruf",
+  broadcast_ptt: "Durchsage",
+  mute_toggle: "Stumm an/aus",
+  volume_delta: "Lautstärke",
+  chat_message: "Chat-Nachricht",
+  page_up: "Seite vor",
+  page_down: "Seite zurück",
+  page_jump: "Seite öffnen",
+  page_home: "Startseite",
+  page_back: "Zurück",
+  raspberry_status: "Raspberry-Status",
+};
+
+export function actionLabel(type?: string): string {
+  return ACTION_LABELS[String(type || "").trim()] || "";
 }
 
 function pageButtonsInGrid(
@@ -198,14 +228,12 @@ function buildProfileButtonPreset(
   const label = hasContent
     ? self.resolveSyncedButtonLabel(button) || `Key ${button.index + 1}`
     : "";
-  const style = buildButtonStyle(
-    label,
-    baseBg,
-  );
-  const previewStyle = buildButtonStyle(
-    label,
-    baseBg,
-  );
+  // Kesher renders every key when publishing (frame and function badge such as
+  // "SELECT TALK" as a transparent layer) – use it so presets and placed keys look like Kesher
+  // (not for the call indicator: its blinking colour would be hidden behind the picture)
+  const image = hasContent && !isIndicator ? normalizePreviewImageBase64(button.previewImageBuffer) : undefined;
+  const style = buildButtonStyle(label, baseBg, image);
+  const previewStyle = buildButtonStyle(label, baseBg, image);
   const actionOptions = {
     roleId: profile.roleId,
     buttonIndex: button.index,

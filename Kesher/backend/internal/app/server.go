@@ -5477,9 +5477,10 @@ func (s *Server) companionSettingsWithPreviewImages(
 	activeRoleUsers []CompanionRoleUser,
 	groups []BroadcastGroup,
 ) (StreamDeckSettings, error) {
+	// Same size as the live images (72×72 = one Companion key), so presets and placed keys match
 	renderer, err := NewButtonImageRenderer(&ButtonImageRenderConfig{
-		Width:  112,
-		Height: 112,
+		Width:  72,
+		Height: 72,
 	})
 	if err != nil {
 		return StreamDeckSettings{}, err

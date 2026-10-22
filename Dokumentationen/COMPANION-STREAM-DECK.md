@@ -2,16 +2,21 @@
 
 Companion ist bei Kesher nur Eingabe- und Anzeigeoberfläche. Die Button-Logik liegt in Kesher. In Companion werden einmal universelle Slots platziert, danach steuert Kesher Label, Farbe, Bild und Aktion.
 
-## Modul bauen
+## Modul installieren
+
+Das fertige Paket der aktuellen Version liegt im Repository (`companion/kesher-<Version>.tgz`). Auf dem Server:
+
+```sh
+sudo bash scripts/deploy-companion-module.sh
+```
+
+Das Skript nimmt das Paket mit der Versionsnummer aus `companion/package.json`; gibt es keins, baut es das Modul selbst. Nach Änderungen am Modul die Version erhöhen und neu packen:
 
 ```sh
 cd companion
 npm install
-npm run build
 npm run package
 ```
-
-Das erzeugte Paket in Bitfocus Companion als lokales Modul installieren.
 
 ## Connection einrichten
 
@@ -31,8 +36,10 @@ Aktuelle Kesher-Verbindungen sollen über `roleId` laufen.
 
 1. In Kesher Admin das Stream-Deck-Profil der Rolle bearbeiten.
 2. Profil für Companion veröffentlichen.
-3. In Companion die Presets aus `Universal Synced Layout` einmal auf die Tasten ziehen.
+3. In Companion die Presets aus `Kesher / <Rolle> / Seite <n>` einmal auf die Tasten ziehen.
 4. Spätere Änderungen nur noch in Kesher veröffentlichen.
+
+Aussehen und Funktion jeder Taste kommen aus Kesher: Kesher schickt je Taste eine Bildebene (Rahmen, Schild wie `SELECT TALK`, Zustand), Companion zeichnet darunter die Farbe und darüber die Beschriftung – so sieht die Taste aus wie in der Vorschau in Kesher, in den Presets und auf dem Stream Deck. In Companion steht als Aktion `Kesher key (function is set in Kesher)`; dort lässt sich nur einstellen, auf welche Kesher-Taste (Seite, Nummer, Rolle) die Companion-Taste zeigt. Was sie tut, wird in Kesher geändert und mit `An Companion senden` übernommen. Eigene Aktionen oder Rückmeldungen können in Companion zusätzlich auf die Taste gelegt werden.
 
 Eine Kesher-Verbindung in Companion gehört zu genau einer Rolle (`Target role ID`) und zeigt nur die Presets dieser Rolle (`Kesher / <Rolle> / Seite <n>`). Bedient ein Companion mehrere Plätze, pro Rolle eine eigene Kesher-Verbindung anlegen (z. B. `kesher_licht` mit `lighting`, `kesher_propresenter` mit `audio`) und jedem Stream Deck die Tasten aus seiner Verbindung geben. Nur so bekommt jede Taste Calls, Bilder und Status der richtigen Rolle. Für Tasten, die eine Person anrufen oder ansprechen sollen, `Direct role` statt `Direct user` verwenden: dann funktioniert die Taste, egal wer gerade in der Rolle angemeldet ist.
 

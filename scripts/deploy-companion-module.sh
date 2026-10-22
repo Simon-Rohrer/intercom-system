@@ -30,12 +30,13 @@ run_as_repo_owner() {
 }
 
 if [[ -z "$PACKAGE_PATH" ]]; then
-  mapfile -t PREBUILT_PACKAGES < <(find "$MODULE_ROOT" -maxdepth 1 -type f -name 'kesher-*.tgz' -print | sort)
-  if [[ ${#PREBUILT_PACKAGES[@]} -gt 0 ]]; then
-    PACKAGE_PATH="${PREBUILT_PACKAGES[${#PREBUILT_PACKAGES[@]}-1]}"
+  # Only the package of the current version (package.json) – an older one would install old code
+  MODULE_VERSION="$(grep -o '"version": *"[^"]*"' "$MODULE_ROOT/package.json" | head -1 | cut -d'"' -f4)"
+  if [[ -n "$MODULE_VERSION" && -f "$MODULE_ROOT/kesher-$MODULE_VERSION.tgz" ]]; then
+    PACKAGE_PATH="$MODULE_ROOT/kesher-$MODULE_VERSION.tgz"
     echo "No package supplied; using repository package $PACKAGE_PATH"
   else
-    echo "No package supplied; building the Companion package from $MODULE_ROOT"
+    echo "No package for version ${MODULE_VERSION:-?}; building the Companion package from $MODULE_ROOT"
   fi
 fi
 

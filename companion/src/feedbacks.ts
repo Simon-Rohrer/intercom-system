@@ -317,15 +317,20 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
         // drives the physical Stream Deck button image. Without it the button
         // shows only the fallback text/colour and never updates visually even
         // though new images arrive via the WebSocket.
+        // Kesher's image is a transparent layer (frame, function badge such as "SELECT TALK",
+        // state colours); background colour and label come from Companion around it.
+        // Companion takes the image only as base64 text (png64) – a "png" buffer was silently
+        // dropped, so keys showed just the black fallback text without colours/state.
         const img = self.getButtonImage(slotIndex, pageNumber);
-        if (img) {
-          return {
-            ...fallbackStyle,
-            png: img,
-          } as CompanionAdvancedFeedbackResult;
-        }
-
-        return fallbackStyle as CompanionAdvancedFeedbackResult;
+        const result: CompanionAdvancedFeedbackResult = img
+          ? {
+              ...fallbackStyle,
+              png64: img.toString("base64"),
+              pngalignment: "center:center",
+              show_topbar: false,
+            }
+          : fallbackStyle;
+        return result;
       },
     },
   };
