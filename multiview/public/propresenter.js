@@ -3,7 +3,9 @@
 // nextMode: 'background' = nächste Folie, die einen Hintergrund startet (Video, Bild, PDF …),
 //           'direct' = direkt folgende Folie
 export const PP_DEFAULTS = { show: 'both', content: 'image', showName: true, nextMode: 'background', showControls: false, blankMode: 'clearAll' }
-export const PLAYLIST_DEFAULTS = { thumbs: true, size: 1 }
+// source: '' = die gerade aktive Playlist, sonst die UUID einer festen Playlist (sourceName zur Anzeige)
+// view: 'list' = Einträge untereinander, 'slides' = alle Folien jedes Lieds als Bilder
+export const PLAYLIST_DEFAULTS = { thumbs: true, size: 1, source: '', sourceName: '', view: 'list' }
 
 const SHOW_MODES = ['both', 'current', 'next', 'backgrounds', 'nextBackground']
 
@@ -16,7 +18,24 @@ export function ppOptions(options) {
 }
 
 export function playlistOptions(options) {
-  return { ...PLAYLIST_DEFAULTS, ...options }
+  const o = { ...PLAYLIST_DEFAULTS, ...options }
+  if (typeof o.source !== 'string') o.source = ''
+  if (!['list', 'slides'].includes(o.view)) o.view = 'list'
+  return o
+}
+
+/**
+ * Die Playlist, die die Kachel zeigt: die aktive oder eine feste. Ist die feste gerade aktiv, mit
+ * laufendem/nächstem Eintrag; sonst ist der Eintrag „laufend“, dessen Lied gerade läuft.
+ */
+export function shownPlaylist(state, o) {
+  if (!o.source) return state?.playlist ? { ...state.playlist, songs: state.songs || {} } : null
+  const fixed = state?.playlists?.[o.source]
+  if (!fixed || fixed.missing) return null
+  if (state.playlist?.uuid === o.source) return { ...state.playlist, songs: state.songs || {} }
+  const live = state.presentation?.uuid
+  const activeIndex = live ? (fixed.items.find((it) => it.presentation === live)?.index ?? null) : null
+  return { name: fixed.name || o.sourceName, items: fixed.items, activeIndex, nextIndex: null, focusedIndex: null, songs: state.songs || {} }
 }
 
 /** Adresse eines Folienbilds (über den Multiview-Server). */
@@ -210,7 +229,7 @@ export function createProPresenterView(options, { interactive = false } = {}) {
 export function createPlaylistView(options) {
   const o = playlistOptions(options)
   const el = document.createElement('div')
-  el.className = `pl-view${o.thumbs ? ' with-thumbs' : ''}`
+  el.className = `pl-view${o.thumbs ? ' with-thumbs' : ''}${o.view === 'slides' ? ' pl-slides-view' : ''}`
   el.style.setProperty('--pl-size', String(o.size))
   el.innerHTML = `<div class="pl-title"></div><div class="pl-list"></div><div class="pp-offline" hidden></div>`
   const title = el.querySelector('.pl-title')
@@ -221,9 +240,11 @@ export function createPlaylistView(options) {
   let lastActive = null
   let lastTop = null
 
-  // Laufendes Lied mittig halten; am Anfang und Ende der Liste so weit es geht
+  let lastLive = ''
+  // Laufendes Lied (bzw. in „Alle Folien“ die laufende Folie) mittig halten; am Anfang und Ende so weit es geht
   function centerCurrent(smooth) {
-    const current = rows.find((r) => r.item.index === lastActive)?.row
+    const block = rows.find((r) => r.item.index === lastActive)?.row
+    const current = (block && block.offsetHeight > list.clientHeight * 0.8 && block.querySelector('.pl-slide.live')) || block
     if (!current || !list.clientHeight) return
     const max = Math.max(0, list.scrollHeight - list.clientHeight)
     const top = Math.round(Math.min(max, Math.max(0, current.offsetTop + current.offsetHeight / 2 - list.clientHeight / 2)))
@@ -237,17 +258,23 @@ export function createPlaylistView(options) {
   return {
     el,
     update(state) {
-      const pl = state?.connected ? state.playlist : null
+      const pl = state?.connected ? shownPlaylist(state, o) : null
       offline.hidden = Boolean(pl)
       list.hidden = !pl
       offline.textContent = !state?.connected
         ? state?.host ? 'ProPresenter nicht erreichbar' : 'ProPresenter nicht eingerichtet'
-        : 'Keine Playlist aktiv'
+        : o.source
+          ? state.playlists?.[o.source]?.missing ? `Playlist „${o.sourceName || '?'}“ nicht gefunden` : 'Playlist wird geladen …'
+          : 'Keine Playlist aktiv'
       if (!pl) return
       title.textContent = pl.name
+      const slides = o.view === 'slides'
 
-      // Liste nur neu aufbauen, wenn sich die Einträge ändern
-      const key = JSON.stringify(pl.items.map((it) => [it.index, it.name, it.type, it.hidden, it.color, it.bg?.cue, it.bg?.presentation]))
+      // Liste nur neu aufbauen, wenn sich die Einträge (bzw. ihre Folien) ändern
+      const key = JSON.stringify([
+        pl.items.map((it) => [it.index, it.name, it.type, it.hidden, it.color, it.bg?.cue, it.bg?.presentation]),
+        slides ? pl.items.map((it) => (it.presentation ? (pl.songs[it.presentation] || []).map((c) => [c.group, c.color, c.enabled]) : null)) : null,
+      ])
       if (key !== itemsKey) {
         itemsKey = key
         list.replaceChildren()
@@ -257,6 +284,29 @@ export function createPlaylistView(options) {
           if (it.type === 'header') {
             row.textContent = it.name.replace(/[▼▲]/g, '').trim()
             if (it.color) row.style.setProperty('--pl-color', it.color)
+          } else if (slides) {
+            // Alle Folien des Lieds als Bilder, mit der Farbe ihrer Gruppe (Strophe, Refrain …)
+            row.classList.add('pl-song')
+            const name = document.createElement('div')
+            name.className = 'pl-name'
+            name.textContent = it.name
+            const grid = document.createElement('div')
+            grid.className = 'pl-slides'
+            ;(pl.songs[it.presentation] || []).forEach((cue, i) => {
+              const slide = document.createElement('span')
+              slide.className = `pl-slide${cue.enabled ? '' : ' off'}`
+              slide.dataset.cue = String(i)
+              if (cue.color) slide.style.setProperty('--pl-color', cue.color)
+              slide.title = cue.group
+              const img = document.createElement('img')
+              img.alt = ''
+              img.loading = 'lazy'
+              img.src = thumbUrl({ presentation: it.presentation, cue: i }, 240)
+              slide.append(img)
+              grid.append(slide)
+            })
+            if (!grid.childElementCount) grid.textContent = it.presentation ? 'Folien werden geladen …' : ''
+            row.append(name, grid)
           } else {
             row.innerHTML = `<span class="pl-thumb"></span><span class="pl-name"></span><span class="pl-bg"></span>`
             row.querySelector('.pl-name').textContent = it.name
@@ -281,9 +331,16 @@ export function createPlaylistView(options) {
         row.classList.toggle('current', item.index === pl.activeIndex)
         row.classList.toggle('next', item.index === pl.nextIndex)
         row.classList.toggle('selected', item.index === pl.focusedIndex)
+        // Laufende Folie im Lied markieren
+        if (slides && item.presentation) {
+          const liveCue = item.index === pl.activeIndex && state.presentation?.uuid === item.presentation ? state.index : null
+          for (const slide of row.querySelectorAll('.pl-slide')) slide.classList.toggle('live', Number(slide.dataset.cue) === liveCue)
+        }
       }
-      const changed = pl.activeIndex !== lastActive
+      const live = slides ? `${state.presentation?.uuid ?? ''}:${state.index ?? ''}` : ''
+      const changed = pl.activeIndex !== lastActive || live !== lastLive
       lastActive = pl.activeIndex
+      lastLive = live
       // Noch nicht ausgelegt (Kachel gerade erst eingefügt): im nächsten Frame
       if (list.clientHeight) centerCurrent(changed)
       else requestAnimationFrame(() => centerCurrent(false))

@@ -317,7 +317,7 @@ let ppState = emptyProPresenterState()
 let ppTimer = null
 let ppTarget = ''
 const ppPresentations = new Map() // UUID -> { at, name, cues: [{ text, label }], bg: [Cue-Nummern] }
-let ppPlaylistCache = null // { uuid, at, name, items }
+const ppPlaylistCache = new Map() // uuid → { uuid, at, name, items }
 
 function emptyProPresenterState() {
   return {
@@ -335,7 +335,9 @@ function emptyProPresenterState() {
     nextBgSlide: null, // nächste Folie, die einen Hintergrund startet { presentation, cue, label, song, text }
     focused: null, // angeklicktes Lied, falls es vom laufenden abweicht { presentation, name, playlistIndex }
     background: { current: null, next: null }, // { presentation, cue, label, song }
-    playlist: null, // { name, activeIndex, nextIndex, items: [...] }
+    playlist: null, // { uuid, name, activeIndex, nextIndex, items: [...] }
+    playlists: {}, // feste Playlists der Kachel „Playlist“: uuid → { name, items }
+    songs: {}, // Folien der Lieder für „Alle Folien“: Präsentation → [{ group, color, label, enabled }]
     cues: [], // alle Folien der laufenden Präsentation { group, color, label, enabled } – für die Prediger-Ansicht
     layers: null, // was gerade sichtbar ist { slide, media } – „ausgeblendet“ = slide false
     // Ausgeblendet meldet ProPresenter keine laufende Präsentation mehr. Damit die Prediger-Ansicht
@@ -392,7 +394,8 @@ const headerColor = (c) =>
 
 /** Einträge der Playlist (zwischengespeichert), Lieder mit ihrem ersten Hintergrund. */
 async function ppPlaylist(uuid) {
-  if (ppPlaylistCache?.uuid === uuid && Date.now() - ppPlaylistCache.at < PP_PLAYLIST_TTL) return ppPlaylistCache
+  const hit = ppPlaylistCache.get(uuid)
+  if (hit && Date.now() - hit.at < PP_PLAYLIST_TTL) return hit
   const data = await ppGet(`/v1/playlist/${encodeURIComponent(uuid)}`)
   const items = []
   for (const it of data?.items ?? []) {
@@ -412,8 +415,32 @@ async function ppPlaylist(uuid) {
       bg,
     })
   }
-  ppPlaylistCache = { uuid, at: Date.now(), name: data?.id?.name ?? '', items }
-  return ppPlaylistCache
+  const entry = { uuid, at: Date.now(), name: data?.id?.name ?? '', items }
+  ppPlaylistCache.set(uuid, entry)
+  return entry
+}
+
+/** Welche Playlists und Folien die Kacheln „Playlist“ brauchen (feste Playlist, Ansicht „Alle Folien“) */
+function playlistWants() {
+  const fixed = new Set()
+  const slides = new Set() // '' = aktive Playlist
+  for (const layout of config.layouts || [])
+    for (const tile of layout.tiles || []) {
+      if (tile.kind !== 'playlist') continue
+      const source = typeof tile.playlist?.source === 'string' ? tile.playlist.source : ''
+      if (source) fixed.add(source)
+      if (tile.playlist?.view === 'slides') slides.add(source)
+    }
+  return { fixed, slides }
+}
+
+/** Alle Playlists von ProPresenter (Ordner aufgelöst) – für die Auswahl im Editor */
+function flattenPpPlaylists(list, out = []) {
+  for (const entry of Array.isArray(list) ? list : []) {
+    if (entry?.field_type === 'playlist' && entry.id?.uuid) out.push({ uuid: entry.id.uuid, name: String(entry.id.name || '') })
+    if (Array.isArray(entry?.children)) flattenPpPlaylists(entry.children, out)
+  }
+  return out
 }
 
 /**
@@ -498,6 +525,7 @@ async function pollProPresenterOnce(target) {
     if (activePlaylist?.uuid) {
       const playlist = await ppPlaylist(activePlaylist.uuid)
       next.playlist = {
+        uuid: activePlaylist.uuid,
         name: playlist.name || activePlaylist.name,
         activeIndex: active.presentation.item?.index ?? null,
         nextIndex: null,
@@ -505,6 +533,24 @@ async function pollProPresenterOnce(target) {
         items: playlist.items,
       }
     }
+    // Feste Playlists und die Folien der Lieder für die Kachel „Playlist“
+    const want = playlistWants()
+    for (const uuid of want.fixed) {
+      try {
+        const playlist = await ppPlaylist(uuid)
+        next.playlists[uuid] = { name: playlist.name, items: playlist.items }
+      } catch {
+        next.playlists[uuid] = { name: '', items: [], missing: true }
+      }
+    }
+    const songUuids = new Set()
+    for (const source of want.slides)
+      for (const it of (source ? next.playlists[source]?.items : next.playlist?.items) ?? []) if (it.presentation && it.type !== 'header') songUuids.add(it.presentation)
+    for (const uuid of songUuids) {
+      const info = await ppPresentation(uuid)
+      if (info) next.songs[uuid] = info.cues.map((c) => ({ group: c.group, color: c.color, label: c.label.trim(), enabled: c.enabled }))
+    }
+
     const items = next.playlist?.items ?? []
     const songsAfter = (i) => items.filter((it) => it.index > i && it.presentation && !it.hidden).map((it) => it.presentation)
 
@@ -613,7 +659,7 @@ function applyProPresenter() {
   ppTarget = target
   clearTimeout(ppTimer)
   ppPresentations.clear()
-  ppPlaylistCache = null
+  ppPlaylistCache.clear()
   ppState = emptyProPresenterState()
   broadcast({ type: 'propresenter', ...ppState })
   clearTimeout(stageTimer)
@@ -2742,6 +2788,16 @@ app.all('/api/propresenter/stage-message', requireTrusted, requireMutation, (req
 })
 
 // Folienbilder von ProPresenter weiterreichen (Browser brauchen so nur diesen Server)
+// Playlists von ProPresenter für die Auswahl „feste Playlist“ im Layout-Editor
+app.get('/api/propresenter/playlists', requireUser, async (req, res) => {
+  if (!ppBase()) return res.json({ ok: false, error: 'ProPresenter ist nicht eingerichtet', playlists: [] })
+  try {
+    res.json({ ok: true, playlists: flattenPpPlaylists(await ppGet('/v1/playlists')) })
+  } catch (err) {
+    res.json({ ok: false, error: `ProPresenter nicht erreichbar (${err.message})`, playlists: [] })
+  }
+})
+
 app.get('/api/propresenter/thumb/:uuid/:index', requireTrusted, requireDisplayReader, async (req, res) => {
   const base = ppBase()
   if (!base) return res.status(503).end()

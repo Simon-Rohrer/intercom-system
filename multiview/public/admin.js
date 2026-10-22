@@ -2107,13 +2107,39 @@ function meterSection(tile) {
 }
 
 /** Playlist-Kachel: Vorschaubilder und Schriftgröße. */
+// Playlists von ProPresenter für die Auswahl „feste Playlist“ (einmal laden, bei Bedarf neu)
+let ppPlaylistChoices = null
+async function loadPpPlaylists(force = false) {
+  if (ppPlaylistChoices && !force) return
+  ppPlaylistChoices = { loading: true, playlists: [] }
+  const data = await fetch('/api/propresenter/playlists', { cache: 'no-store' })
+    .then((r) => r.json())
+    .catch(() => ({ ok: false, error: 'Nicht erreichbar', playlists: [] }))
+  ppPlaylistChoices = { loading: false, error: data.ok ? '' : data.error, playlists: data.playlists || [] }
+  if (selectedTileId && currentLayout()?.tiles.find((t) => t.id === selectedTileId)?.kind === 'playlist') renderInspector()
+}
+
 function playlistSection(tile) {
   const o = playlistOptions(tile.playlist)
+  void loadPpPlaylists()
+  const choices = ppPlaylistChoices?.playlists || []
+  const known = !o.source || choices.some((p) => p.uuid === o.source)
+  const sourceOptions = [
+    `<option value="" ${o.source ? '' : 'selected'}>Die gerade aktive Playlist</option>`,
+    ...choices.map((p) => `<option value="${esc(p.uuid)}" ${p.uuid === o.source ? 'selected' : ''}>${esc(p.name || 'Ohne Namen')}</option>`),
+    ...(known ? [] : [`<option value="${esc(o.source)}" selected>${esc(o.sourceName || 'Gewählte Playlist')} (gerade nicht in ProPresenter)</option>`]),
+  ].join('')
   return `
     <div class="meter-settings">
       <h4>Playlist</h4>
-      <p class="muted" style="margin:0;font-size:12px">Zeigt die aktive Playlist von ProPresenter. Das laufende Lied ist rot, das nächste grün markiert, gespielte sind abgeblendet.</p>
-      <label class="check"><input type="checkbox" data-pl="thumbs" ${o.thumbs ? 'checked' : ''}> Hintergrund-Vorschau anzeigen</label>
+      <label class="field"><span>Welche Playlist</span><select data-pl="source">${sourceOptions}</select></label>
+      ${ppPlaylistChoices?.loading ? '<p class="muted small" style="margin:0">Playlists werden von ProPresenter geladen …</p>' : ppPlaylistChoices?.error ? `<p class="muted small" style="margin:0">${esc(ppPlaylistChoices.error)} </p><button type="button" class="btn small" data-action="pp-playlists-reload">Playlists neu laden</button>` : ''}
+      <label class="field"><span>Anzeige</span><select data-pl="view">
+        <option value="list" ${o.view === 'list' ? 'selected' : ''}>Liste der Einträge</option>
+        <option value="slides" ${o.view === 'slides' ? 'selected' : ''}>Alle Folien als Bilder</option>
+      </select></label>
+      <p class="muted" style="margin:0;font-size:12px">${o.source ? 'Zeigt immer diese Playlist, egal welche in ProPresenter gerade aktiv ist. Läuft ein Lied daraus, ist es rot markiert.' : 'Zeigt die aktive Playlist von ProPresenter. Das laufende Lied ist rot, das nächste grün markiert, gespielte sind abgeblendet.'}${o.view === 'slides' ? ' Die laufende Folie hat einen roten Rahmen; der Farbstrich unten ist die Gruppe (Strophe, Refrain …).' : ''}</p>
+      ${o.view === 'list' ? `<label class="check"><input type="checkbox" data-pl="thumbs" ${o.thumbs ? 'checked' : ''}> Hintergrund-Vorschau anzeigen</label>` : ''}
       <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
         <input type="range" min="0.6" max="2" step="0.1" data-pl="size" value="${o.size}"></label>
     </div>`
@@ -2788,9 +2814,12 @@ function onInspectorField(e) {
     if (!tile) return
     const value = el.type === 'checkbox' ? el.checked : el.type === 'range' ? Number(el.value) : el.value
     tile.playlist = { ...playlistOptions(tile.playlist), [el.dataset.pl]: value }
+    // Namen der festen Playlist mitspeichern – für die Anzeige, falls ProPresenter gerade aus ist
+    if (el.dataset.pl === 'source') tile.playlist.sourceName = value ? el.selectedOptions[0]?.textContent.replace(/ \(gerade nicht in ProPresenter\)$/, '') || '' : ''
     const out = el.closest('label').querySelector('output')
     if (out) out.textContent = `${Math.round(value * 100)} %`
     renderCanvas()
+    if (el.tagName === 'SELECT') renderInspector()
     changed()
     return
   }
@@ -3009,6 +3038,10 @@ inspector.addEventListener('click', (e) => {
       changed(0)
       break
     }
+    case 'pp-playlists-reload':
+      void loadPpPlaylists(true)
+      renderInspector()
+      break
     case 'duplicate-tile': {
       const copy = { ...tile, id: uid('t') }
       copy.x = clamp(tile.x + 1, 0, layout.cols - copy.w)

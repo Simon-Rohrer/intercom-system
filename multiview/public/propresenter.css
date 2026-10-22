@@ -130,6 +130,17 @@
 .pl-row.selected { outline: 2px dashed #19c94a; outline-offset: -2px; }
 .pl-row.selected .pl-name::after { content: "  ◀ angeklickt"; color: #19c94a; font-weight: 700; font-size: 0.8em; }
 
+/* Playlist „Alle Folien“: je Lied der Name und darunter alle Folien als Bilder */
+.pl-row.pl-song { display: block; padding: 0.35em 0.6em 0.45em; }
+.pl-song .pl-name { font-weight: 700; margin-bottom: 0.3em; }
+.pl-slides { display: flex; flex-wrap: wrap; gap: 0.3em; font-size: 0.8em; color: #777; }
+.pl-slide { position: relative; width: calc(6.5em * var(--pl-size, 1)); aspect-ratio: 16 / 9; background: #1a1a1a; border-radius: 2px; overflow: hidden; box-shadow: inset 0 -0.22em 0 var(--pl-color, transparent); }
+.pl-slide img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pl-slide.off { opacity: 0.35; }
+.pl-slide.live { outline: 0.18em solid #ff3b30; outline-offset: -0.18em; }
+.pl-row.pl-song.current { background: rgba(196, 0, 0, 0.28); }
+.pl-row.pl-song.current .pl-name { color: #fff; }
+
 /* Steuer-Leiste: Zurück / Ausblenden / Weiter */
 .pp-controls {
   position: relative;
