@@ -1960,7 +1960,8 @@ app.post('/api/chat/send', requireUser, async (req, res) => {
 app.post(['/api/me/qr', '/.jms-auth/api/me/qr'], requireUser, (req, res) => {
   try {
     const dayCode = access.gateway().active ? access.dayCode().code : null
-    res.json({ ok: true, ...access.createQrToken(req.user, req), dayCode })
+    // mode 'unlock' (Übersicht): nur freischalten, Name und Rolle wählt man am Handy selbst
+    res.json({ ok: true, ...access.createQrToken(req.user, req, { mode: req.body?.mode === 'unlock' ? 'unlock' : 'login' }), dayCode })
   } catch (err) {
     res.status(err.status || 400).json({ ok: false, error: err.message })
   }
@@ -1969,7 +1970,9 @@ app.post(['/api/me/qr', '/.jms-auth/api/me/qr'], requireUser, (req, res) => {
 app.get('/q/:token', (req, res) => {
   const ok = access.redeemQrToken(req.params.token, req, res)
   // Der Code kommt von einem angemeldeten Gerät – das Handy gleich für heute freischalten,
-  // damit es auch Intercom und Dashboard ohne Tagescode öffnen kann
+  // damit es auch Intercom und Dashboard ohne Tagescode öffnen kann. Übersicht-QR: danach
+  // Name und Rolle wählen
+  if (ok === 'unlock') return res.redirect(302, loginPath('/remote.html'))
   res.redirect(ok ? '/remote.html' : '/login.html?qr=abgelaufen')
 })
 
@@ -1979,7 +1982,7 @@ app.get('/q/:token', (req, res) => {
 app.get('/.jms-auth/q/:token', (req, res) => {
   const ok = access.redeemQrToken(req.params.token, req, res)
   if (!ok) return res.redirect(302, `${loginPath('/')}&qr=abgelaufen`)
-  res.redirect(302, '/')
+  res.redirect(302, ok === 'unlock' ? loginPath('/') : '/')
 })
 
 app.get(['/api/qr.svg', '/.jms-auth/api/qr.svg'], async (req, res) => {

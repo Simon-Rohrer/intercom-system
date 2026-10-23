@@ -392,6 +392,29 @@ test('QR-Ausstellung verlangt aktive Ursprungssession und gültige Freigabe', as
   assert.equal(access.redeemQrToken(ticket.token, request(), response()), false)
 })
 
+test('Übersicht-QR schaltet das Handy nur frei – Name und Rolle wählt man dort selbst', async () => {
+  const { access } = await setup()
+  access.setGateway({ enabled: true })
+  const cookies = await loginAs(access, 'video', approve(access))
+  const user = access.userOf(request(cookies))
+  // Ein Handy, das früher per Fernsteuerungs-QR als „video“ übernommen wurde
+  const phone = response()
+  assert.equal(access.redeemQrToken(access.createQrToken(user, request(cookies)).token, request({}, '192.168.0.91'), phone), true)
+  assert.equal(access.userOf(request(phone.cookies, '192.168.0.91')).roleId, 'video')
+
+  const unlock = access.createQrToken(user, request(cookies), { mode: 'unlock' })
+  const scan = response()
+  assert.equal(access.redeemQrToken(unlock.token, request(phone.cookies, '192.168.0.91'), scan), 'unlock')
+  assert.equal(access.userOf(request(phone.cookies, '192.168.0.91')), null) // übernommene Rolle ist weg
+  assert.equal(scan.cookies.mv_session, undefined) // keine neue Anmeldung
+  // Neues Handy: frei für heute, ohne Anmeldung
+  const fresh = response()
+  assert.equal(access.redeemQrToken(access.createQrToken(user, request(cookies), { mode: 'unlock' }).token, request({}, '192.168.0.92'), fresh), 'unlock')
+  assert.equal(access.userOf(request(fresh.cookies, '192.168.0.92')), null)
+  assert.equal(access.deviceStatus('192.168.0.92', request(fresh.cookies, '192.168.0.92')).approved, true)
+  assert.equal(access.redeemQrToken(unlock.token, request(), response()), false) // nur einmal
+})
+
 test('QRs und bereits angemeldete Zweitgeräte werden mit Ursprungssession widerrufen', async () => {
   const { access } = await setup()
   const cookies = await loginAs(access, 'admin')

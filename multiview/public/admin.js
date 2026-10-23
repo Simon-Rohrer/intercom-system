@@ -3881,6 +3881,8 @@ for (const id of ['#pp-host', '#pp-port']) {
 
 const PI_VIEWS = { standard: 'Wie bei der Rolle eingestellt', station: 'Station', simple: 'Einfach' }
 let piStatus = { seen: [], stations: null, error: '' }
+// Belegte Rollen wie auf der Anmeldeseite (Rolle → wer angemeldet ist), für die Rollenwahl der Pis
+let piOccupied = {}
 
 function piSettings() {
   config.raspberry ??= {}
@@ -3993,9 +3995,19 @@ function renderRaspberry() {
     list.innerHTML =
       r.clients
         .map((pi) => {
+          // Belegt wie bei der Anmeldung: angemeldet (oder in Kesher) oder schon bei einem anderen Pi;
+          // die eigene Rolle des Pi bleibt wählbar
+          const takenBy = (roleId) => {
+            if (roleId === pi.roleId) return ''
+            const otherPi = r.clients.find((c) => c.id !== pi.id && c.roleId === roleId)
+            return otherPi ? `Raspberry ${otherPi.name || ''}`.trim() : piOccupied[roleId] || ''
+          }
           const roleOptions = [
             '<option value="">– Rolle wählen –</option>',
-            ...roles.map((role) => `<option value="${esc(role.id)}" ${role.id === pi.roleId ? 'selected' : ''}>${esc(role.name)}</option>`),
+            ...roles.map((role) => {
+              const holder = takenBy(role.id)
+              return `<option value="${esc(role.id)}" ${role.id === pi.roleId ? 'selected' : ''} ${holder ? 'disabled' : ''}>${esc(role.name)}${holder ? ` – angemeldet: ${esc(holder)}` : ''}</option>`
+            }),
             // Rolle, die Kesher (noch) nicht kennt: trotzdem anzeigen statt still zu verlieren
             ...(pi.roleId && !roles.some((role) => role.id === pi.roleId) ? [`<option value="${esc(pi.roleId)}" selected>${esc(pi.roleId)} (unbekannt)</option>`] : []),
           ].join('')
@@ -4082,6 +4094,11 @@ async function loadRaspberryStatus() {
     piStatus = await res.json()
   } catch (err) {
     piStatus = { seen: piStatus.seen, stations: null, error: `Status nicht ladbar (${err.message})` }
+  }
+  try {
+    piOccupied = (await (await fetch('/api/login/roles', { cache: 'no-store' })).json()).occupied ?? {}
+  } catch {
+    // Belegung unbekannt: alle Rollen wählbar lassen
   }
   renderRaspberry()
   renderPiScreens()
@@ -4457,15 +4474,15 @@ function renderProfileCard() {
   el.classList.toggle('with-qr', !user?.open)
 }
 
-// Anmelde-QR auf der Übersicht: Handy-Kamera drauf → das Handy ist als dieselbe Person/Rolle
-// angemeldet (und für heute freigeschaltet). Ein Code gilt einmal und 10 Minuten – darum
+// Anmelde-QR auf der Übersicht: Handy-Kamera drauf → das Handy ist für heute freigeschaltet
+// (wie mit dem Tagescode), Name und Rolle wählt man dann am Handy. Ein Code gilt einmal und 10 Minuten – darum
 // erneuert er sich alle 2 Minuten von selbst, damit immer ein gültiger auf dem Bildschirm steht.
 const loginQrCard = document.createElement('div')
 loginQrCard.className = 'glass qr-hero'
 loginQrCard.innerHTML = `<img alt="QR-Code zum Anmelden am Handy" width="168" height="168">
   <div class="qr-hero-text">
     <h3>Handy anmelden</h3>
-    <p class="muted">Mit der Handy-Kamera scannen – das Handy ist dann gleich angemeldet.</p>
+    <p class="muted">Mit der Handy-Kamera scannen – das Handy ist dann für heute freigeschaltet, Name und Rolle wählst du dort.</p>
     <div class="qr-hero-code" hidden>
       <span>Code für Laptops</span>
       <output class="day-code-digits"></output>
@@ -4479,7 +4496,7 @@ async function renewHeroQr() {
   const img = loginQrCard.querySelector('img')
   try {
     if (document.visibilityState !== 'hidden') {
-      const res = await fetch('/api/me/qr', { method: 'POST' })
+      const res = await fetch('/api/me/qr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'unlock' }) })
       const data = await res.json()
       if (!data.ok) throw new Error(data.error)
       img.src = qrUrl(`${publicOrigin(server)}/q/${data.token}`)

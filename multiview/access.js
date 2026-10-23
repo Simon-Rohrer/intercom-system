@@ -845,7 +845,12 @@ function createAccess({
     log('Zugang: Admin-PIN aktualisiert – bestehende Sitzungen widerrufen')
   }
 
-  function createQrToken(user, req) {
+  /**
+   * QR-Code eines angemeldeten Geräts. mode 'login' (Handy-Fernsteuerung): das Handy wird als
+   * dieselbe Person/Rolle angemeldet. mode 'unlock' (Übersicht): das Handy wird nur für heute
+   * freigeschaltet (wie mit dem Tagescode), Name und Rolle wählt man danach selbst.
+   */
+  function createQrToken(user, req, { mode = 'login' } = {}) {
     prune()
     const session = rawSessionById(user?.sessionId)
     if (!validSession(session) || session.version !== user?.version || lookupSession(req)?.id !== session.id)
@@ -855,7 +860,8 @@ function createAccess({
       throw fail(403, 'Bitte zuerst den Tagescode eingeben')
     const token = randomToken()
     const expires = Math.min(Date.now() + QR_TTL_MS, session.expiresAt, grant?.expiresAt ?? Infinity)
-    qrTokens.set(sha256(token), { id: session.id, version: session.version, device: grant, machine: session.machine, expires })
+    qrTokens.set(sha256(token), { id: session.id, version: session.version, device: grant, machine: session.machine, expires,
+      mode: mode === 'unlock' ? 'unlock' : 'login' })
     return { token, expiresInMs: expires - Date.now() }
   }
 
@@ -894,6 +900,7 @@ function createAccess({
     if (!entry || entry.expires <= Date.now()) return false
     const sourceSession = rawSessionById(entry.id)
     if (!validSession(sourceSession) || sourceSession.version !== entry.version || (entry.device && !validGrant(entry.device))) return false
+    if (entry.mode === 'unlock') return unlockByQr(entry, req, res)
     if (!matchesMachine(req, entry.machine)) return false
     if (!sourceSession.admin && gatewayActive() && !entry.device && !machineOf(req) && !deviceGrant(req)) return false
     const own = lookupSession(req)
@@ -907,6 +914,19 @@ function createAccess({
     res.append('Set-Cookie', cookieFor(sessionToken, req))
     if (device) approveDevice(ipOf(req), req, res, device)
     return true
+  }
+
+  /** Übersicht-QR: nur die Freigabe für heute, keine Anmeldung – danach Name und Rolle wählen. */
+  function unlockByQr(entry, req, res) {
+    // Eine früher per QR übernommene Anmeldung (Rolle des anderen Geräts) endet, damit die
+    // Anmeldemaske kommt; eine eigene Anmeldung des Handys bleibt
+    const own = lookupSession(req)
+    if (own?.originSessionId) endSessions([own], 'neu anmelden')
+    if (gatewayActive() && !deviceGrant(req)) {
+      const device = !entry.device || entry.device.permanent || entry.device.ipGrant ? todayGrant() : entry.device
+      approveDevice(ipOf(req), req, res, device)
+    }
+    return 'unlock'
   }
 
   function validAudience(origin) {
