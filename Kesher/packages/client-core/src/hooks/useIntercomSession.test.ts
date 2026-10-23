@@ -271,6 +271,19 @@ describe("useIntercomSession low-latency helpers", () => {
     expect(tuned).toContain("a=ptime:20");
   });
 
+  it("keeps the SDP free of empty lines when it adds a=ptime in low-power mode", () => {
+    const sdp = [
+      "v=0",
+      "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+      "a=rtpmap:111 opus/48000/2",
+      "",
+    ].join("\r\n");
+
+    const tuned = tuneOpusSdpForSpeech(sdp, true);
+    expect(tuned.endsWith("a=ptime:20\r\n")).toBe(true);
+    expect(tuned.split("\r\n").slice(0, -1)).not.toContain("");
+  });
+
   it("sets playoutDelayHint to zero when the receiver supports it", () => {
     const receiver = { playoutDelayHint: 0.25 };
 
