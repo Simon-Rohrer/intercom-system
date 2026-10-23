@@ -17,11 +17,11 @@ import threading
 import time
 from typing import Any, Optional
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlsplit, urlunsplit
-from urllib.request import HTTPSHandler, HTTPRedirectHandler, Request, build_opener
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from urllib.request import HTTPSHandler, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 
-LAUNCHER_VERSION = "13"
+LAUNCHER_VERSION = "14"
 DEVICE_CERTIFICATE = Path("/etc/jms-device/client.crt")
 DEVICE_PRIVATE_KEY = Path("/etc/jms-device/client.key")
 SERVER_CA_CERTIFICATE = Path("/etc/jms-device/server-ca.crt")
@@ -37,6 +37,15 @@ DISPLAY_MODES = ("intercom", "multiview")
 # Settings managed in the Multiview (Einstellungen → Raspberry Pis), see config_url
 MANAGED_CONFIG_BOOT_WAIT_SECONDS = 15
 MANAGED_CONFIG_POLL_SECONDS = 15
+# Long-Poll: der Multiview hält die Anfrage bis zu so lange offen und antwortet sofort bei einer Änderung
+MANAGED_CONFIG_LONG_POLL_SECONDS = 25
+MANAGED_CONFIG_LONG_POLL_GAP_SECONDS = 1
+# Chromium-Fernsteuerung nur auf 127.0.0.1: Intercom und Multiview sind zwei Tabs, umgeschaltet
+# wird ohne Neustart des Browsers
+DEVTOOLS_PORT = 9222
+DEVTOOLS_WAIT_SECONDS = 60
+# Gesetzt beim Neustart des Launchers nach einer Änderung: die Desktop-Sitzung läuft schon
+RELOAD_ENV = "KESHER_PI_RELOAD"
 MANAGED_CONFIG_KEYS = (
     "server_url",
     "browser_binary",
@@ -281,6 +290,9 @@ def managed_config_request(
     local_raw: dict[str, Any],
     addresses: list[str],
     mac_addresses: list[str],
+    display: str = "",
+    version: str = "",
+    wait_seconds: int = 0,
 ) -> dict[str, Any]:
     """What the Pi tells the Multiview about itself (to find and offer its entry)."""
     local_client: Optional[dict[str, Any]] = None
@@ -290,7 +302,7 @@ def managed_config_request(
         pass
     if local_client is not None and not local_client.get("ip_address"):
         local_client.pop("ip_address", None)
-    return {
+    request = {
         "macs": sorted(mac_addresses),
         "ips": sorted(addresses),
         "hostname": socket.gethostname(),
@@ -298,11 +310,18 @@ def managed_config_request(
         "local": local_client,
         "localServerUrl": local_raw.get("server_url") if isinstance(local_raw.get("server_url"), str) else "",
     }
+    if display:
+        request["display"] = display
+    if version and wait_seconds:
+        request["version"] = version
+        request["waitSeconds"] = int(wait_seconds)
+    return request
 
 
 def fetch_managed_config(
     config_url: str,
     request_body: dict[str, Any],
+    timeout: float = 3,
 ) -> Optional[dict[str, Any]]:
     """Answer of the Multiview, or None when it cannot be reached."""
     request = Request(
@@ -315,7 +334,7 @@ def fetch_managed_config(
         method="POST",
     )
     try:
-        with open_device_request(request) as response:
+        with open_device_request(request, timeout) as response:
             payload = json.load(response)
     except (HTTPError, URLError, TimeoutError, OSError, ValueError):
         return None
@@ -491,6 +510,24 @@ def load_effective_config(
     return validate_config(merged), merged, source
 
 
+def without_display(raw: dict[str, Any]) -> dict[str, Any]:
+    """Konfiguration ohne die Anzeige (Intercom/Multiview) – zum Vergleichen."""
+    copy = dict(raw)
+    if isinstance(raw.get("clients"), list):
+        copy["clients"] = [
+            {key: value for key, value in client.items() if key not in ("display", "screen_id")}
+            if isinstance(client, dict)
+            else client
+            for client in raw["clients"]
+        ]
+    return copy
+
+
+def display_only_change(old_raw: dict[str, Any], new_raw: dict[str, Any]) -> bool:
+    """Hat sich nur die Anzeige geändert? Dann Tab wechseln statt den Browser neu zu starten."""
+    return old_raw != new_raw and without_display(old_raw) == without_display(new_raw)
+
+
 def start_managed_config_watch(
     path: Path,
     current_raw: dict[str, Any],
@@ -498,8 +535,14 @@ def start_managed_config_watch(
     on_change: Any,
     stop_event: threading.Event,
     poll_seconds: int = MANAGED_CONFIG_POLL_SECONDS,
+    on_display: Any = None,
+    shown_display: Any = None,
 ) -> Optional[threading.Thread]:
-    """Polls the Multiview; a change for this Pi calls on_change (restart with it)."""
+    """Asks the Multiview for changes; a change for this Pi calls on_change (restart with it).
+
+    The Multiview holds the request until something changes (long poll), so a switch arrives
+    at once. A change of only the display (Intercom/Multiview) calls on_display instead.
+    """
     try:
         local_raw = read_config_file(path)
         config_url = normalize_config_url(local_raw.get("config_url"))
@@ -507,29 +550,95 @@ def start_managed_config_watch(
         return None
 
     def run() -> None:
-        while not stop_event.wait(poll_seconds):
+        known_raw = current_raw
+        version = ""
+        # Erste Anfrage gleich: sie liefert die Version, ab dann wartet der Multiview auf Änderungen
+        delay = min(poll_seconds, MANAGED_CONFIG_LONG_POLL_GAP_SECONDS)
+        while not stop_event.wait(delay):
             try:
                 addresses = detect_ipv4_addresses()
             except (OSError, subprocess.SubprocessError, ValueError):
                 addresses = []
             response = fetch_managed_config(
                 config_url,
-                managed_config_request(local_raw, addresses, detect_mac_addresses()),
+                managed_config_request(
+                    local_raw,
+                    addresses,
+                    detect_mac_addresses(),
+                    display=shown_display() if shown_display else "",
+                    version=version,
+                    wait_seconds=MANAGED_CONFIG_LONG_POLL_SECONDS,
+                ),
+                timeout=MANAGED_CONFIG_LONG_POLL_SECONDS + 10,
             )
             if response is None:
+                delay = poll_seconds
                 continue
             if handle_power_command(response):
                 return
             write_managed_config_cache(without_power_command(response))
-            if merge_managed_config(local_raw, response) != current_raw:
-                print("Settings changed in the Multiview; restarting the station", flush=True)
-                reload_event.set()
-                on_change()
-                return
+            # Ältere Multiviews kennen kein Long-Poll (keine version): dann wie bisher alle 15 s
+            version = response.get("version") if isinstance(response.get("version"), str) else ""
+            delay = MANAGED_CONFIG_LONG_POLL_GAP_SECONDS if version else poll_seconds
+            merged = merge_managed_config(local_raw, response)
+            if merged == known_raw:
+                continue
+            if on_display is not None and display_only_change(known_raw, merged):
+                known_raw = merged
+                on_display(merged)
+                continue
+            print("Settings changed in the Multiview; restarting the station", flush=True)
+            reload_event.set()
+            on_change()
+            return
 
     thread = threading.Thread(target=run, name="kesher-pi-config", daemon=True)
     thread.start()
     return thread
+
+
+def devtools_call(path: str, method: str = "GET", timeout: float = 3) -> str:
+    """Chromium-Fernsteuerung (nur 127.0.0.1, ohne Proxy)."""
+    request = Request(f"http://127.0.0.1:{DEVTOOLS_PORT}{path}", method=method)
+    with build_opener(ProxyHandler({})).open(request, timeout=timeout) as response:
+        return response.read().decode("utf-8", "replace")
+
+
+def devtools_pages() -> Optional[list[dict[str, Any]]]:
+    """Offene Tabs, oder None wenn Chromium (noch) nicht antwortet."""
+    try:
+        targets = json.loads(devtools_call("/json/list"))
+    except (URLError, TimeoutError, OSError, ValueError):
+        return None
+    if not isinstance(targets, list):
+        return None
+    return [target for target in targets if isinstance(target, dict) and target.get("type") == "page"]
+
+
+def wait_for_devtools(process: subprocess.Popen[Any], timeout_seconds: int = DEVTOOLS_WAIT_SECONDS) -> bool:
+    deadline = time.monotonic() + timeout_seconds
+    while process.poll() is None and time.monotonic() < deadline:
+        if devtools_pages() is not None:
+            return True
+        time.sleep(1)
+    return False
+
+
+def show_tab(url: str, prefix: str) -> bool:
+    """Den Tab zeigen, dessen Adresse mit prefix beginnt – fehlt er, wird er mit url geöffnet."""
+    pages = devtools_pages()
+    if pages is None:
+        return False
+    page = next((page for page in pages if str(page.get("url", "")).startswith(prefix)), None)
+    try:
+        if page is None:
+            # Ein neuer Tab ist sofort der sichtbare
+            page = json.loads(devtools_call(f"/json/new?{quote(url, safe='')}", method="PUT", timeout=10))
+            return isinstance(page, dict) and bool(page.get("id"))
+        devtools_call(f"/json/activate/{page['id']}")
+        return True
+    except (URLError, TimeoutError, OSError, ValueError, KeyError):
+        return False
 
 
 def build_kesher_url(server_url: str, client: dict[str, Any]) -> str:
@@ -582,10 +691,10 @@ class NoDeviceRedirect(HTTPRedirectHandler):
         raise HTTPError(request.full_url, code, "device redirects are not allowed", headers, response)
 
 
-def open_device_request(request: Request):
+def open_device_request(request: Request, timeout: float = 3):
     context = ssl_context_for_url(request.full_url)
     opener = build_opener(HTTPSHandler(context=context), NoDeviceRedirect())
-    return opener.open(request, timeout=3)
+    return opener.open(request, timeout=timeout)
 
 
 def read_cpu_times() -> Optional[tuple[int, int]]:
@@ -1252,6 +1361,10 @@ def browser_command(
         "--autoplay-policy=no-user-gesture-required",
         "--use-fake-ui-for-media-stream",
         f"--user-data-dir={profile_dir}",
+        f"--remote-debugging-port={DEVTOOLS_PORT}",
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
+        "--disable-backgrounding-occluded-windows",
     ]
     if low_power_mode:
         command.extend(
@@ -1318,14 +1431,12 @@ def main() -> int:
         multiview = client.get("display") == "multiview"
         if multiview and not merged_raw.get("config_url"):
             raise ValueError("display multiview needs config_url")
-        start_url = (
-            build_multiview_url(merged_raw.get("config_url"), client)
-            if multiview
-            else build_kesher_url(config["server_url"], client)
-        )
+        # Das Intercom läuft immer (erster Tab); der Multiview ist ein zweiter Tab davor
+        kesher_url = build_kesher_url(config["server_url"], client)
         if args.print_url:
-            print(start_url)
+            print(build_multiview_url(merged_raw.get("config_url"), client) if multiview else kesher_url)
             return 0
+        reloading = os.environ.pop(RELOAD_ENV, "") == "1"
         if args.print_heartbeat:
             print(
                 json.dumps(
@@ -1352,18 +1463,50 @@ def main() -> int:
         print(
             f'Starting Kesher station {client["name"]} '
             f'with role {client["role_id"]} for {client["ip_address"]} '
-            f'showing {"Multiview" if multiview else "Intercom"} '
+            f'showing {"Multiview" if multiview else "Intercom"}{" (reload)" if reloading else ""} '
             f"(settings from {config_source})",
             flush=True,
         )
         # Changes in the Multiview: stop the browser and start over with the new settings
         reload_event = threading.Event()
         browser: dict[str, Optional[subprocess.Popen[Any]]] = {"process": None}
+        # Intercom oder Multiview: gewünscht (aus dem Multiview) und gerade gezeigt (Tab vorne)
+        display_lock = threading.Lock()
+        display_state = {"wanted": merged_raw, "shown": ""}
 
         def stop_for_reload() -> None:
             process = browser["process"]
             if process is not None:
                 stop_browser_process(process)
+
+        def apply_display() -> None:
+            """Den gewünschten Tab nach vorne holen (Chromium muss laufen)."""
+            with display_lock:
+                raw = display_state["wanted"]
+                try:
+                    wanted_client = resolve_client(validate_config(raw), addresses, mac_addresses)
+                except ValueError as error:
+                    print(f"Display change ignored: {error}", flush=True)
+                    return
+                if wanted_client.get("display") == "multiview":
+                    url = build_multiview_url(raw.get("config_url"), wanted_client)
+                    target, prefix = "multiview", f"{server_origin(url)}/output.html"
+                else:
+                    url, target, prefix = kesher_url, "intercom", server_origin(kesher_url)
+                if display_state["shown"] == target:
+                    return
+                if show_tab(url, prefix):
+                    display_state["shown"] = target
+                    print(f"Showing {target}", flush=True)
+                else:
+                    print(f"Could not show {target} yet", flush=True)
+
+        def on_display(raw: dict[str, Any]) -> None:
+            with display_lock:
+                display_state["wanted"] = raw
+            process = browser["process"]
+            if process is not None and process.poll() is None:
+                apply_display()
 
         config_watch = None
         if merged_raw.get("config_url"):
@@ -1373,6 +1516,8 @@ def main() -> int:
                 reload_event,
                 stop_for_reload,
                 heartbeat_stop,
+                on_display=on_display,
+                shown_display=lambda: display_state["shown"],
             )
         reload_requested = False
         if client.get("standby") is True:
@@ -1403,16 +1548,20 @@ def main() -> int:
                 if config_watch is not None:
                     config_watch.join(timeout=1)
                 if reload_requested:
+                    os.environ[RELOAD_ENV] = "1"
                     os.execv(sys.executable, [sys.executable, os.path.abspath(__file__), *sys.argv[1:]])
         try:
             wait_for_server(
-                server_origin(start_url) if multiview else config["server_url"],
+                config["server_url"],
                 config.get("allow_insecure_tls") is True,
                 reload_event,
             )
             wait_for_display_runtime(
                 config.get("display_runtime_wait_seconds", DISPLAY_RUNTIME_WAIT_SECONDS),
-                config.get(
+                # Nach einer Änderung läuft die Desktop-Sitzung schon – nicht noch einmal warten
+                0
+                if reloading
+                else config.get(
                     "display_runtime_settle_seconds",
                     DISPLAY_RUNTIME_SETTLE_SECONDS,
                 ),
@@ -1442,26 +1591,20 @@ def main() -> int:
                 process = subprocess.Popen(
                     browser_command(
                         config,
-                        start_url,
+                        kesher_url,
                         client.get("low_power_mode") is True,
                     )
                 )
                 browser["process"] = process
+                display_state["shown"] = "intercom"
                 if reload_event.is_set():
                     stop_browser_process(process)
-                if multiview:
-                    # Multiview statt Intercom: kein Kesher-Login abzuwarten, Kesher sieht im
-                    # Heartbeat „multiview“
-                    print(f"Showing Multiview screen {client['screen_id']}", flush=True)
-                    update_heartbeat_state(
-                        heartbeat_state,
-                        heartbeat_state_lock,
-                        browser_status="running",
-                        login_status="multiview",
-                        login_error="",
-                    )
-                    return_code = process.wait()
-                    break
+                # Soll der Multiview vorne sein: sobald Chromium antwortet als zweiten Tab öffnen,
+                # das Intercom verbindet sich dahinter
+                if wait_for_devtools(process):
+                    apply_display()
+                else:
+                    print("Chromium remote control not reachable; Intercom only", flush=True)
                 update_heartbeat_state(
                     heartbeat_state,
                     heartbeat_state_lock,
@@ -1534,6 +1677,7 @@ def main() -> int:
                 config_watch.join(timeout=1)
             if reload_requested:
                 # Start over in this process (same service, new settings)
+                os.environ[RELOAD_ENV] = "1"
                 os.execv(sys.executable, [sys.executable, os.path.abspath(__file__), *sys.argv[1:]])
     except (ValueError, subprocess.SubprocessError, OSError) as error:
         print(f"Kesher Pi configuration error: {error}", file=sys.stderr, flush=True)

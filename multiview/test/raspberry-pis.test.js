@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert')
-const { normalizeRaspberry, launcherConfig, parsePiRequest, createPiRegistry, piScreenId } = require('../raspberry-pis')
+const { normalizeRaspberry, launcherConfig, parsePiRequest, createPiRegistry, piScreenId, answerVersion } = require('../raspberry-pis')
 
 const RASPBERRY = normalizeRaspberry({
   managed: true,
@@ -74,6 +74,19 @@ test('Anzeige: Intercom ist Standard, Multiview schickt den Bildschirm des Pi mi
   assert.equal(client.screen_id, piScreenId('a'))
   assert.equal(piScreenId('a'), 'pi-a')
   assert.equal(launcherConfig(RASPBERRY, { clientId: 'a' }).config.clients[0].display, undefined)
+})
+
+test('Pi meldet Anzeige, Version und Wartezeit (Long-Poll)', () => {
+  const req = parsePiRequest({ macs: ['b8:27:eb:b2:aa:2d'], display: 'multiview', version: 'abc', waitSeconds: 600 })
+  assert.equal(req.display, 'multiview')
+  assert.equal(req.version, 'abc')
+  assert.equal(req.waitSeconds, 25) // höchstens 25 s
+  const old = parsePiRequest({ macs: ['b8:27:eb:b2:aa:2d'], display: 'fernseher', waitSeconds: '5' })
+  assert.deepEqual([old.display, old.version, old.waitSeconds], ['', '', 0])
+  const a = launcherConfig(RASPBERRY, { clientId: 'a' })
+  assert.equal(answerVersion(a), answerVersion(launcherConfig(RASPBERRY, { clientId: 'a' })))
+  const multiview = normalizeRaspberry({ ...RASPBERRY, clients: [{ ...RASPBERRY.clients[0], display: 'multiview' }] })
+  assert.notEqual(answerVersion(a), answerVersion(launcherConfig(multiview, { clientId: 'a' })))
 })
 
 test('Solange nicht hier verwaltet, gilt die Datei auf dem Pi', () => {

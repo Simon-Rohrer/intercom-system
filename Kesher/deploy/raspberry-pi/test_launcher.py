@@ -351,6 +351,76 @@ class LauncherTests(unittest.TestCase):
             },
         }
 
+    def multiview_response(self, version="v2"):
+        response = self.managed_response()
+        response["config"]["clients"][0].update({"display": "multiview", "screen_id": "pi-a"})
+        response["version"] = version
+        return response
+
+    def test_display_only_change_is_detected(self):
+        local = {"config_url": "https://192.168.0.21:8090/api/raspberry-pis/config"}
+        intercom = launcher.merge_managed_config(local, self.managed_response())
+        multiview = launcher.merge_managed_config(local, self.multiview_response())
+        self.assertTrue(launcher.display_only_change(intercom, multiview))
+        self.assertTrue(launcher.display_only_change(multiview, intercom))
+        self.assertFalse(launcher.display_only_change(intercom, intercom))
+        other_role = launcher.merge_managed_config(local, self.multiview_response())
+        other_role["clients"][0]["role_id"] = "cam2"
+        self.assertFalse(launcher.display_only_change(intercom, other_role))
+
+    def test_config_watch_switches_display_without_restart_and_long_polls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_local_config(directory, config_url="https://192.168.0.21:8090/api/raspberry-pis/config")
+            local = launcher.read_config_file(path)
+            current = launcher.merge_managed_config(local, self.managed_response())
+            first = dict(self.managed_response(), version="v1")
+            restart = self.multiview_response("v3")
+            restart["config"]["clients"][0]["role_id"] = "cam2"
+            reload_event = launcher.threading.Event()
+            stop_event = launcher.threading.Event()
+            restarts, displays = [], []
+            with mock.patch.object(launcher, "fetch_managed_config", side_effect=[first, self.multiview_response(), restart]) as fetch, \
+                mock.patch.object(launcher, "write_managed_config_cache"), \
+                mock.patch.object(launcher, "detect_ipv4_addresses", return_value=["192.168.0.157"]), \
+                mock.patch.object(launcher, "detect_mac_addresses", return_value=["b8:27:eb:b2:aa:2d"]), \
+                mock.patch.object(launcher, "MANAGED_CONFIG_LONG_POLL_GAP_SECONDS", 0.01):
+                thread = launcher.start_managed_config_watch(
+                    path, current, reload_event, lambda: restarts.append(1), stop_event, poll_seconds=0.01,
+                    on_display=displays.append, shown_display=lambda: "intercom",
+                )
+                thread.join(timeout=2)
+            self.assertEqual([raw["clients"][0].get("display") for raw in displays], ["multiview"])
+            self.assertEqual(restarts, [1])
+            self.assertTrue(reload_event.is_set())
+            first_body = fetch.call_args_list[0].args[1]
+            self.assertNotIn("version", first_body)
+            second_body = fetch.call_args_list[1].args[1]
+            self.assertEqual((second_body["version"], second_body["waitSeconds"], second_body["display"]), ("v1", 25, "intercom"))
+            self.assertGreater(fetch.call_args_list[1].kwargs["timeout"], 25)
+
+    def test_show_tab_activates_an_open_tab_or_opens_it(self):
+        calls = []
+        pages = '[{"id": "k", "type": "page", "url": "https://192.168.0.21:8443/?autoLogin=1"}]'
+
+        def call(path, method="GET", timeout=3):
+            calls.append((path, method))
+            if path == "/json/list":
+                return pages
+            if path.startswith("/json/new"):
+                return '{"id": "m"}'
+            return "Target activated"
+
+        with mock.patch.object(launcher, "devtools_call", side_effect=call):
+            self.assertTrue(launcher.show_tab("https://192.168.0.21:8443/?x=1", "https://192.168.0.21:8443"))
+            self.assertTrue(launcher.show_tab("https://192.168.0.21:8090/output.html?screen=pi-a", "https://192.168.0.21:8090/output.html"))
+        self.assertIn(("/json/activate/k", "GET"), calls)
+        self.assertIn(("/json/new?https%3A%2F%2F192.168.0.21%3A8090%2Foutput.html%3Fscreen%3Dpi-a", "PUT"), calls)
+
+    def test_browser_allows_local_remote_control(self):
+        command = launcher.browser_command(self.config, "https://192.168.1.10:8443/?a=1")
+        self.assertIn(f"--remote-debugging-port={launcher.DEVTOOLS_PORT}", command)
+        self.assertIn("--disable-renderer-backgrounding", command)
+
     def test_managed_settings_replace_the_file_but_keep_local_secrets(self):
         local = dict(self.config, config_url="https://mv/api", heartbeat_secret="geheim")
         merged = launcher.merge_managed_config(local, self.managed_response())

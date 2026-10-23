@@ -976,13 +976,12 @@ const piScreenId = (pi) => `pi-${pi.id}`
 
 function piScreenState(pi) {
   if (pi.standby) return '<span class="pill">Ruhemodus</span>'
-  const station = piStatus.stations?.find((s) => s.deviceId === piDeviceId(pi))
-  if (!piStatus.stations || !station) return ''
-  if (!station.online) return '<span class="pill bad">offline</span>'
-  if (pi.display === 'multiview') {
-    return station.effectiveStatus === 'multiview' ? '<span class="pill ok">zeigt Multiview</span>' : '<span class="pill warn">wechselt …</span>'
-  }
-  return station.intercomConnected ? '<span class="pill ok">im Intercom</span>' : '<span class="pill warn">wechselt …</span>'
+  // Was der Pi zeigt, meldet er bei jeder Abfrage seiner Einstellungen (Launcher ab Version 14)
+  const seen = piStatus.seen.find((p) => piSeenMatches(pi, p))
+  if (!seen || seen.ageMs > 60_000) return '<span class="pill bad">offline</span>'
+  const wanted = pi.display === 'multiview' ? 'multiview' : 'intercom'
+  if (seen.display && seen.display !== wanted) return '<span class="pill warn">wechselt …</span>'
+  return wanted === 'multiview' ? '<span class="pill ok">zeigt Multiview</span>' : '<span class="pill ok">zeigt Intercom</span>'
 }
 
 function renderPiScreens() {
@@ -3971,7 +3970,6 @@ function piStationPill(pi) {
   const station = piStatus.stations.find((s) => s.deviceId === piDeviceId(pi))
   if (!station) return '<span class="pill">nicht gemeldet</span>'
   if (station.online && station.intercomConnected) return '<span class="pill ok">im Intercom</span>'
-  if (station.online && station.effectiveStatus === 'multiview') return '<span class="pill ok">zeigt Multiview</span>'
   if (station.online) return '<span class="pill warn">läuft, nicht im Intercom</span>'
   return '<span class="pill bad">offline</span>'
 }

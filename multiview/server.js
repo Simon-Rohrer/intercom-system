@@ -12,7 +12,7 @@ const { Atem } = require('atem-connection')
 const { createKesherChat } = require('./kesher-chat')
 const { createKesherRoles } = require('./kesher-roles')
 const { createNeighbors } = require('./neighbors')
-const { normalizeRaspberry, parsePiRequest, createPiRegistry, piScreenId } = require('./raspberry-pis')
+const { normalizeRaspberry, parsePiRequest, createPiRegistry, piScreenId, answerVersion } = require('./raspberry-pis')
 const { createChurchTools } = require('./churchtools')
 const { createUplink, normalizeUplink } = require('./uplink')
 const { createYouTube } = require('./youtube')
@@ -178,6 +178,8 @@ function saveConfig() {
 }
 
 let config = loadConfig()
+// Raspberry Pis, die auf neue Einstellungen warten (siehe /api/raspberry-pis/config)
+const piWaiters = new Set()
 rememberLayouts()
 
 /** Findet einen Eintrag per ID, Name (ohne Groß-/Kleinschreibung) oder 1-basierter Nummer. */
@@ -1319,6 +1321,7 @@ function rememberLayouts() {
 function configChanged(origin = null) {
   rememberLayouts()
   saveConfig()
+  wakePiWaiters()
   broadcast({ type: 'config', config, origin })
   refreshAtemState()
   applyAtemIp()
@@ -1496,7 +1499,15 @@ function takePiPowerCommand(clientId) {
   return Date.now() - command.at < PI_POWER_TTL_MS ? { id: command.id, action: command.action } : null
 }
 
-// Ohne Anmeldung (der Pi hat keine) – es kommen nur die Einträge zurück, die zu seinen MACs/IPs passen
+// Pis, die auf eine Änderung warten (Long-Poll, piWaiters steht oben bei config): jede Änderung
+// der Einstellungen weckt sie
+function wakePiWaiters() {
+  for (const waiter of [...piWaiters]) waiter()
+}
+
+// Ohne Anmeldung (der Pi hat keine) – es kommen nur die Einträge zurück, die zu seinen MACs/IPs passen.
+// Schickt der Pi die Version seiner letzten Antwort und waitSeconds mit, antwortet der Server erst,
+// wenn sich für ihn etwas ändert (oder nach waitSeconds) – so schaltet er sofort statt alle 15 s um.
 app.post('/api/raspberry-pis/config', (req, res) => {
   if (!isMachine(req, 'pi-config')) return res.status(403).json({ ok: false, error: 'Nur für registrierte Technikstationen' })
   const machine = access.machineOf(req)
@@ -1505,17 +1516,44 @@ app.post('/api/raspberry-pis/config', (req, res) => {
     return res.status(403).json({ ok: false, error: 'Technikstation muss zuerst vom Admin registriert werden' })
   const request = parsePiRequest(req.body)
   piRegistry.record({ ...request, ips: [observedIp] }, observedIp)
-  const answer = stationLauncherConfig(config.raspberry, machine)
-  const power = takePiPowerCommand(machine.raspberryClientId)
-  if (power) {
-    answer.power = power
-    console.log(`Raspberry Pi ${machine.raspberryClientId}: ${power.action} ausgeliefert`)
+
+  const reply = () => {
+    const answer = stationLauncherConfig(config.raspberry, machine)
+    answer.version = answerVersion(answer)
+    const power = takePiPowerCommand(machine.raspberryClientId)
+    if (power) {
+      answer.power = power
+      console.log(`Raspberry Pi ${machine.raspberryClientId}: ${power.action} ausgeliefert`)
+    }
+    return answer
   }
-  res.set('Cache-Control', 'no-store').json(answer)
+  const pending = () => piPowerCommands.has(machine.raspberryClientId)
+  const changed = () => pending() || answerVersion(stationLauncherConfig(config.raspberry, machine)) !== request.version
+  if (!request.waitSeconds || !request.version || changed()) return res.set('Cache-Control', 'no-store').json(reply())
+
+  let done = false
+  const finish = () => {
+    if (done) return
+    done = true
+    clearTimeout(timer)
+    piWaiters.delete(check)
+    if (!res.writableEnded && !res.destroyed) res.set('Cache-Control', 'no-store').json(reply())
+  }
+  const check = () => changed() && finish()
+  const timer = setTimeout(finish, request.waitSeconds * 1000)
+  piWaiters.add(check)
+  // Verbindung weg (Pi neu gestartet, Netz weg): nicht weiter warten
+  res.on('close', () => {
+    if (done) return
+    done = true
+    clearTimeout(timer)
+    piWaiters.delete(check)
+  })
 })
 
 function queuePiPower(client, action) {
   piPowerCommands.set(client.id, { id: require('crypto').randomUUID(), action, at: Date.now() })
+  wakePiWaiters()
 }
 
 app.post('/api/raspberry-pis/power', requireAdmin, (req, res) => {

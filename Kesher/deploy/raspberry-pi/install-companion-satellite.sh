@@ -293,6 +293,27 @@ EOF
 systemctl daemon-reload
 systemctl disable satellite.service
 systemctl enable kesher-satellite.timer
+
+# Nur das Stream-Deck-Plugin: jedes Plugin ist ein eigener Node-Prozess (~85 MB auf dem Pi 3),
+# Loupedeck, Infinitton und Mirabox hängen an keiner Station
+SATELLITE_APP_CONFIG=/home/satellite/satellite-config.json
+if [[ -f "${SATELLITE_APP_CONFIG}" ]]; then
+  systemctl stop satellite.service
+  python3 - "${SATELLITE_APP_CONFIG}" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as handle:
+    config = json.load(handle)
+plugins = config.setdefault("surfacePluginsEnabled", {})
+for plugin in ("loupedeck", "idisplay-infinitton", "mirabox-stream-dock"):
+    plugins[plugin] = False
+plugins["elgato-stream-deck"] = True
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(config, handle, indent="\t")
+PY
+fi
 systemctl restart satellite.service
 
 echo "Companion Satellite is installed and running."

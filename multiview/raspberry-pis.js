@@ -9,6 +9,8 @@
 const VIEWS = ['standard', 'station', 'simple']
 // Was der Pi auf seinem Bildschirm zeigt: das Intercom (Kesher) oder einen Multiview
 const DISPLAYS = ['intercom', 'multiview']
+// Längste Zeit, die eine Anfrage des Pi auf eine Änderung wartet (unter den Zeitlimits von Caddy/Browser)
+const PI_WAIT_MAX_SECONDS = 25
 const MAC_RE = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/
 const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
 
@@ -156,7 +158,17 @@ function parsePiRequest(body) {
         )
       : null,
     localServerUrl: normalizeServerUrl(body?.localServerUrl),
+    // Was der Pi gerade auf dem Bildschirm zeigt (für den Status in Einstellungen → Bildschirme)
+    display: DISPLAYS.includes(body?.display) ? body.display : '',
+    // Long-Poll: Stand der letzten Antwort, die der Pi hat, und wie lange er auf eine Änderung wartet
+    version: text(body?.version).slice(0, 64),
+    waitSeconds: Number.isInteger(body?.waitSeconds) ? Math.min(Math.max(body.waitSeconds, 0), PI_WAIT_MAX_SECONDS) : 0,
   }
+}
+
+/** Kennung einer Antwort an den Pi: ändert sie sich, holt der Pi neue Einstellungen. */
+function answerVersion(answer) {
+  return require('crypto').createHash('sha256').update(JSON.stringify(answer)).digest('hex').slice(0, 16)
 }
 
 /** Merkt sich, welche Pis zuletzt nach ihrer Konfiguration gefragt haben (nur im Speicher). */
@@ -176,4 +188,4 @@ function createPiRegistry({ now = Date.now, max = 50 } = {}) {
   }
 }
 
-module.exports = { normalizeRaspberry, launcherConfig, parsePiRequest, createPiRegistry, piScreenId }
+module.exports = { normalizeRaspberry, launcherConfig, parsePiRequest, createPiRegistry, piScreenId, answerVersion }
