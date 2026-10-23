@@ -328,6 +328,10 @@ export function tuneOpusSdpForSpeech(
 ): string {
   if (!sdp) return sdp;
   const lines = sdp.split("\r\n");
+  // SDP endet mit CRLF: die leere letzte Zeile erst am Schluss wieder anhängen – sonst landen
+  // neue Zeilen dahinter und Chromium verwirft die ganze Beschreibung („Invalid SDP line“)
+  const endsWithNewline = lines.length > 0 && lines[lines.length - 1] === "";
+  if (endsWithNewline) lines.pop();
   const opusPayloadTypes = lines.flatMap((line) => {
     const match = line.match(/^a=rtpmap:(\d+)\s+opus\/48000(?:\/\d+)?$/i);
     return match ? [match[1]] : [];
@@ -367,6 +371,7 @@ export function tuneOpusSdpForSpeech(
       lines.push("a=ptime:20");
     }
   }
+  if (endsWithNewline) lines.push("");
   return lines.join("\r\n");
 }
 
