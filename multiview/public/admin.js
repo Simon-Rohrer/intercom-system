@@ -920,8 +920,123 @@ function screenRows() {
 
 const screenName = ({ id, saved }) => saved?.name || connectorLabel(id)
 
+// Vorschau je Bildschirm: Server-Anschlüsse mit Monitor und Raspberry Pis. Wie bei den Multiviews
+// eine echte Monitoransicht, verkleinert, und nur geladen, solange Bildschirme offen ist.
+const screenPreviewLoader =
+  typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!phoneLayout.matches) {
+              if (entry.isIntersecting) setPreviewLive(entry.target, true)
+            } else if (!entry.isIntersecting && entry.target.classList.contains('live')) {
+              setPreviewLive(entry.target, false)
+            }
+          }
+        },
+        { rootMargin: '200px 0px' },
+      )
+    : { observe: (el) => !phoneLayout.matches && setPreviewLive(el, true), disconnect() {} }
+let screenPreviewsKey = ''
+
+/** Was jeder Bildschirm gerade zeigt: Name, Zustand, Adresse der Vorschau und Layout (für die Größe). */
+function screenPreviewItems() {
+  const screenUrl = (id) => `${location.origin}/output.html?screen=${encodeURIComponent(id)}&embed=1`
+  const items = []
+  for (const row of screenRows()) {
+    if (!row.detected?.connected) continue
+    const output = config.outputs.find((o) => o.id === row.saved?.outputId)
+    items.push({
+      key: row.id,
+      name: screenName(row),
+      what: output ? `Multiview „${output.name}“` : 'aus (schwarz)',
+      src: output ? screenUrl(row.id) : '',
+      layout: config.layouts.find((l) => l.id === output?.layoutId),
+      pill: row.detected.mode ? `<span class="pill plain">${esc(row.detected.mode)}</span>` : '',
+    })
+  }
+  for (const pi of piSettings().clients) {
+    const id = `pi-${pi.id}`
+    const output = config.outputs.find((o) => o.id === config.screens.find((s) => s.id === id)?.outputId)
+    const role = kesherRoles().find((r) => r.id === pi.roleId)?.name || pi.roleId
+    const base = { key: id, name: pi.name || 'Raspberry Pi', pill: piScreenState(pi) }
+    if (pi.standby) items.push({ ...base, what: 'Ruhemodus – Bildschirm aus', src: '' })
+    else if (pi.display === 'multiview')
+      items.push({ ...base, what: output ? `Multiview „${output.name}“` : 'Multiview: aus (schwarz)', src: output ? screenUrl(id) : '', layout: config.layouts.find((l) => l.id === output?.layoutId) })
+    else
+      items.push({
+        ...base,
+        what: `Intercom · ${role || 'keine Rolle'}`,
+        // Spiegel der Rolle wie bei der Kesher-Kachel (kein Mikrofon, belegt die Rolle nicht)
+        src: kesherTileUrl({ kesherRoleId: pi.roleId, kesherUser: `${pi.name || 'Pi'} Vorschau`, kesherView: pi.view === 'simple' ? 'simple' : 'station' }, config) || '',
+      })
+  }
+  return items
+}
+
+function renderScreenPreviews() {
+  const grid = $('#screen-previews')
+  if (!grid) return
+  if (page !== 'einstellungen' || settingsSection !== 'bildschirme') {
+    screenPreviewLoader.disconnect()
+    if (screenPreviewsKey) grid.replaceChildren()
+    screenPreviewsKey = ''
+    return
+  }
+  const items = screenPreviewItems()
+  const key = JSON.stringify(items.map((i) => [i.key, i.src, i.layout?.id ?? null]))
+  if (key !== screenPreviewsKey) {
+    screenPreviewsKey = key
+    screenPreviewLoader.disconnect()
+    grid.innerHTML =
+      items
+        .map(
+          (i) => `<article class="output-card screen-preview-card" data-key="${esc(i.key)}">
+          <div class="output-preview">${
+            i.src
+              ? `<iframe data-src="${esc(i.src)}" allow="autoplay; fullscreen" title="${esc(i.name)}"></iframe>
+            <div class="output-sketch" aria-hidden="true"></div>
+            <button class="output-live-btn" type="button" data-action="live">Live ansehen</button>`
+              : '<div class="screen-preview-off"></div>'
+          }</div>
+          <div class="output-body screen-preview-body">
+            <span class="screen-preview-text"><span class="output-name"></span><span class="output-layout"></span></span>
+            <span class="screen-preview-pill"></span>
+          </div>
+        </article>`,
+        )
+        .join('') || '<p class="muted">Gerade hängt kein Monitor am Server und es ist kein Raspberry Pi eingetragen.</p>'
+    for (const preview of grid.querySelectorAll('.output-preview')) {
+      const item = items.find((i) => i.key === preview.closest('[data-key]').dataset.key)
+      if (setPreviewSize(preview, item?.layout)) scalePreview(preview)
+      if (!preview.querySelector('iframe')) continue
+      previewScaler.observe(preview)
+      screenPreviewLoader.observe(preview)
+      renderSketch(preview.querySelector('.output-sketch'), item?.layout)
+    }
+  }
+  // Texte und Status nachziehen, ohne die Vorschauen neu zu laden
+  for (const card of grid.querySelectorAll('[data-key]')) {
+    const item = items.find((i) => i.key === card.dataset.key)
+    if (!item) continue
+    card.querySelector('.output-name').textContent = item.name
+    card.querySelector('.output-layout').textContent = item.what
+    card.querySelector('.screen-preview-pill').innerHTML = item.pill || ''
+    const off = card.querySelector('.screen-preview-off')
+    if (off) off.textContent = item.what
+  }
+}
+
+$('#screen-previews').addEventListener('click', (e) => {
+  const button = e.target.closest('[data-action="live"]')
+  if (!button) return
+  const preview = button.closest('.output-preview')
+  setPreviewLive(preview, !preview.classList.contains('live'))
+})
+
 function renderScreens() {
   renderPiScreens()
+  renderScreenPreviews()
   const body = $('#screen-rows')
   if (body.contains(document.activeElement) && document.activeElement.type === 'text') return
   const rows = screenRows().map(({ id, detected, saved }) => {
@@ -964,6 +1079,7 @@ function onScreenField(e) {
   let screen = config.screens.find((s) => s.id === id)
   if (!screen) config.screens.push((screen = { id, name: '', outputId: null }))
   screen[key] = key === 'name' ? el.value : key === 'rotate' ? Number(el.value) || 0 : el.value || null
+  renderScreenPreviews()
   renderCompanion()
   changed(key === 'name' ? 350 : 0)
 }
@@ -1032,6 +1148,7 @@ $('#screen-pis').addEventListener('click', (e) => {
   if (!pi || (pi.display || 'intercom') === button.dataset.piDisplay) return
   pi.display = button.dataset.piDisplay
   renderPiScreens()
+  renderScreenPreviews()
   renderCompanion()
   changed(0)
 })
@@ -1043,6 +1160,7 @@ $('#screen-pis').addEventListener('change', (e) => {
   let screen = config.screens.find((s) => s.id === id)
   if (!screen) config.screens.push((screen = { id, name: '', outputId: null }))
   screen[key] = key === 'rotate' ? Number(e.target.value) || 0 : e.target.value || null
+  renderScreenPreviews()
   renderCompanion()
   changed(0)
 })
@@ -4209,6 +4327,7 @@ async function loadRaspberryStatus() {
   renderRaspberry()
   patchPiLive()
   renderPiScreens()
+  renderScreenPreviews()
   renderStatusStrip()
 }
 

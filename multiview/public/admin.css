@@ -845,6 +845,14 @@ a.status-tile:hover { border-color: var(--accent-line); }
 .pi-grid .field small.muted, .pi-device-missing { font-size: 12px; margin-top: 2px; }
 .pi-device-missing { color: var(--amber); }
 .pi-seen-table td { vertical-align: middle; }
+/* Bildschirme: Vorschau je Bildschirm */
+.output-grid.screen-previews { grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); gap: 14px; margin-bottom: 8px; }
+.screen-preview-card { border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.screen-preview-off { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; text-align: center; color: rgba(255, 255, 255, 0.55); font-size: 13px; }
+.screen-preview-body { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; }
+.screen-preview-text { display: flex; flex-direction: column; min-width: 0; }
+.screen-preview-text .output-name { font-weight: 600; font-size: 14px; }
+.screen-preview-text .output-layout { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Bildschirme: ein Kästchen je Raspberry Pi */
 #set-screens .section-head { margin-top: 26px; }
 #set-screens .section-head h3 { margin: 0; }
