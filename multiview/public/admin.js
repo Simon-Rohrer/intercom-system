@@ -2487,6 +2487,23 @@ function slideshowAreasCard(kind, hidden) {
     </details>`
 }
 
+/** Quellen der Diashow – eine Kachel zeigt immer genau eine davon */
+const SLIDESHOW_SOURCES = [
+  ['images', 'Hochgeladene Bilder'],
+  ['pp', 'Folien aus ProPresenter'],
+  ['dropbox', 'Bilder aus dem Dropbox-Ordner'],
+  ['website', 'Slider der Webseite'],
+  ['posts', 'Beiträge der Webseite (Ankündigungen mit Flyer)'],
+  ['ct', 'Termine aus ChurchTools (je Termin eine Folie mit Bild)'],
+  ['events', 'Nächste Veranstaltungen (ChurchTools)'],
+]
+
+/** Gewählte Quelle; '' bei älteren Kacheln mit mehreren Quellen zugleich */
+function slideshowSource(o) {
+  const active = SLIDESHOW_SOURCES.filter(([key]) => o[key])
+  return active.length === 1 ? active[0][0] : active.length ? '' : 'images'
+}
+
 /** Kachel „Diashow“ */
 function slideshowSection(tile) {
   const o = slideshowOptions(tile.slideshow)
@@ -2498,10 +2515,14 @@ function slideshowSection(tile) {
       <input type="range" min="3" max="60" step="1" data-ss="seconds" value="${o.seconds}"></label>
     <label class="field"><span>Bilder einpassen</span>
       <select data-ss="fit"><option value="contain" ${o.fit === 'contain' ? 'selected' : ''}>Ganz zeigen (schwarze Ränder möglich)</option><option value="cover" ${o.fit === 'cover' ? 'selected' : ''}>Füllen (Ränder werden abgeschnitten)</option></select></label>
-    <label class="check"><input type="checkbox" data-ss="website" ${o.website ? 'checked' : ''}> Slider der Webseite</label>
-    <label class="check"><input type="checkbox" data-ss="posts" ${o.posts ? 'checked' : ''}> Beiträge der Webseite (Ankündigungen mit Flyer)</label>
-    ${o.posts ? `<label class="check" style="margin-left:1.6em"><input type="checkbox" data-ss="postCaption" ${o.postCaption ? 'checked' : ''}> Titel unter dem Flyer (meist steht er schon drauf)</label>` : ''}
-    <label class="check"><input type="checkbox" data-ss="ct" ${o.ct ? 'checked' : ''}> Termine aus ChurchTools (je Termin eine Folie mit Bild)</label>
+    <label class="field"><span>Diashow zeigt</span>
+      <select data-ss-source>${[
+        ...(SLIDESHOW_SOURCES.filter(([key]) => o[key]).length > 1 ? [['', 'Mehrere Quellen (bisherige Einstellung)']] : []),
+        ...SLIDESHOW_SOURCES,
+      ]
+        .map(([key, label]) => `<option value="${key}" ${key === slideshowSource(o) ? 'selected' : ''}>${esc(label)}</option>`)
+        .join('')}</select></label>
+    ${o.posts ? `<label class="check"><input type="checkbox" data-ss="postCaption" ${o.postCaption ? 'checked' : ''}> Titel unter dem Flyer (meist steht er schon drauf)</label>` : ''}
     ${
       o.ct
         ? `<div class="meter-settings">
@@ -2516,11 +2537,8 @@ function slideshowSection(tile) {
     </div>`
         : ''
     }
-    <label class="check"><input type="checkbox" data-ss="images" ${o.images ? 'checked' : ''}> Hochgeladene Bilder</label>
-    <label class="check"><input type="checkbox" data-ss="pp" ${o.pp ? 'checked' : ''}> Folien aus ProPresenter</label>
-    <label class="check"><input type="checkbox" data-ss="dropbox" ${o.dropbox ? 'checked' : ''}> Bilder aus dem Dropbox-Ordner${slideshowData?.dropbox?.state === 'unconfigured' ? ' <span class="muted">(unter <a href="#/einstellungen/dropbox">Einstellungen → Dropbox</a> verbinden)</span>' : ''}</label>
+    ${o.dropbox && slideshowData?.dropbox?.state === 'unconfigured' ? '<p class="muted small">Dropbox ist noch nicht verbunden – unter <a href="#/einstellungen/dropbox">Einstellungen → Dropbox</a> verbinden.</p>' : ''}
     ${o.dropbox ? `<label class="check"><input type="checkbox" data-ss="dropboxNow" ${o.dropboxNow ? 'checked' : ''}> Neues Bild in der Dropbox sofort zeigen</label>` : ''}
-    <label class="check"><input type="checkbox" data-ss="events" ${o.events ? 'checked' : ''}> Nächste Veranstaltungen (ChurchTools)</label>
     ${
       o.events
         ? `<div class="meter-settings">
@@ -2714,7 +2732,7 @@ function tileInspector(tile, layout) {
         <option value="churchtools" ${kind === 'churchtools' ? 'selected' : ''}>ChurchTools-Ablauf</option>
         <option value="uplink" ${kind === 'uplink' ? 'selected' : ''}>Upload / Stream (Internet)</option>
         <option value="youtube" ${kind === 'youtube' ? 'selected' : ''}>YouTube Live (Zuschauer, Stream, Chat)</option>
-        <option value="slideshow" ${kind === 'slideshow' ? 'selected' : ''}>Diashow (Bilder, ProPresenter, Veranstaltungen)</option>
+        <option value="slideshow" ${kind === 'slideshow' ? 'selected' : ''}>Diashow (Bilder, ProPresenter, Veranstaltungen …)</option>
         <option value="propresenter" ${kind === 'propresenter' ? 'selected' : ''}>ProPresenter (Folien / Hintergründe)</option>
         <option value="playlist" ${kind === 'playlist' ? 'selected' : ''}>ProPresenter-Playlist</option>
         <option value="preacher" ${kind === 'preacher' ? 'selected' : ''}>ProPresenter-Prediger (Folien steuern)</option>
@@ -2815,6 +2833,17 @@ function onInspectorField(e) {
     const hidden = o[key].filter((n) => n !== el.dataset.name)
     if (!el.checked) hidden.push(el.dataset.name)
     tile.slideshow = { ...o, [key]: hidden }
+    renderCanvas()
+    renderInspector()
+    changed()
+    return
+  }
+
+  if (el.matches('[data-ss-source]')) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile || !el.value) return
+    // Genau eine Quelle an, alle anderen aus
+    tile.slideshow = { ...slideshowOptions(tile.slideshow), ...Object.fromEntries(SLIDESHOW_SOURCES.map(([key]) => [key, key === el.value])) }
     renderCanvas()
     renderInspector()
     changed()
@@ -3052,6 +3081,9 @@ function onInspectorField(e) {
     if (tile.kind === 'source' && !tile.sourceId) tile.sourceId = nextFreeSource()?.id ?? null
     if (tile.kind === 'audio' && !Array.isArray(tile.channels)) tile.channels = [{ input: 'master', label: '' }]
     if (tile.kind === 'kesher' && tile.kesherUser == null) tile.kesherUser = 'Multiview'
+    // Neue Diashow: eine Quelle (hochgeladene Bilder), nicht alle zugleich
+    if (tile.kind === 'slideshow' && !tile.slideshow)
+      tile.slideshow = { ...slideshowOptions({}), ...Object.fromEntries(SLIDESHOW_SOURCES.map(([k]) => [k, k === 'images'])) }
     renderInspector()
   }
   renderCanvas()
