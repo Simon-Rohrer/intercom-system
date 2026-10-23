@@ -237,6 +237,21 @@ test('Rotation ersetzt Schlüssel und Zertifikat und verhindert Wiederverwendung
   assert.equal(access.listMachines()[0].active, false)
 })
 
+test('Rollenwechsel eines Raspberry Pi zieht die Geräteregistrierung mit', async () => {
+  const { access } = await setup()
+  const station = createStation(access, { roleId: 'light', raspberryClientId: 'pi1', deviceId: 'kamera-1-pi' })
+  const other = createStation(access, { roleId: 'light', raspberryClientId: 'pi2', deviceId: 'foyer-pi' })
+  const changed = access.reassignPiMachines('pi1', { roleId: 'video', deviceId: 'kamera-1-pi' })
+  assert.deepEqual(changed.map((machine) => [machine.id, machine.roleId]), [[station.machine.id, 'video']])
+  const now = access.machineOf(certificate(station.machine.fingerprint))
+  assert.equal(now.roleId, 'video')
+  assert.notEqual(now.version, station.machine.version) // alte Anmeldungen gelten nicht mehr
+  assert.equal(access.machineStatus(station.machine.id, station.machine.version).active, false)
+  assert.equal(access.machineOf(certificate(other.machine.fingerprint)).roleId, 'light')
+  assert.deepEqual(access.reassignPiMachines('pi1', { roleId: 'video', deviceId: 'kamera-1-pi' }), []) // nichts zu tun
+  assert.deepEqual(access.reassignPiMachines('pi1', { roleId: 'admin', deviceId: 'kamera-1-pi' }), [])
+})
+
 test('Geräteablauf widerruft Identität und gebundene Sitzungen', async (context) => {
   const { access } = await setup()
   const now = Date.now()

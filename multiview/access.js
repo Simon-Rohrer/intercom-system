@@ -425,6 +425,25 @@ function createAccess({
     return { machine: publicMachine(machine), key }
   }
 
+  /**
+   * Rolle oder Geräte-ID eines Raspberry Pi wurde in den Einstellungen geändert: die Registrierung
+   * seines Zertifikats zieht mit. Neue Version, damit alte Anmeldungen (mit der alten Rolle) enden.
+   */
+  function reassignPiMachines(raspberryClientId, { roleId, deviceId }) {
+    const valid = (value) => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(value)
+    if (!valid(raspberryClientId) || !valid(roleId) || !valid(deviceId) || roleId === ADMIN) return []
+    const changed = Object.values(secret.machines).filter((machine) => machine?.raspberryClientId === raspberryClientId &&
+      machine.revokedAt === null && (machine.roleId !== roleId || machine.deviceId !== deviceId))
+    for (const machine of changed) {
+      machine.roleId = roleId
+      machine.deviceId = deviceId
+      machine.version = randomToken()
+      endSessions(Object.values(secret.sessions).filter((session) => session.machine?.id === machine.id), 'Rolle des Geräts geändert')
+    }
+    if (changed.length) write()
+    return changed.map(publicMachine)
+  }
+
   function revokeMachine(id) {
     const machine = typeof id === 'string' && Object.hasOwn(secret.machines, id) ? secret.machines[id] : null
     if (!machine) throw fail(404, 'Gerät nicht gefunden')
@@ -1153,7 +1172,7 @@ function createAccess({
     login, createSsoTicket, redeemSsoTicket, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession, revokeAdmins,
     gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, check, trusted, createTicket,
     approvePermanent, permanentDevices, revokePermanent, refreshDeviceCookie,
-    listMachines, createMachine, rotateMachine, revokeMachine, machineOf, machineStatus, machineByFingerprint, machineServes,
+    listMachines, createMachine, rotateMachine, reassignPiMachines, revokeMachine, machineOf, machineStatus, machineByFingerprint, machineServes,
     prune, sweep: prune, flush: write,
   }
 }

@@ -1647,6 +1647,19 @@ const access = createAccess({
 })
 const PROFILES_FILE = path.join(DATA_DIR, 'profiles.json')
 
+/**
+ * Rolle/Geräte-ID der Raspberry Pis (Einstellungen → Raspberry Pis) gelten auch für ihr registriertes
+ * Zertifikat – sonst lehnen Multiview und Kesher einen Pi nach einem Rollenwechsel ab
+ * („registered device role required“). Beim Start und nach jeder Änderung durch den Admin.
+ */
+function syncPiMachines() {
+  for (const client of config.raspberry.clients || []) {
+    for (const machine of access.reassignPiMachines(client.id, { roleId: client.roleId, deviceId: client.deviceId }))
+      console.log(`Raspberry Pi ${client.name || client.id}: Gerät „${machine.name}“ jetzt Rolle ${machine.roleId} (${machine.deviceId})`)
+  }
+}
+syncPiMachines()
+
 function requireUser(req, res, next) {
   const user = access.userOf(req)
   if (!user) return res.status(401).json({ ok: false, error: 'Bitte anmelden', login: true })
@@ -2951,6 +2964,7 @@ app.post('/whep/:path', requireTrusted, requireDisplayReader, express.text({ typ
 app.put('/api/config', requireUser, (req, res) => {
   // Ohne Admin-Rechte nur die eigenen Layouts und die Layout-Wahl der eigenen Multiviews
   config = normalizeConfig(req.user.admin ? req.body : applyRestrictedChanges(config, req.body, req.user))
+  if (req.user.admin) syncPiMachines()
   configChanged(req.get('X-Client-Id') || null)
   res.json({ ok: true })
 })
