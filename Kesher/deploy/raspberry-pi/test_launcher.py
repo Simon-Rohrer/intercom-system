@@ -524,17 +524,29 @@ class LauncherTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             launcher.resolve_client(launcher.validate_config(self.config), ["192.168.1.51"], [])
 
-    def test_display_power_switches_every_wayland_output(self):
+    def test_display_power_uses_wlopm_first(self):
         calls = []
 
         def run(command, **kwargs):
             calls.append(command)
+            return mock.Mock(returncode=0)
+
+        self.assertTrue(launcher.set_display_power(True, run))
+        self.assertEqual(calls, [["wlopm", "--on", "*"]])
+
+    def test_display_power_switches_every_wayland_output_without_wlopm(self):
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            if command[0] == "wlopm":
+                raise FileNotFoundError("wlopm")
             if command == ["wlr-randr"]:
                 return mock.Mock(returncode=0, stdout='HDMI-A-1 "Dell"\n  Enabled: yes\nHDMI-A-2 "LG"\n  Enabled: yes\n')
             return mock.Mock(returncode=0)
 
         self.assertTrue(launcher.set_display_power(False, run))
-        self.assertEqual(calls[1:], [["wlr-randr", "--output", "HDMI-A-1", "--off"], ["wlr-randr", "--output", "HDMI-A-2", "--off"]])
+        self.assertEqual(calls[2:], [["wlr-randr", "--output", "HDMI-A-1", "--off"], ["wlr-randr", "--output", "HDMI-A-2", "--off"]])
 
     def test_display_power_falls_back_without_wlr_randr(self):
         calls = []

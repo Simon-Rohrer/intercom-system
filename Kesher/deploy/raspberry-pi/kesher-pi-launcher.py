@@ -377,7 +377,11 @@ def wayland_outputs(run: Any = subprocess.run) -> list[str]:
 
 
 def set_display_power(on: bool, run: Any = subprocess.run) -> bool:
-    """Bildschirm an/aus für den Ruhemodus: wlr-randr (labwc), sonst wlopm, sonst vcgencmd."""
+    """Bildschirm an/aus für den Ruhemodus: wlopm (nur Stromsparen), sonst wlr-randr, sonst vcgencmd.
+
+    wlopm zuerst: wlr-randr meldet den Ausgang ab und wieder an, dabei ist labwc auf dem
+    Pi 3 schon abgestürzt – danach stand der Anmeldebildschirm mit Passwortabfrage da.
+    """
     state = "--on" if on else "--off"
 
     def ok(command: list[str]) -> bool:
@@ -386,10 +390,12 @@ def set_display_power(on: bool, run: Any = subprocess.run) -> bool:
         except (OSError, subprocess.SubprocessError):
             return False
 
+    if ok(["wlopm", state, "*"]):
+        return True
     outputs = wayland_outputs(run)
     if outputs and all([ok(["wlr-randr", "--output", output, state]) for output in outputs]):
         return True
-    return ok(["wlopm", state, "*"]) or ok(["vcgencmd", "display_power", "1" if on else "0"])
+    return ok(["vcgencmd", "display_power", "1" if on else "0"])
 
 
 POWER_ACTIONS = ("poweroff", "reboot")
