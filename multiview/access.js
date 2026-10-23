@@ -391,7 +391,8 @@ function createAccess({
       if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(value)) throw fail(400, 'Ungültige Gerätezuordnung')
       return value
     }
-    const roleId = identifier(given.roleId)
+    // Kesher-Rollen-IDs dürfen Leerzeichen enthalten („lighting 2“)
+    const roleId = given.roleId === undefined || given.roleId === null || given.roleId === '' ? '' : validRoleId(given.roleId) ? given.roleId : identifier(given.roleId)
     if (roleId === ADMIN) throw fail(400, 'Geräte dürfen keine Adminrolle erhalten')
     return { name, mode, services, capabilities, fingerprint, expiresAt, roleId,
       raspberryClientId: identifier(given.raspberryClientId), deviceId: identifier(given.deviceId) }
@@ -425,13 +426,18 @@ function createAccess({
     return { machine: publicMachine(machine), key }
   }
 
+  /** Kesher-Rollen-ID: wie eine Gerätekennung, aber mit Leerzeichen innen (nicht am Rand). */
+  function validRoleId(value) {
+    return typeof value === 'string' && /^[A-Za-z0-9](?:[A-Za-z0-9 _.-]{0,126}[A-Za-z0-9_.-])?$/.test(value)
+  }
+
   /**
    * Rolle oder Geräte-ID eines Raspberry Pi wurde in den Einstellungen geändert: die Registrierung
    * seines Zertifikats zieht mit. Neue Version, damit alte Anmeldungen (mit der alten Rolle) enden.
    */
   function reassignPiMachines(raspberryClientId, { roleId, deviceId }) {
     const valid = (value) => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(value)
-    if (!valid(raspberryClientId) || !valid(roleId) || !valid(deviceId) || roleId === ADMIN) return []
+    if (!valid(raspberryClientId) || !validRoleId(roleId) || !valid(deviceId) || roleId === ADMIN) return []
     const changed = Object.values(secret.machines).filter((machine) => machine?.raspberryClientId === raspberryClientId &&
       machine.revokedAt === null && (machine.roleId !== roleId || machine.deviceId !== deviceId))
     for (const machine of changed) {

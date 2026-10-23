@@ -250,6 +250,10 @@ test('Rollenwechsel eines Raspberry Pi zieht die Geräteregistrierung mit', asyn
   assert.equal(access.machineOf(certificate(other.machine.fingerprint)).roleId, 'light')
   assert.deepEqual(access.reassignPiMachines('pi1', { roleId: 'video', deviceId: 'kamera-1-pi' }), []) // nichts zu tun
   assert.deepEqual(access.reassignPiMachines('pi1', { roleId: 'admin', deviceId: 'kamera-1-pi' }), [])
+  // Kesher-Rollen mit Leerzeichen („cam 2“)
+  assert.equal(access.reassignPiMachines('pi1', { roleId: 'cam 2', deviceId: 'kamera-1-pi' })[0].roleId, 'cam 2')
+  assert.equal(createStation(access, { roleId: 'lighting 2' }).machine.roleId, 'lighting 2')
+  assert.throws(() => createStation(access, { roleId: ' lighting' }), /Gerätezuordnung/)
 })
 
 test('Geräteablauf widerruft Identität und gebundene Sitzungen', async (context) => {
