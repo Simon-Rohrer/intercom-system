@@ -920,172 +920,6 @@ function screenRows() {
 
 const screenName = ({ id, saved }) => saved?.name || connectorLabel(id)
 
-// Vorschau je Bildschirm: Server-Anschlüsse mit Monitor und Raspberry Pis. Wie bei den Multiviews
-// eine echte Monitoransicht, verkleinert, und nur geladen, solange Bildschirme offen ist.
-const screenPreviewLoader =
-  typeof IntersectionObserver === 'function'
-    ? new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (!phoneLayout.matches) {
-              if (entry.isIntersecting) setPreviewLive(entry.target, true)
-            } else if (!entry.isIntersecting && entry.target.classList.contains('live')) {
-              setPreviewLive(entry.target, false)
-            }
-          }
-        },
-        { rootMargin: '200px 0px' },
-      )
-    : { observe: (el) => !phoneLayout.matches && setPreviewLive(el, true), disconnect() {} }
-let screenPreviewsKey = ''
-
-/** Was jeder Bildschirm gerade zeigt: Name, Zustand, Adresse der Vorschau und Layout (für die Größe). */
-function screenPreviewItems() {
-  const screenUrl = (id) => `${location.origin}/output.html?screen=${encodeURIComponent(id)}&embed=1`
-  const items = []
-  for (const row of screenRows()) {
-    if (!row.detected?.connected) continue
-    const output = config.outputs.find((o) => o.id === row.saved?.outputId)
-    items.push({
-      key: row.id,
-      name: screenName(row),
-      what: output ? `Multiview „${output.name}“` : 'aus (schwarz)',
-      src: output ? screenUrl(row.id) : '',
-      layout: config.layouts.find((l) => l.id === output?.layoutId),
-      pill: row.detected.mode ? `<span class="pill plain">${esc(row.detected.mode)}</span>` : '',
-    })
-  }
-  for (const pi of piSettings().clients) {
-    const id = `pi-${pi.id}`
-    const output = config.outputs.find((o) => o.id === config.screens.find((s) => s.id === id)?.outputId)
-    const role = kesherRoles().find((r) => r.id === pi.roleId)?.name || pi.roleId
-    const base = { key: id, name: pi.name || 'Raspberry Pi', pill: piScreenState(pi) }
-    if (pi.standby) items.push({ ...base, what: 'Ruhemodus – Bildschirm aus', src: '' })
-    else if (pi.display === 'multiview')
-      items.push({ ...base, what: output ? `Multiview „${output.name}“` : 'Multiview: aus (schwarz)', src: output ? screenUrl(id) : '', layout: config.layouts.find((l) => l.id === output?.layoutId) })
-    else
-      items.push({
-        ...base,
-        what: `Intercom · ${role || 'keine Rolle'}`,
-        // Spiegel der Rolle wie bei der Kesher-Kachel (kein Mikrofon, belegt die Rolle nicht)
-        src: kesherTileUrl({ kesherRoleId: pi.roleId, kesherUser: `${pi.name || 'Pi'} Vorschau`, kesherView: pi.view === 'simple' ? 'simple' : 'station' }, config) || '',
-      })
-  }
-  return items
-}
-
-function renderScreenPreviews() {
-  const grid = $('#screen-previews')
-  if (!grid) return
-  if (page !== 'einstellungen' || settingsSection !== 'bildschirme') {
-    screenPreviewLoader.disconnect()
-    if (screenPreviewsKey) grid.replaceChildren()
-    screenPreviewsKey = ''
-    return
-  }
-  const items = screenPreviewItems()
-  const key = JSON.stringify(items.map((i) => [i.key, i.src, i.layout?.id ?? null]))
-  if (key !== screenPreviewsKey) {
-    screenPreviewsKey = key
-    screenPreviewLoader.disconnect()
-    grid.innerHTML =
-      items
-        .map(
-          (i) => `<article class="output-card screen-preview-card" data-key="${esc(i.key)}">
-          <div class="output-preview">${
-            i.src
-              ? `<iframe data-src="${esc(i.src)}" allow="autoplay; fullscreen" title="${esc(i.name)}"></iframe>
-            <div class="output-sketch" aria-hidden="true"></div>
-            <button class="output-live-btn" type="button" data-action="live">Live ansehen</button>`
-              : '<div class="screen-preview-off"></div>'
-          }</div>
-          <div class="output-body screen-preview-body">
-            <span class="screen-preview-text"><span class="output-name"></span><span class="output-layout"></span></span>
-            <span class="screen-preview-pill"></span>
-          </div>
-        </article>`,
-        )
-        .join('') || '<p class="muted">Gerade hängt kein Monitor am Server und es ist kein Raspberry Pi eingetragen.</p>'
-    for (const preview of grid.querySelectorAll('.output-preview')) {
-      const item = items.find((i) => i.key === preview.closest('[data-key]').dataset.key)
-      if (setPreviewSize(preview, item?.layout)) scalePreview(preview)
-      if (!preview.querySelector('iframe')) continue
-      previewScaler.observe(preview)
-      screenPreviewLoader.observe(preview)
-      renderSketch(preview.querySelector('.output-sketch'), item?.layout)
-    }
-  }
-  // Texte und Status nachziehen, ohne die Vorschauen neu zu laden
-  for (const card of grid.querySelectorAll('[data-key]')) {
-    const item = items.find((i) => i.key === card.dataset.key)
-    if (!item) continue
-    card.querySelector('.output-name').textContent = item.name
-    card.querySelector('.output-layout').textContent = item.what
-    card.querySelector('.screen-preview-pill').innerHTML = item.pill || ''
-    const off = card.querySelector('.screen-preview-off')
-    if (off) off.textContent = item.what
-  }
-}
-
-$('#screen-previews').addEventListener('click', (e) => {
-  const button = e.target.closest('[data-action="live"]')
-  if (!button) return
-  const preview = button.closest('.output-preview')
-  setPreviewLive(preview, !preview.classList.contains('live'))
-})
-
-function renderScreens() {
-  renderPiScreens()
-  renderScreenPreviews()
-  const body = $('#screen-rows')
-  if (body.contains(document.activeElement) && document.activeElement.type === 'text') return
-  const rows = screenRows().map(({ id, detected, saved }) => {
-    const outputOptions = [
-      `<option value="">– aus (schwarz) –</option>`,
-      ...config.outputs.map(
-        (o) => `<option value="${esc(o.id)}" ${o.id === saved?.outputId ? 'selected' : ''}>${esc(o.name)}</option>`,
-      ),
-    ].join('')
-    const status = !detected
-      ? '<span class="pill">nicht gefunden</span>'
-      : detected.connected
-        ? `<span class="pill ok">angeschlossen${detected.mode ? ` · ${esc(detected.mode)}` : ''}</span>`
-        : '<span class="pill">kein Monitor</span>'
-    return `<tr data-id="${esc(id)}">
-      <td><code>${esc(id)}</code></td>
-      <td><input type="text" data-s="name" value="${esc(saved?.name)}" placeholder="${esc(connectorLabel(id))}"></td>
-      <td><select data-s="outputId">${outputOptions}</select></td>
-      <td><select data-s="rotate" aria-label="Drehung">
-        <option value="0" ${!saved?.rotate ? 'selected' : ''}>normal</option>
-        <option value="90" ${saved?.rotate === 90 ? 'selected' : ''}>hochkant ↻ 90°</option>
-        <option value="180" ${saved?.rotate === 180 ? 'selected' : ''}>über Kopf 180°</option>
-        <option value="270" ${saved?.rotate === 270 ? 'selected' : ''}>hochkant ↺ 270°</option>
-      </select></td>
-      <td>${status}</td>
-    </tr>`
-  })
-  body.innerHTML =
-    rows.join('') ||
-    `<tr><td colspan="5" class="muted">Keine Anschlüsse gefunden. Sie erscheinen hier, wenn JMS Control
-      auf dem Linux-Rechner läuft, an dem die Monitore hängen.</td></tr>`
-}
-
-function onScreenField(e) {
-  const el = e.target
-  const key = el.dataset.s
-  if (!key) return
-  if ((e.type === 'input') !== (el.type === 'text')) return
-  const id = el.closest('tr').dataset.id
-  let screen = config.screens.find((s) => s.id === id)
-  if (!screen) config.screens.push((screen = { id, name: '', outputId: null }))
-  screen[key] = key === 'name' ? el.value : key === 'rotate' ? Number(el.value) || 0 : el.value || null
-  renderScreenPreviews()
-  renderCompanion()
-  changed(key === 'name' ? 350 : 0)
-}
-$('#screen-rows').addEventListener('input', onScreenField)
-$('#screen-rows').addEventListener('change', onScreenField)
-
 // Raspberry Pis: Intercom oder Multiview auf dem HDMI-Ausgang. Der Multiview steht wie bei den
 // Anschlüssen am Server in config.screens (Eintrag pi-<Pi>), der Pi zeigt output.html?screen=pi-<Pi>.
 const piScreenId = (pi) => `pi-${pi.id}`
@@ -1100,67 +934,163 @@ function piScreenState(pi) {
   return wanted === 'multiview' ? '<span class="pill ok">zeigt Multiview</span>' : '<span class="pill ok">zeigt Intercom</span>'
 }
 
-function renderPiScreens() {
-  const box = $('#screen-pis')
-  if (!box || !config) return
-  const r = piSettings()
-  box.innerHTML =
-    r.clients
-      .map((pi) => {
-        const saved = config.screens.find((s) => s.id === piScreenId(pi))
-        const multiview = pi.display === 'multiview'
-        const outputOptions = [
-          `<option value="">– aus (schwarz) –</option>`,
-          ...config.outputs.map((o) => `<option value="${esc(o.id)}" ${o.id === saved?.outputId ? 'selected' : ''}>${esc(o.name)}</option>`),
-        ].join('')
-        return `<div class="pi-item screen-pi" data-pi-screen="${esc(pi.id)}">
-          <div class="pi-item-head">
-            <h4>${esc(pi.name || 'Neuer Raspberry Pi')}</h4>
-            ${piScreenState(pi)}
-          </div>
-          <div class="screen-pi-grid">
-            <div class="field"><span>Anzeige</span>
-              <div class="segmented" role="radiogroup" aria-label="Anzeige auf ${esc(pi.name || 'dem Pi')}">
-                ${[['intercom', 'Intercom'], ['multiview', 'Multiview']].map(([value, label]) => {
-                  const active = (pi.display || 'intercom') === value
-                  return `<button type="button" role="radio" data-pi-display="${value}" aria-checked="${active}" class="${active ? 'active' : ''}">${label}</button>`
-                }).join('')}
-              </div>
-            </div>
-            <label class="field"><span>Multiview</span><select data-ps="outputId" ${multiview ? '' : 'disabled'}>${outputOptions}</select></label>
-            <label class="field"><span>Drehung</span><select data-ps="rotate" ${multiview ? '' : 'disabled'}>
-              <option value="0" ${!saved?.rotate ? 'selected' : ''}>normal</option>
-              <option value="90" ${saved?.rotate === 90 ? 'selected' : ''}>hochkant ↻ 90°</option>
-              <option value="180" ${saved?.rotate === 180 ? 'selected' : ''}>über Kopf 180°</option>
-              <option value="270" ${saved?.rotate === 270 ? 'selected' : ''}>hochkant ↺ 270°</option>
-            </select></label>
-          </div>
-          ${!r.managed ? '<p class="pi-problem">⚠ Raspberry Pis werden noch nicht hier verwaltet – die Auswahl wirkt erst mit „Hier verwalten“ in Einstellungen → Raspberry Pis.</p>' : ''}
-        </div>`
-      })
-      .join('') || '<p class="muted">Noch kein Raspberry Pi eingetragen – unter <a href="#/einstellungen/raspberry">Einstellungen → Raspberry Pis</a> anlegen.</p>'
+const SCREEN_ROTATIONS = [[0, 'normal'], [90, 'hochkant ↻ 90°'], [180, 'über Kopf 180°'], [270, 'hochkant ↺ 270°']]
+const iconChevronDown = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>'
+
+/** Alle Bildschirme in einer Liste: Anschlüsse am Server, dann die Raspberry Pis. */
+function allScreens() {
+  const screenUrl = (id) => `${location.origin}/output.html?screen=${encodeURIComponent(id)}&embed=1`
+  const server = screenRows().map(({ id, detected, saved }) => {
+    const output = config.outputs.find((o) => o.id === saved?.outputId)
+    return {
+      key: id, kind: 'server', saved,
+      status: !detected
+        ? '<span class="pill">nicht gefunden</span>'
+        : detected.connected
+          ? `<span class="pill ok">angeschlossen${detected.mode ? ` · ${esc(detected.mode)}` : ''}</span>`
+          : '<span class="pill">kein Monitor</span>',
+      preview: output ? { src: screenUrl(id), layout: config.layouts.find((l) => l.id === output.layoutId) } : { off: 'aus (schwarz)' },
+    }
+  })
+  const pis = piSettings().clients.map((pi) => {
+    const id = piScreenId(pi)
+    const saved = config.screens.find((s) => s.id === id)
+    const output = config.outputs.find((o) => o.id === saved?.outputId)
+    const preview = pi.standby
+      ? { off: 'Ruhemodus – Bildschirm aus' }
+      : pi.display === 'multiview'
+        ? output ? { src: screenUrl(id), layout: config.layouts.find((l) => l.id === output.layoutId) } : { off: 'aus (schwarz)' }
+        : // Spiegel der Rolle wie bei der Kesher-Kachel (kein Mikrofon, belegt die Rolle nicht)
+          { src: kesherTileUrl({ kesherRoleId: pi.roleId, kesherUser: `${pi.name || 'Pi'} Vorschau`, kesherView: pi.view === 'simple' ? 'simple' : 'station' }, config) || '', off: 'Intercom: keine Rolle gewählt' }
+    return { key: id, kind: 'pi', pi, saved, status: piScreenState(pi), preview }
+  })
+  return [...server, ...pis]
 }
 
-$('#screen-pis').addEventListener('click', (e) => {
+// Vorschau aufgeklappt (Schlüssel der Bildschirme). Eine echte Monitoransicht, verkleinert –
+// geladen nur, solange die Zeile offen und Bildschirme die aktuelle Seite ist.
+const screenPreviewOpen = new Set()
+let screenTableKey = ''
+
+function screenRowCells(screen) {
+  const saved = screen.saved
+  const outputOptions = [
+    `<option value="">– aus (schwarz) –</option>`,
+    ...config.outputs.map((o) => `<option value="${esc(o.id)}" ${o.id === saved?.outputId ? 'selected' : ''}>${esc(o.name)}</option>`),
+  ].join('')
+  const open = screenPreviewOpen.has(screen.key)
+  const previewButton = `<button class="btn small screen-preview-btn ${open ? 'active' : ''}" type="button" data-screen-preview aria-expanded="${open}">Vorschau ${iconChevronDown}</button>`
+  if (screen.kind === 'server') {
+    return `<td class="screen-who"><input type="text" data-s="name" value="${esc(saved?.name)}" placeholder="${esc(connectorLabel(screen.key))}" aria-label="Name">
+        <span class="screen-sub"><code>${esc(screen.key)}</code>${screen.status}</span></td>
+      <td><span class="muted">Multiview</span></td>
+      <td><select data-s="outputId" aria-label="Multiview">${outputOptions}</select></td>
+      <td><select data-s="rotate" aria-label="Drehung">${SCREEN_ROTATIONS.map(([v, l]) => `<option value="${v}" ${(saved?.rotate || 0) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+      <td class="screen-actions">${previewButton}</td>`
+  }
+  const pi = screen.pi
+  const multiview = pi.display === 'multiview'
+  return `<td class="screen-who"><b>${esc(pi.name || 'Neuer Raspberry Pi')}</b>
+      <span class="screen-sub"><span class="muted">Raspberry Pi</span>${screen.status}</span></td>
+    <td><div class="segmented segmented-sm" role="radiogroup" aria-label="Anzeige auf ${esc(pi.name || 'dem Pi')}">${[['intercom', 'Intercom'], ['multiview', 'Multiview']]
+      .map(([value, label]) => {
+        const active = (pi.display || 'intercom') === value
+        return `<button type="button" role="radio" data-pi-display="${value}" aria-checked="${active}" class="${active ? 'active' : ''}">${label}</button>`
+      })
+      .join('')}</div></td>
+    <td><select data-ps="outputId" aria-label="Multiview" ${multiview ? '' : 'disabled'}>${outputOptions}</select></td>
+    <td><select data-ps="rotate" aria-label="Drehung" ${multiview ? '' : 'disabled'}>${SCREEN_ROTATIONS.map(([v, l]) => `<option value="${v}" ${(saved?.rotate || 0) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+    <td class="screen-actions">${previewButton}</td>`
+}
+
+function renderScreens() {
+  const body = $('#screen-rows')
+  if (!body || !config) return
+  // Vorschauen schließen, sobald man die Seite verlässt (sonst laufen ganze Monitore im Hintergrund)
+  if ((page !== 'einstellungen' || settingsSection !== 'bildschirme') && screenPreviewOpen.size) {
+    screenPreviewOpen.clear()
+    screenTableKey = ''
+  }
+  const screens = allScreens()
+  const key = JSON.stringify(screens.map((s) => [s.key, screenPreviewOpen.has(s.key) ? s.preview.src || s.preview.off : null, s.preview.layout?.id ?? null]))
+  if (key !== screenTableKey) {
+    // Zeilen oder aufgeklappte Vorschauen haben sich geändert: neu aufbauen
+    if (body.contains(document.activeElement) && document.activeElement.type === 'text') return
+    screenTableKey = key
+    body.innerHTML =
+      screens
+        .map((screen) => {
+          const row = `<tr data-screen="${esc(screen.key)}" ${screen.kind === 'server' ? `data-id="${esc(screen.key)}"` : `data-pi-screen="${esc(screen.pi.id)}"`}>${screenRowCells(screen)}</tr>`
+          if (!screenPreviewOpen.has(screen.key)) return row
+          const p = screen.preview
+          return `${row}<tr class="screen-preview-row" data-preview-for="${esc(screen.key)}"><td colspan="5">
+            <div class="output-preview screen-preview">${p.src ? `<iframe src="${esc(p.src)}" allow="autoplay; fullscreen" title="Vorschau"></iframe>` : `<div class="screen-preview-off">${esc(p.off || '')}</div>`}</div>
+          </td></tr>`
+        })
+        .join('') ||
+      `<tr><td colspan="5" class="muted">Keine Bildschirme gefunden. Anschlüsse erscheinen, wenn JMS Control auf dem Linux-Rechner
+        läuft, an dem die Monitore hängen; Raspberry Pis trägst du unter Einstellungen → Raspberry Pis ein.</td></tr>`
+    for (const preview of body.querySelectorAll('.screen-preview')) {
+      const screen = screens.find((s) => s.key === preview.closest('[data-preview-for]').dataset.previewFor)
+      setPreviewSize(preview, screen?.preview.layout)
+      previewScaler.observe(preview)
+    }
+  } else {
+    // Gleiche Zeilen: nur Felder und Status nachziehen, die Vorschauen laufen weiter
+    for (const screen of screens) {
+      const row = body.querySelector(`tr[data-screen="${CSS.escape(screen.key)}"]`)
+      if (!row || row.contains(document.activeElement)) continue
+      row.innerHTML = screenRowCells(screen)
+    }
+  }
+  $('#screen-pi-note').hidden = piSettings().managed || !piSettings().clients.length
+}
+
+function onScreenField(e) {
+  const el = e.target
+  const key = el.dataset.s
+  if (!key) return
+  if ((e.type === 'input') !== (el.type === 'text')) return
+  const id = el.closest('tr').dataset.id
+  let screen = config.screens.find((s) => s.id === id)
+  if (!screen) config.screens.push((screen = { id, name: '', outputId: null }))
+  screen[key] = key === 'name' ? el.value : key === 'rotate' ? Number(el.value) || 0 : el.value || null
+  if (key !== 'name') el.blur()
+  renderScreens()
+  renderCompanion()
+  changed(key === 'name' ? 350 : 0)
+}
+$('#screen-rows').addEventListener('input', onScreenField)
+$('#screen-rows').addEventListener('change', onScreenField)
+
+$('#screen-rows').addEventListener('click', (e) => {
+  const toggle = e.target.closest('[data-screen-preview]')
+  if (toggle) {
+    const key = toggle.closest('[data-screen]').dataset.screen
+    if (screenPreviewOpen.has(key)) screenPreviewOpen.delete(key)
+    else screenPreviewOpen.add(key)
+    renderScreens()
+    return
+  }
   const button = e.target.closest('[data-pi-display]')
   if (!button) return
   const pi = piSettings().clients.find((c) => c.id === button.closest('[data-pi-screen]').dataset.piScreen)
   if (!pi || (pi.display || 'intercom') === button.dataset.piDisplay) return
   pi.display = button.dataset.piDisplay
-  renderPiScreens()
-  renderScreenPreviews()
+  renderScreens()
   renderCompanion()
   changed(0)
 })
 
-$('#screen-pis').addEventListener('change', (e) => {
+$('#screen-rows').addEventListener('change', (e) => {
   const key = e.target.dataset.ps
   if (!key) return
   const id = `pi-${e.target.closest('[data-pi-screen]').dataset.piScreen}`
   let screen = config.screens.find((s) => s.id === id)
   if (!screen) config.screens.push((screen = { id, name: '', outputId: null }))
   screen[key] = key === 'rotate' ? Number(e.target.value) || 0 : e.target.value || null
-  renderScreenPreviews()
+  e.target.blur()
+  renderScreens()
   renderCompanion()
   changed(0)
 })
@@ -4326,8 +4256,7 @@ async function loadRaspberryStatus() {
   }
   renderRaspberry()
   patchPiLive()
-  renderPiScreens()
-  renderScreenPreviews()
+  renderScreens()
   renderStatusStrip()
 }
 

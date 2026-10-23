@@ -390,29 +390,14 @@
                   <p class="muted">Die Monitore am Server und an den Raspberry Pis. Pro Bildschirm wählst du, welcher Multiview dort läuft – die Umschaltung ist sofort live.</p>
                 </div>
               </div>
-              <div class="section-head">
-                <div>
-                  <h3>Was gerade läuft</h3>
-                  <p class="muted">Live-Vorschau jedes Bildschirms – genau das, was dort gerade ausgegeben wird.</p>
-                </div>
-              </div>
-              <div class="output-grid screen-previews" id="screen-previews"></div>
-              <div class="section-head">
-                <div><h3>Am Server</h3></div>
-              </div>
               <div class="table-wrap">
-                <table class="table">
-                  <thead><tr><th>Anschluss</th><th>Name</th><th>Multiview</th><th>Drehung</th><th>Monitor</th></tr></thead>
+                <table class="table screen-table">
+                  <thead><tr><th>Bildschirm</th><th>Anzeige</th><th>Multiview</th><th>Drehung</th><th></th></tr></thead>
                   <tbody id="screen-rows"></tbody>
                 </table>
               </div>
-              <div class="section-head">
-                <div>
-                  <h3>Raspberry Pis</h3>
-                  <p class="muted">Jeder Pi aus <a href="#/einstellungen/raspberry">Einstellungen → Raspberry Pis</a> zeigt auf seinem HDMI-Ausgang entweder das Intercom oder einen Multiview. Der Wechsel zwischen Intercom und Multiview startet den Browser auf dem Pi neu (etwa eine Minute), der Wechsel zwischen Multiviews ist sofort live.</p>
-                </div>
-              </div>
-              <div class="screen-pi-list" id="screen-pis"></div>
+              <p class="muted small">Raspberry Pis aus <a href="#/einstellungen/raspberry">Einstellungen → Raspberry Pis</a> zeigen auf ihrem HDMI-Ausgang das Intercom oder einen Multiview; der Wechsel zwischen Multiviews ist sofort live. „Vorschau“ klappt unter der Zeile die Live-Ansicht dieses Ausgangs auf.</p>
+              <p class="pi-problem" id="screen-pi-note" hidden>⚠ Raspberry Pis werden noch nicht hier verwaltet – die Auswahl wirkt erst mit „Hier verwalten“ in Einstellungen → Raspberry Pis.</p>
             </div>
             <div class="card" id="set-atem" data-section="atem">
               <div class="card-head">

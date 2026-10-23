@@ -845,21 +845,21 @@ a.status-tile:hover { border-color: var(--accent-line); }
 .pi-grid .field small.muted, .pi-device-missing { font-size: 12px; margin-top: 2px; }
 .pi-device-missing { color: var(--amber); }
 .pi-seen-table td { vertical-align: middle; }
-/* Bildschirme: Vorschau je Bildschirm */
-.output-grid.screen-previews { grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); gap: 14px; margin-bottom: 8px; }
-.screen-preview-card { border: 1px solid var(--line); border-radius: var(--radius-sm); }
+/* Bildschirme: eine Tabelle für Server und Pis, Vorschau klappt unter der Zeile auf */
+.screen-table td { vertical-align: middle; }
+.screen-table td select { min-width: 110px; }
+.screen-who { min-width: 150px; }
+.screen-who input { width: 100%; }
+.screen-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 5px; font-size: 12px; }
+.screen-sub code { font-size: 11px; }
+.screen-actions { text-align: right; white-space: nowrap; }
+.screen-preview-btn .icon { width: 14px; height: 14px; transition: transform 0.15s ease; }
+.screen-preview-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.screen-preview-btn.active .icon { transform: rotate(180deg); }
+.segmented-sm button { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.screen-preview-row td { padding: 4px 12px 16px; background: var(--surface-2); }
+.screen-preview { width: 100%; max-width: 720px; margin: 0 auto; border-radius: var(--radius-sm); overflow: hidden; }
 .screen-preview-off { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; text-align: center; color: rgba(255, 255, 255, 0.55); font-size: 13px; }
-.screen-preview-body { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; }
-.screen-preview-text { display: flex; flex-direction: column; min-width: 0; }
-.screen-preview-text .output-name { font-weight: 600; font-size: 14px; }
-.screen-preview-text .output-layout { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Bildschirme: ein Kästchen je Raspberry Pi */
-#set-screens .section-head { margin-top: 26px; }
-#set-screens .section-head h3 { margin: 0; }
-.screen-pi-list { display: grid; gap: 12px; }
-.screen-pi-grid { display: grid; grid-template-columns: auto minmax(180px, 1fr) minmax(150px, 220px); gap: 16px; align-items: end; }
-.screen-pi-grid .segmented { align-self: start; }
-@media (max-width: 720px) { .screen-pi-grid { grid-template-columns: 1fr; } }
 
 /* ------------------------------------------------------------------ Benutzer & Rechte */
 
