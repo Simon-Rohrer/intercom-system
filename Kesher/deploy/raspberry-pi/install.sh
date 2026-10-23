@@ -198,6 +198,42 @@ EOF
   chown "${TARGET_USER}:${TARGET_GROUP}" "${USER_SERVICE}"
   chmod 0644 "${USER_SERVICE}"
 
+  # Während der Browser startet oder umschaltet, sieht man den Desktop: statt Hintergrundbild,
+  # Symbolen und Taskleiste nur das JMS-Logo (weiße Schrift) mittig auf Schwarz
+  install -m 0644 "${SCRIPT_DIR}/jms-logo-dunkel.png" /opt/kesher-pi/jms-logo-dunkel.png
+  PCMANFM_DIR="${TARGET_HOME}/.config/pcmanfm/default"
+  install -d -o "${TARGET_USER}" -g "${TARGET_GROUP}" -m 0755 "${PCMANFM_DIR}"
+  for output in HDMI-A-1 HDMI-A-2; do
+    touch "${PCMANFM_DIR}/desktop-items-${output}.conf"
+  done
+  for desktop_config in "${PCMANFM_DIR}"/desktop-items-*.conf; do
+    cat > "${desktop_config}" <<DESKTOP
+[*]
+desktop_bg=#000000
+desktop_shadow=#000000
+desktop_fg=#000000
+desktop_font=Nunito Sans Light 12
+wallpaper=/opt/kesher-pi/jms-logo-dunkel.png
+wallpaper_mode=center
+show_home=0
+show_trash=0
+show_mounts=0
+show_documents=0
+folder=${TARGET_HOME}/Desktop
+DESKTOP
+    chown "${TARGET_USER}:${TARGET_GROUP}" "${desktop_config}"
+  done
+  # Keine Taskleiste: der Autostart des Desktops (Paket rpd-wayland-core) wird ohne wf-panel-pi
+  # ersetzt; dpkg-divert hält die Fassung des Pakets unter autostart.distrib bereit
+  LABWC_SYSTEM_AUTOSTART=/etc/xdg/labwc/autostart
+  if [[ -f "${LABWC_SYSTEM_AUTOSTART}" ]] && grep -q wf-panel-pi "${LABWC_SYSTEM_AUTOSTART}"; then
+    if ! dpkg-divert --list "${LABWC_SYSTEM_AUTOSTART}" | grep -q .; then
+      dpkg-divert --local --rename --divert "${LABWC_SYSTEM_AUTOSTART}.distrib" --add "${LABWC_SYSTEM_AUTOSTART}"
+    fi
+    grep -v wf-panel-pi "${LABWC_SYSTEM_AUTOSTART}.distrib" > "${LABWC_SYSTEM_AUTOSTART}"
+    chmod 0644 "${LABWC_SYSTEM_AUTOSTART}"
+  fi
+
   systemctl disable --now kesher-pi.service 2>/dev/null || true
   echo "Configured Kesher to start with the labwc desktop session."
 else

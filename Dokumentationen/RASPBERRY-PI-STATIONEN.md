@@ -60,12 +60,18 @@ In JMS Control unter *Einstellungen → Raspberry Pis* hat jede Station die Knö
 - **Neu starten** startet den ganzen Pi neu (geht nur, solange er sich meldet). Der Befehl wird genau einmal ausgeführt und verfällt nach 2 Minuten.
 - **Bewusst kein echtes Herunterfahren:** Ein heruntergefahrener Raspberry Pi lässt sich aus der Ferne nicht wieder einschalten (kein Wake-on-LAN), nur durch kurzes Trennen vom Strom. Für echtes Aus/An bräuchte es eine schaltbare Steckdose vor dem Netzteil.
 
-Voraussetzung ist der aktuelle Launcher auf dem Pi (ab Version 12; `install.sh` richtet für „Neu starten“ auch die sudo-Regel `/etc/sudoers.d/kesher-pi-power` ein, die nur `systemctl poweroff` und `systemctl reboot` erlaubt). Den Bildschirm schaltet der Launcher über `wlr-randr` (labwc), sonst `wlopm` oder `vcgencmd`. Aktualisieren vom Server aus, ohne die Konfiguration auf dem Pi zu überschreiben:
+Voraussetzung ist der aktuelle Launcher auf dem Pi (ab Version 12; `install.sh` richtet für „Neu starten“ auch die sudo-Regel `/etc/sudoers.d/kesher-pi-power` ein, die nur `systemctl poweroff` und `systemctl reboot` erlaubt). Den Bildschirm schaltet der Launcher über `wlopm` (nur Stromsparen), sonst `wlr-randr` oder `vcgencmd` – `wlr-randr` meldet den Ausgang ab und wieder an, dabei ist labwc auf dem Pi 3 abgestürzt und der Anmeldebildschirm mit Passwortabfrage kam. Aktualisieren vom Server aus, ohne die Konfiguration auf dem Pi zu überschreiben:
 
 ```sh
 cd ~/intercom-system/Kesher/deploy && tar -czf /tmp/kesher-raspberry-pi-deploy.tar.gz raspberry-pi && scp /tmp/kesher-raspberry-pi-deploy.tar.gz <user>@<pi-ip>:~
 ssh <user>@<pi-ip> 'rm -rf raspberry-pi && tar -xzf kesher-raspberry-pi-deploy.tar.gz && cd raspberry-pi && sudo ./install.sh <user> && sudo reboot'
 ```
+
+## Intercom oder Multiview auf dem Bildschirm
+
+In JMS Control unter *Einstellungen → Bildschirme* hat jeder Raspberry Pi ein eigenes Kästchen: **Intercom** oder **Multiview**, welcher Multiview und die Drehung. Der Pi steht dort als Bildschirm `pi-<id>` (wie die Anschlüsse am Server, auch für Companion: `/api/screen/<Pi-Name>/output/<Multiview>`). Im Multiview-Modus öffnet der Launcher (ab Version 13) `output.html?screen=pi-<id>` beim Multiview statt Kesher; der Wechsel zwischen Multiviews ist sofort live, der Wechsel Intercom ↔ Multiview startet den Browser neu (auf dem Pi 3 etwa 45 Sekunden).
+
+Während der Browser startet, zeigt der Pi statt des Desktops nur das JMS-Logo mittig auf Schwarz (`jms-logo-dunkel.png`, Hintergrund von pcmanfm). `install.sh` richtet das ein, blendet die Desktop-Symbole aus und nimmt die Taskleiste aus dem Desktop-Autostart: `/etc/xdg/labwc/autostart` ist per `dpkg-divert` ersetzt, die Fassung des Pakets liegt unter `autostart.distrib` (zurück: `sudo rm /etc/xdg/labwc/autostart && sudo dpkg-divert --rename --remove /etc/xdg/labwc/autostart`).
 
 ## Konfiguration in der Datei (ohne Multiview)
 
