@@ -367,6 +367,9 @@ class LauncherTests(unittest.TestCase):
         other_role = launcher.merge_managed_config(local, self.multiview_response())
         other_role["clients"][0]["role_id"] = "cam2"
         self.assertFalse(launcher.display_only_change(intercom, other_role))
+        headset = launcher.merge_managed_config(local, self.managed_response())
+        headset["clients"][0]["audio_input_match"] = "Jabra"
+        self.assertTrue(launcher.display_only_change(intercom, headset))  # Headset live, kein Neustart
 
     def test_config_watch_switches_display_without_restart_and_long_polls(self):
         with tempfile.TemporaryDirectory() as directory:

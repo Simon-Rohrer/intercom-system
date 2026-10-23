@@ -1598,6 +1598,39 @@ app.post(['/api/raspberry-pis/control', '/.jms-auth/api/raspberry-pis/control'],
   res.json({ ok: true, standby: client.standby === true, waitSeconds: 15 })
 })
 
+// Fernsteuerung des Intercoms auf dem Pi aus den Einstellungen (Kesher führt sie im Browser des Pi
+// aus): Mikrofon/Ausgang live wechseln, „Dauerhaft an“ (always_on) oder Drücken zum Sprechen (ptt)
+const PI_REMOTE_COMMANDS = {
+  set_voice_mode: (body) => (['always_on', 'ptt'].includes(body.mode) ? { mode: body.mode } : null),
+  set_audio_input_device: (body) => (typeof body.inputDeviceId === 'string' && body.inputDeviceId.length <= 512 ? { inputDeviceId: body.inputDeviceId } : null),
+  set_audio_output_device: (body) => (typeof body.outputDeviceId === 'string' && body.outputDeviceId.length <= 512 ? { outputDeviceId: body.outputDeviceId } : null),
+}
+
+app.post('/api/raspberry-pis/remote-command', requireAdmin, async (req, res) => {
+  const body = req.body ?? {}
+  const client = (config.raspberry.clients || []).find((c) => c.id === body.clientId)
+  if (!client) return res.status(404).json({ ok: false, error: 'Raspberry Pi nicht gefunden' })
+  const args = Object.hasOwn(PI_REMOTE_COMMANDS, body.command) ? PI_REMOTE_COMMANDS[body.command](body) : null
+  if (!args) return res.status(400).json({ ok: false, error: 'Unbekannter Befehl' })
+  try {
+    const r = await fetch(`${config.chat.url}/api/raspberry-pis/remote-command`, {
+      method: 'POST',
+      headers: { ...kesherDeviceHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: client.deviceId, command: body.command, ...args }),
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!r.ok) {
+      const text = (await r.text()).trim()
+      const error = r.status === 409 ? 'Der Pi ist gerade nicht im Intercom' : text || `Kesher: HTTP ${r.status}`
+      return res.status(r.status === 409 ? 409 : 502).json({ ok: false, error })
+    }
+    console.log(`Raspberry Pi ${client.name || client.id}: ${body.command} ${Object.values(args).join(' ')} (${req.user.name})`)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(502).json({ ok: false, error: `Kesher nicht erreichbar (${err.message})` })
+  }
+})
+
 // Für den Reiter in den Einstellungen: welche Pis gefragt haben und wie Kesher sie gerade sieht
 app.get('/api/raspberry-pis/status', requireAdmin, async (req, res) => {
   let stations = null

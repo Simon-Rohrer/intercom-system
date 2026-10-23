@@ -21,7 +21,7 @@ from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from urllib.request import HTTPSHandler, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 
-LAUNCHER_VERSION = "14"
+LAUNCHER_VERSION = "15"
 DEVICE_CERTIFICATE = Path("/etc/jms-device/client.crt")
 DEVICE_PRIVATE_KEY = Path("/etc/jms-device/client.key")
 SERVER_CA_CERTIFICATE = Path("/etc/jms-device/server-ca.crt")
@@ -510,12 +510,17 @@ def load_effective_config(
     return validate_config(merged), merged, source
 
 
+# Ändern sich nur diese Felder, startet der Pi nicht neu: die Anzeige schaltet der Launcher per
+# Tab um, Mikrofon/Kopfhörer schaltet JMS Control live über Kesher (und sie gelten beim nächsten Start)
+LIVE_CLIENT_KEYS = ("display", "screen_id", "audio_input_match", "audio_output_match")
+
+
 def without_display(raw: dict[str, Any]) -> dict[str, Any]:
-    """Konfiguration ohne die Anzeige (Intercom/Multiview) – zum Vergleichen."""
+    """Konfiguration ohne die live änderbaren Felder (LIVE_CLIENT_KEYS) – zum Vergleichen."""
     copy = dict(raw)
     if isinstance(raw.get("clients"), list):
         copy["clients"] = [
-            {key: value for key, value in client.items() if key not in ("display", "screen_id")}
+            {key: value for key, value in client.items() if key not in LIVE_CLIENT_KEYS}
             if isinstance(client, dict)
             else client
             for client in raw["clients"]
@@ -1588,6 +1593,14 @@ def main() -> int:
             return_code = 0
             while not reload_event.is_set():
                 cleanup_chromium_singletons()
+                # Live geänderte Mikrofon/Kopfhörer-Wahl gilt beim nächsten Browser-Start
+                try:
+                    kesher_url = build_kesher_url(
+                        config["server_url"],
+                        resolve_client(validate_config(display_state["wanted"]), addresses, mac_addresses),
+                    )
+                except ValueError:
+                    pass
                 process = subprocess.Popen(
                     browser_command(
                         config,

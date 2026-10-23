@@ -814,6 +814,10 @@ a.status-tile:hover { border-color: var(--accent-line); }
 .pi-item-head h4 { margin: 0; font-size: 15px; }
 .pi-item-head .pi-spacer { flex: 1; }
 .pi-item .pi-grid { margin-bottom: 0; }
+/* Audio des Pi: Mikrofon, Kopfhörer und „Dauerhaft an“ nebeneinander, oben bündig (gleiche Höhe) */
+.pi-audio { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; align-items: start; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.pi-audio .field small { font-size: 12px; margin-top: 2px; }
+.pi-audio .switch { height: 38px; }
 .pi-item .field small { font-weight: 400; color: var(--muted); }
 .pi-item .field input.invalid { border-color: var(--red); }
 .pi-problem { margin: 10px 0 0; color: var(--amber); font-size: 13px; }

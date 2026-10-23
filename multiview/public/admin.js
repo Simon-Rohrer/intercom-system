@@ -3937,8 +3937,20 @@ function piSeenMatches(pi, seen) {
  * Auswahl für Mikrofon bzw. Kopfhörer mit den Geräten, die der Pi gerade meldet (live über Kesher).
  * Gespeichert wird der Gerätename; ein gespeichertes, aber gerade nicht eingestecktes Gerät bleibt sichtbar.
  */
+const piStation = (pi) => piStatus.stations?.find((s) => s.deviceId === piDeviceId(pi))
+
+/** Gerät, das das Intercom auf dem Pi gerade benutzt (laut Kesher). */
+function piActiveDevice(station, kind) {
+  const audio = station?.audioState
+  if (!audio) return ''
+  const id = kind === 'input' ? audio.selectedInputDeviceId : audio.selectedOutputDeviceId
+  const devices = (kind === 'input' ? audio.inputDevices : audio.outputDevices) ?? []
+  if (!id || ['default', 'communications'].includes(id)) return 'Standard'
+  return String(devices.find((d) => d.deviceId === id)?.label || '').trim() || 'Standard'
+}
+
 function piDeviceSelect(pi, key, kind) {
-  const station = piStatus.stations?.find((s) => s.deviceId === piDeviceId(pi))
+  const station = piStation(pi)
   const devices = (kind === 'input' ? station?.audioState?.inputDevices : station?.audioState?.outputDevices) ?? []
   const labels = [
     ...new Set(
@@ -3962,8 +3974,22 @@ function piDeviceSelect(pi, key, kind) {
       ? `<small class="muted">Der Pi meldet kein ${kind === 'input' ? 'Mikrofon' : 'Audiogerät'}.</small>`
       : !known
         ? '<small class="pi-device-missing">Gespeichertes Gerät ist gerade nicht eingesteckt.</small>'
-        : ''
+        : `<small class="muted">Aktiv am Pi: ${esc(piActiveDevice(station, kind))}</small>`
   return `<select data-p="${key}">${options}</select>${hint}`
+}
+
+/** Audio des Pi: Mikrofon, Kopfhörer, „Dauerhaft an“ – live aus Kesher, fernsteuerbar. */
+function piAudioHtml(pi) {
+  const station = piStation(pi)
+  const live = Boolean(station?.online && station?.intercomConnected)
+  const always = station?.voiceMode === 'always_on'
+  return `<label class="field"><span>Mikrofon <small>(live vom Pi)</small></span>
+      ${piDeviceSelect(pi, 'audioInputMatch', 'input')}</label>
+    <label class="field"><span>Kopfhörer <small>(live vom Pi)</small></span>
+      ${piDeviceSelect(pi, 'audioOutputMatch', 'output')}</label>
+    <div class="field"><span>Dauerhaft an <small>(ohne Halten sprechen)</small></span>
+      <label class="switch"><input type="checkbox" data-pi-voice ${always ? 'checked' : ''} ${live ? '' : 'disabled'}><span class="switch-track"></span><span>${always ? 'An' : 'Aus'}</span></label>
+      <small class="muted">${live ? (always ? 'Mikrofon am Pi ist dauerhaft offen.' : 'Sprechen am Pi nur mit Halten.') : 'Geht, sobald der Pi im Intercom ist.'}</small></div>`
 }
 
 /** Zustand laut Kesher (Heartbeat des Launchers und Intercom-Verbindung). */
@@ -4025,7 +4051,7 @@ function renderRaspberry() {
           return `<div class="pi-item" data-pi="${esc(pi.id)}">
             <div class="pi-item-head">
               <h4>${esc(pi.name || 'Neuer Raspberry Pi')}</h4>
-              ${pi.standby ? '<span class="pill">Ruhemodus</span>' : piStationPill(pi)}
+              <span data-pi-pill>${pi.standby ? '<span class="pill">Ruhemodus</span>' : piStationPill(pi)}</span>
               ${seen ? `<span class="muted">fragt ${esc(agoText(seen.ageMs))}${seen.ips.length ? ` · <code class="ip">${esc(seen.ips.join(', '))}</code>` : ''}</span>` : ''}
               <span class="pi-spacer"></span>
               ${remote}
@@ -4045,12 +4071,9 @@ function renderRaspberry() {
                 <input type="text" data-p="ipAddress" value="${esc(pi.ipAddress)}" placeholder="192.168.0.157" spellcheck="false"></label>
               <label class="field"><span>Geräte-ID</span>
                 <input type="text" data-p="deviceId" value="${esc(pi.deviceId)}" placeholder="${esc(piDeviceId({ name: pi.name }) || 'kamera-1-pi')}" spellcheck="false"></label>
-              <label class="field"><span>Mikrofon <small>(live vom Pi)</small></span>
-                ${piDeviceSelect(pi, 'audioInputMatch', 'input')}</label>
-              <label class="field"><span>Kopfhörer <small>(live vom Pi)</small></span>
-                ${piDeviceSelect(pi, 'audioOutputMatch', 'output')}</label>
               <label class="check pi-check"><input type="checkbox" data-p="lowPowerMode" ${pi.lowPowerMode ? 'checked' : ''}> Sparmodus (schwache Pis)</label>
             </div>
+            <div class="pi-audio" data-pi-audio>${piAudioHtml(pi)}</div>
             ${problems.length ? `<p class="pi-problem">⚠ ${esc(problems.join(' · '))}</p>` : ''}
             ${pi.standby ? '<p class="muted pi-power-hint">Ausgeschaltet: kein Intercom, Bildschirm aus. Der Pi bleibt im Netz – „Einschalten“ weckt ihn in etwa 15 Sekunden.</p>' : reachable ? '' : `<p class="muted pi-power-hint">${esc(offHint)}</p>`}
           </div>`
@@ -4101,9 +4124,63 @@ async function loadRaspberryStatus() {
     // Belegung unbekannt: alle Rollen wählbar lassen
   }
   renderRaspberry()
+  patchPiLive()
   renderPiScreens()
   renderStatusStrip()
 }
+
+/** Status und Audio jeder Station aktualisieren, ohne das Feld anzufassen, in dem gerade jemand ist. */
+function patchPiLive() {
+  for (const item of $('#pi-list').querySelectorAll('[data-pi]')) {
+    const pi = piSettings().clients.find((c) => c.id === item.dataset.pi)
+    if (!pi) continue
+    const pill = item.querySelector('[data-pi-pill]')
+    if (pill) pill.innerHTML = pi.standby ? '<span class="pill">Ruhemodus</span>' : piStationPill(pi)
+    const audio = item.querySelector('[data-pi-audio]')
+    if (audio && !audio.contains(document.activeElement)) audio.innerHTML = piAudioHtml(pi)
+  }
+}
+
+async function piRemoteCommand(pi, command, args) {
+  try {
+    const res = await fetch('/api/raspberry-pis/remote-command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: pi.id, command, ...args }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    return true
+  } catch (err) {
+    toast(`${pi.name || 'Raspberry Pi'}: ${err.message}`)
+    return false
+  } finally {
+    // Kesher meldet den neuen Zustand nach einem Moment
+    setTimeout(loadRaspberryStatus, 1500)
+  }
+}
+
+/** Mikrofon/Kopfhörer gewählt: im Intercom des Pi gleich umschalten (gespeichert wird es auch). */
+function piSwitchDevice(pi, key, label) {
+  const station = piStation(pi)
+  if (!station?.intercomConnected) return
+  const input = key === 'audioInputMatch'
+  const devices = (input ? station.audioState?.inputDevices : station.audioState?.outputDevices) ?? []
+  const device = label
+    ? devices.find((d) => d.label === label) ?? devices.find((d) => d.label.toLowerCase().includes(label.toLowerCase()))
+    : { deviceId: 'default' }
+  if (!device) return
+  piRemoteCommand(pi, input ? 'set_audio_input_device' : 'set_audio_output_device', input ? { inputDeviceId: device.deviceId } : { outputDeviceId: device.deviceId })
+}
+
+$('#pi-list').addEventListener('change', (e) => {
+  if (!e.target.matches('[data-pi-voice]')) return
+  const pi = piSettings().clients.find((c) => c.id === e.target.closest('[data-pi]').dataset.pi)
+  if (!pi) return
+  e.target.nextElementSibling.nextElementSibling.textContent = e.target.checked ? 'An' : 'Aus'
+  piRemoteCommand(pi, 'set_voice_mode', { mode: e.target.checked ? 'always_on' : 'ptt' })
+  e.target.blur()
+})
 // Online/offline ändert sich laufend – solange der Reiter offen ist, alle 10 s neu laden
 setInterval(() => {
   if (document.visibilityState === 'visible' && page === 'einstellungen') loadRaspberryStatus()
@@ -4147,6 +4224,10 @@ function onPiField(e) {
   else if (key === 'macAddresses') pi.macAddresses = splitList(el.value).map((m) => m.toLowerCase())
   else if (key === 'name' || key === 'deviceId') pi[key] = el.value.replace(/\s+/g, '-')
   else pi[key] = el.value.trim()
+  if (key === 'audioInputMatch' || key === 'audioOutputMatch') {
+    piSwitchDevice(pi, key, pi[key])
+    el.blur()
+  }
   changed(isText ? 600 : 0)
 }
 $('#pi-list').addEventListener('input', onPiField)
