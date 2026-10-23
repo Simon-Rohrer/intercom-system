@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert')
-const { normalizeRaspberry, launcherConfig, parsePiRequest, createPiRegistry } = require('../raspberry-pis')
+const { normalizeRaspberry, launcherConfig, parsePiRequest, createPiRegistry, piScreenId } = require('../raspberry-pis')
 
 const RASPBERRY = normalizeRaspberry({
   managed: true,
@@ -63,6 +63,17 @@ test('Pi bekommt nur seinen eigenen Eintrag, im Format der Datei', () => {
   assert.equal(launcherConfig(RASPBERRY, { clientId: 'b' }).config.clients[0].name, 'FOH')
   assert.deepEqual(launcherConfig(RASPBERRY, { clientId: 'c' }).config.clients, [])
   assert.deepEqual(launcherConfig(RASPBERRY, { macs: ['b8:27:eb:b2:aa:2d'], ips: ['192.168.0.50'] }).config.clients, [])
+})
+
+test('Anzeige: Intercom ist Standard, Multiview schickt den Bildschirm des Pi mit', () => {
+  assert.equal(RASPBERRY.clients[0].display, 'intercom')
+  assert.equal(normalizeRaspberry({ clients: [{ id: 'x', display: 'fernseher' }] }).clients[0].display, 'intercom')
+  const multiview = normalizeRaspberry({ ...RASPBERRY, clients: [{ ...RASPBERRY.clients[0], display: 'multiview' }] })
+  const [client] = launcherConfig(multiview, { clientId: 'a' }).config.clients
+  assert.equal(client.display, 'multiview')
+  assert.equal(client.screen_id, piScreenId('a'))
+  assert.equal(piScreenId('a'), 'pi-a')
+  assert.equal(launcherConfig(RASPBERRY, { clientId: 'a' }).config.clients[0].display, undefined)
 })
 
 test('Solange nicht hier verwaltet, gilt die Datei auf dem Pi', () => {

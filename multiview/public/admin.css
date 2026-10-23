@@ -822,6 +822,13 @@ a.status-tile:hover { border-color: var(--accent-line); }
 .pi-grid .field small.muted, .pi-device-missing { font-size: 12px; margin-top: 2px; }
 .pi-device-missing { color: var(--amber); }
 .pi-seen-table td { vertical-align: middle; }
+/* Bildschirme: ein Kästchen je Raspberry Pi */
+#set-screens .section-head { margin-top: 26px; }
+#set-screens .section-head h3 { margin: 0; }
+.screen-pi-list { display: grid; gap: 12px; }
+.screen-pi-grid { display: grid; grid-template-columns: auto minmax(180px, 1fr) minmax(150px, 220px); gap: 16px; align-items: end; }
+.screen-pi-grid .segmented { align-self: start; }
+@media (max-width: 720px) { .screen-pi-grid { grid-template-columns: 1fr; } }
 
 /* ------------------------------------------------------------------ Benutzer & Rechte */
 

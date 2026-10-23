@@ -207,7 +207,7 @@
           <div class="page-head">
             <div>
               <h1>Einstellungen</h1>
-              <p class="lead">Verbindungen zu ATEM, ProPresenter, Kesher und ChurchTools, die Raspberry-Pi-Stationen, die Steuerung über Companion und die Bildschirme am Server.</p>
+              <p class="lead">Verbindungen zu ATEM, ProPresenter, Kesher und ChurchTools, die Raspberry-Pi-Stationen, die Steuerung über Companion und die Bildschirme am Server und an den Raspberry Pis.</p>
             </div>
           </div>
 
@@ -227,7 +227,7 @@
                 <a href="#/einstellungen/eingaenge" data-section-link="eingaenge"><span class="app-icon green"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="6" width="13" height="12" rx="2.5"/><path d="M15.5 10.5 21 7.5v9l-5.5-3"/></svg></span><span class="settings-nav-label">Eingänge</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 <a href="#/einstellungen/raspberry" data-section-link="raspberry"><span class="app-icon red"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg></span><span class="settings-nav-label">Raspberry Pis</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 <a href="#/einstellungen/companion" data-section-link="companion"><span class="app-icon gray"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg></span><span class="settings-nav-label">Companion</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
-                <a href="#/einstellungen/bildschirme" data-section-link="bildschirme"><span class="app-icon teal"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="12" height="9" rx="1.5"/><rect x="10" y="9" width="12" height="9" rx="1.5"/></svg></span><span class="settings-nav-label">Bildschirme am Server</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+                <a href="#/einstellungen/bildschirme" data-section-link="bildschirme"><span class="app-icon teal"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="12" height="9" rx="1.5"/><rect x="10" y="9" width="12" height="9" rx="1.5"/></svg></span><span class="settings-nav-label">Bildschirme</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 <a href="#/einstellungen/diashow" data-section-link="diashow"><span class="app-icon orange"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/></svg></span><span class="settings-nav-label">Diashow</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
               </div>
               <div class="settings-nav-group" data-admin>
@@ -386,9 +386,12 @@
             <div class="card" id="set-screens" data-section="bildschirme">
               <div class="card-head">
                 <div>
-                  <h2>Bildschirme am Server</h2>
-                  <p class="muted">Die Monitore, die direkt am Server hängen. Pro Anschluss wählst du, welcher Multiview dort läuft – die Umschaltung ist sofort live.</p>
+                  <h2>Bildschirme</h2>
+                  <p class="muted">Die Monitore am Server und an den Raspberry Pis. Pro Bildschirm wählst du, welcher Multiview dort läuft – die Umschaltung ist sofort live.</p>
                 </div>
+              </div>
+              <div class="section-head">
+                <div><h3>Am Server</h3></div>
               </div>
               <div class="table-wrap">
                 <table class="table">
@@ -396,6 +399,13 @@
                   <tbody id="screen-rows"></tbody>
                 </table>
               </div>
+              <div class="section-head">
+                <div>
+                  <h3>Raspberry Pis</h3>
+                  <p class="muted">Jeder Pi aus <a href="#/einstellungen/raspberry">Einstellungen → Raspberry Pis</a> zeigt auf seinem HDMI-Ausgang entweder das Intercom oder einen Multiview. Der Wechsel zwischen Intercom und Multiview startet den Browser auf dem Pi neu (etwa eine Minute), der Wechsel zwischen Multiviews ist sofort live.</p>
+                </div>
+              </div>
+              <div class="screen-pi-list" id="screen-pis"></div>
             </div>
             <div class="card" id="set-atem" data-section="atem">
               <div class="card-head">

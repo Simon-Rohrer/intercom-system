@@ -548,5 +548,28 @@ class LauncherTests(unittest.TestCase):
         self.assertTrue(launcher.set_display_power(True, run))
         self.assertEqual(calls[-1], ["vcgencmd", "display_power", "1"])
 
+    def test_intercom_is_the_default_display(self):
+        client = launcher.resolve_client(self.config, ["192.168.1.51"])
+        self.assertNotIn("display", client)
+
+    def test_multiview_display_opens_the_pi_screen_on_the_multiview(self):
+        self.config["clients"][0].update({"display": "multiview", "screen_id": "pi-pi1"})
+        client = launcher.resolve_client(self.config, ["192.168.1.51"])
+        self.assertEqual(client["display"], "multiview")
+        self.assertEqual(
+            launcher.build_multiview_url("https://192.168.1.10:8090/api/raspberry-pis/config", client),
+            "https://192.168.1.10:8090/output.html?screen=pi-pi1",
+        )
+        self.assertEqual(launcher.server_origin("https://192.168.1.10:8090/output.html?screen=x"), "https://192.168.1.10:8090")
+
+    def test_multiview_display_needs_a_screen_and_a_known_mode(self):
+        self.config["clients"][0]["display"] = "multiview"
+        with self.assertRaises(ValueError):
+            launcher.resolve_client(self.config, ["192.168.1.51"])
+        self.config["clients"][0]["display"] = "fernseher"
+        with self.assertRaises(ValueError):
+            launcher.resolve_client(self.config, ["192.168.1.51"])
+
+
 if __name__ == "__main__":
     unittest.main()

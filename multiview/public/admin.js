@@ -897,7 +897,7 @@ $('#output-add').addEventListener('click', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Einstellungen: Bildschirme am Server (welcher Multiview auf welchem Anschluss)
+// Einstellungen: Bildschirme (welcher Multiview auf welchem Anschluss bzw. Raspberry Pi)
 // ---------------------------------------------------------------------------
 
 /** "HDMI-A-1" → "HDMI 1", "DP-2" → "DisplayPort 2" */
@@ -908,9 +908,9 @@ function connectorLabel(id) {
   return `${type} ${m[2]}`
 }
 
-/** Erkannte Anschlüsse und solche, die schon einmal eingestellt wurden. */
+/** Erkannte Anschlüsse und solche, die schon einmal eingestellt wurden (ohne die Raspberry Pis). */
 function screenRows() {
-  const ids = [...new Set([...detectedScreens.map((s) => s.id), ...config.screens.map((s) => s.id)])]
+  const ids = [...new Set([...detectedScreens.map((s) => s.id), ...config.screens.map((s) => s.id)])].filter((id) => !id.startsWith('pi-'))
   return ids.map((id) => ({
     id,
     detected: detectedScreens.find((s) => s.id === id),
@@ -921,6 +921,7 @@ function screenRows() {
 const screenName = ({ id, saved }) => saved?.name || connectorLabel(id)
 
 function renderScreens() {
+  renderPiScreens()
   const body = $('#screen-rows')
   if (body.contains(document.activeElement) && document.activeElement.type === 'text') return
   const rows = screenRows().map(({ id, detected, saved }) => {
@@ -967,6 +968,83 @@ function onScreenField(e) {
 }
 $('#screen-rows').addEventListener('input', onScreenField)
 $('#screen-rows').addEventListener('change', onScreenField)
+
+// Raspberry Pis: Intercom oder Multiview auf dem HDMI-Ausgang. Der Multiview steht wie bei den
+// Anschlüssen am Server in config.screens (Eintrag pi-<Pi>), der Pi zeigt output.html?screen=pi-<Pi>.
+const piScreenId = (pi) => `pi-${pi.id}`
+
+function piScreenState(pi) {
+  if (pi.standby) return '<span class="pill">Ruhemodus</span>'
+  const station = piStatus.stations?.find((s) => s.deviceId === piDeviceId(pi))
+  if (!piStatus.stations || !station) return ''
+  if (!station.online) return '<span class="pill bad">offline</span>'
+  if (pi.display === 'multiview') {
+    return station.effectiveStatus === 'multiview' ? '<span class="pill ok">zeigt Multiview</span>' : '<span class="pill warn">wechselt …</span>'
+  }
+  return station.intercomConnected ? '<span class="pill ok">im Intercom</span>' : '<span class="pill warn">wechselt …</span>'
+}
+
+function renderPiScreens() {
+  const box = $('#screen-pis')
+  if (!box || !config) return
+  const r = piSettings()
+  box.innerHTML =
+    r.clients
+      .map((pi) => {
+        const saved = config.screens.find((s) => s.id === piScreenId(pi))
+        const multiview = pi.display === 'multiview'
+        const outputOptions = [
+          `<option value="">– aus (schwarz) –</option>`,
+          ...config.outputs.map((o) => `<option value="${esc(o.id)}" ${o.id === saved?.outputId ? 'selected' : ''}>${esc(o.name)}</option>`),
+        ].join('')
+        return `<div class="pi-item screen-pi" data-pi-screen="${esc(pi.id)}">
+          <div class="pi-item-head">
+            <h4>${esc(pi.name || 'Neuer Raspberry Pi')}</h4>
+            ${piScreenState(pi)}
+          </div>
+          <div class="screen-pi-grid">
+            <div class="field"><span>Anzeige</span>
+              <div class="segmented" role="radiogroup" aria-label="Anzeige auf ${esc(pi.name || 'dem Pi')}">
+                ${[['intercom', 'Intercom'], ['multiview', 'Multiview']].map(([value, label]) => {
+                  const active = (pi.display || 'intercom') === value
+                  return `<button type="button" role="radio" data-pi-display="${value}" aria-checked="${active}" class="${active ? 'active' : ''}">${label}</button>`
+                }).join('')}
+              </div>
+            </div>
+            <label class="field"><span>Multiview</span><select data-ps="outputId" ${multiview ? '' : 'disabled'}>${outputOptions}</select></label>
+            <label class="field"><span>Drehung</span><select data-ps="rotate" ${multiview ? '' : 'disabled'}>
+              <option value="0" ${!saved?.rotate ? 'selected' : ''}>normal</option>
+              <option value="90" ${saved?.rotate === 90 ? 'selected' : ''}>hochkant ↻ 90°</option>
+              <option value="270" ${saved?.rotate === 270 ? 'selected' : ''}>hochkant ↺ 270°</option>
+            </select></label>
+          </div>
+          ${!r.managed ? '<p class="pi-problem">⚠ Raspberry Pis werden noch nicht hier verwaltet – die Auswahl wirkt erst mit „Hier verwalten“ in Einstellungen → Raspberry Pis.</p>' : ''}
+        </div>`
+      })
+      .join('') || '<p class="muted">Noch kein Raspberry Pi eingetragen – unter <a href="#/einstellungen/raspberry">Einstellungen → Raspberry Pis</a> anlegen.</p>'
+}
+
+$('#screen-pis').addEventListener('click', (e) => {
+  const button = e.target.closest('[data-pi-display]')
+  if (!button) return
+  const pi = piSettings().clients.find((c) => c.id === button.closest('[data-pi-screen]').dataset.piScreen)
+  if (!pi || (pi.display || 'intercom') === button.dataset.piDisplay) return
+  pi.display = button.dataset.piDisplay
+  renderPiScreens()
+  renderCompanion()
+  changed(0)
+})
+
+$('#screen-pis').addEventListener('change', (e) => {
+  const key = e.target.dataset.ps
+  if (!key) return
+  const id = `pi-${e.target.closest('[data-pi-screen]').dataset.piScreen}`
+  let screen = config.screens.find((s) => s.id === id)
+  if (!screen) config.screens.push((screen = { id, name: '', outputId: null }))
+  screen[key] = key === 'rotate' ? Number(e.target.value) || 0 : e.target.value || null
+  renderCompanion()
+  changed(0)
+})
 
 // ---------------------------------------------------------------------------
 // Eingänge: erkannte Geräte
@@ -3891,6 +3969,7 @@ function piStationPill(pi) {
   const station = piStatus.stations.find((s) => s.deviceId === piDeviceId(pi))
   if (!station) return '<span class="pill">nicht gemeldet</span>'
   if (station.online && station.intercomConnected) return '<span class="pill ok">im Intercom</span>'
+  if (station.online && station.effectiveStatus === 'multiview') return '<span class="pill ok">zeigt Multiview</span>'
   if (station.online) return '<span class="pill warn">läuft, nicht im Intercom</span>'
   return '<span class="pill bad">offline</span>'
 }
@@ -4005,6 +4084,7 @@ async function loadRaspberryStatus() {
     piStatus = { seen: piStatus.seen, stations: null, error: `Status nicht ladbar (${err.message})` }
   }
   renderRaspberry()
+  renderPiScreens()
   renderStatusStrip()
 }
 // Online/offline ändert sich laufend – solange der Reiter offen ist, alle 10 s neu laden
@@ -4260,7 +4340,7 @@ const SEARCH_ENTRIES = [
   { label: 'ChurchTools', href: '#/einstellungen/churchtools', admin: true, words: 'einstellungen ablauf agenda gottesdienst' },
   { label: 'Raspberry Pis', href: '#/einstellungen/raspberry', admin: true, words: 'einstellungen raspberry pi station kiosk intercom rolle mac fernsteuern' },
   { label: 'Companion', href: '#/einstellungen/companion', admin: true, words: 'einstellungen stream deck tasten' },
-  { label: 'Bildschirme am Server', href: '#/einstellungen/bildschirme', admin: true, words: 'einstellungen hdmi monitor anschluss' },
+  { label: 'Bildschirme', href: '#/einstellungen/bildschirme', admin: true, words: 'einstellungen hdmi monitor anschluss server raspberry pi intercom' },
   { label: 'Angemeldete Geräte', href: '#/einstellungen/geraete', admin: true, words: 'einstellungen online ip sitzung abmelden' },
   { label: 'Rollen', href: '#/einstellungen/zugang/rollen', admin: true, words: 'benutzer rechte sehen bearbeiten licht ton' },
   { label: 'Anmeldung & Admin-PIN', href: '#/einstellungen/zugang/anmeldung', admin: true, words: 'benutzer pin passwort admin' },

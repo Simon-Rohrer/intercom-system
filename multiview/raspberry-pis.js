@@ -7,6 +7,8 @@
 // Geheimnisse stehen hier bewusst nicht drin: die Konfiguration geht an alle Seiten des Multiview.
 
 const VIEWS = ['standard', 'station', 'simple']
+// Was der Pi auf seinem Bildschirm zeigt: das Intercom (Kesher) oder einen Multiview
+const DISPLAYS = ['intercom', 'multiview']
 const MAC_RE = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/
 const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
 
@@ -63,7 +65,13 @@ function normalizeClient(c, index) {
     view: VIEWS.includes(c?.view) ? c.view : 'standard',
     // Ruhemodus aus JMS Control: kein Intercom, Bildschirm aus, der Pi bleibt im Netz
     standby: c?.standby === true,
+    display: DISPLAYS.includes(c?.display) ? c.display : 'intercom',
   }
+}
+
+/** Eintrag des Pi unter „Bildschirme“ (config.screens): welcher Multiview, Drehung. */
+function piScreenId(clientId) {
+  return `pi-${clientId}`
 }
 
 function normalizeRaspberry(r) {
@@ -94,6 +102,12 @@ function launcherClient(c) {
   if (c.audioOutputMatch) out.audio_output_match = c.audioOutputMatch
   if (c.view !== 'standard') out.simple_view = c.view === 'simple'
   if (c.standby) out.standby = true
+  if (c.display === 'multiview') {
+    // Der Pi öffnet output.html?screen=<screen_id> beim Multiview; welcher Multiview dort
+    // läuft, schaltet dann wie bei den Bildschirmen am Server live um
+    out.display = 'multiview'
+    out.screen_id = piScreenId(c.id)
+  }
   return out
 }
 
@@ -162,4 +176,4 @@ function createPiRegistry({ now = Date.now, max = 50 } = {}) {
   }
 }
 
-module.exports = { normalizeRaspberry, launcherConfig, parsePiRequest, createPiRegistry }
+module.exports = { normalizeRaspberry, launcherConfig, parsePiRequest, createPiRegistry, piScreenId }

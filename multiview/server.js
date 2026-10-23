@@ -12,7 +12,7 @@ const { Atem } = require('atem-connection')
 const { createKesherChat } = require('./kesher-chat')
 const { createKesherRoles } = require('./kesher-roles')
 const { createNeighbors } = require('./neighbors')
-const { normalizeRaspberry, parsePiRequest, createPiRegistry } = require('./raspberry-pis')
+const { normalizeRaspberry, parsePiRequest, createPiRegistry, piScreenId } = require('./raspberry-pis')
 const { createChurchTools } = require('./churchtools')
 const { createUplink, normalizeUplink } = require('./uplink')
 const { createYouTube } = require('./youtube')
@@ -118,7 +118,9 @@ function normalizeConfig(c) {
     sources: Array.isArray(c?.sources) ? c.sources : base.sources,
     layouts: Array.isArray(c?.layouts) ? c.layouts : base.layouts,
     outputs: normalizeOutputDayQr(Array.isArray(c?.outputs) ? c.outputs : base.outputs, c?.dayQr),
-    screens: normalizeScreens(c?.screens),
+    // Einträge entfernter Raspberry Pis fallen weg
+    screens: normalizeScreens(c?.screens).filter((screen) => !screen.id.startsWith('pi-') ||
+      normalizeRaspberry(c?.raspberry).clients.some((client) => piScreenId(client.id) === screen.id)),
     chat: normalizeChat(c?.chat),
     churchtools: normalizeChurchTools(c?.churchtools),
     uplink: normalizeUplink(c?.uplink),
@@ -1143,10 +1145,16 @@ function refreshScreens() {
   broadcast({ type: 'screens', screens: detectedScreens })
 }
 
-/** Erkannte und eingestellte Bildschirme zusammen (für Companion und /api/state). */
+/** Raspberry Pis als Bildschirme (Einstellungen → Bildschirme): Eintrag pi-<Pi> in config.screens. */
+function piScreens() {
+  return (config.raspberry.clients || []).map((client) => ({ id: piScreenId(client.id), client }))
+}
+
+/** Erkannte und eingestellte Bildschirme zusammen (für Companion und /api/state), Raspberry Pis am Ende. */
 function screenList() {
-  const ids = [...new Set([...detectedScreens.map((s) => s.id), ...config.screens.map((s) => s.id)])]
-  return ids.map((id) => {
+  const pis = piScreens()
+  const ids = [...new Set([...detectedScreens.map((s) => s.id), ...config.screens.map((s) => s.id)])].filter((id) => !id.startsWith('pi-'))
+  const server = ids.map((id) => {
     const detected = detectedScreens.find((s) => s.id === id)
     const saved = config.screens.find((s) => s.id === id)
     return {
@@ -1157,6 +1165,17 @@ function screenList() {
       rotate: saved?.rotate ?? 0,
     }
   })
+  return [...server, ...pis.map(({ id, client }) => {
+    const saved = config.screens.find((s) => s.id === id)
+    return {
+      id,
+      name: saved?.name || client.name || 'Raspberry Pi',
+      // „angeschlossen“: der Pi zeigt gerade einen Multiview
+      connected: client.display === 'multiview' && !client.standby,
+      outputId: saved?.outputId ?? null,
+      rotate: saved?.rotate ?? 0,
+    }
+  })]
 }
 
 function setScreenOutput(id, outputId) {

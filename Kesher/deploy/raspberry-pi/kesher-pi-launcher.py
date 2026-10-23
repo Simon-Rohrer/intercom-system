@@ -21,7 +21,7 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import HTTPSHandler, HTTPRedirectHandler, Request, build_opener
 
 
-LAUNCHER_VERSION = "12"
+LAUNCHER_VERSION = "13"
 DEVICE_CERTIFICATE = Path("/etc/jms-device/client.crt")
 DEVICE_PRIVATE_KEY = Path("/etc/jms-device/client.key")
 SERVER_CA_CERTIFICATE = Path("/etc/jms-device/server-ca.crt")
@@ -33,6 +33,7 @@ BROWSER_CONNECT_TIMEOUT_SECONDS = 25
 BROWSER_CONNECT_POLL_SECONDS = 2
 BROWSER_CONNECTED_CHECKS = 2
 BROWSER_RESTART_DELAY_SECONDS = 2
+DISPLAY_MODES = ("intercom", "multiview")
 # Settings managed in the Multiview (Einstellungen → Raspberry Pis), see config_url
 MANAGED_CONFIG_BOOT_WAIT_SECONDS = 15
 MANAGED_CONFIG_POLL_SECONDS = 15
@@ -237,6 +238,13 @@ def resolve_client(
             value = raw_client.get(optional_field)
             if isinstance(value, str) and value.strip():
                 client[optional_field] = value.strip()
+        # Anzeige aus JMS Control (Einstellungen → Bildschirme): Intercom oder ein Multiview
+        display = raw_client.get("display", "intercom")
+        if display not in DISPLAY_MODES:
+            raise ValueError(f"clients[{index}].display must be one of {', '.join(DISPLAY_MODES)}")
+        if display == "multiview":
+            client["display"] = display
+            client["screen_id"] = require_text(raw_client.get("screen_id"), f"clients[{index}].screen_id")
         if certificate_bound:
             client["ip_address"] = sorted(local_addresses)[0] if local_addresses else configured_ip
             matches.append(client)
@@ -536,6 +544,21 @@ def build_kesher_url(server_url: str, client: dict[str, Any]) -> str:
     elif client.get("simple_view") is False:
         params["viewMode"] = "station"
     return f"{server_url}/?{urlencode(params)}"
+
+
+def build_multiview_url(config_url: Any, client: dict[str, Any]) -> str:
+    """output.html beim Multiview (gleiche Adresse wie config_url) für den Bildschirm des Pi.
+
+    Welcher Multiview dort läuft, schaltet der Multiview live um – ohne Neustart des Browsers.
+    """
+    parsed = urlsplit(normalize_config_url(config_url))
+    query = urlencode({"screen": client["screen_id"]})
+    return urlunsplit((parsed.scheme, parsed.netloc, "/output.html", query, ""))
+
+
+def server_origin(url: str) -> str:
+    parsed = urlsplit(url)
+    return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
 
 
 def ssl_context_for_url(url: str) -> ssl.SSLContext:
@@ -1203,10 +1226,10 @@ def cleanup_chromium_singletons(profile_dir: Optional[Path] = None) -> None:
 
 
 def browser_command(
-    config: dict[str, Any], kesher_url: str, low_power_mode: bool = False
+    config: dict[str, Any], start_url: str, low_power_mode: bool = False
 ) -> list[str]:
     normalize_server_url(config["server_url"])
-    normalize_server_url(kesher_url.split("?", 1)[0])
+    normalize_server_url(start_url.split("?", 1)[0])
     if config.get("allow_insecure_tls") is True:
         raise ValueError("allow_insecure_tls is not supported for authenticated devices")
     profile_dir = chromium_profile_dir()
@@ -1245,7 +1268,7 @@ def browser_command(
                 "--disable-features=Translate,BackForwardCache,MediaRouter,OptimizationHints,AutofillServerCommunication,CalculateNativeWinOcclusion,FallbackToSWIfGLES3NotSupported,WebGPU,Vulkan,SkiaGraphite",
             ]
         )
-    command.append(kesher_url)
+    command.append(start_url)
     return command
 
 
@@ -1286,9 +1309,16 @@ def main() -> int:
             print(json.dumps({"source": config_source, "config": shown}, indent=2, sort_keys=True))
             return 0
         client = resolve_client(config, addresses, mac_addresses)
-        kesher_url = build_kesher_url(config["server_url"], client)
+        multiview = client.get("display") == "multiview"
+        if multiview and not merged_raw.get("config_url"):
+            raise ValueError("display multiview needs config_url")
+        start_url = (
+            build_multiview_url(merged_raw.get("config_url"), client)
+            if multiview
+            else build_kesher_url(config["server_url"], client)
+        )
         if args.print_url:
-            print(kesher_url)
+            print(start_url)
             return 0
         if args.print_heartbeat:
             print(
@@ -1316,6 +1346,7 @@ def main() -> int:
         print(
             f'Starting Kesher station {client["name"]} '
             f'with role {client["role_id"]} for {client["ip_address"]} '
+            f'showing {"Multiview" if multiview else "Intercom"} '
             f"(settings from {config_source})",
             flush=True,
         )
@@ -1369,7 +1400,7 @@ def main() -> int:
                     os.execv(sys.executable, [sys.executable, os.path.abspath(__file__), *sys.argv[1:]])
         try:
             wait_for_server(
-                config["server_url"],
+                server_origin(start_url) if multiview else config["server_url"],
                 config.get("allow_insecure_tls") is True,
                 reload_event,
             )
@@ -1405,13 +1436,26 @@ def main() -> int:
                 process = subprocess.Popen(
                     browser_command(
                         config,
-                        kesher_url,
+                        start_url,
                         client.get("low_power_mode") is True,
                     )
                 )
                 browser["process"] = process
                 if reload_event.is_set():
                     stop_browser_process(process)
+                if multiview:
+                    # Multiview statt Intercom: kein Kesher-Login abzuwarten, Kesher sieht im
+                    # Heartbeat „multiview“
+                    print(f"Showing Multiview screen {client['screen_id']}", flush=True)
+                    update_heartbeat_state(
+                        heartbeat_state,
+                        heartbeat_state_lock,
+                        browser_status="running",
+                        login_status="multiview",
+                        login_error="",
+                    )
+                    return_code = process.wait()
+                    break
                 update_heartbeat_state(
                     heartbeat_state,
                     heartbeat_state_lock,
