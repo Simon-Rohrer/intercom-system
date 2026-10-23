@@ -157,7 +157,7 @@ function render() {
     : output ? `${output.name} – Multiview` : 'Multiview'
 
   // Monitor hochkant aufgehängt (Bildschirme am Server → Drehung): das ganze Bild drehen
-  const rotate = screen?.rotate === 90 || screen?.rotate === 270 ? String(screen.rotate) : ''
+  const rotate = [90, 180, 270].includes(screen?.rotate) ? String(screen.rotate) : ''
   if ((document.body.dataset.rotate || '') !== rotate) {
     if (rotate) document.body.dataset.rotate = rotate
     else delete document.body.dataset.rotate

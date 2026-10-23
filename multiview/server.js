@@ -139,8 +139,8 @@ function normalizeScreens(list) {
       id: s.id,
       name: typeof s.name === 'string' ? s.name.trim() : '',
       outputId: typeof s.outputId === 'string' && s.outputId ? s.outputId : null,
-      // Monitor hochkant aufgehängt: Bild um 90° bzw. 270° drehen (0 = normal)
-      rotate: [90, 270].includes(Number(s.rotate)) ? Number(s.rotate) : 0,
+      // Monitor hochkant (90° bzw. 270°) oder über Kopf (180°) aufgehängt: Bild drehen (0 = normal)
+      rotate: [90, 180, 270].includes(Number(s.rotate)) ? Number(s.rotate) : 0,
     }))
 }
 

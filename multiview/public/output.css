@@ -269,4 +269,6 @@ body[data-rotate] {
 }
 body[data-rotate="90"] { transform: rotate(90deg) translateY(-100%); }
 body[data-rotate="270"] { transform: rotate(-90deg) translateX(-100%); }
+/* Über Kopf: Fläche bleibt so groß wie der Bildschirm, nur um die Mitte gedreht */
+body[data-rotate="180"] { width: 100vw; height: 100vh; transform-origin: center; transform: rotate(180deg); }
 body[data-rotate] #stage, body[data-rotate] #frames { position: absolute; }

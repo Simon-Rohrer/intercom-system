@@ -943,6 +943,7 @@ function renderScreens() {
       <td><select data-s="rotate" aria-label="Drehung">
         <option value="0" ${!saved?.rotate ? 'selected' : ''}>normal</option>
         <option value="90" ${saved?.rotate === 90 ? 'selected' : ''}>hochkant ↻ 90°</option>
+        <option value="180" ${saved?.rotate === 180 ? 'selected' : ''}>über Kopf 180°</option>
         <option value="270" ${saved?.rotate === 270 ? 'selected' : ''}>hochkant ↺ 270°</option>
       </select></td>
       <td>${status}</td>
@@ -1015,6 +1016,7 @@ function renderPiScreens() {
             <label class="field"><span>Drehung</span><select data-ps="rotate" ${multiview ? '' : 'disabled'}>
               <option value="0" ${!saved?.rotate ? 'selected' : ''}>normal</option>
               <option value="90" ${saved?.rotate === 90 ? 'selected' : ''}>hochkant ↻ 90°</option>
+              <option value="180" ${saved?.rotate === 180 ? 'selected' : ''}>über Kopf 180°</option>
               <option value="270" ${saved?.rotate === 270 ? 'selected' : ''}>hochkant ↺ 270°</option>
             </select></label>
           </div>
