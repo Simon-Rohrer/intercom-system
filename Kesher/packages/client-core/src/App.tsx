@@ -786,6 +786,10 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     audioGateThresholdDb: settings.audioGateThresholdDb,
     selectedInputGainFor: settings.selectedInputGainFor,
     onInputGainChange: settings.onInputGainChange,
+    onAudioGateChange: (enabled: boolean, thresholdDb?: number) => {
+      settings.setAudioGateEnabled(enabled);
+      if (thresholdDb !== undefined) settings.setAudioGateThresholdDb(thresholdDb);
+    },
     channelAudioFeeds: visibleChannelAudioFeeds,
     inputDevices: audioDevices.inputDevices as Array<
       MediaDeviceInfo & { inputChannels?: unknown }

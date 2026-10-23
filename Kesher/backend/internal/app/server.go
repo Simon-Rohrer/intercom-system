@@ -1632,6 +1632,28 @@ func (s *Server) normalizeCompanionRelayCommand(ctx context.Context, sourceRoleI
 			return CompanionCommand{}, errors.New("invalid monitor state")
 		}
 		return normalized, nil
+	case "set_audio_gate":
+		// Rauschsperre an/aus, optional mit Schwelle in dBFS
+		normalized.State = strings.TrimSpace(command.State)
+		if normalized.State != "on" && normalized.State != "off" {
+			return CompanionCommand{}, errors.New("invalid gate state")
+		}
+		if command.GateThresholdDb != nil {
+			threshold := *command.GateThresholdDb
+			if math.IsNaN(threshold) || math.IsInf(threshold, 0) {
+				return CompanionCommand{}, errors.New("invalid gateThresholdDb")
+			}
+			threshold = math.Max(-72, math.Min(-12, math.Round(threshold)))
+			normalized.GateThresholdDb = &threshold
+		}
+		return normalized, nil
+	case "set_remote_metering":
+		// Pegelanzeige für die Fernsteuerung: läuft auf dem Gerät eine Weile, solange sie angefragt wird
+		normalized.State = strings.TrimSpace(command.State)
+		if normalized.State != "start" && normalized.State != "stop" {
+			return CompanionCommand{}, errors.New("invalid metering state")
+		}
+		return normalized, nil
 	case "navigate_to_page", "page_up", "page_down", "page_jump", "page_home", "page_back":
 		return normalized, nil
 	case "set_streamdeck_brightness", "clear_streamdeck_panel", "reset_streamdeck":

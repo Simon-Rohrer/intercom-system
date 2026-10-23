@@ -3978,6 +3978,56 @@ function piDeviceSelect(pi, key, kind) {
   return `<select data-p="${key}">${options}</select>${hint}`
 }
 
+// Umrechnungen wie im Intercom (Kesher): Verstärkung linear ↔ dB, Pegel in dBFS
+const PI_GAIN_DB_MIN = -60
+const PI_GAIN_DB_MAX = 18
+const PI_GAIN_MUTE = PI_GAIN_DB_MIN - 1
+const PI_GATE_MIN = -72
+const PI_GATE_MAX = -12
+const piGainToDb = (gain) => (!(gain > 0) || 20 * Math.log10(gain) < PI_GAIN_DB_MIN ? PI_GAIN_MUTE : Math.round(Math.min(PI_GAIN_DB_MAX, 20 * Math.log10(gain))))
+const piDbToGain = (db) => (db <= PI_GAIN_MUTE ? 0 : Math.pow(10, Math.min(PI_GAIN_DB_MAX, db) / 20))
+const piDbLabel = (db) => (db <= PI_GAIN_MUTE ? 'stumm' : db === 0 ? '0 dB' : `${db > 0 ? '+' : ''}${db} dB`)
+const piLevelPercent = (dbfs) => (Number.isFinite(dbfs) ? Math.max(0, Math.min(100, ((dbfs + 60) / 60) * 100)) : 0)
+const piLevelLabel = (dbfs) => (!Number.isFinite(dbfs) || dbfs <= -60 ? '–∞ dBFS' : `${dbfs.toFixed(1)} dBFS`)
+const piFill = (value, min, max) => `${(((value - min) / (max - min)) * 100).toFixed(1)}%`
+
+/** Pegel, Mikrofontest, Verstärkung und Rauschsperre des Pi (Kesher meldet sie, JMS Control steuert sie). */
+function piMicHtml(pi) {
+  const station = piStation(pi)
+  const audio = station?.audioState
+  const live = Boolean(station?.online && station?.intercomConnected && audio)
+  const off = live ? '' : 'disabled'
+  const gainDb = piGainToDb(audio?.selectedInputGain ?? 1)
+  const gate = audio?.gateThresholdDb ?? -52
+  const gateOn = Boolean(audio?.gateEnabled)
+  const testing = Boolean(audio?.localMonitorActive)
+  return `<div class="pi-mic-card">
+      <div class="pi-mic-head"><span>Eingangspegel</span><output data-pi-level-text>${live ? piLevelLabel(audio.inputLevelDbFs) : '–'}</output></div>
+      <div class="pi-level" role="meter" aria-label="Eingangspegel" aria-valuemin="-60" aria-valuemax="0"><div class="pi-level-fill" data-pi-level style="width:${live ? piLevelPercent(audio.inputLevelDbFs) : 0}%"></div></div>
+      <div class="pi-level-scale" aria-hidden="true"><span>-60 dB</span><span>-30</span><span>0</span></div>
+      <button class="btn small ${testing ? 'primary' : ''}" type="button" data-pi-test ${off}>${testing ? 'Test beenden' : 'Mikrofon testen'}</button>
+      <small class="muted">${testing ? 'Am Pi hört man sich jetzt selbst im Kopfhörer.' : live ? 'Am Pi das Headset aufsetzen – man hört sich dann selbst.' : 'Geht, sobald der Pi im Intercom ist.'}</small>
+    </div>
+    <div class="pi-mic-card">
+      <div class="pi-mic-head"><span>Verstärkung</span><output data-pi-gain-text>${piDbLabel(gainDb)}</output></div>
+      <input class="pi-slider" type="range" min="${PI_GAIN_MUTE}" max="${PI_GAIN_DB_MAX}" step="1" value="${gainDb}" data-pi-gain ${off}
+        style="--fill:${piFill(gainDb, PI_GAIN_MUTE, PI_GAIN_DB_MAX)}" aria-label="Verstärkung">
+      <div class="pi-level-scale" aria-hidden="true"><span>stumm</span><span>+18 dB</span></div>
+      <small class="muted">Wie der Regler „Verstärkung“ im Intercom des Pi.</small>
+    </div>
+    <div class="pi-mic-card ${gateOn ? 'on' : ''}">
+      <div class="pi-mic-head"><span>Rauschsperre</span>
+        <label class="switch"><input type="checkbox" data-pi-gate ${gateOn ? 'checked' : ''} ${off}><span class="switch-track"></span></label></div>
+      <div class="pi-mic-head pi-mic-sub"><span>Schwelle</span><output data-pi-gate-text>${Math.round(gate)} dBFS</output></div>
+      <input class="pi-slider" type="range" min="${PI_GATE_MIN}" max="${PI_GATE_MAX}" step="1" value="${Math.round(gate)}" data-pi-gate-threshold ${live && gateOn ? '' : 'disabled'}
+        style="--fill:${piFill(gate, PI_GATE_MIN, PI_GATE_MAX)}" aria-label="Schwelle der Rauschsperre">
+      <div class="pi-level-scale" aria-hidden="true"><span>Offen</span><span>Streng</span></div>
+      <small class="${audio?.lowPowerMode && gateOn ? 'pi-device-missing' : 'muted'}">${audio?.lowPowerMode
+        ? 'Im Sparmodus des Pi ist die Rauschsperre aus – sie wirkt erst ohne Sparmodus.'
+        : gateOn ? 'Blendet leise Hintergrundgeräusche aus.' : 'Aus – alles wird übertragen.'}</small>
+    </div>`
+}
+
 /** Audio des Pi: Mikrofon, Kopfhörer, „Dauerhaft an“ – live aus Kesher, fernsteuerbar. */
 function piAudioHtml(pi) {
   const station = piStation(pi)
@@ -4074,6 +4124,7 @@ function renderRaspberry() {
               <label class="check pi-check"><input type="checkbox" data-p="lowPowerMode" ${pi.lowPowerMode ? 'checked' : ''}> Sparmodus (schwache Pis)</label>
             </div>
             <div class="pi-audio" data-pi-audio>${piAudioHtml(pi)}</div>
+            <div class="pi-mic" data-pi-mic>${piMicHtml(pi)}</div>
             ${problems.length ? `<p class="pi-problem">⚠ ${esc(problems.join(' · '))}</p>` : ''}
             ${pi.standby ? '<p class="muted pi-power-hint">Ausgeschaltet: kein Intercom, Bildschirm aus. Der Pi bleibt im Netz – „Einschalten“ weckt ihn in etwa 15 Sekunden.</p>' : reachable ? '' : `<p class="muted pi-power-hint">${esc(offHint)}</p>`}
           </div>`
@@ -4138,8 +4189,99 @@ function patchPiLive() {
     if (pill) pill.innerHTML = pi.standby ? '<span class="pill">Ruhemodus</span>' : piStationPill(pi)
     const audio = item.querySelector('[data-pi-audio]')
     if (audio && !audio.contains(document.activeElement)) audio.innerHTML = piAudioHtml(pi)
+    const mic = item.querySelector('[data-pi-mic]')
+    if (mic && !mic.contains(document.activeElement)) mic.innerHTML = piMicHtml(pi)
   }
 }
+
+/** Nur Pegel und Testzustand – das läuft schnell, ohne Regler oder Fokus anzufassen. */
+function updatePiMeters() {
+  for (const item of $('#pi-list').querySelectorAll('[data-pi]')) {
+    const pi = piSettings().clients.find((c) => c.id === item.dataset.pi)
+    const audio = pi && piStation(pi)?.intercomConnected ? piStation(pi).audioState : null
+    const bar = item.querySelector('[data-pi-level]')
+    if (bar) bar.style.width = `${audio ? piLevelPercent(audio.inputLevelDbFs) : 0}%`
+    const text = item.querySelector('[data-pi-level-text]')
+    if (text) text.textContent = audio ? piLevelLabel(audio.inputLevelDbFs) : '–'
+    const test = item.querySelector('[data-pi-test]')
+    if (test && audio && test.classList.contains('primary') !== Boolean(audio.localMonitorActive)) {
+      const mic = item.querySelector('[data-pi-mic]')
+      if (mic && !mic.contains(document.activeElement)) mic.innerHTML = piMicHtml(pi)
+    }
+  }
+}
+
+// Live-Pegel: solange Einstellungen → Raspberry Pis offen ist, misst jeder Pi im Intercom
+// (Anfrage alle 20 s, sonst hört er nach 30 s auf) und JMS Control fragt zweimal pro Sekunde nach
+let piMeterRequested = 0
+let piMeterBusy = false
+setInterval(async () => {
+  if (document.visibilityState !== 'visible' || page !== 'einstellungen' || !isAdmin() || !$('#pi-list')?.offsetParent || piMeterBusy) return
+  const connected = piSettings().clients.filter((pi) => piStation(pi)?.intercomConnected)
+  if (!connected.length) return
+  if (Date.now() - piMeterRequested > 20_000) {
+    piMeterRequested = Date.now()
+    for (const pi of connected)
+      fetch('/api/raspberry-pis/remote-command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId: pi.id, command: 'set_remote_metering', state: 'start' }) }).catch(() => {})
+  }
+  piMeterBusy = true
+  try {
+    const res = await fetch('/api/raspberry-pis/status', { cache: 'no-store' })
+    if (res.ok) {
+      const next = await res.json()
+      if (next.stations) piStatus = { ...piStatus, stations: next.stations }
+      updatePiMeters()
+    }
+  } catch {
+    // nächster Versuch gleich wieder
+  } finally {
+    piMeterBusy = false
+  }
+}, 500)
+
+function piFromEvent(e) {
+  return piSettings().clients.find((c) => c.id === e.target.closest('[data-pi]')?.dataset.pi)
+}
+
+$('#pi-list').addEventListener('input', (e) => {
+  const el = e.target
+  if (el.matches('[data-pi-gain]')) {
+    el.style.setProperty('--fill', piFill(Number(el.value), PI_GAIN_MUTE, PI_GAIN_DB_MAX))
+    el.closest('.pi-mic-card').querySelector('[data-pi-gain-text]').textContent = piDbLabel(Number(el.value))
+  } else if (el.matches('[data-pi-gate-threshold]')) {
+    el.style.setProperty('--fill', piFill(Number(el.value), PI_GATE_MIN, PI_GATE_MAX))
+    el.closest('.pi-mic-card').querySelector('[data-pi-gate-text]').textContent = `${el.value} dBFS`
+  }
+})
+
+$('#pi-list').addEventListener('change', (e) => {
+  const el = e.target
+  const pi = piFromEvent(e)
+  if (!pi) return
+  if (el.matches('[data-pi-gain]')) {
+    piRemoteCommand(pi, 'set_input_gain', { inputGain: piDbToGain(Number(el.value)) })
+    el.blur()
+  } else if (el.matches('[data-pi-gate]')) {
+    const threshold = Number(el.closest('.pi-mic-card').querySelector('[data-pi-gate-threshold]').value)
+    piRemoteCommand(pi, 'set_audio_gate', { state: el.checked ? 'on' : 'off', gateThresholdDb: threshold })
+    el.blur()
+  } else if (el.matches('[data-pi-gate-threshold]')) {
+    piRemoteCommand(pi, 'set_audio_gate', { state: 'on', gateThresholdDb: Number(el.value) })
+    el.blur()
+  }
+})
+
+$('#pi-list').addEventListener('click', (e) => {
+  const button = e.target.closest('[data-pi-test]')
+  if (!button) return
+  const pi = piFromEvent(e)
+  if (!pi) return
+  const start = !button.classList.contains('primary')
+  button.classList.toggle('primary', start)
+  button.textContent = start ? 'Test beenden' : 'Mikrofon testen'
+  piRemoteCommand(pi, 'set_local_monitor', { state: start ? 'start' : 'stop' })
+  button.blur()
+})
 
 async function piRemoteCommand(pi, command, args) {
   try {

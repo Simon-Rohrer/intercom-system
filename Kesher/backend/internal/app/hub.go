@@ -517,6 +517,13 @@ func sanitizeAudioState(state AudioState) AudioState {
 		level := math.Max(-60, math.Min(0, *state.InputLevelDbFS))
 		inputLevelDbFS = &level
 	}
+	var gateThresholdDb *float64
+	if state.GateThresholdDb != nil &&
+		!math.IsNaN(*state.GateThresholdDb) &&
+		!math.IsInf(*state.GateThresholdDb, 0) {
+		threshold := math.Max(-72, math.Min(-12, *state.GateThresholdDb))
+		gateThresholdDb = &threshold
+	}
 	return AudioState{
 		InputDevices:           sanitizeAudioDeviceList(state.InputDevices, "audioinput"),
 		OutputDevices:          sanitizeAudioDeviceList(state.OutputDevices, "audiooutput"),
@@ -525,6 +532,10 @@ func sanitizeAudioState(state AudioState) AudioState {
 		SelectedInputChannel:   selectedInputChannel,
 		SelectedInputGain:      selectedInputGain,
 		InputLevelDbFS:         inputLevelDbFS,
+		LocalMonitorActive:     state.LocalMonitorActive,
+		GateEnabled:            state.GateEnabled,
+		GateThresholdDb:        gateThresholdDb,
+		LowPowerMode:           state.LowPowerMode,
 	}
 }
 
@@ -542,7 +553,11 @@ func cloneAudioStatePtr(state AudioState) *AudioState {
 		state.SelectedOutputDeviceID == "" &&
 		state.SelectedInputChannel == "" &&
 		state.SelectedInputGain == nil &&
-		state.InputLevelDbFS == nil {
+		state.InputLevelDbFS == nil &&
+		!state.LocalMonitorActive &&
+		!state.GateEnabled &&
+		state.GateThresholdDb == nil &&
+		!state.LowPowerMode {
 		return nil
 	}
 	var selectedInputGain *float64
@@ -555,6 +570,11 @@ func cloneAudioStatePtr(state AudioState) *AudioState {
 		level := *state.InputLevelDbFS
 		inputLevelDbFS = &level
 	}
+	var gateThresholdDb *float64
+	if state.GateThresholdDb != nil {
+		threshold := *state.GateThresholdDb
+		gateThresholdDb = &threshold
+	}
 	return &AudioState{
 		InputDevices:           cloneAudioDeviceList(state.InputDevices),
 		OutputDevices:          cloneAudioDeviceList(state.OutputDevices),
@@ -563,6 +583,10 @@ func cloneAudioStatePtr(state AudioState) *AudioState {
 		SelectedInputChannel:   state.SelectedInputChannel,
 		SelectedInputGain:      selectedInputGain,
 		InputLevelDbFS:         inputLevelDbFS,
+		LocalMonitorActive:     state.LocalMonitorActive,
+		GateEnabled:            state.GateEnabled,
+		GateThresholdDb:        gateThresholdDb,
+		LowPowerMode:           state.LowPowerMode,
 	}
 }
 
@@ -584,6 +608,10 @@ func sameAudioState(a, b AudioState) bool {
 		a.SelectedInputChannel == b.SelectedInputChannel &&
 		sameOptionalFloat64(a.SelectedInputGain, b.SelectedInputGain) &&
 		sameOptionalFloat64(a.InputLevelDbFS, b.InputLevelDbFS) &&
+		a.LocalMonitorActive == b.LocalMonitorActive &&
+		a.GateEnabled == b.GateEnabled &&
+		sameOptionalFloat64(a.GateThresholdDb, b.GateThresholdDb) &&
+		a.LowPowerMode == b.LowPowerMode &&
 		sameAudioDeviceList(a.InputDevices, b.InputDevices) &&
 		sameAudioDeviceList(a.OutputDevices, b.OutputDevices)
 }
@@ -1673,6 +1701,18 @@ func writePresenceHashAudioState(h hash.Hash64, state *AudioState) {
 	writePresenceHashString(h, state.SelectedInputChannel)
 	writePresenceHashOptionalFloat(h, state.SelectedInputGain, 3)
 	writePresenceHashOptionalFloat(h, state.InputLevelDbFS, 1)
+	writePresenceHashBool(h, state.LocalMonitorActive)
+	writePresenceHashBool(h, state.GateEnabled)
+	writePresenceHashOptionalFloat(h, state.GateThresholdDb, 2)
+	writePresenceHashBool(h, state.LowPowerMode)
+}
+
+func writePresenceHashBool(h hash.Hash64, value bool) {
+	if value {
+		_, _ = h.Write([]byte{1})
+		return
+	}
+	_, _ = h.Write([]byte{0})
 }
 
 func writePresenceHashAudioDevices(h hash.Hash64, devices []AudioDeviceInfo) {

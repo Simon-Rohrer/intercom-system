@@ -105,6 +105,7 @@ type WsMessage =
         outputDeviceId?: string;
         inputChannel?: string;
         inputGain?: number;
+        gateThresholdDb?: number;
       };
     }
   | { type: "webrtc_offer"; data: { sdp: string } }
@@ -618,6 +619,8 @@ export type UseIntercomSessionOptions = {
   audioGateThresholdDb: number;
   selectedInputGainFor: (deviceId: string) => number;
   onInputGainChange: (deviceId: string, gain: number) => void;
+  /** Rauschsperre aus der Fernsteuerung (JMS Control) setzen. */
+  onAudioGateChange?: (enabled: boolean, thresholdDb?: number) => void;
   channelAudioFeeds: ChannelAudioFeedSettings[];
   inputDevices: Array<MediaDeviceInfo & { inputChannels?: unknown }>;
   outputDevices: MediaDeviceInfo[];
@@ -790,6 +793,7 @@ export function useIntercomSession({
   audioGateThresholdDb,
   selectedInputGainFor,
   onInputGainChange,
+  onAudioGateChange,
   channelAudioFeeds,
   inputDevices,
   outputDevices,
@@ -1192,7 +1196,30 @@ export function useIntercomSession({
   // Keep a stable ref so sub-hooks always call the latest version
   const resolveGainRef = useRef(resolveGainForRemoteSource);
   resolveGainRef.current = resolveGainForRemoteSource;
+  // Pegelanzeige für die Fernsteuerung (JMS Control): läuft 30 s nach der letzten Anfrage
+  const [remoteMeteringActive, setRemoteMeteringActive] = useState(false);
+  const remoteMeteringTimerRef = useRef<number | null>(null);
+  const requestRemoteMetering = useCallback((start: boolean) => {
+    if (remoteMeteringTimerRef.current !== null) {
+      window.clearTimeout(remoteMeteringTimerRef.current);
+      remoteMeteringTimerRef.current = null;
+    }
+    setRemoteMeteringActive(start);
+    if (start) {
+      remoteMeteringTimerRef.current = window.setTimeout(() => {
+        remoteMeteringTimerRef.current = null;
+        setRemoteMeteringActive(false);
+      }, 30_000);
+    }
+  }, []);
+  useEffect(
+    () => () => {
+      if (remoteMeteringTimerRef.current !== null) window.clearTimeout(remoteMeteringTimerRef.current);
+    },
+    [],
+  );
   const inputMeteringActive =
+    remoteMeteringActive ||
     isUserSettingsOpen ||
     voiceMode === "always_on" ||
     pttPressed ||
@@ -1216,6 +1243,7 @@ export function useIntercomSession({
     isUserSettingsOpen,
     isUserSettingsOpenRef,
     inputMeteringActive,
+    remoteMeteringActive,
     voiceModeRef,
     pcRef,
     onAudioError: setAudioError,
@@ -2150,11 +2178,23 @@ export function useIntercomSession({
             selectedInputDeviceIdRef.current,
           ),
           inputLevelDbFs: inputLevelDbFsRef.current,
+          localMonitorActive: mic.isLocalMonitorActive,
+          gateEnabled: audioGateEnabled,
+          gateThresholdDb: audioGateThresholdDb,
+          lowPowerMode,
         } satisfies AudioState,
       }),
     );
     return true;
-  }, [selectedInputDeviceIdRef, selectedOutputDeviceIdRef, selectedInputGainFor]);
+  }, [
+    selectedInputDeviceIdRef,
+    selectedOutputDeviceIdRef,
+    selectedInputGainFor,
+    mic.isLocalMonitorActive,
+    audioGateEnabled,
+    audioGateThresholdDb,
+    lowPowerMode,
+  ]);
 
   useEffect(() => {
     if (connectionState !== "connected") return;
@@ -2930,6 +2970,34 @@ export function useIntercomSession({
               selectedInputDeviceIdRef.current,
               clampInputGainValue(inputGain),
             );
+            ackSuccess();
+            return;
+          }
+          if (msg.data.command === "set_audio_gate") {
+            const gateState = String(msg.data.state || "").trim();
+            if (gateState !== "on" && gateState !== "off") {
+              ackRejected("invalid gate state");
+              return;
+            }
+            if (!onAudioGateChange) {
+              ackRejected("gate unavailable");
+              return;
+            }
+            const threshold = Number(msg.data.gateThresholdDb);
+            onAudioGateChange(
+              gateState === "on",
+              Number.isFinite(threshold) ? threshold : undefined,
+            );
+            ackSuccess();
+            return;
+          }
+          if (msg.data.command === "set_remote_metering") {
+            const meteringState = String(msg.data.state || "").trim();
+            if (meteringState !== "start" && meteringState !== "stop") {
+              ackRejected("invalid metering state");
+              return;
+            }
+            requestRemoteMetering(meteringState === "start");
             ackSuccess();
             return;
           }

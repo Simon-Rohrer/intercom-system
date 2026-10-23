@@ -177,6 +177,11 @@ export type AudioState = {
   selectedInputChannel?: string;
   selectedInputGain?: number;
   inputLevelDbFs?: number;
+  // Für die Fernsteuerung aus JMS Control
+  localMonitorActive?: boolean;
+  gateEnabled?: boolean;
+  gateThresholdDb?: number;
+  lowPowerMode?: boolean;
 };
 
 export type PublicBootstrap = {
@@ -341,6 +346,7 @@ export type RaspberryPiRemoteCommandRequest = {
   outputDeviceId?: string;
   inputChannel?: string;
   inputGain?: number;
+  gateThresholdDb?: number;
 };
 
 export type RaspberryPiRemoteCommandResult = {

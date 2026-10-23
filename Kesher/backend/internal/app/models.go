@@ -406,6 +406,11 @@ type AudioState struct {
 	SelectedInputChannel   string            `json:"selectedInputChannel,omitempty"`
 	SelectedInputGain      *float64          `json:"selectedInputGain,omitempty"`
 	InputLevelDbFS         *float64          `json:"inputLevelDbFs,omitempty"`
+	// Für die Fernsteuerung aus JMS Control: Mikrofontest, Rauschsperre, Sparmodus
+	LocalMonitorActive bool     `json:"localMonitorActive,omitempty"`
+	GateEnabled        bool     `json:"gateEnabled,omitempty"`
+	GateThresholdDb    *float64 `json:"gateThresholdDb,omitempty"`
+	LowPowerMode       bool     `json:"lowPowerMode,omitempty"`
 }
 
 type PresenceState struct {
@@ -511,6 +516,7 @@ type CompanionCommand struct {
 	OutputDeviceID   string   `json:"outputDeviceId,omitempty"`
 	InputChannel     string   `json:"inputChannel,omitempty"`
 	InputGain        *float64 `json:"inputGain,omitempty"`
+	GateThresholdDb  *float64 `json:"gateThresholdDb,omitempty"`
 }
 
 type CompanionCommandResult struct {

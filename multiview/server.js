@@ -1604,6 +1604,18 @@ const PI_REMOTE_COMMANDS = {
   set_voice_mode: (body) => (['always_on', 'ptt'].includes(body.mode) ? { mode: body.mode } : null),
   set_audio_input_device: (body) => (typeof body.inputDeviceId === 'string' && body.inputDeviceId.length <= 512 ? { inputDeviceId: body.inputDeviceId } : null),
   set_audio_output_device: (body) => (typeof body.outputDeviceId === 'string' && body.outputDeviceId.length <= 512 ? { outputDeviceId: body.outputDeviceId } : null),
+  // Verstärkung des Mikrofons (linear wie in Kesher, 0 = stumm)
+  set_input_gain: (body) => (Number.isFinite(body.inputGain) && body.inputGain >= 0 && body.inputGain <= 16 ? { inputGain: body.inputGain } : null),
+  // Mikrofon testen: der Pi hört sich selbst im Kopfhörer
+  set_local_monitor: (body) => (['start', 'stop'].includes(body.state) ? { state: body.state } : null),
+  // Rauschsperre an/aus, Schwelle in dBFS
+  set_audio_gate: (body) => {
+    if (!['on', 'off'].includes(body.state)) return null
+    if (body.gateThresholdDb === undefined) return { state: body.state }
+    return Number.isFinite(body.gateThresholdDb) ? { state: body.state, gateThresholdDb: Math.max(-72, Math.min(-12, Math.round(body.gateThresholdDb))) } : null
+  },
+  // Pegelanzeige: der Pi misst 30 s lang, solange die Einstellungen offen sind
+  set_remote_metering: (body) => (['start', 'stop'].includes(body.state) ? { state: body.state } : null),
 }
 
 app.post('/api/raspberry-pis/remote-command', requireAdmin, async (req, res) => {
@@ -1624,7 +1636,8 @@ app.post('/api/raspberry-pis/remote-command', requireAdmin, async (req, res) => 
       const error = r.status === 409 ? 'Der Pi ist gerade nicht im Intercom' : text || `Kesher: HTTP ${r.status}`
       return res.status(r.status === 409 ? 409 : 502).json({ ok: false, error })
     }
-    console.log(`Raspberry Pi ${client.name || client.id}: ${body.command} ${Object.values(args).join(' ')} (${req.user.name})`)
+    if (body.command !== 'set_remote_metering')
+      console.log(`Raspberry Pi ${client.name || client.id}: ${body.command} ${Object.values(args).join(' ')} (${req.user.name})`)
     res.json({ ok: true })
   } catch (err) {
     res.status(502).json({ ok: false, error: `Kesher nicht erreichbar (${err.message})` })

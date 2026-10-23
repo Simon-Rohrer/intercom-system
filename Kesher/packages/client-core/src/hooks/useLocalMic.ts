@@ -256,6 +256,8 @@ export type UseLocalMicOptions = {
   isUserSettingsOpenRef: React.MutableRefObject<boolean>;
   /** Whether input metering should run for settings or active outgoing talk. */
   inputMeteringActive: boolean;
+  /** Remote control (JMS Control) asked for the level – meter even in low power mode. */
+  remoteMeteringActive?: boolean;
   /** Stable ref to the current voice mode (needed when applying mode to tracks). */
   voiceModeRef: React.MutableRefObject<"always_on" | "ptt">;
   /** The active RTCPeerConnection – used to replace the audio sender on device switch. */
@@ -327,6 +329,7 @@ export function useLocalMic({
   isUserSettingsOpen,
   isUserSettingsOpenRef,
   inputMeteringActive,
+  remoteMeteringActive = false,
   voiceModeRef,
   pcRef,
   onAudioError,
@@ -365,6 +368,8 @@ export function useLocalMic({
   const localMonitorAudioElRef = useRef<HTMLAudioElement | null>(null);
   const audioGateThresholdDbRef = useRef(audioGateThresholdDb);
   const inputMeteringActiveRef = useRef(inputMeteringActive);
+  const remoteMeteringActiveRef = useRef(remoteMeteringActive);
+  remoteMeteringActiveRef.current = remoteMeteringActive;
   const gateEnvelopeRef = useRef(0.0); // Current gate envelope (0.0 = fully muted, 1.0 = fully open)
   const gateCoefficientsRef = useRef({ attackCoeff: 0.1, releaseCoeff: 0.01 });
 
@@ -691,7 +696,9 @@ export function useLocalMic({
           for (const t of localStreamRef.current.getTracks()) t.stop();
         }
         localStreamRef.current = newStream;
-        if (inputMeteringActiveRef.current && !lowPowerMode) {
+        if (remoteMeteringActiveRef.current) {
+          startLevelMeter(newStream, { allowLowPower: true });
+        } else if (inputMeteringActiveRef.current && !lowPowerMode) {
           startLevelMeter(newStream);
         } else {
           stopLevelMeter();
@@ -731,14 +738,14 @@ export function useLocalMic({
 
   // ── Level meter toggle for settings and active outgoing talk ──
   useEffect(() => {
-    if (!inputMeteringActive || lowPowerMode) {
+    if (!inputMeteringActive || (lowPowerMode && !remoteMeteringActive)) {
       stopLevelMeter();
       return;
     }
     const processedStream = localStreamRef.current;
-    if (processedStream) startLevelMeter(processedStream);
+    if (processedStream) startLevelMeter(processedStream, { allowLowPower: remoteMeteringActive });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inputMeteringActive, lowPowerMode]);
+  }, [inputMeteringActive, lowPowerMode, remoteMeteringActive]);
 
   // ── Local monitor auto-stop (settings panel open/close) ──
   useEffect(() => {
