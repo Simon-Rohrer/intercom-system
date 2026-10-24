@@ -24,8 +24,12 @@ hostname -I
 Seit Launcher-Version 10 stehen die Einstellungen der Pis im Multiview unter
 **Einstellungen → Raspberry Pis** (`https://192.168.0.21:8090/#/einstellungen/raspberry`, nur Admin):
 Kesher-Adresse, Zertifikat, Wartezeiten und pro Station Name, Rolle, Ansicht, MAC-Adressen,
-Audio-Geräte und Sparmodus. Der Launcher fragt beim Start und danach alle 15 Sekunden nach;
-ändert sich etwas für seinen Pi, startet er den Browser mit den neuen Einstellungen neu.
+Audio-Geräte und Sparmodus. Ab Launcher-Version 14 hält der Pi seine Anfrage offen (Long-Poll
+mit `version`/`waitSeconds`): Der Multiview antwortet sofort, sobald sich etwas für diesen Pi
+ändert, statt dass der Pi alle 15 Sekunden nachfragt. Ändert sich nur die Anzeige
+(Intercom/Multiview), schaltet er um; bei anderen Änderungen startet er den Browser mit den
+neuen Einstellungen neu. Eine geänderte Mikrofon-/Kopfhörer-Wahl startet ihn nicht neu (ab v15),
+sie wird über die Fernsteuerung (unten) sofort im laufenden Intercom umgeschaltet.
 
 Dafür steht in `/etc/kesher/raspberry-pis.json` auf dem Pi zusätzlich:
 
@@ -52,11 +56,41 @@ Fernsteuern: Im Dashboard **Raspberry fernsteuern** öffnet Kesher direkt im Rei
 *Raspberry* (`https://192.168.0.21:8443/?login=raspberry`), ohne automatische Anmeldung mit der
 eigenen Rolle. Dort mit **Steuern** eine verbundene Station übernehmen.
 
+## Ton fernsteuern aus JMS Control
+
+Im Kästchen jeder Station unter *Einstellungen → Raspberry Pis* (nur Admin):
+
+- **Mikrofon, Kopfhörer und „Dauerhaft an“** in einer Zeile, mit „Aktiv am Pi“ und dem Zustand
+  live aus Kesher. Eine Änderung schaltet sofort im Intercom des Pi um.
+- **Eingangspegel** live (2× pro Sekunde) mit Knopf **Mikrofon testen** (der Pi hört sich selbst
+  im Kopfhörer), **Verstärkung** (wie im Intercom, stumm bis +18 dB) und **Rauschsperre** mit Schwelle.
+- Der Pegel wird nur gemessen, solange die Einstellungen offen sind (je 30 Sekunden, auch im Sparmodus).
+
+Technisch: JMS Control schickt `POST /api/raspberry-pis/remote-command` (`clientId`, `command`, Werte)
+an Kesher weiter. Befehle: `set_voice_mode`, `set_audio_input_device`, `set_audio_output_device`,
+`set_input_gain`, `set_local_monitor` sowie neu `set_audio_gate` (Rauschsperre an/aus, Schwelle
+−72…−12 dBFS) und `set_remote_metering` (Pegelmessung start/stop). Antwortet Kesher mit 409, ist
+der Pi gerade nicht im Intercom (z. B. Ruhemodus oder Multiview ohne Intercom-Sitzung).
+
+**Im Sparmodus wirkt die Rauschsperre nicht.** Kesher schaltet sie dort ab (Schalter ausgegraut),
+JMS Control zeigt einen Hinweis.
+
+## Rolle wechseln
+
+Rolle und Geräte-ID eines Pi lassen sich unter *Einstellungen → Raspberry Pis* ändern. Das
+Rollen-Dropdown zeigt belegte Rollen (angemeldet, in Kesher oder bei einem anderen Pi) wie die
+Anmeldeseite gekennzeichnet und gesperrt. Beim Speichern und beim Start des Multiview zieht die
+Registrierung des Gerätezertifikats (Benutzer & Rechte → Geräte) automatisch mit
+(`reassignPiMachines` in `multiview/access.js`, auch für Rollen-IDs mit Leerzeichen wie `cam 2`).
+Das Gerät bekommt dabei eine neue Version, alte Anmeldungen mit der bisherigen Rolle enden.
+Vorher lehnten Multiview (Konfig-Abfrage 403) und Kesher („registered device role required“) den
+Pi nach einem Rollenwechsel ab.
+
 ## Aus- und einschalten aus JMS Control (Ruhemodus)
 
 In JMS Control unter *Einstellungen → Raspberry Pis* hat jede Station die Knöpfe **Ausschalten** / **Einschalten** und **Neu starten**.
 
-- **Ausschalten** ist ein Ruhemodus: Das Intercom auf dem Pi wird beendet und der Bildschirm geht aus, der Pi selbst bleibt an und im Netz. **Einschalten** weckt ihn wieder – nach etwa 15 Sekunden (so oft fragt der Pi seine Einstellungen ab) läuft das Intercom wieder. Der Ruhemodus ist eine Einstellung der Station: Startet der Pi neu oder war der Strom weg, bleibt er aus, bis er hier eingeschaltet wird.
+- **Ausschalten** ist ein Ruhemodus: Das Intercom auf dem Pi wird beendet und der Bildschirm geht aus, der Pi selbst bleibt an und im Netz. **Einschalten** weckt ihn wieder – ab Launcher-Version 14 kommt das sofort an (Long-Poll, vorher bis zu 15 Sekunden), danach startet das Intercom. Der Ruhemodus ist eine Einstellung der Station: Startet der Pi neu oder war der Strom weg, bleibt er aus, bis er hier eingeschaltet wird.
 - **Neu starten** startet den ganzen Pi neu (geht nur, solange er sich meldet). Der Befehl wird genau einmal ausgeführt und verfällt nach 2 Minuten.
 - **Bewusst kein echtes Herunterfahren:** Ein heruntergefahrener Raspberry Pi lässt sich aus der Ferne nicht wieder einschalten (kein Wake-on-LAN), nur durch kurzes Trennen vom Strom. Für echtes Aus/An bräuchte es eine schaltbare Steckdose vor dem Netzteil.
 
@@ -69,7 +103,17 @@ ssh <user>@<pi-ip> 'rm -rf raspberry-pi && tar -xzf kesher-raspberry-pi-deploy.t
 
 ## Intercom oder Multiview auf dem Bildschirm
 
-In JMS Control unter *Einstellungen → Bildschirme* hat jeder Raspberry Pi ein eigenes Kästchen: **Intercom** oder **Multiview**, welcher Multiview und die Drehung. Der Pi steht dort als Bildschirm `pi-<id>` (wie die Anschlüsse am Server, auch für Companion: `/api/screen/<Pi-Name>/output/<Multiview>`). Im Multiview-Modus öffnet der Launcher (ab Version 13) `output.html?screen=pi-<id>` beim Multiview statt Kesher; der Wechsel zwischen Multiviews ist sofort live, der Wechsel Intercom ↔ Multiview startet den Browser neu (auf dem Pi 3 etwa 45 Sekunden).
+In JMS Control unter *Einstellungen → Bildschirme* hat jeder Raspberry Pi ein eigenes Kästchen: **Intercom** oder **Multiview**, welcher Multiview und die Drehung. Der Pi steht dort als Bildschirm `pi-<id>` (wie die Anschlüsse am Server, auch für Companion: `/api/screen/<Pi-Name>/output/<Multiview>`). Im Multiview-Modus öffnet der Launcher `output.html?screen=pi-<id>` beim Multiview; der Wechsel zwischen Multiviews ist sofort live.
+
+**Zwei Tabs (ab Launcher-Version 14):** Intercom und Multiview laufen als zwei Tabs in einem Chromium, umgeschaltet über die Fernsteuerung von Chromium auf `127.0.0.1:9222`. Der Wechsel Intercom ↔ Multiview dauert so nur 1–3 Sekunden statt eines Browser-Neustarts (auf dem Pi 3 vorher etwa 45 Sekunden). Das Intercom läuft im Hintergrund weiter. Der Pi meldet, was er gerade zeigt (Status unter *Einstellungen → Bildschirme*).
+
+**Speicher (ab Version 16, Pi 3 mit 905 MB):** Zwei Tabs gleichzeitig haben den Pi 3 nach einigen Stunden voll laufen lassen (Swap 90 %, Absturz des Chromium-Netzwerkdienstes, schwarzer Bildschirm). Deshalb:
+
+- Beim Wechsel zurück zum Intercom wird der Multiview-Tab geschlossen, nicht im Hintergrund gehalten.
+- Ein Speicherwächter prüft alle 5 Sekunden den freien Speicher. Unter 120 MB schließt er den Multiview (das Intercom bleibt), nach 2 Minuten und ab 250 MB frei öffnet er ihn wieder frisch (`MEMORY_LOW_MB`, `MEMORY_RECOVER_MB`, `MEMORY_REOPEN_DELAY_SECONDS` im Launcher).
+- Solange der Multiview vorne ist, ist der Mauszeiger ausgeblendet (zwei labwc-Tastenkürzel in `~/.config/labwc/rc.xml`, ausgelöst mit `wtype`; `install.sh` richtet beides ein).
+- `entlasten.sh` schaltet Dienste ab, die eine Kamera-Station nicht braucht (cups, NFS/rpcbind, xrdp, wayvnc, rpi-connect, PackageKit, colord, gvfs, cloud-init, automatische Updates). Es deinstalliert nichts und sichert die vorherige Dienstliste unter `/var/backups/kesher-pi-dienste-*.txt`.
+- Prüfen: `free -m` und `journalctl -b | grep "Network service crashed"`.
 
 Während der Browser startet, zeigt der Pi statt des Desktops nur das JMS-Logo mittig auf Schwarz (`jms-logo-dunkel.png`, Hintergrund von pcmanfm). `install.sh` richtet das ein, blendet die Desktop-Symbole aus und nimmt die Taskleiste aus dem Desktop-Autostart: `/etc/xdg/labwc/autostart` ist per `dpkg-divert` ersetzt, die Fassung des Pakets liegt unter `autostart.distrib` (zurück: `sudo rm /etc/xdg/labwc/autostart && sudo dpkg-divert --rename --remove /etc/xdg/labwc/autostart`).
 
