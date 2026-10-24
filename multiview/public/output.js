@@ -35,7 +35,6 @@ window.addEventListener('resize', updateCanCopy)
 const stage = document.getElementById('stage')
 const frameLayer = document.getElementById('frames')
 const badgeServer = document.getElementById('badge-server')
-const badgeAtem = document.getElementById('badge-atem')
 const fsButton = document.getElementById('fs-button')
 
 let config = null
@@ -486,7 +485,6 @@ function attachSource(media, source, usedStreams) {
 // ---------------------------------------------------------------------------
 
 function updateOverlays() {
-  badgeAtem.hidden = !config?.atem?.ip || atem.connected
   for (const { el, tile, source, labelEl, labelText } of tiles) {
     const tally = tile.showTally !== false ? tallyOf(source, atem) : null
     el.classList.toggle('program', tally === 'program')

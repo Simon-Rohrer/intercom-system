@@ -1292,11 +1292,44 @@ const slideshow = createSlideshow({
   dataDir: DATA_DIR,
   getDropbox: () => dropbox.snapshot(),
   getPpBase: () => ppBase(),
+  // Jede Diashow-Kachel mit „Folien aus ProPresenter“ nennt ihre eigene Playlist
+  getPlaylists: () => slideshowPlaylists(),
   // Termine aus ChurchTools – nur, wenn ChurchTools verbunden ist
   getCtApi: () => (churchTools.snapshot().state === 'unconfigured' ? null : churchTools.api),
   onUpdate: broadcast,
   log: console.log,
 })
+
+/** Playlists, die Diashow-Kacheln mit „Folien aus ProPresenter“ zeigen (alle Layouts) */
+function slideshowPlaylists() {
+  const names = []
+  for (const layout of config.layouts ?? [])
+    for (const tile of layout.tiles ?? [])
+      if (tile.kind === 'slideshow' && tile.slideshow?.pp !== false && typeof tile.slideshow?.ppPlaylist === 'string' && tile.slideshow.ppPlaylist.trim())
+        names.push(tile.slideshow.ppPlaylist.trim().slice(0, 80))
+  return names
+}
+
+/**
+ * Früher galt eine Playlist (Einstellungen → Diashow) für alle Diashow-Kacheln. Kacheln mit
+ * ProPresenter-Folien ohne eigene Playlist bekommen sie einmalig eingetragen.
+ */
+function migrateSlideshowPlaylist() {
+  const legacy = slideshow.settings().ppPlaylist
+  if (!legacy) return
+  let changedTiles = 0
+  for (const layout of config.layouts ?? [])
+    for (const tile of layout.tiles ?? [])
+      if (tile.kind === 'slideshow' && tile.slideshow?.pp !== false && !String(tile.slideshow?.ppPlaylist ?? '').trim()) {
+        tile.slideshow = { ...tile.slideshow, ppPlaylist: legacy }
+        changedTiles++
+      }
+  if (changedTiles) {
+    saveConfig()
+    console.log(`Diashow: Playlist „${legacy}“ in ${changedTiles} Kachel(n) übernommen`)
+  }
+}
+migrateSlideshowPlaylist()
 
 const kesherChat = createKesherChat({
   getConfig: () => config.chat,
@@ -1330,6 +1363,7 @@ function configChanged(origin = null) {
   churchTools.datesChanged()
   applyUplink()
   youtube.layoutsChanged()
+  slideshow.playlistsChanged()
   if (mediamtx.proc) writeMediamtxConfig()
 }
 
@@ -3078,6 +3112,7 @@ app.get('/api/state', requireTrusted, requireDisplayReader, (req, res) => {
       id: o.id,
       name: o.name,
       layout: config.layouts.find((l) => l.id === o.layoutId)?.name ?? null,
+      layoutId: o.layoutId ?? null,
     })),
     screens: screenList().filter((screen) => req.user?.admin || isMachine(req, 'display') || isMachine(req, 'control') || visible.screens.some((entry) => entry.id === screen.id)).map((s, i) => ({
       nr: i + 1,
@@ -3085,6 +3120,7 @@ app.get('/api/state', requireTrusted, requireDisplayReader, (req, res) => {
       name: s.name,
       connected: s.connected,
       output: config.outputs.find((o) => o.id === s.outputId)?.name ?? null,
+      outputId: s.outputId ?? null,
     })),
   })
 })

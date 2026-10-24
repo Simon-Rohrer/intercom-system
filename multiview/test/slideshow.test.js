@@ -155,3 +155,54 @@ test('Termin-Bild: Seitenverhältnis des Originals wird übernommen', () => {
   )
   assert.equal(a.imageRatio, 1.41452)
 })
+
+test('Jede Diashow-Kachel kann eine eigene ProPresenter-Playlist haben', async () => {
+  const dataDir = dir()
+  const json = (body) => ({ ok: true, status: 200, text: async () => JSON.stringify(body) })
+  const fetchImpl = async (url) => {
+    const u = new URL(url)
+    if (u.pathname === '/v1/playlists')
+      return json([{ id: { uuid: 'a', name: 'Ankündigungen' }, field_type: 'playlist' }, { id: { uuid: 'b', name: 'Kinder' }, field_type: 'playlist' }])
+    if (u.pathname === '/v1/playlist/a') return json({ items: [{ id: { name: 'Infos' }, presentation_info: { presentation_uuid: 'pa' } }] })
+    if (u.pathname === '/v1/playlist/b') return json({ items: [{ id: { name: 'Kids' }, presentation_info: { presentation_uuid: 'pb' } }] })
+    if (u.pathname === '/v1/presentation/pa') return json({ presentation: { groups: [{ slides: [{}] }] } })
+    if (u.pathname === '/v1/presentation/pb') return json({ presentation: { groups: [{ slides: [{}, {}] }] } })
+    const thumb = /\/v1\/presentation\/(p[ab])\/thumbnail\/(\d+)/.exec(u.pathname)
+    if (thumb) return { ok: true, status: 200, arrayBuffer: async () => Buffer.concat([JPEG, Buffer.from(thumb[1] + thumb[2])]) }
+    return { ok: false, status: 404, text: async () => '' }
+  }
+  let wanted = ['Ankündigungen', 'kinder', 'Fehlt']
+  const show = createSlideshow({ dataDir, getPpBase: () => 'http://pp:1025', getPlaylists: () => wanted, fetchImpl })
+  await show.refreshPp()
+  let lists = show.snapshot().ppLists
+  assert.deepEqual(Object.keys(lists).sort(), ['ankündigungen', 'fehlt', 'kinder'])
+  assert.equal(lists['ankündigungen'].slides.length, 1)
+  assert.equal(lists.kinder.slides.length, 2)
+  assert.equal(lists.fehlt.state, 'error')
+  assert.match(lists.fehlt.error, /gibt es in ProPresenter nicht/)
+  // Folien beider Playlists sind abrufbar
+  for (const l of [lists['ankündigungen'], lists.kinder]) assert.ok(show.filePath('pp', l.slides[0].url.split('/').pop()))
+
+  // Nach Neustart sind die gespeicherten Folien gleich da
+  assert.equal(createSlideshow({ dataDir, getPlaylists: () => wanted }).snapshot().ppLists.kinder.slides.length, 2)
+
+  // Playlist wird nicht mehr gebraucht: fällt weg, ihre Bilder werden gelöscht
+  const kidsFile = lists.kinder.slides[0].url.split('/').pop()
+  wanted = ['Ankündigungen']
+  await show.refreshPp()
+  lists = show.snapshot().ppLists
+  assert.deepEqual(Object.keys(lists), ['ankündigungen'])
+  assert.equal(show.filePath('pp', kidsFile), null)
+  assert.equal(fs.existsSync(path.join(dataDir, 'diashow', 'pp', kidsFile)), false)
+})
+
+test('Alte gemeinsame Playlist bleibt nach dem Update erhalten', () => {
+  const dataDir = dir()
+  fs.mkdirSync(path.join(dataDir, 'diashow', 'pp'), { recursive: true })
+  fs.writeFileSync(path.join(dataDir, 'diashow', 'pp', 'abc.jpg'), JPEG)
+  fs.writeFileSync(path.join(dataDir, 'diashow', 'diashow.json'), JSON.stringify({ ppPlaylist: 'Ankündigungen', ppSlides: [{ file: 'abc.jpg', name: 'Infos' }], ppAt: 5 }))
+  const show = createSlideshow({ dataDir, getPlaylists: () => ['Ankündigungen'] })
+  assert.equal(show.settings().ppPlaylist, 'Ankündigungen')
+  assert.equal(show.snapshot().ppLists['ankündigungen'].slides.length, 1)
+  assert.equal(show.snapshot().pp.slides.length, 1)
+})

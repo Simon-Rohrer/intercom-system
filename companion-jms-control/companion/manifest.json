@@ -1,0 +1,21 @@
+{
+  "id": "jms-control",
+  "name": "jms-control",
+  "shortname": "jms-control",
+  "description": "Multiviews von JMS Control per Stream Deck umschalten",
+  "version": "1.0.0",
+  "license": "MIT",
+  "repository": "git+https://github.com/Simon-Rohrer/intercom-system.git",
+  "bugs": "https://github.com/Simon-Rohrer/intercom-system/issues",
+  "maintainers": [{ "name": "Lasse Kleinfeld" }],
+  "runtime": {
+    "type": "node22",
+    "api": "nodejs-ipc",
+    "apiVersion": "1.12.1",
+    "entrypoint": "../dist/main.js"
+  },
+  "legacyIds": [],
+  "manufacturer": "JMS",
+  "products": ["JMS Control"],
+  "keywords": ["multiview", "jms", "layout"]
+}

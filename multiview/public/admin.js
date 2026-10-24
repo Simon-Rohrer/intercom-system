@@ -3,7 +3,7 @@ import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } fr
 import { createChatView, chatOptions } from './chat.js'
 import { createUplinkView, mergeUplink, uplinkOptions } from './uplink.js'
 import { createYouTubeView, youtubeOptions } from './youtube.js'
-import { createSlideshowView, slideshowOptions } from './slideshow.js'
+import { createSlideshowView, ppSlides, slideshowOptions } from './slideshow.js'
 import { createAgendaView, agendaOptions, AGENDA_ACCENTS, AGENDA_CCLI_COLORS } from './agenda.js'
 import {
   createProPresenterView, createPlaylistView, createPreacherView, ppOptions, playlistOptions, preacherOptions,
@@ -142,6 +142,8 @@ function onMessage(msg) {
     }
     renderSlideshowSettings()
     renderStatusStrip()
+    // Stand der Playlist in der gerade bearbeiteten Diashow-Kachel (nicht, während dort getippt wird)
+    if ($('#ss-tile-pp-state') && document.activeElement?.dataset?.ss !== 'ppPlaylist') renderInspector()
   } else if (msg.type === 'youtube') {
     youtube = msg
     for (const view of youtubeViews) {
@@ -2245,7 +2247,7 @@ async function loadPpPlaylists(force = false) {
     .then((r) => r.json())
     .catch(() => ({ ok: false, error: 'Nicht erreichbar', playlists: [] }))
   ppPlaylistChoices = { loading: false, error: data.ok ? '' : data.error, playlists: data.playlists || [] }
-  if (selectedTileId && currentLayout()?.tiles.find((t) => t.id === selectedTileId)?.kind === 'playlist') renderInspector()
+  if (selectedTileId && ['playlist', 'slideshow'].includes(currentLayout()?.tiles.find((t) => t.id === selectedTileId)?.kind)) renderInspector()
 }
 
 function playlistSection(tile) {
@@ -2556,7 +2558,7 @@ function slideshowSource(o) {
 function slideshowSection(tile) {
   const o = slideshowOptions(tile.slideshow)
   const count = slideshowData
-    ? `${slideshowData.website?.slides?.length || 0} Folien der Webseite, ${slideshowData.ct?.posts?.length || 0} Beiträge, ${slideshowData.ct?.appointments?.length || 0} Termine aus ChurchTools, ${slideshowData.images.filter((i) => i.enabled).length} Bilder, ${slideshowData.pp.slides.length} ProPresenter-Folien${slideshowData.dropbox?.images?.length ? `, ${slideshowData.dropbox.images.length} Bilder aus der Dropbox` : ''}`
+    ? `${slideshowData.website?.slides?.length || 0} Folien der Webseite, ${slideshowData.ct?.posts?.length || 0} Beiträge, ${slideshowData.ct?.appointments?.length || 0} Termine aus ChurchTools, ${slideshowData.images.filter((i) => i.enabled).length} Bilder, ${ppSlides(slideshowData, o).length} ProPresenter-Folien${slideshowData.dropbox?.images?.length ? `, ${slideshowData.dropbox.images.length} Bilder aus der Dropbox` : ''}`
     : '…'
   return `
     <label class="field"><span>Jede Folie <output>${o.seconds} s</output></span>
@@ -2570,6 +2572,7 @@ function slideshowSection(tile) {
       ]
         .map(([key, label]) => `<option value="${key}" ${key === slideshowSource(o) ? 'selected' : ''}>${esc(label)}</option>`)
         .join('')}</select></label>
+    ${o.pp ? slideshowPpField(o) : ''}
     ${o.posts ? `<label class="check"><input type="checkbox" data-ss="postCaption" ${o.postCaption ? 'checked' : ''}> Titel unter dem Flyer (meist steht er schon drauf)</label>` : ''}
     ${
       o.ct
@@ -2600,7 +2603,27 @@ function slideshowSection(tile) {
     </div>`
         : ''
     }
-    <p class="muted small">Gerade dabei: ${esc(count)}. Bilder und Playlist verwaltest du unter <a href="#/einstellungen/diashow">Einstellungen → Diashow</a>.</p>`
+    <p class="muted small">Gerade dabei: ${esc(count)}. Bilder verwaltest du unter <a href="#/einstellungen/diashow">Einstellungen → Diashow</a>.</p>`
+}
+
+/** Diashow-Kachel mit „Folien aus ProPresenter“: welche Playlist (je Kachel eine eigene) */
+function slideshowPpField(o) {
+  void loadPpPlaylists()
+  const names = (ppPlaylistChoices?.playlists || []).map((p) => p.name).filter(Boolean)
+  const list = o.ppPlaylist ? slideshowData?.ppLists?.[o.ppPlaylist.toLowerCase()] : null
+  const state = !o.ppPlaylist
+    ? 'Noch keine Playlist eingetragen – die Kachel bleibt leer.'
+    : !list
+      ? 'Wird gleich aus ProPresenter geholt …'
+      : `${list.state === 'ok' ? '<span style="color:var(--green)">●</span>' : '<span style="color:var(--amber)">●</span>'} ${list.slides.length} Folien${list.error ? ` · ${esc(list.error)}` : ''}`
+  return `<div class="meter-settings">
+      <h4>ProPresenter</h4>
+      <label class="field"><span>Playlist in ProPresenter</span>
+        <input type="text" data-ss="ppPlaylist" list="ss-pp-names" value="${esc(o.ppPlaylist)}" maxlength="80" placeholder="z. B. Ankündigungen" autocomplete="off"></label>
+      <datalist id="ss-pp-names">${names.map((n) => `<option value="${esc(n)}"></option>`).join('')}</datalist>
+      <p class="muted small" id="ss-tile-pp-state">${state}</p>
+      <p class="muted small">Jede Diashow-Kachel kann eine andere Playlist zeigen. Die Folien werden auf dem Server gespeichert und laufen weiter, wenn ProPresenter aus ist.</p>
+    </div>`
 }
 
 /** Kachel „YouTube Live“ */
@@ -3412,16 +3435,22 @@ function renderSlideshowSettings() {
   const ct = slideshowData.ct || { appointments: [], state: 'error' }
   if ($('#ss-ct-state'))
     $('#ss-ct-state').innerHTML = `${dot(ct.state)} ${(ct.posts || []).length} Beiträge (${esc((ct.posts || []).map((p) => p.title).join(', ') || 'keine')}) · ${ct.appointments.length} Termine in den nächsten 6 Wochen, ${ct.appointments.filter((a) => a.image).length} davon mit Bild${ct.at ? ` · Stand ${esc(stamp(ct.at))}` : ''}${ct.error ? ` · ${esc(ct.error)}` : ''}`
-  const pp = slideshowData.pp
-  const input = $('#ss-pp-playlist')
-  if (document.activeElement !== input) input.value = pp.playlist || ''
-  const at = pp.at ? new Date(pp.at).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }) : ''
-  $('#ss-pp-state').innerHTML =
-    pp.state === 'off'
-      ? 'Aus – keine Folien aus ProPresenter.'
-      : `${pp.state === 'ok' ? '<span style="color:var(--green)">●</span>' : '<span style="color:var(--amber)">●</span>'} ${pp.slides.length} Folien${at ? ` · Stand ${esc(at)}` : ''}${pp.error ? ` · ${esc(pp.error)}` : ''}`
-  $('#ss-pp-refresh').hidden = pp.state === 'off'
-  $('#ss-pp-thumbs').innerHTML = pp.slides.slice(0, 24).map((slide) => `<img src="${esc(slide.url)}" alt="" title="${esc(slide.name)}" loading="lazy">`).join('')
+  // ProPresenter: eine Playlist je Diashow-Kachel – hier nur der Überblick, welche Kachel welche zeigt
+  const ppLists = Object.values(slideshowData.ppLists || {})
+  const usedBy = (name) =>
+    (config?.layouts || []).flatMap((l) =>
+      (l.tiles || []).filter((t) => t.kind === 'slideshow' && slideshowOptions(t.slideshow).pp && slideshowOptions(t.slideshow).ppPlaylist.toLowerCase() === name.toLowerCase()).map(() => l.name),
+    )
+  $('#ss-pp-state').innerHTML = ppLists.length ? '' : 'Keine Diashow-Kachel zeigt gerade Folien aus ProPresenter.'
+  $('#ss-pp-refresh').hidden = !ppLists.length
+  $('#ss-pp-lists').innerHTML = ppLists
+    .map((pp) => {
+      const at = pp.at ? new Date(pp.at).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }) : ''
+      const layouts = [...new Set(usedBy(pp.playlist))]
+      return `<p class="muted small"><b>${esc(pp.playlist)}</b> – ${pp.state === 'ok' ? '<span style="color:var(--green)">●</span>' : '<span style="color:var(--amber)">●</span>'} ${pp.slides.length} Folien${at ? ` · Stand ${esc(at)}` : ''}${pp.error ? ` · ${esc(pp.error)}` : ''}${layouts.length ? ` · in ${esc(layouts.join(', '))}` : ''}</p>
+        <div class="ss-pp-thumbs">${pp.slides.slice(0, 24).map((slide) => `<img src="${esc(slide.url)}" alt="" title="${esc(slide.name)}" loading="lazy">`).join('')}</div>`
+    })
+    .join('')
   renderDropboxSettings()
 }
 
@@ -3625,12 +3654,6 @@ $('#ss-ext-refresh').addEventListener('click', async () => {
   renderSlideshowSettings()
 })
 
-$('#ss-pp-form').addEventListener('submit', async (e) => {
-  e.preventDefault()
-  $('#ss-pp-state').textContent = 'Hole Folien aus ProPresenter …'
-  await slideshowRequest('PUT', '/api/slideshow/propresenter', { playlist: $('#ss-pp-playlist').value.trim() }).catch((err) => ($('#ss-error').textContent = err.message))
-  renderSlideshowSettings()
-})
 $('#ss-pp-refresh').addEventListener('click', async () => {
   $('#ss-pp-state').textContent = 'Hole Folien aus ProPresenter …'
   await slideshowRequest('POST', '/api/slideshow/propresenter/refresh').catch((err) => ($('#ss-error').textContent = err.message))

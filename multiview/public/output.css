@@ -139,7 +139,6 @@ body.idle { cursor: none; }
 
 /* In der Vorschau auf der Webseite übernimmt die Seite die Bedienung */
 body.embedded .controls,
-body.embedded #badge-atem { display: none; }
 
 .controls {
   position: fixed;

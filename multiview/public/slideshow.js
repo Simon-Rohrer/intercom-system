@@ -18,6 +18,7 @@ export function slideshowOptions(o = {}) {
     seconds: num(o.seconds, 10, 3, 120),
     images: o.images !== false,
     pp: o.pp !== false,
+    ppPlaylist: String(o.ppPlaylist ?? '').trim().slice(0, 80), // Playlist in ProPresenter (je Kachel)
     events: o.events !== false,
     eventDays: num(o.eventDays, 14, 1, 42),
     eventMax: num(o.eventMax, 6, 1, 10),
@@ -65,6 +66,12 @@ export function ctAppointments(slideshow, o, now = Date.now()) {
     .slice(0, o.ctMax)
 }
 
+/** Folien der Playlist dieser Kachel; ältere Server ohne ppLists: die eine gemeinsame Playlist */
+export function ppSlides(slideshow, o) {
+  if (!slideshow?.ppLists) return slideshow?.pp?.slides || []
+  return (o.ppPlaylist && slideshow.ppLists[o.ppPlaylist.toLowerCase()]?.slides) || []
+}
+
 /** Alle Folien, die gerade dran sind – in dieser Reihenfolge: Webseite, Termine, Bilder, ProPresenter, Veranstaltungen */
 export function buildSlides(data, o, now = Date.now()) {
   const slides = []
@@ -82,7 +89,7 @@ export function buildSlides(data, o, now = Date.now()) {
       if (!image.enabled || (image.from && image.from > day) || (image.to && image.to < day)) continue
       slides.push({ key: `img:${image.url}`, kind: 'image', url: image.url })
     }
-  if (o.pp) for (const slide of data?.slideshow?.pp?.slides || []) slides.push({ key: `pp:${slide.url}`, kind: 'image', url: slide.url })
+  if (o.pp) for (const slide of ppSlides(data?.slideshow, o)) slides.push({ key: `pp:${slide.url}`, kind: 'image', url: slide.url })
   if (o.dropbox) for (const image of data?.slideshow?.dropbox?.images || []) slides.push({ key: `dbx:${image.url}`, kind: 'image', url: image.url })
   if (o.events) {
     const events = upcomingEvents(data?.churchtools, o, now)

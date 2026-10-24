@@ -370,16 +370,12 @@
               </div>
               <div class="meter-settings ss-pp">
                 <h4>ProPresenter</h4>
-                <p class="muted small">Die Folien dieser Playlist werden auf dem Server gespeichert und alle 10 Minuten aktualisiert, solange ProPresenter läuft. Ist ProPresenter aus, laufen die zuletzt gespeicherten weiter.</p>
-                <form id="ss-pp-form" class="ss-pp-form" autocomplete="off">
-                  <label class="field"><span>Playlist in ProPresenter</span><input type="text" id="ss-pp-playlist" placeholder="z. B. Ankündigungen (leer = aus)" maxlength="80"></label>
-                  <div class="btn-row">
-                    <button class="btn primary small" type="submit">Speichern</button>
-                    <button class="btn small" type="button" id="ss-pp-refresh">Jetzt holen</button>
-                  </div>
-                </form>
+                <p class="muted small">Welche Playlist eine Diashow trägst du direkt in der Kachel ein (Layout bearbeiten → Kachel „Diashow“ → „Diashow zeigt: Folien aus ProPresenter“). So kann jeder Multiview eine andere Playlist zeigen. Die Folien werden auf dem Server gespeichert und alle 10 Minuten aktualisiert, solange ProPresenter läuft. Ist ProPresenter aus, laufen die zuletzt gespeicherten weiter.</p>
+                <div class="btn-row">
+                  <button class="btn small" type="button" id="ss-pp-refresh">Alle jetzt holen</button>
+                </div>
                 <p class="muted small" id="ss-pp-state"></p>
-                <div class="ss-pp-thumbs" id="ss-pp-thumbs"></div>
+                <div id="ss-pp-lists"></div>
               </div>
             </div>
 

@@ -182,7 +182,10 @@ function flattenPlaylists(list, out = []) {
   return out
 }
 
-function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null, getDropbox = () => null, onUpdate = () => {}, log = () => {}, fetchImpl = fetch, now = Date.now }) {
+/** Schlüssel einer Playlist (Groß-/Kleinschreibung egal) */
+const playlistKey = (name) => text(name, 80).toLowerCase()
+
+function createSlideshow({ dataDir, getPpBase = () => '', getPlaylists = null, getCtApi = () => null, getDropbox = () => null, onUpdate = () => {}, log = () => {}, fetchImpl = fetch, now = Date.now }) {
   const dir = path.join(dataDir, 'diashow')
   const ppDir = path.join(dir, 'pp')
   const stateFile = path.join(dir, 'diashow.json')
@@ -195,11 +198,18 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
     saved = {}
   }
   let images = (Array.isArray(saved.images) ? saved.images : []).map(normalizeImage).filter((i) => fs.existsSync(path.join(dir, i.file)))
+  // Bisherige, eine Playlist für alle Kacheln (Einstellungen → Diashow). Heute hat jede Kachel ihre eigene
+  // (tile.slideshow.ppPlaylist); der alte Wert dient nur noch zum Übernehmen in ältere Kacheln.
   let ppPlaylist = text(saved.ppPlaylist, 80)
-  let ppSlides = Array.isArray(saved.ppSlides) ? saved.ppSlides.filter((s) => fs.existsSync(path.join(ppDir, s.file))) : []
-  let ppAt = Number(saved.ppAt) || 0
-  let ppState = ppPlaylist ? 'cached' : 'off'
-  let ppError = ''
+  const keepSlides = (list) => (Array.isArray(list) ? list.filter((s) => s && typeof s.file === 'string' && fs.existsSync(path.join(ppDir, s.file))) : [])
+  /** Folien je Playlist: Schlüssel → { name, slides, at, state, error } */
+  const lists = new Map()
+  for (const [key, entry] of Object.entries(saved.ppLists && typeof saved.ppLists === 'object' ? saved.ppLists : {})) {
+    const name = text(entry?.name, 80)
+    if (name && key === playlistKey(name)) lists.set(key, { name, slides: keepSlides(entry.slides), at: Number(entry.at) || 0, state: 'cached', error: '' })
+  }
+  if (!lists.size && ppPlaylist && Array.isArray(saved.ppSlides))
+    lists.set(playlistKey(ppPlaylist), { name: ppPlaylist, slides: keepSlides(saved.ppSlides), at: Number(saved.ppAt) || 0, state: 'cached', error: '' })
   let timer = null
   let running = false
   let refreshing = null
@@ -222,9 +232,35 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
     const tmp = `${stateFile}.tmp`
     fs.writeFileSync(
       tmp,
-      JSON.stringify({ images, ppPlaylist, ppSlides, ppAt, websiteUrl, website: { slides: website.slides, at: website.at, postIds }, ct: { appointments: ct.appointments, posts: ct.posts, calendars: ct.calendars, at: ct.at } }, null, 2),
+      JSON.stringify({ images, ppPlaylist, ppLists: Object.fromEntries([...lists].map(([key, l]) => [key, { name: l.name, slides: l.slides, at: l.at }])), websiteUrl, website: { slides: website.slides, at: website.at, postIds }, ct: { appointments: ct.appointments, posts: ct.posts, calendars: ct.calendars, at: ct.at } }, null, 2),
     )
     fs.renameSync(tmp, stateFile)
+  }
+
+  function listView(l) {
+    if (!l) return { playlist: '', state: 'off', error: '', at: 0, slides: [] }
+    return { playlist: l.name, state: l.state, error: l.error, at: l.at, slides: l.slides.map((s) => ({ url: `/diashow/pp/${s.file}`, name: s.name })) }
+  }
+
+  /** Welche Playlists die Kacheln brauchen (ohne Rückruf: die alte, gemeinsame) */
+  function wantedPlaylists() {
+    const names = getPlaylists ? getPlaylists() : ppPlaylist ? [ppPlaylist] : []
+    const out = new Map()
+    for (const name of Array.isArray(names) ? names : []) if (text(name, 80)) out.set(playlistKey(name), text(name, 80))
+    return out
+  }
+
+  /** Liste der Playlists an die Kacheln anpassen; true, wenn eine neue dazukam */
+  function syncLists() {
+    const wanted = wantedPlaylists()
+    let added = false
+    for (const key of [...lists.keys()]) if (!wanted.has(key)) lists.delete(key)
+    for (const [key, name] of wanted)
+      if (!lists.has(key)) {
+        lists.set(key, { name, slides: [], at: 0, state: 'cached', error: '' })
+        added = true
+      }
+    return added
   }
 
   /** Für alle Browser: was die Diashow zeigen kann (Adressen der Bilder, keine Pfade auf dem Server) */
@@ -232,13 +268,9 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
     return {
       type: 'slideshow',
       images: images.map((i) => ({ id: i.id, url: `/diashow/bild/${i.file}`, title: i.title, from: i.from, to: i.to, enabled: i.enabled })),
-      pp: {
-        playlist: ppPlaylist,
-        state: ppState,
-        error: ppError,
-        at: ppAt,
-        slides: ppSlides.map((s) => ({ url: `/diashow/pp/${s.file}`, name: s.name })),
-      },
+      // pp: die erste Playlist (ältere Browser/Anzeigen), ppLists: alle, die Kacheln gerade brauchen
+      pp: listView(lists.get(playlistKey(ppPlaylist)) || lists.values().next().value),
+      ppLists: Object.fromEntries([...lists].map(([key, l]) => [key, listView(l)])),
       website: { url: websiteUrl, state: websiteUrl ? website.state : 'off', error: website.error, at: website.at, slides: websiteUrl ? website.slides : [] },
       ct: { state: ct.state, error: ct.error, at: ct.at, appointments: ct.appointments, posts: ct.posts, calendars: ct.calendars },
       dropbox: getDropbox() || { state: 'unconfigured', images: [] },
@@ -292,7 +324,7 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
 
   /** Datei für /diashow/bild/:file bzw. /diashow/pp/:file – nur bekannte Namen, nie ein Pfad */
   function filePath(kind, name) {
-    const list = kind === 'pp' ? ppSlides : images
+    const list = kind === 'pp' ? [...lists.values()].flatMap((l) => l.slides) : images
     const hit = list.find((entry) => entry.file === name)
     return hit ? path.join(kind === 'pp' ? ppDir : dir, hit.file) : null
   }
@@ -304,64 +336,78 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
     return body ? JSON.parse(body) : null
   }
 
-  /** Folien der Playlist von ProPresenter holen und als Bilder speichern */
+  /** Folien einer Playlist von ProPresenter holen und als Bilder speichern */
+  async function refreshList(base, list, playlists) {
+    try {
+      const wanted = list.name.toLowerCase()
+      const playlist = playlists.find((p) => p.name.toLowerCase() === wanted) || playlists.find((p) => p.name.toLowerCase().includes(wanted))
+      if (!playlist) throw new Error(`Playlist „${list.name}“ gibt es in ProPresenter nicht`)
+      const items = (await ppJson(base, `/v1/playlist/${encodeURIComponent(playlist.uuid)}`))?.items || []
+      const fresh = []
+      for (const item of items) {
+        const uuid = item.presentation_info?.presentation_uuid
+        if (!uuid || item.is_hidden) continue
+        const presentation = (await ppJson(base, `/v1/presentation/${encodeURIComponent(uuid)}`))?.presentation
+        const slides = (presentation?.groups || []).flatMap((g) => g.slides || [])
+        for (let index = 0; index < slides.length && fresh.length < PP_MAX_SLIDES; index++) {
+          if (slides[index].enabled === false) continue
+          const res = await fetchImpl(`${base}/v1/presentation/${encodeURIComponent(uuid)}/thumbnail/${index}?quality=1920&thumbnail_type=jpeg`, {
+            signal: AbortSignal.timeout(PP_TIMEOUT_MS),
+          })
+          if (!res.ok) continue
+          const buffer = Buffer.from(await res.arrayBuffer())
+          if (!imageType(buffer)) continue
+          // Name aus dem Inhalt: gleiche Folie = gleiche Datei, geänderte Folie = neue Adresse (kein alter Browser-Cache)
+          const file = `${crypto.createHash('sha1').update(buffer).digest('hex').slice(0, 16)}.jpg`
+          if (!fs.existsSync(path.join(ppDir, file))) fs.writeFileSync(path.join(ppDir, file), buffer)
+          fresh.push({ file, name: String(item.id?.name || presentation?.id?.name || '') })
+        }
+      }
+      const before = JSON.stringify(list.slides)
+      list.slides = fresh
+      list.at = now()
+      list.state = 'ok'
+      list.error = ''
+      if (JSON.stringify(list.slides) !== before) log(`Diashow: ${fresh.length} Folien aus ProPresenter („${playlist.name}“)`)
+    } catch (err) {
+      list.state = list.slides.length ? 'cached' : 'error'
+      list.error = err.name === 'TimeoutError' || /fetch failed|ECONNREFUSED/i.test(err.message) ? 'ProPresenter nicht erreichbar – es laufen die zuletzt gespeicherten Folien' : err.message
+    }
+  }
+
+  /** Alle Playlists, die die Kacheln brauchen, von ProPresenter holen */
   async function refreshPp() {
     if (refreshing) return refreshing
     refreshing = (async () => {
+      syncLists()
+      if (!lists.size) return
       const base = getPpBase()
-      if (!ppPlaylist) {
-        ppState = 'off'
-        ppError = ''
-        return
-      }
       if (!base) {
-        ppState = ppSlides.length ? 'cached' : 'error'
-        ppError = 'ProPresenter ist nicht eingerichtet (Einstellungen → ProPresenter)'
+        for (const list of lists.values()) {
+          list.state = list.slides.length ? 'cached' : 'error'
+          list.error = 'ProPresenter ist nicht eingerichtet (Einstellungen → ProPresenter)'
+        }
         return
       }
+      let playlists = null
       try {
-        const playlists = flattenPlaylists(await ppJson(base, '/v1/playlists'))
-        const wanted = ppPlaylist.toLowerCase()
-        const playlist = playlists.find((p) => p.name.toLowerCase() === wanted) || playlists.find((p) => p.name.toLowerCase().includes(wanted))
-        if (!playlist) throw new Error(`Playlist „${ppPlaylist}“ gibt es in ProPresenter nicht`)
-        const items = (await ppJson(base, `/v1/playlist/${encodeURIComponent(playlist.uuid)}`))?.items || []
-        const fresh = []
-        for (const item of items) {
-          const uuid = item.presentation_info?.presentation_uuid
-          if (!uuid || item.is_hidden) continue
-          const presentation = (await ppJson(base, `/v1/presentation/${encodeURIComponent(uuid)}`))?.presentation
-          const slides = (presentation?.groups || []).flatMap((g) => g.slides || [])
-          for (let index = 0; index < slides.length && fresh.length < PP_MAX_SLIDES; index++) {
-            if (slides[index].enabled === false) continue
-            const res = await fetchImpl(`${base}/v1/presentation/${encodeURIComponent(uuid)}/thumbnail/${index}?quality=1920&thumbnail_type=jpeg`, {
-              signal: AbortSignal.timeout(PP_TIMEOUT_MS),
-            })
-            if (!res.ok) continue
-            const buffer = Buffer.from(await res.arrayBuffer())
-            if (!imageType(buffer)) continue
-            // Name aus dem Inhalt: gleiche Folie = gleiche Datei, geänderte Folie = neue Adresse (kein alter Browser-Cache)
-            const file = `${crypto.createHash('sha1').update(buffer).digest('hex').slice(0, 16)}.jpg`
-            if (!fs.existsSync(path.join(ppDir, file))) fs.writeFileSync(path.join(ppDir, file), buffer)
-            fresh.push({ file, name: String(item.id?.name || presentation?.id?.name || '') })
-          }
-        }
-        const keep = new Set(fresh.map((s) => s.file))
-        for (const name of fs.readdirSync(ppDir)) if (!keep.has(name)) fs.rmSync(path.join(ppDir, name), { force: true })
-        const before = JSON.stringify(ppSlides)
-        ppSlides = fresh
-        ppAt = now()
-        ppState = 'ok'
-        ppError = ''
-        if (JSON.stringify(ppSlides) !== before) log(`Diashow: ${fresh.length} Folien aus ProPresenter („${playlist.name}“)`)
+        playlists = flattenPlaylists(await ppJson(base, '/v1/playlists'))
       } catch (err) {
-        ppState = ppSlides.length ? 'cached' : 'error'
-        ppError = err.name === 'TimeoutError' || /fetch failed|ECONNREFUSED/i.test(err.message) ? 'ProPresenter nicht erreichbar – es laufen die zuletzt gespeicherten Folien' : err.message
+        for (const list of lists.values()) {
+          list.state = list.slides.length ? 'cached' : 'error'
+          list.error = err.name === 'TimeoutError' || /fetch failed|ECONNREFUSED/i.test(err.message) ? 'ProPresenter nicht erreichbar – es laufen die zuletzt gespeicherten Folien' : err.message
+        }
+        return
       }
+      for (const list of lists.values()) await refreshList(base, list, playlists)
     })()
     try {
       await refreshing
     } finally {
       refreshing = null
+      // Nur Bilder behalten, die noch eine Playlist braucht
+      const keep = new Set([...lists.values()].flatMap((l) => l.slides.map((s) => s.file)))
+      for (const name of fs.readdirSync(ppDir)) if (!keep.has(name)) fs.rmSync(path.join(ppDir, name), { force: true })
       changed()
     }
   }
@@ -373,7 +419,7 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
 
   async function loop() {
     await refreshPp()
-    schedule(ppState === 'ok' || ppState === 'off' ? PP_REFRESH_MS : PP_RETRY_MS)
+    schedule([...lists.values()].every((l) => l.state === 'ok') ? PP_REFRESH_MS : PP_RETRY_MS)
   }
 
   async function refreshWebsite() {
@@ -458,16 +504,20 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
     return refreshExternal()
   }
 
+  /** Alte, gemeinsame Playlist (nur noch ohne Rückruf getPlaylists wirksam) */
   function setPpPlaylist(name) {
     ppPlaylist = text(name, 80)
-    if (!ppPlaylist) {
-      ppSlides = []
-      for (const file of fs.readdirSync(ppDir)) fs.rmSync(path.join(ppDir, file), { force: true })
-      ppState = 'off'
-      ppError = ''
-    }
+    syncLists()
     changed()
     return refreshPp()
+  }
+
+  /** Kacheln wurden geändert: neue Playlists gleich holen, nicht mehr gebrauchte vergessen */
+  function playlistsChanged() {
+    const before = lists.size
+    const added = syncLists()
+    if (added) schedule(2000) // kurz warten: im Editor wird der Name evtl. noch getippt
+    else if (lists.size !== before) changed()
   }
 
   return {
@@ -484,7 +534,7 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
     },
     /** ProPresenter ist (wieder) erreichbar: gleich die Folien holen */
     ppReachable() {
-      if (ppPlaylist && ppState !== 'ok') schedule(0)
+      if ([...lists.values()].some((l) => l.state !== 'ok')) schedule(0)
     },
     snapshot,
     addImage,
@@ -493,6 +543,7 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
     reorder,
     filePath,
     setPpPlaylist,
+    playlistsChanged,
     refreshPp,
     setWebsiteUrl,
     refreshExternal,
@@ -500,4 +551,4 @@ function createSlideshow({ dataDir, getPpBase = () => '', getCtApi = () => null,
   }
 }
 
-module.exports = { createSlideshow, imageType, flattenPlaylists, parseWebsiteSlides, mapAppointments, mapPosts, websitePostIds }
+module.exports = { createSlideshow, playlistKey, imageType, flattenPlaylists, parseWebsiteSlides, mapAppointments, mapPosts, websitePostIds }
