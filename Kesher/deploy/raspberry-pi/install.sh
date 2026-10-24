@@ -234,6 +234,43 @@ DESKTOP
     chmod 0644 "${LABWC_SYSTEM_AUTOSTART}"
   fi
 
+  # Mauszeiger über dem Multiview ausblenden: der Launcher drückt per wtype Super+Strg+Alt+F11
+  # (HideCursor) bzw. F12 (in die Ecke, dann HideCursor). labwc läuft mit -m und liest diese
+  # Datei zusätzlich zu /etc/xdg/labwc/rc.xml
+  if ! command -v wtype >/dev/null; then
+    apt-get install -y --no-install-recommends wtype || echo "Warning: wtype missing; the cursor stays visible" >&2
+  fi
+  LABWC_RC="${LABWC_CONFIG_DIR}/rc.xml"
+  python3 - "${LABWC_RC}" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+keybinds = """    <!-- BEGIN KESHER PI -->
+    <keybind key="W-C-A-F11"><action name="HideCursor" /></keybind>
+    <keybind key="W-C-A-F12">
+      <action name="WarpCursor" to="output" x="-1" y="-1" />
+      <action name="HideCursor" />
+    </keybind>
+    <!-- END KESHER PI -->
+"""
+text = path.read_text(encoding="utf-8") if path.exists() else ""
+if "<!-- BEGIN KESHER PI -->" in text:
+    start = text.index("    <!-- BEGIN KESHER PI -->")
+    end = text.index("<!-- END KESHER PI -->") + len("<!-- END KESHER PI -->\n")
+    text = text[:start] + keybinds + text[end:]
+elif "</keyboard>" in text:
+    text = re.sub(r"[ \t]*</keyboard>", lambda _: keybinds + "  </keyboard>", text, count=1)
+elif "</labwc_config>" in text:
+    text = text.replace("</labwc_config>", "  <keyboard>\n" + keybinds + "  </keyboard>\n</labwc_config>", 1)
+else:
+    text = '<?xml version="1.0"?>\n<labwc_config>\n  <keyboard>\n' + keybinds + "  </keyboard>\n</labwc_config>\n"
+path.write_text(text, encoding="utf-8")
+PY
+  chown "${TARGET_USER}:${TARGET_GROUP}" "${LABWC_RC}"
+  chmod 0644 "${LABWC_RC}"
+
   systemctl disable --now kesher-pi.service 2>/dev/null || true
   echo "Configured Kesher to start with the labwc desktop session."
 else
