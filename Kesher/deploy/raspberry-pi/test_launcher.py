@@ -66,7 +66,7 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("--ozone-platform=wayland", command)
         self.assertNotIn("--use-gl=angle", command)
         self.assertNotIn("--use-angle=gl", command)
-        self.assertIn("--process-per-site", command)
+        self.assertNotIn("--process-per-site", command)  # Multiview und Intercom in eigenen Renderern
         self.assertIn("--renderer-process-limit=2", command)
         self.assertIn("--js-flags=--max-old-space-size=96", command)
         self.assertTrue(
@@ -466,6 +466,32 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("F12", second)
         self.assertEqual(first[-6:], ["-m", "alt", "-m", "ctrl", "-m", "logo"])  # Modifier wieder los
         self.assertFalse(launcher.hide_cursor(run=mock.Mock(side_effect=FileNotFoundError)))
+
+    def test_tmp_percent_only_counts_a_tmpfs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            mounts = Path(directory) / "mounts"
+            mounts.write_text("tmpfs /tmp tmpfs rw,nosuid 0 0\n", encoding="utf-8")
+            stat = mock.Mock(f_blocks=1000, f_bfree=150)
+            with mock.patch.object(launcher.os, "statvfs", return_value=stat):
+                self.assertAlmostEqual(launcher.read_tmp_percent(mounts_path=str(mounts)), 85.0)
+            mounts.write_text("/dev/mmcblk0p2 / ext4 rw 0 0\n", encoding="utf-8")
+            self.assertIsNone(launcher.read_tmp_percent(mounts_path=str(mounts)))  # /tmp auf der Karte
+
+    def test_swap_percent_from_meminfo(self):
+        with tempfile.TemporaryDirectory() as directory:
+            meminfo = Path(directory) / "meminfo"
+            meminfo.write_text("MemTotal: 926720 kB\nSwapTotal: 926716 kB\nSwapFree: 185343 kB\n", encoding="utf-8")
+            self.assertAlmostEqual(launcher.read_swap_percent(str(meminfo)), 80.0, places=1)
+            meminfo.write_text("MemTotal: 926720 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n", encoding="utf-8")
+            self.assertIsNone(launcher.read_swap_percent(str(meminfo)))
+
+    def test_browser_restart_reason(self):
+        old = launcher.RESTART_MIN_BROWSER_SECONDS
+        self.assertEqual(launcher.browser_restart_reason(85.0, 10.0, old), "/tmp is 85 % full")
+        self.assertEqual(launcher.browser_restart_reason(10.0, 81.0, old), "swap is 81 % used")
+        self.assertEqual(launcher.browser_restart_reason(79.0, 79.0, old), "")
+        self.assertEqual(launcher.browser_restart_reason(None, None, old), "")
+        self.assertEqual(launcher.browser_restart_reason(99.0, 99.0, old - 1), "")  # nicht gleich nach dem Start
 
     def test_reads_available_memory_in_mb(self):
         meminfo = "MemTotal:  926720 kB\nMemFree:  160000 kB\nMemAvailable:  583680 kB\n"

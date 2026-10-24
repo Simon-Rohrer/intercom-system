@@ -21,7 +21,7 @@ from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from urllib.request import HTTPSHandler, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 
-LAUNCHER_VERSION = "16"
+LAUNCHER_VERSION = "17"
 DEVICE_CERTIFICATE = Path("/etc/jms-device/client.crt")
 DEVICE_PRIVATE_KEY = Path("/etc/jms-device/client.key")
 SERVER_CA_CERTIFICATE = Path("/etc/jms-device/server-ca.crt")
@@ -54,6 +54,13 @@ MEMORY_CHECK_SECONDS = 5
 # Mauszeiger über dem Multiview ausblenden: install.sh legt in labwc Tastenkürzel an (HideCursor,
 # mit WarpCursor in die Ecke), wtype löst sie aus. Bewegt jemand die Maus, ist er wieder da,
 # bis zur nächsten Prüfung (MEMORY_CHECK_SECONDS).
+# Chromium legt Shared Memory als gelöschte Dateien in /tmp (tmpfs) ab; ein Renderer hielt so in
+# einer Stunde 440 MB fest, /tmp lief voll, der Swap (zram) fast auch – MemAvailable merkt davon
+# wenig, weil das ausgelagert wird. Über diesen Grenzen startet der Launcher Chromium neu (ca. 20–30 s),
+# frühestens RESTART_MIN_BROWSER_SECONDS nach dem letzten Start.
+RESTART_TMP_PERCENT = 80
+RESTART_SWAP_PERCENT = 80
+RESTART_MIN_BROWSER_SECONDS = 300
 HIDE_CURSOR_KEY = "F11"
 WARP_HIDE_CURSOR_KEY = "F12"
 MEMORY_REOPEN_DELAY_SECONDS = 120
@@ -820,6 +827,52 @@ def read_memory_available_mb() -> Optional[int]:
     return None
 
 
+def read_tmp_percent(path: str = "/tmp", mounts_path: str = "/proc/mounts") -> Optional[float]:
+    """Belegung von /tmp in Prozent – nur wenn es ein tmpfs ist (dann liegt es im RAM)."""
+    try:
+        mounts = Path(mounts_path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    if not any(line.split()[1:3] == [path, "tmpfs"] for line in mounts if len(line.split()) >= 3):
+        return None
+    try:
+        stat = os.statvfs(path)
+    except OSError:
+        return None
+    if stat.f_blocks <= 0:
+        return None
+    return (stat.f_blocks - stat.f_bfree) * 100.0 / stat.f_blocks
+
+
+def read_swap_percent(meminfo_path: str = "/proc/meminfo") -> Optional[float]:
+    """Belegter Swap in Prozent, oder None ohne Swap."""
+    values: dict[str, int] = {}
+    try:
+        for line in Path(meminfo_path).read_text(encoding="utf-8").splitlines():
+            key, _, rest = line.partition(":")
+            if key in ("SwapTotal", "SwapFree"):
+                values[key] = int(rest.split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+    total = values.get("SwapTotal", 0)
+    if total <= 0 or "SwapFree" not in values:
+        return None
+    return (total - values["SwapFree"]) * 100.0 / total
+
+
+def browser_restart_reason(
+    tmp_percent: Optional[float], swap_percent: Optional[float], browser_seconds: float
+) -> str:
+    """Grund für einen Neustart von Chromium (leer: keiner nötig)."""
+    if browser_seconds < RESTART_MIN_BROWSER_SECONDS:
+        return ""
+    if tmp_percent is not None and tmp_percent >= RESTART_TMP_PERCENT:
+        return f"/tmp is {tmp_percent:.0f} % full"
+    if swap_percent is not None and swap_percent >= RESTART_SWAP_PERCENT:
+        return f"swap is {swap_percent:.0f} % used"
+    return ""
+
+
 def read_temperature_c() -> Optional[float]:
     candidates = [Path("/sys/class/thermal/thermal_zone0/temp")]
     candidates.extend(sorted(Path("/sys/class/thermal").glob("thermal_zone*/temp")))
@@ -1466,7 +1519,8 @@ def browser_command(
                 "--disable-pinch",
                 "--ozone-platform=wayland",
                 "--overscroll-history-navigation=0",
-                "--process-per-site",
+                # Kein --process-per-site: bei einer IP zählt der Port nicht zur Site, Intercom (:8443)
+                # und Multiview (:8090) teilten sich sonst einen Renderer – Schließen gab nichts frei
                 "--renderer-process-limit=2",
                 "--js-flags=--max-old-space-size=96",
                 "--disable-features=Translate,BackForwardCache,MediaRouter,OptimizationHints,AutofillServerCommunication,CalculateNativeWinOcclusion,FallbackToSWIfGLES3NotSupported,WebGPU,Vulkan,SkiaGraphite",
@@ -1554,7 +1608,7 @@ def main() -> int:
         )
         # Changes in the Multiview: stop the browser and start over with the new settings
         reload_event = threading.Event()
-        browser: dict[str, Optional[subprocess.Popen[Any]]] = {"process": None}
+        browser: dict[str, Any] = {"process": None, "started": time.monotonic()}
         # Intercom oder Multiview: gewünscht (aus dem Multiview) und gerade gezeigt (Tab vorne)
         display_lock = threading.Lock()
         # memory_closed_at: wann der Speicherwächter den Multiview geschlossen hat
@@ -1617,6 +1671,15 @@ def main() -> int:
                 process = browser["process"]
                 if process is None or process.poll() is not None:
                     continue
+                reason = browser_restart_reason(
+                    read_tmp_percent(), read_swap_percent(), time.monotonic() - browser["started"]
+                )
+                if reason:
+                    # Wie bei einer Änderung in JMS Control: Launcher startet neu, Anzeige wie eingestellt
+                    print(f"{reason}; restarting Chromium", flush=True)
+                    reload_event.set()
+                    stop_for_reload()
+                    return
                 available = read_memory_available_mb()
                 with display_lock:
                     try:
@@ -1753,6 +1816,7 @@ def main() -> int:
                     )
                 )
                 browser["process"] = process
+                browser["started"] = time.monotonic()
                 display_state["shown"] = "intercom"
                 if reload_event.is_set():
                     stop_browser_process(process)

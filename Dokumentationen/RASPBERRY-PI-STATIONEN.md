@@ -115,6 +115,12 @@ In JMS Control unter *Einstellungen → Bildschirme* hat jeder Raspberry Pi ein 
 - `entlasten.sh` schaltet Dienste ab, die eine Kamera-Station nicht braucht (cups, NFS/rpcbind, xrdp, wayvnc, rpi-connect, PackageKit, colord, gvfs, cloud-init, automatische Updates). Es deinstalliert nichts und sichert die vorherige Dienstliste unter `/var/backups/kesher-pi-dienste-*.txt`.
 - Prüfen: `free -m` und `journalctl -b | grep "Network service crashed"`.
 
+**Speicher (ab Version 17):** Im Betrieb am 24.10. reichte das nicht. Chromium legt Shared Memory als gelöschte Dateien in `/tmp` ab (tmpfs, also RAM). Ein Renderer hielt so nach einer Stunde 440 MB fest, `/tmp` war voll und der Swap (zram) fast auch. Der freie Speicher sah trotzdem gut aus, weil das ausgelagert wurde, und das Schließen des Multiview-Tabs gab nichts frei. Deshalb:
+
+- Der Speicherwächter prüft zusätzlich die Belegung von `/tmp` (nur wenn es ein tmpfs ist) und den Swap. Ab 80 % startet der Launcher Chromium neu (`RESTART_TMP_PERCENT`, `RESTART_SWAP_PERCENT`), frühestens 5 Minuten nach dem letzten Start. Das dauert etwa 20–30 Sekunden, das Intercom ist kurz weg. Danach zeigt der Pi wieder, was in JMS Control eingestellt ist. Im Log: `/tmp is … % full; restarting Chromium`.
+- Der Sparmodus setzt kein `--process-per-site` mehr. Bei einer IP-Adresse zählt der Port nicht zur Site, deshalb teilten sich Intercom (`:8443`) und Multiview (`:8090`) einen Renderer. Jetzt hat jeder Tab einen eigenen (`--renderer-process-limit=2` bleibt), und das Schließen des Multiview gibt seinen Speicher wirklich frei.
+- Prüfen: `df -m /tmp`, `free -m`, und welcher Prozess die Dateien hält: `sudo ls -l /proc/<pid>/fd | grep -c "/tmp/.*(deleted)"`.
+
 Während der Browser startet, zeigt der Pi statt des Desktops nur das JMS-Logo mittig auf Schwarz (`jms-logo-dunkel.png`, Hintergrund von pcmanfm). `install.sh` richtet das ein, blendet die Desktop-Symbole aus und nimmt die Taskleiste aus dem Desktop-Autostart: `/etc/xdg/labwc/autostart` ist per `dpkg-divert` ersetzt, die Fassung des Pakets liegt unter `autostart.distrib` (zurück: `sudo rm /etc/xdg/labwc/autostart && sudo dpkg-divert --rename --remove /etc/xdg/labwc/autostart`).
 
 ## Konfiguration in der Datei (ohne Multiview)
