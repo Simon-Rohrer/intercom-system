@@ -21,7 +21,7 @@ from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from urllib.request import HTTPSHandler, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 
-LAUNCHER_VERSION = "15"
+LAUNCHER_VERSION = "16"
 DEVICE_CERTIFICATE = Path("/etc/jms-device/client.crt")
 DEVICE_PRIVATE_KEY = Path("/etc/jms-device/client.key")
 SERVER_CA_CERTIFICATE = Path("/etc/jms-device/server-ca.crt")
@@ -44,6 +44,19 @@ MANAGED_CONFIG_LONG_POLL_GAP_SECONDS = 1
 # wird ohne Neustart des Browsers
 DEVTOOLS_PORT = 9222
 DEVTOOLS_WAIT_SECONDS = 60
+# Der Pi 3 hat nur 905 MB: Intercom und Multiview zusammen liefen nach Stunden in den Swap, bis
+# Chromium abstürzte. Darum ist der Multiview-Tab nur offen, solange er gezeigt wird, und wird
+# geschlossen, wenn der freie Speicher unter MEMORY_LOW_MB fällt (das Intercom bleibt).
+# Nach MEMORY_REOPEN_DELAY_SECONDS und ab MEMORY_RECOVER_MB öffnet er wieder frisch.
+MEMORY_LOW_MB = 120
+MEMORY_RECOVER_MB = 250
+MEMORY_CHECK_SECONDS = 5
+# Mauszeiger über dem Multiview ausblenden: install.sh legt in labwc Tastenkürzel an (HideCursor,
+# mit WarpCursor in die Ecke), wtype löst sie aus. Bewegt jemand die Maus, ist er wieder da,
+# bis zur nächsten Prüfung (MEMORY_CHECK_SECONDS).
+HIDE_CURSOR_KEY = "F11"
+WARP_HIDE_CURSOR_KEY = "F12"
+MEMORY_REOPEN_DELAY_SECONDS = 120
 # Gesetzt beim Neustart des Launchers nach einer Änderung: die Desktop-Sitzung läuft schon
 RELOAD_ENV = "KESHER_PI_RELOAD"
 MANAGED_CONFIG_KEYS = (
@@ -646,6 +659,56 @@ def show_tab(url: str, prefix: str) -> bool:
         return False
 
 
+def close_tabs(prefix: str) -> int:
+    """Alle Tabs schließen, deren Adresse mit prefix beginnt; gibt die Anzahl zurück."""
+    pages = devtools_pages()
+    if pages is None:
+        return 0
+    closed = 0
+    for page in pages:
+        if not str(page.get("url", "")).startswith(prefix) or not page.get("id"):
+            continue
+        try:
+            devtools_call(f"/json/close/{page['id']}")
+            closed += 1
+        except (URLError, TimeoutError, OSError, ValueError):
+            pass
+    return closed
+
+
+def hide_cursor(warp: bool = False, run: Any = subprocess.run) -> bool:
+    """Mauszeiger per labwc-Tastenkürzel (Super+Strg+Alt+F11/F12) ausblenden."""
+    key = WARP_HIDE_CURSOR_KEY if warp else HIDE_CURSOR_KEY
+    command = ["wtype", "-M", "logo", "-M", "ctrl", "-M", "alt", "-k", key, "-m", "alt", "-m", "ctrl", "-m", "logo"]
+    try:
+        return run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3, check=False).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def memory_action(
+    available_mb: Optional[int],
+    shown: str,
+    wants_multiview: bool,
+    closed_at: Optional[float],
+    now: float,
+) -> str:
+    """Was der Speicherwächter tun soll: "close" (Multiview zu), "reopen" oder ""."""
+    if available_mb is None:
+        return ""
+    if shown == "multiview" and available_mb < MEMORY_LOW_MB:
+        return "close"
+    if (
+        shown == "intercom"
+        and wants_multiview
+        and closed_at is not None
+        and now - closed_at >= MEMORY_REOPEN_DELAY_SECONDS
+        and available_mb >= MEMORY_RECOVER_MB
+    ):
+        return "reopen"
+    return ""
+
+
 def build_kesher_url(server_url: str, client: dict[str, Any]) -> str:
     params = {
         "autoLogin": "1",
@@ -664,6 +727,12 @@ def build_kesher_url(server_url: str, client: dict[str, Any]) -> str:
     elif client.get("simple_view") is False:
         params["viewMode"] = "station"
     return f"{server_url}/?{urlencode(params)}"
+
+
+def multiview_tab_prefix(config_url: Any) -> str:
+    """Anfang der Adresse jedes Multiview-Tabs (output.html beim Multiview)."""
+    parsed = urlsplit(normalize_config_url(config_url))
+    return urlunsplit((parsed.scheme, parsed.netloc, "/output.html", "", ""))
 
 
 def build_multiview_url(config_url: Any, client: dict[str, Any]) -> str:
@@ -738,6 +807,17 @@ def read_memory_percent() -> Optional[float]:
     if total <= 0 or available < 0:
         return None
     return max(0.0, min(100.0, ((total - available) / total) * 100.0))
+
+
+def read_memory_available_mb() -> Optional[int]:
+    """MemAvailable aus /proc/meminfo in MB, oder None."""
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) // 1024
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
 
 
 def read_temperature_c() -> Optional[float]:
@@ -1477,7 +1557,8 @@ def main() -> int:
         browser: dict[str, Optional[subprocess.Popen[Any]]] = {"process": None}
         # Intercom oder Multiview: gewünscht (aus dem Multiview) und gerade gezeigt (Tab vorne)
         display_lock = threading.Lock()
-        display_state = {"wanted": merged_raw, "shown": ""}
+        # memory_closed_at: wann der Speicherwächter den Multiview geschlossen hat
+        display_state: dict[str, Any] = {"wanted": merged_raw, "shown": "", "memory_closed_at": None}
 
         def stop_for_reload() -> None:
             process = browser["process"]
@@ -1495,7 +1576,13 @@ def main() -> int:
                     return
                 if wanted_client.get("display") == "multiview":
                     url = build_multiview_url(raw.get("config_url"), wanted_client)
-                    target, prefix = "multiview", f"{server_origin(url)}/output.html"
+                    target, prefix = "multiview", multiview_tab_prefix(raw.get("config_url"))
+                    available = read_memory_available_mb()
+                    if available is not None and available < MEMORY_LOW_MB:
+                        print(f"Multiview not opened: only {available} MB memory free", flush=True)
+                        # Der Speicherwächter öffnet ihn, sobald wieder genug frei ist
+                        display_state["memory_closed_at"] = time.monotonic()
+                        return
                 else:
                     url, target, prefix = kesher_url, "intercom", server_origin(kesher_url)
                 if display_state["shown"] == target:
@@ -1503,12 +1590,68 @@ def main() -> int:
                 if show_tab(url, prefix):
                     display_state["shown"] = target
                     print(f"Showing {target}", flush=True)
+                    if target == "intercom":
+                        close_multiview_tabs()
+                    else:
+                        hide_cursor(warp=True)
                 else:
                     print(f"Could not show {target} yet", flush=True)
+
+        def close_multiview_tabs() -> None:
+            """Der Multiview-Tab bleibt nicht im Hintergrund offen – er kostet zu viel Speicher."""
+            config_url = display_state["wanted"].get("config_url") or merged_raw.get("config_url")
+            if not config_url:
+                return
+            try:
+                closed = close_tabs(multiview_tab_prefix(config_url))
+            except ValueError:
+                return
+            if closed:
+                print(f"Closed {closed} Multiview tab(s)", flush=True)
+
+        def memory_guard() -> None:
+            """Schließt den Multiview bei Speichermangel, öffnet ihn später frisch wieder.
+
+            Solange der Multiview vorne ist, blendet er außerdem den Mauszeiger aus."""
+            while not heartbeat_stop.wait(MEMORY_CHECK_SECONDS):
+                process = browser["process"]
+                if process is None or process.poll() is not None:
+                    continue
+                available = read_memory_available_mb()
+                with display_lock:
+                    try:
+                        wanted = resolve_client(
+                            validate_config(display_state["wanted"]), addresses, mac_addresses
+                        )
+                        wants_multiview = wanted.get("display") == "multiview"
+                    except ValueError:
+                        wants_multiview = False
+                    action = memory_action(
+                        available,
+                        display_state["shown"],
+                        wants_multiview,
+                        display_state["memory_closed_at"],
+                        time.monotonic(),
+                    )
+                    if action == "close":
+                        print(f"Only {available} MB memory free; closing the Multiview", flush=True)
+                        show_tab(kesher_url, server_origin(kesher_url))
+                        close_multiview_tabs()
+                        # Ohne Multiview-Tab bleibt nur das Intercom übrig
+                        display_state["shown"] = "intercom"
+                        display_state["memory_closed_at"] = time.monotonic()
+                    elif action == "reopen":
+                        display_state["memory_closed_at"] = None
+                    elif display_state["shown"] == "multiview":
+                        hide_cursor()
+                if action == "reopen":
+                    print(f"{available} MB memory free again; reopening the Multiview", flush=True)
+                    apply_display()
 
         def on_display(raw: dict[str, Any]) -> None:
             with display_lock:
                 display_state["wanted"] = raw
+                display_state["memory_closed_at"] = None
             process = browser["process"]
             if process is not None and process.poll() is None:
                 apply_display()
@@ -1524,6 +1667,7 @@ def main() -> int:
                 on_display=on_display,
                 shown_display=lambda: display_state["shown"],
             )
+        threading.Thread(target=memory_guard, name="kesher-pi-memory", daemon=True).start()
         reload_requested = False
         if client.get("standby") is True:
             # Ruhemodus aus JMS Control: kein Intercom, Bildschirm aus, der Pi bleibt im Netz.

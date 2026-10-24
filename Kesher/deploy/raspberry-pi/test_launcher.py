@@ -419,6 +419,61 @@ class LauncherTests(unittest.TestCase):
         self.assertIn(("/json/activate/k", "GET"), calls)
         self.assertIn(("/json/new?https%3A%2F%2F192.168.0.21%3A8090%2Foutput.html%3Fscreen%3Dpi-a", "PUT"), calls)
 
+    def test_close_tabs_closes_only_matching_tabs(self):
+        calls = []
+        pages = (
+            '[{"id": "k", "type": "page", "url": "https://192.168.0.21:8443/?autoLogin=1"},'
+            ' {"id": "m", "type": "page", "url": "https://192.168.0.21:8090/output.html?screen=pi-a"}]'
+        )
+
+        def call(path, method="GET", timeout=3):
+            calls.append(path)
+            return pages if path == "/json/list" else "Target is closing"
+
+        with mock.patch.object(launcher, "devtools_call", side_effect=call):
+            prefix = launcher.multiview_tab_prefix("https://192.168.0.21:8090/api/raspberry-pis/config")
+            self.assertEqual(prefix, "https://192.168.0.21:8090/output.html")
+            self.assertEqual(launcher.close_tabs(prefix), 1)
+        self.assertEqual(calls, ["/json/list", "/json/close/m"])
+
+    def test_close_tabs_without_chromium_does_nothing(self):
+        with mock.patch.object(launcher, "devtools_pages", return_value=None):
+            self.assertEqual(launcher.close_tabs("https://192.168.0.21:8090/output.html"), 0)
+
+    def test_memory_action_closes_the_multiview_when_memory_is_low(self):
+        low = launcher.MEMORY_LOW_MB - 1
+        self.assertEqual(launcher.memory_action(low, "multiview", True, None, 100.0), "close")
+        self.assertEqual(launcher.memory_action(launcher.MEMORY_LOW_MB, "multiview", True, None, 100.0), "")
+        self.assertEqual(launcher.memory_action(low, "intercom", False, None, 100.0), "")  # Intercom bleibt
+        self.assertEqual(launcher.memory_action(None, "multiview", True, None, 100.0), "")
+
+    def test_memory_action_reopens_after_delay_and_recovery(self):
+        delay = launcher.MEMORY_REOPEN_DELAY_SECONDS
+        good = launcher.MEMORY_RECOVER_MB
+        self.assertEqual(launcher.memory_action(good, "intercom", True, 0.0, delay), "reopen")
+        self.assertEqual(launcher.memory_action(good, "intercom", True, 0.0, delay - 1), "")
+        self.assertEqual(launcher.memory_action(good - 1, "intercom", True, 0.0, delay), "")
+        self.assertEqual(launcher.memory_action(good, "intercom", False, 0.0, delay), "")  # Intercom gewünscht
+        self.assertEqual(launcher.memory_action(good, "intercom", True, None, delay), "")  # nie geschlossen
+
+    def test_hide_cursor_presses_the_labwc_shortcut(self):
+        run = mock.Mock(return_value=mock.Mock(returncode=0))
+        self.assertTrue(launcher.hide_cursor(run=run))
+        self.assertTrue(launcher.hide_cursor(warp=True, run=run))
+        first, second = (call.args[0] for call in run.call_args_list)
+        self.assertEqual(first[0], "wtype")
+        self.assertIn("F11", first)
+        self.assertIn("F12", second)
+        self.assertEqual(first[-6:], ["-m", "alt", "-m", "ctrl", "-m", "logo"])  # Modifier wieder los
+        self.assertFalse(launcher.hide_cursor(run=mock.Mock(side_effect=FileNotFoundError)))
+
+    def test_reads_available_memory_in_mb(self):
+        meminfo = "MemTotal:  926720 kB\nMemFree:  160000 kB\nMemAvailable:  583680 kB\n"
+        with mock.patch.object(launcher.Path, "read_text", return_value=meminfo):
+            self.assertEqual(launcher.read_memory_available_mb(), 570)
+        with mock.patch.object(launcher.Path, "read_text", side_effect=OSError):
+            self.assertIsNone(launcher.read_memory_available_mb())
+
     def test_browser_allows_local_remote_control(self):
         command = launcher.browser_command(self.config, "https://192.168.1.10:8443/?a=1")
         self.assertIn(f"--remote-debugging-port={launcher.DEVTOOLS_PORT}", command)
