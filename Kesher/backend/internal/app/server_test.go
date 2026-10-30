@@ -2429,3 +2429,71 @@ func TestServerHandleAdminCompanionPublishAllowsAdminSessionWithoutUserID(t *tes
 		t.Fatalf("expected published status, got %q", published.ProfileStatus)
 	}
 }
+
+func TestServerRouteInboundChatAtRoleNameWithSpaces(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if err := store.CreateRole(ctx, "sound1", "Ton 1", "", "ptt", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateRole(ctx, "sound10", "Ton 10", "", "ptt", false); err != nil {
+		t.Fatal(err)
+	}
+	hub := NewHub(store, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	sender := &client{
+		session: Session{Token: "sender-token", RoleID: "video"},
+		user:    User{ID: "u1", Username: "sender", RoleID: "video"},
+		send:    make(chan WSOutbound, 8),
+	}
+	sound := &client{
+		session: Session{Token: "sound-token", RoleID: "sound1"},
+		user:    User{ID: "u2", Username: "ton", RoleID: "sound1"},
+		send:    make(chan WSOutbound, 8),
+	}
+	hub.Add(sender)
+	hub.Add(sound)
+	drain(sender.send)
+	drain(sound.send)
+
+	s := &Server{store: store, hub: hub}
+	s.routeInbound(ctx, sender.session, WSInbound{Data: RoutedEvent{Scope: "global", Body: "@ton 1 Mikro checken"}}, "chat")
+
+	select {
+	case out := <-sound.send:
+		routed, ok := out.Data.(RoutedEvent)
+		if !ok {
+			t.Fatalf("expected RoutedEvent payload, got %T", out.Data)
+		}
+		if routed.Scope != "direct" || routed.TargetType != "role" || routed.TargetID != "sound1" {
+			t.Fatalf("unexpected routed event: %+v", routed)
+		}
+		if routed.Body != "Mikro checken" {
+			t.Fatalf("unexpected body: %q", routed.Body)
+		}
+	default:
+		t.Fatal("expected role chat for a role name with a space")
+	}
+}
+
+func TestMatchChatPrefixLabelPrefersLongestWholeName(t *testing.T) {
+	labels := []string{"Ton 1", "Ton 10", "Ton"}
+	cases := []struct {
+		text, label, rest string
+		ok                bool
+	}{
+		{"Ton 10 Pegel", "Ton 10", "Pegel", true},
+		{"ton 1 Pegel", "Ton 1", "Pegel", true},
+		{"Ton 1", "Ton 1", "", true},
+		{"Tontechnik bitte", "", "", false},
+	}
+	for _, tc := range cases {
+		label, rest, ok := matchChatPrefixLabel(tc.text, labels)
+		if ok != tc.ok || !strings.EqualFold(label, tc.label) || rest != tc.rest {
+			t.Fatalf("%q: got (%q, %q, %v), want (%q, %q, %v)", tc.text, label, rest, ok, tc.label, tc.rest, tc.ok)
+		}
+	}
+}

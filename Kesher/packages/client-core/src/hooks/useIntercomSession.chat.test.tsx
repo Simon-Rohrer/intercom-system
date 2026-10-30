@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bootstrap } from "../types";
 import {
+  CHAT_PING_SIGNAL,
   useIntercomSession,
   type UseIntercomSessionOptions,
 } from "./useIntercomSession";
@@ -223,5 +224,45 @@ describe("useIntercomSession chat", () => {
     });
     expect(result.current.chatMessages).toHaveLength(3);
     expect(result.current.incomingAttention).toBeNull();
+  });
+
+  it("flashes the mentioned users' intercom from a sent message", async () => {
+    const { result, ws } = await renderSession();
+    ws.readyState = FakeWebSocket.OPEN;
+    let sent = 0;
+    act(() => {
+      sent = result.current.pingChatRecipients(["u-light", "u-light", "u-monitor"]);
+    });
+    expect(sent).toBe(1);
+    const signals = ws.sent
+      .map((raw) => JSON.parse(raw))
+      .filter((msg) => msg.type === "signal");
+    expect(signals).toEqual([
+      {
+        type: "signal",
+        data: { scope: "direct", targetId: "u-light", signal: CHAT_PING_SIGNAL },
+      },
+    ]);
+  });
+
+  it("asks to read the chat when flashed from a chat message", async () => {
+    const { result, ws } = await renderSession();
+    act(() => {
+      ws.receive({
+        type: "signal",
+        data: {
+          scope: "direct",
+          targetId: "u-monitor",
+          signal: CHAT_PING_SIGNAL,
+          timestamp: Date.now(),
+          fromUser: { id: "u-light", username: "Licht", roleId: "lighting" },
+        },
+      });
+    });
+    expect(result.current.incomingAttention).toEqual({
+      kind: "call",
+      title: "Bitte Chat lesen",
+      detail: "Licht hat dir geschrieben",
+    });
   });
 });

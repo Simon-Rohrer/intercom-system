@@ -702,4 +702,85 @@ describe("ChatSignalPanel", () => {
 
     expect(screen.getByTitle("Nachricht aus Telegram")).toBeVisible();
   });
+
+  it("names the recipient of a sent role message and flashes its stations", async () => {
+    const user = userEvent.setup();
+    const onPingRecipients = vi.fn(() => 1);
+    render(
+      <ChatSignalPanel
+        message=""
+        onMessageChange={vi.fn()}
+        onSendChat={vi.fn()}
+        onAcknowledge={vi.fn()}
+        onPingRecipients={onPingRecipients}
+        chatMessages={[
+          {
+            from: "Ich",
+            fromUserId: "me",
+            body: "Mikro 3 checken",
+            at: "10:00",
+            room: "Direkt",
+            self: true,
+            scope: "direct",
+            targetId: "audio",
+            targetType: "role",
+            messageId: "m-1",
+          },
+        ]}
+        {...defaultProps}
+      />,
+    );
+
+    expect(screen.getByText("an Audio")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /Aufblinken/ }));
+    expect(onPingRecipients).toHaveBeenCalledWith(["u1"]);
+    expect(screen.getByRole("button", { name: /Aufgeblinkt/ })).toBeVisible();
+  });
+
+  it("disables flashing while the recipient is offline", () => {
+    render(
+      <ChatSignalPanel
+        message=""
+        onMessageChange={vi.fn()}
+        onSendChat={vi.fn()}
+        onAcknowledge={vi.fn()}
+        onPingRecipients={vi.fn(() => 0)}
+        chatMessages={[
+          {
+            from: "Ich",
+            fromUserId: "me",
+            body: "Hallo",
+            at: "10:00",
+            room: "Direkt",
+            self: true,
+            scope: "direct",
+            targetId: "lights",
+            targetType: "role",
+          },
+        ]}
+        {...defaultProps}
+        activeUsers={[]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /Aufblinken/ })).toBeDisabled();
+  });
+
+  it("closes the @ suggestions with Escape", async () => {
+    const user = userEvent.setup();
+    render(
+      <ChatSignalPanel
+        message="@"
+        onMessageChange={vi.fn()}
+        onSendChat={vi.fn()}
+        onAcknowledge={vi.fn()}
+        chatMessages={[]}
+        {...defaultProps}
+      />,
+    );
+
+    expect(screen.getByRole("listbox", { name: "chat-autocomplete" })).toBeVisible();
+    await user.type(screen.getByPlaceholderText(/Nachricht/), "{Escape}");
+    expect(screen.queryByRole("listbox", { name: "chat-autocomplete" })).not.toBeInTheDocument();
+  });
 });

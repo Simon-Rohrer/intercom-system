@@ -260,6 +260,14 @@
 .chat-panel-body .chat-feed-reply:hover {
   color: var(--k-ink);
 }
+/* Aufblinken: lässt den Empfänger einer Direktnachricht am Intercom blinken */
+.chat-panel-body .chat-feed-ping.pinged {
+  color: var(--k-call);
+}
+.chat-panel-body .chat-feed-ping:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 
 /* composer */
 .chat-composer {

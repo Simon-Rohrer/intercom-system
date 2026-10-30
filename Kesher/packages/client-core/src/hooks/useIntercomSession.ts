@@ -741,6 +741,8 @@ export type UseIntercomSessionResult = {
   /** Sends a fixed text (e.g. a Stream Deck preset) without touching the chat input. */
   sendChatText: (target: ChatTarget, body: string) => boolean;
   acknowledgeChatMessage: (messageId: string, senderUserId: string) => void;
+  /** Flashes the intercom of the given users (button on a sent direct chat message). */
+  pingChatRecipients: (userIds: string[]) => number;
   handleChannelPttStart: (channelId: string) => void;
   handleChannelPttStop: (channelId: string) => void;
   toggleListenRoom: (roomId: string) => void;
@@ -754,6 +756,8 @@ export type UseIntercomSessionResult = {
 const CHAT_FLASH_MAX_AGE_MS = 15 * 1000;
 /** Matches the attention-chat-border-blink animation. */
 const CHAT_FLASH_DURATION_MS = 4000;
+/** Direct signal behind the "Aufblinken" button on a sent chat message. */
+export const CHAT_PING_SIGNAL = "Chat lesen";
 
 export type IncomingAttention =
   | { kind: "call"; title: string; detail: string }
@@ -1665,6 +1669,9 @@ export function useIntercomSession({
           ? "Eingehender Gruppenruf"
           : "Eingehendes Gruppensignal";
       detail = `${event.fromUser.username} · ${roomName}`;
+    } else if (event.scope === "direct" && event.signal === CHAT_PING_SIGNAL) {
+      title = "Bitte Chat lesen";
+      detail = `${event.fromUser.username} hat dir geschrieben`;
     } else if (event.scope === "direct") {
       title = "Eingehendes Direktsignal";
       detail = event.signal
@@ -2378,6 +2385,28 @@ export function useIntercomSession({
     if (sendChatText(target, message, ackRequired)) {
       setMessage("");
     }
+  }
+
+  /**
+   * Anyone may write a direct chat message, so the matching flash is not
+   * bound to the role's direct-call permission.
+   */
+  function pingChatRecipients(userIds: string[]) {
+    const ws = wsRef.current;
+    const ad = appDataRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !ad) return 0;
+    let sent = 0;
+    for (const userId of new Set(userIds)) {
+      if (!userId || userId === ad.self.id) continue;
+      ws.send(
+        JSON.stringify({
+          type: "signal",
+          data: { scope: "direct", targetId: userId, signal: CHAT_PING_SIGNAL },
+        }),
+      );
+      sent += 1;
+    }
+    return sent;
   }
 
   function acknowledgeChatMessage(messageId: string, senderUserId: string) {
@@ -3662,6 +3691,7 @@ export function useIntercomSession({
     setAlwaysOn,
     handleEnableDirectPptChange,
     sendScopedSignal,
+    pingChatRecipients,
     sendChat,
     sendChatText,
     acknowledgeChatMessage,

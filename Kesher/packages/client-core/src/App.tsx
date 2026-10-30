@@ -3289,6 +3289,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       roles={appData.roles.map((role) => ({ id: role.id, name: role.name }))}
       activeUsers={activeUsersForChat}
       attentionKey={chatAttentionKey}
+      onPingRecipients={session.pingChatRecipients}
     />
   );
   const realtimeDebugBlock = <RealtimeEventsPanel events={session.events} />;

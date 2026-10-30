@@ -48,7 +48,12 @@ type ChatSignalPanelProps = {
   /** Stream Deck message to flash inside the chat (docked or popped out). */
   /** Changes with every new chat message: the chat border flashes once. */
   attentionKey?: number | null;
+  /** Flashes the recipients' intercom; returns how many were reached. */
+  onPingRecipients?: (userIds: string[]) => number;
 };
+
+/** How long the "Aufgeblinkt" confirmation stays on a message. */
+const PING_CONFIRM_MS = 3000;
 
 function autocompleteContext(value: string, caret: number) {
   const left = value.slice(0, caret);
@@ -80,8 +85,11 @@ export function ChatSignalPanel({
   roles,
   activeUsers,
   attentionKey = null,
+  onPingRecipients,
 }: ChatSignalPanelProps) {
   const [selectedSuggestion, setSelectedSuggestion] = useState(0);
+  const [suggestionsClosed, setSuggestionsClosed] = useState(false);
+  const [pingedKeys, setPingedKeys] = useState<string[]>([]);
   const [caret, setCaret] = useState(message.length);
   const [requiresAck, setRequiresAck] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState("global:global");
@@ -212,6 +220,35 @@ export function ChatSignalPanel({
       .slice(0, 8);
   }, [activeUsers, caret, message, roles, rooms]);
 
+  const visibleSuggestions = suggestionsClosed ? [] : suggestions;
+
+  /** Recipient of one's own direct message: a user or every station of a role. */
+  function directRecipient(entry: ChatEntry) {
+    const onlineUsers = activeUsers.filter((u) => u.isWebOnline !== false);
+    if (entry.targetType === "role") {
+      return {
+        name: roles.find((r) => r.id === entry.targetId)?.name || entry.targetId,
+        userIds: onlineUsers
+          .filter((u) => u.roleId === entry.targetId)
+          .map((u) => u.userId),
+      };
+    }
+    const user = activeUsers.find((u) => u.userId === entry.targetId);
+    return {
+      name: user?.username || "",
+      userIds: user && user.isWebOnline !== false ? [user.userId] : [],
+    };
+  }
+
+  function pingRecipients(key: string, userIds: string[]) {
+    if (!onPingRecipients || onPingRecipients(userIds) === 0) return;
+    setPingedKeys((old) => [...old.filter((k) => k !== key), key]);
+    window.setTimeout(
+      () => setPingedKeys((old) => old.filter((k) => k !== key)),
+      PING_CONFIRM_MS,
+    );
+  }
+
   function applySuggestion(item: AutocompleteItem) {
     const context = autocompleteContext(message, caret);
     if (!context) {
@@ -264,9 +301,10 @@ export function ChatSignalPanel({
 
   const scopeTag = (entry: ChatEntry) => {
     if (entry.scope === "direct") {
+      const recipientName = entry.self ? directRecipient(entry).name : "";
       return (
         <span className="chat-feed-room chat-tag-direct">
-          {entry.self ? "Direkt" : "an dich"}
+          {entry.self ? (recipientName ? `an ${recipientName}` : "Direkt") : "an dich"}
         </span>
       );
     }
@@ -284,6 +322,7 @@ export function ChatSignalPanel({
 
   const closeSuggestions = () => {
     setSelectedSuggestion(0);
+    setSuggestionsClosed(true);
   };
 
   return (
@@ -427,6 +466,33 @@ export function ChatSignalPanel({
                     {showAckOption && !entry.self && entry.ackRequired && entry.acked ? (
                       <span className="chat-feed-ack-status acked">Bestätigt</span>
                     ) : null}
+                    {entry.self && entry.scope === "direct" && onPingRecipients
+                      ? (() => {
+                          const pingKey =
+                            entry.messageId || `${entry.at}|${entry.targetId}|${entry.body}`;
+                          const recipient = directRecipient(entry);
+                          const pinged = pingedKeys.includes(pingKey);
+                          const reachable = recipient.userIds.length > 0;
+                          return (
+                            <button
+                              type="button"
+                              className={`chat-feed-reply chat-feed-ping${pinged ? " pinged" : ""}`}
+                              disabled={!reachable}
+                              title={
+                                reachable
+                                  ? `${recipient.name || "Empfänger"} am Intercom aufblinken lassen`
+                                  : "Empfänger ist gerade nicht online"
+                              }
+                              onClick={() => pingRecipients(pingKey, recipient.userIds)}
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
+                              </svg>
+                              {pinged ? "Aufgeblinkt" : "Aufblinken"}
+                            </button>
+                          );
+                        })()
+                      : null}
                     {!entry.self && !entry.fromUserId.startsWith("role:") ? (
                       <button
                         type="button"
@@ -509,11 +575,12 @@ export function ChatSignalPanel({
               onMessageChange(e.target.value);
               setCaret(e.target.selectionStart || 0);
               setSelectedSuggestion(0);
+              setSuggestionsClosed(false);
             }}
             onClick={(e) => setCaret(e.currentTarget.selectionStart || 0)}
             onKeyUp={(e) => setCaret(e.currentTarget.selectionStart || 0)}
             onKeyDown={(e) => {
-              if (suggestions.length === 0) {
+              if (visibleSuggestions.length === 0) {
                 if (e.key === "Enter") {
                   stickToBottomRef.current = true;
                   submitChat();
@@ -530,7 +597,7 @@ export function ChatSignalPanel({
               if (e.key === "ArrowDown") {
                 e.preventDefault();
                 setSelectedSuggestion((prev) =>
-                  prev + 1 >= suggestions.length ? 0 : prev + 1,
+                  prev + 1 >= visibleSuggestions.length ? 0 : prev + 1,
                 );
                 return;
               }
@@ -538,14 +605,14 @@ export function ChatSignalPanel({
               if (e.key === "ArrowUp") {
                 e.preventDefault();
                 setSelectedSuggestion((prev) =>
-                  prev - 1 < 0 ? suggestions.length - 1 : prev - 1,
+                  prev - 1 < 0 ? visibleSuggestions.length - 1 : prev - 1,
                 );
                 return;
               }
 
               if (e.key === "Enter" || e.key === "Tab") {
                 e.preventDefault();
-                const selected = suggestions[selectedSuggestion];
+                const selected = visibleSuggestions[selectedSuggestion];
                 if (selected) {
                   applySuggestion(selected);
                 }
@@ -569,9 +636,9 @@ export function ChatSignalPanel({
               <path d="m22 2-7 20-4-9-9-4z" />
             </svg>
           </button>
-          {suggestions.length > 0 ? (
+          {visibleSuggestions.length > 0 ? (
             <ul className="chat-autocomplete" role="listbox" aria-label="chat-autocomplete">
-              {suggestions.map((item, idx) => (
+              {visibleSuggestions.map((item, idx) => (
                 <li key={item.key}>
                   <button
                     className={idx === selectedSuggestion ? "active" : ""}

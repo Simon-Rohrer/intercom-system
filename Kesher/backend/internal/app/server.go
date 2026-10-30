@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -7109,6 +7110,14 @@ func (s *Server) resolveChatRouting(ctx context.Context, sender Session, e Route
 	}
 
 	prefix, targetLabel, messageBody, hasPrefix := parseChatPrefix(body)
+	if hasPrefix {
+		// Role, room and user names may contain spaces ("Ton 1"); the first
+		// word alone would not find them.
+		if label, rest, ok := matchChatPrefixLabel(body[1:], s.chatPrefixLabels(ctx, prefix)); ok {
+			targetLabel = label
+			messageBody = rest
+		}
+	}
 	if !hasPrefix {
 		if e.Scope == "global" {
 			e.TargetType = "global"
@@ -7252,6 +7261,56 @@ func parseChatPrefix(body string) (rune, string, string, bool) {
 		return 0, "", "", false
 	}
 	return prefix, target, message, true
+}
+
+// chatPrefixLabels lists the names a chat may address with @ (users and
+// roles) or # (party lines).
+func (s *Server) chatPrefixLabels(ctx context.Context, prefix rune) []string {
+	labels := []string{}
+	switch prefix {
+	case '@':
+		if users, err := s.store.ListUsers(ctx); err == nil {
+			for _, user := range users {
+				labels = append(labels, user.Username)
+			}
+		}
+		if roles, err := s.store.ListRoles(ctx); err == nil {
+			for _, role := range roles {
+				labels = append(labels, role.Name, role.ID)
+			}
+		}
+	case '#':
+		if rooms, err := s.store.ListRooms(ctx); err == nil {
+			for _, room := range rooms {
+				labels = append(labels, room.Name, room.ID)
+			}
+		}
+	}
+	return labels
+}
+
+// matchChatPrefixLabel finds the longest label the text starts with
+// (case-insensitive, followed by whitespace or the end) and returns it with
+// the remaining message.
+func matchChatPrefixLabel(text string, labels []string) (string, string, bool) {
+	best := ""
+	for _, label := range labels {
+		label = strings.TrimSpace(label)
+		if label == "" || len(label) <= len(best) || len(label) > len(text) {
+			continue
+		}
+		if !strings.EqualFold(text[:len(label)], label) {
+			continue
+		}
+		if len(label) < len(text) && !unicode.IsSpace(rune(text[len(label)])) {
+			continue
+		}
+		best = label
+	}
+	if best == "" {
+		return "", "", false
+	}
+	return best, strings.TrimSpace(text[len(best):]), true
 }
 
 func addedRooms(previous []string, next []string) []string {
