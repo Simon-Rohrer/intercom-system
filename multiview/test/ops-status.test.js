@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createOpsStatus, summarizeOps, shortText, levelOf } = require('../ops-status')
+const { createOpsStatus, summarizeOps, opsSummary, shortText, levelOf } = require('../ops-status')
 
 const row = (id, status, more = {}) => ({ id, name: id, status, required: true, detail: `${id}-detail`, ...more })
 
@@ -124,4 +124,18 @@ test('Ampel-Dienst: ohne Ops-Kachel wird nicht geprüft, mit Kachel sofort', asy
   assert.equal(calls, 1)
   assert.equal(ops.snapshot().overall, 'ok')
   ops.stop()
+})
+
+test('Kurzform für /api/state: Gesamtzustand, Anzahl Probleme und das wichtigste zuerst', () => {
+  const msg = summarizeOps({ event: { name: 'Gottesdienst' }, checks: [
+    row('jms', 'ok'), row('LED-Wand – Bildkontrolle', 'error'), row('Kamera 2', 'warn'), row('Pi', 'error', { required: false }), row('Stream', 'unknown', { required: false }),
+  ] }, 1000)
+  assert.deepEqual(opsSummary(msg), { state: 'ok', overall: 'error', problems: 3, errors: 1, first: 'LED-Wand prüfen', event: 'Gottesdienst', error: '', at: 1000 })
+  assert.deepEqual(opsSummary(summarizeOps({ checks: [row('jms', 'ok')] }, 5)), { state: 'ok', overall: 'ok', problems: 0, errors: 0, first: '', event: '', error: '', at: 5 })
+  // Noch keine Prüfung gelaufen oder kaputte Nachricht
+  const empty = opsSummary(createOpsStatus({ getDiagnostics: async () => ({}), now: () => 7 }).snapshot())
+  assert.equal(empty.state, 'connecting')
+  assert.equal(empty.overall, 'unknown')
+  assert.equal(empty.problems, 0)
+  assert.equal(opsSummary(null).overall, 'unknown')
 })

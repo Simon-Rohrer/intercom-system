@@ -49,6 +49,7 @@ for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`rea
     const display = register('Display', ['multiview'], ['display'])
     const qrDisplay = register('QR display', ['multiview'], ['display', 'day-code'])
     const chatOnly = register('Chat', ['multiview'], ['chat-monitor'])
+    const control = register('Companion-JMS-Control', ['multiview'], ['control'])
     const foreignService = register('Kesher only', ['kesher'], ['day-code', 'pi-config', 'display'])
     access.flush()
     fs.writeFileSync(path.join(directory, 'config.json'), JSON.stringify({
@@ -107,6 +108,22 @@ for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`rea
       assert.equal((await request(route, { extra: machineHeaders(heartbeat) })).status, 403, route)
     assert.equal((await request('/api/config', { extra: machineHeaders(display) })).status, 200)
     assert.equal((await request('/api/state', { extra: machineHeaders(display) })).status, 200)
+    // Companion-Modul „JMS Control“: Ablauf und Event-Ops im Zustand, Ablauf-Tasten mit Recht „control“
+    const controlState = await request('/api/state', { extra: machineHeaders(control) })
+    assert.equal(controlState.status, 200)
+    assert.equal(typeof controlState.data.agenda, 'object')
+    assert.equal(controlState.data.agenda.eventId, null)
+    assert.ok(Array.isArray(controlState.data.agenda.events))
+    assert.ok(['connecting', 'ok', 'error'].includes(controlState.data.ops.state))
+    assert.equal(typeof controlState.data.ops.problems, 'number')
+    assert.deepEqual(controlState.data.outputs.map((o) => o.id), ['light-output', 'video-output'])
+    const step = (machine, eventId) => request('/api/churchtools/agenda/position', { method: 'POST', body: { eventId, action: 'next' }, extra: machineHeaders(machine) })
+    for (const [eventId, error] of [['current', 'Kein aktuelles Event mit Ablauf'], ['4711', 'Event nicht geladen']]) {
+      const answer = await step(control, eventId)
+      assert.equal(answer.status, 404, JSON.stringify(answer.data))
+      assert.match(answer.data.error, new RegExp(error))
+    }
+    for (const machine of [display, heartbeat, chatOnly]) assert.equal((await step(machine, 'current')).status, 403)
     assert.equal((await request('/api/chat', { extra: machineHeaders(chatOnly) })).status, 200)
     assert.equal((await request('/api/state', { extra: machineHeaders(chatOnly) })).status, 403)
     assert.equal((await request('/api/config', { extra: machineHeaders(foreignService) })).status, 401)
