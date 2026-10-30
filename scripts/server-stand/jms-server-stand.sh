@@ -129,13 +129,15 @@ if [[ ! -f "$KEY" ]]; then
   exit 0
 fi
 
+# Erst lokal festhalten – geht das Hochladen schief, ist der Stand trotzdem gesichert und geht beim nächsten Mal mit
+git update-ref "refs/heads/$BRANCH" "$COMMIT" ${PREV:+"$PREV"}
 export GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o BatchMode=yes"
-if git push --quiet "$REMOTE_URL" "$COMMIT:refs/heads/$BRANCH"; then
-  git update-ref "refs/heads/$BRANCH" "$COMMIT" ${PREV:+"$PREV"}
+if git push --quiet "$REMOTE_URL" "refs/heads/$BRANCH:refs/heads/$BRANCH" 2>"$STATE_DIR/push.err"; then
   log "Server-Stand hochgeladen: $COMMIT (${#DIRTY[@]} Dateien) → $BRANCH"
   status pushed "$COMMIT"
 else
-  log "Hochladen fehlgeschlagen – Stand bleibt lokal, nächster Versuch beim nächsten Lauf"
-  status failed "$COMMIT"
-  exit 1
+  # Kein Fehlerstatus für systemd: die Störungsmeldung soll nicht jede Stunde anschlagen, solange z. B. der
+  # Deploy-Key noch nicht eingetragen ist. Der Grund steht im Protokoll und in status.json.
+  log "Hochladen fehlgeschlagen ($(tail -1 "$STATE_DIR/push.err")) – Stand lokal in $BRANCH gesichert"
+  status failed "$(tail -1 "$STATE_DIR/push.err")"
 fi
