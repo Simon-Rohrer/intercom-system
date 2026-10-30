@@ -1913,6 +1913,7 @@ function updateCanvasOverlays() {
 function selectTile(id) {
   if (selectedTileId === id) return
   selectedTileId = id
+  kindPickerOpen = false
   updateCanvasOverlays()
   renderInspector()
   // Handy: Arbeitsfläche über das Blatt mit den Kachel-Einstellungen holen
@@ -2010,6 +2011,7 @@ function endDrag() {
     const tile = newTile(d.box)
     d.layout.tiles.push(tile)
     selectedTileId = tile.id
+    kindPickerOpen = true // neue Kachel: gleich zeigen, was sie alles sein kann
     renderCanvas()
     renderInspector()
     syncStreams()
@@ -2782,43 +2784,115 @@ function kesherSection(tile) {
       <p class="muted">Im Editor ist die Kachel mit <b>Live-Bilder</b> echt zu sehen (hier nicht bedienbar), sonst als Platzhalter.</p>`
 }
 
+/** Kachelarten für die Auswahl im Inspector: [Art, Name, Kurzbeschreibung, Farbe, SVG-Inhalt]. */
+const TILE_KIND_GROUPS = [
+  ['Bild & Ton', [
+    ['source', 'Videoquelle', 'Kamera, Stream, Testbild', 'blue', '<rect x="2.5" y="6" width="13" height="12" rx="2.5"/><path d="M15.5 10.5 21 7.5v9l-5.5-3"/>'],
+    ['audio', 'Pegel-Fenster', 'Audiopegel vom ATEM', 'green', '<path d="M5 20V10M10 20V4M15 20v-7M20 20V8"/>'],
+  ]],
+  ['ProPresenter', [
+    ['propresenter', 'Folien', 'Aktuelle / nächste Folie', 'orange', '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'],
+    ['playlist', 'Playlist', 'Lieder und Folien', 'orange', '<path d="M4 6h11M4 11h11M4 16h7"/><circle cx="17.5" cy="16.5" r="2.5"/><path d="M20 16.5V6l-2.5 1"/>'],
+    ['preacher', 'Prediger', 'Folien steuern', 'orange', '<circle cx="12" cy="7" r="3"/><path d="M6 20c0-3.5 2.7-6 6-6s6 2.5 6 6"/>'],
+    ['stage', 'Bühne', 'Songtext, Countdown, Nachricht', 'orange', '<path d="M3 5h18v10H3zM7 19h10"/><path d="M7 9h10M7 12h6"/>'],
+  ]],
+  ['Kommunikation', [
+    ['chat', 'Kesher-Chat', 'Nachrichten im Team', 'green', '<path d="M4 5h16v11H9l-5 4z"/>'],
+    ['kesher', 'Kesher-Intercom', 'Spiegel einer Rolle', 'teal', '<path d="M4 13v-1a8 8 0 0 1 16 0v1"/><rect x="3" y="13" width="4" height="7" rx="1.5"/><rect x="17" y="13" width="4" height="7" rx="1.5"/>'],
+  ]],
+  ['Info & Medien', [
+    ['churchtools', 'ChurchTools', 'Ablauf des Events', 'purple', '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>'],
+    ['slideshow', 'Diashow', 'Bilder, Veranstaltungen …', 'pink', '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>'],
+    ['youtube', 'YouTube Live', 'Zuschauer, Stream, Chat', 'red', '<rect x="3" y="6" width="18" height="12" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/>'],
+    ['uplink', 'Upload / Stream', 'Internetleitung', 'indigo', '<path d="M12 19V6M6 11l6-6 6 6"/><path d="M4 21h16"/>'],
+    ['clock', 'Uhr', 'Aktuelle Uhrzeit', 'gray', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+    ['text', 'Text', 'Eigene Beschriftung', 'gray', '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>'],
+  ]],
+]
+const TILE_KINDS = TILE_KIND_GROUPS.flatMap(([, kinds]) => kinds)
+
+const SOURCE_TYPE_ICONS = {
+  device: '<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 11h2M7 14h6"/>',
+  stream: '<path d="M5 12a7 7 0 0 1 14 0M8.5 12a3.5 3.5 0 0 1 7 0"/><circle cx="12" cy="15" r="1.5"/>',
+  test: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7.5 5v14M12 5v14M16.5 5v14"/>',
+  url: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>',
+}
+
+const kindIcon = (color, svg) => `<span class="app-icon ${color}"><svg viewBox="0 0 24 24" aria-hidden="true">${svg}</svg></span>`
+
+// Auswahl der Kachelart: zugeklappt zeigt sie nur die gewählte Art
+let kindPickerOpen = false
+
+/** Gewählte Kachelart als Karte, aufgeklappt alle Arten gruppiert mit Symbol. */
+function kindPicker(kind) {
+  const current = TILE_KINDS.find(([k]) => k === kind) || TILE_KINDS[0]
+  const card = ([k, name, info, color, svg]) =>
+    `<button type="button" class="kind-card${k === kind ? ' active' : ''}" data-kind="${k}" aria-pressed="${k === kind}">${kindIcon(color, svg)}<span class="kind-text"><b>${name}</b><small>${info}</small></span></button>`
+  return `
+    <div class="insp-section">
+      <h4 class="insp-label">Was zeigt die Kachel?</h4>
+      <button type="button" class="kind-current" data-action="kind-toggle" aria-expanded="${kindPickerOpen}">
+        ${kindIcon(current[3], current[4])}
+        <span class="kind-text"><b>${current[1]}</b><small>${current[2]}</small></span>
+        <span class="kind-change">${kindPickerOpen ? 'Schließen' : 'Ändern'}</span>
+      </button>
+      ${
+        kindPickerOpen
+          ? `<div class="kind-picker">${TILE_KIND_GROUPS.map(
+              ([group, kinds]) => `<div class="kind-group"><span class="kind-group-title">${group}</span><div class="kind-grid">${kinds.map(card).join('')}</div></div>`,
+            ).join('')}</div>`
+          : ''
+      }
+    </div>`
+}
+
+/** Quellen als Karten mit Typ-Symbol, ATEM-Eingang und Hinweis, wenn sie im Layout schon läuft. */
+function sourcePicker(tile, layout) {
+  const used = new Set(layout.tiles.filter((t) => t.id !== tile.id && (t.kind || 'source') === 'source').map((t) => t.sourceId))
+  const card = (s) => {
+    const name = sourceLabel(s, atem) || s.name || 'Ohne Namen'
+    const meta = [hasAtemInput(s) ? `ATEM ${s.atemInput}` : '', SOURCE_TYPES[s.type] ?? s.type].filter(Boolean).join(' · ')
+    const tally = hasAtemInput(s) ? tallyOf(s, atem) : null
+    return `<button type="button" class="source-card${s.id === tile.sourceId ? ' active' : ''}" data-source-pick="${esc(s.id)}" aria-pressed="${s.id === tile.sourceId}" title="${esc(sourceOptionLabel(s))}">
+      <span class="source-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${SOURCE_TYPE_ICONS[s.type] || SOURCE_TYPE_ICONS.test}</svg></span>
+      <span class="kind-text"><b>${esc(name)}</b><small>${esc(meta)}</small></span>
+      ${tally ? `<span class="source-badge ${tally}">${tally === 'program' ? 'Auf Sendung' : 'Vorschau'}</span>` : ''}
+      ${used.has(s.id) ? '<span class="source-badge">im Layout</span>' : ''}
+    </button>`
+  }
+  return `
+    <div class="insp-section">
+      <h4 class="insp-label">Quelle</h4>
+      ${
+        config.sources.length
+          ? `<div class="source-grid">${config.sources.map(card).join('')}
+        <button type="button" class="source-card none${tile.sourceId ? '' : ' active'}" data-source-pick="" aria-pressed="${!tile.sourceId}"><span class="kind-text"><b>Keine Quelle</b><small>Kachel bleibt schwarz</small></span></button></div>`
+          : '<p class="muted small" style="margin:0">Noch keine Quellen angelegt.</p>'
+      }
+      <a class="insp-link" href="#/einstellungen/eingaenge">Eingänge verwalten</a>
+    </div>`
+}
+
 function tileInspector(tile, layout) {
-  const sourceOptions = [
-    `<option value="">– keine –</option>`,
-    ...config.sources.map(
-      (s) => `<option value="${esc(s.id)}" ${s.id === tile.sourceId ? 'selected' : ''}>${esc(sourceOptionLabel(s))}</option>`,
-    ),
-  ].join('')
   const kind = tile.kind || 'source'
   return `
     <div class="panel-head" style="margin:0"><h3>Kachel</h3><button class="btn small${phoneLayout.matches ? ' link' : ''}" data-action="deselect">${phoneLayout.matches ? 'Fertig' : '← Layout'}</button></div>
-    <label class="field"><span>Inhalt</span>
-      <select data-t="kind">
-        <option value="source" ${kind === 'source' ? 'selected' : ''}>Videoquelle</option>
-        <option value="clock" ${kind === 'clock' ? 'selected' : ''}>Uhr</option>
-        <option value="text" ${kind === 'text' ? 'selected' : ''}>Text</option>
-        <option value="audio" ${kind === 'audio' ? 'selected' : ''}>Pegel-Fenster (Audio)</option>
-        <option value="chat" ${kind === 'chat' ? 'selected' : ''}>Kesher-Chat</option>
-        <option value="kesher" ${kind === 'kesher' ? 'selected' : ''}>Kesher-Intercom (Spiegel)</option>
-        <option value="churchtools" ${kind === 'churchtools' ? 'selected' : ''}>ChurchTools-Ablauf</option>
-        <option value="uplink" ${kind === 'uplink' ? 'selected' : ''}>Upload / Stream (Internet)</option>
-        <option value="youtube" ${kind === 'youtube' ? 'selected' : ''}>YouTube Live (Zuschauer, Stream, Chat)</option>
-        <option value="slideshow" ${kind === 'slideshow' ? 'selected' : ''}>Diashow (Bilder, ProPresenter, Veranstaltungen …)</option>
-        <option value="propresenter" ${kind === 'propresenter' ? 'selected' : ''}>ProPresenter (Folien / Hintergründe)</option>
-        <option value="playlist" ${kind === 'playlist' ? 'selected' : ''}>ProPresenter-Playlist</option>
-        <option value="preacher" ${kind === 'preacher' ? 'selected' : ''}>ProPresenter-Prediger (Folien steuern)</option>
-        <option value="stage" ${kind === 'stage' ? 'selected' : ''}>ProPresenter-Bühne (Songtext, Countdown, Nachricht)</option>
-      </select>
-    </label>
+    ${kindPicker(kind)}
     ${
       kind === 'source'
         ? `
-      <label class="field"><span>Quelle</span><select data-t="sourceId">${sourceOptions}</select></label>
-      <label class="field"><span>Eigene Beschriftung (leer = automatisch)</span><input type="text" data-t="label" value="${esc(tile.label)}"></label>
-      <label class="check"><input type="checkbox" data-t="showLabel" ${tile.showLabel !== false ? 'checked' : ''}> Beschriftung anzeigen</label>
-      <label class="check"><input type="checkbox" data-t="showTally" ${tile.showTally !== false ? 'checked' : ''}> Tally-Rahmen anzeigen</label>
-      <label class="check"><input type="checkbox" data-t="showMeter" ${tile.showMeter === true ? 'checked' : ''}> Audiopegel in dieser Kachel</label>
-      <label class="check"><input type="checkbox" data-t="fit" ${tile.fit === 'cover' ? 'checked' : ''}> Bild füllen (beschneiden)</label>
+      ${sourcePicker(tile, layout)}
+      <div class="insp-section">
+        <h4 class="insp-label">Anzeige</h4>
+        <label class="field"><span>Eigene Beschriftung (leer = automatisch)</span><input type="text" data-t="label" value="${esc(tile.label)}"></label>
+        <div class="check-list">
+          <label class="check"><input type="checkbox" data-t="showLabel" ${tile.showLabel !== false ? 'checked' : ''}> Beschriftung anzeigen</label>
+          <label class="check"><input type="checkbox" data-t="showTally" ${tile.showTally !== false ? 'checked' : ''}> Tally-Rahmen anzeigen</label>
+          <label class="check"><input type="checkbox" data-t="showMeter" ${tile.showMeter === true ? 'checked' : ''}> Audiopegel in dieser Kachel</label>
+          <label class="check"><input type="checkbox" data-t="fit" ${tile.fit === 'cover' ? 'checked' : ''}> Bild füllen (beschneiden)</label>
+        </div>
+      </div>
       ${tile.showMeter === true ? meterSection(tile) : ''}`
         : ''
     }
@@ -3147,19 +3221,22 @@ function onInspectorField(e) {
   } else tile[key] = el.value
 
   if (key === 'showMeter') renderInspector()
-  if (key === 'kind') {
-    delete tile.meter // Video- und Audiokacheln haben unterschiedliche Lagen
-    if (tile.kind === 'source' && !tile.sourceId) tile.sourceId = nextFreeSource()?.id ?? null
-    if (tile.kind === 'audio' && !Array.isArray(tile.channels)) tile.channels = [{ input: 'master', label: '' }]
-    if (tile.kind === 'kesher' && tile.kesherUser == null) tile.kesherUser = 'Multiview'
-    // Neue Diashow: eine Quelle (hochgeladene Bilder), nicht alle zugleich
-    if (tile.kind === 'slideshow' && !tile.slideshow)
-      tile.slideshow = { ...slideshowOptions({}), ...Object.fromEntries(SLIDESHOW_SOURCES.map(([k]) => [k, k === 'images'])) }
-    renderInspector()
-  }
   renderCanvas()
   syncStreams()
   changed()
+}
+
+/** Kachelart wechseln und die neue Art mit sinnvollen Startwerten belegen. */
+function setTileKind(tile, kind) {
+  if ((tile.kind || 'source') === kind) return
+  tile.kind = kind
+  delete tile.meter // Video- und Audiokacheln haben unterschiedliche Lagen
+  if (tile.kind === 'source' && !tile.sourceId) tile.sourceId = nextFreeSource()?.id ?? null
+  if (tile.kind === 'audio' && !Array.isArray(tile.channels)) tile.channels = [{ input: 'master', label: '' }]
+  if (tile.kind === 'kesher' && tile.kesherUser == null) tile.kesherUser = 'Multiview'
+  // Neue Diashow: eine Quelle (hochgeladene Bilder), nicht alle zugleich
+  if (tile.kind === 'slideshow' && !tile.slideshow)
+    tile.slideshow = { ...slideshowOptions({}), ...Object.fromEntries(SLIDESHOW_SOURCES.map(([k]) => [k, k === 'images'])) }
 }
 inspector.addEventListener('input', onInspectorField)
 inspector.addEventListener('change', onInspectorField)
@@ -3188,6 +3265,23 @@ inspector.addEventListener('click', (e) => {
   }
   const layout = currentLayout()
   const tile = layout?.tiles.find((t) => t.id === selectedTileId)
+
+  if (btn.dataset.action === 'kind-toggle') {
+    kindPickerOpen = !kindPickerOpen
+    renderInspector()
+    return
+  }
+  if (tile && (btn.dataset.kind || btn.dataset.sourcePick != null)) {
+    if (btn.dataset.kind) {
+      setTileKind(tile, btn.dataset.kind)
+      kindPickerOpen = false
+    } else tile.sourceId = btn.dataset.sourcePick || null
+    renderInspector()
+    renderCanvas()
+    syncStreams()
+    changed()
+    return
+  }
 
   if (btn.dataset.preset) {
     if (layout.tiles.length && !confirm('Vorhandene Kacheln durch die Vorlage ersetzen?')) return
