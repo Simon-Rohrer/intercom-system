@@ -26,17 +26,20 @@ export function readDeviceKey(): string {
   return key;
 }
 
-export async function request(base: string, key: string, method: "GET" | "POST", path: string): Promise<unknown> {
+export async function request(base: string, key: string, method: "GET" | "POST", path: string, body?: unknown): Promise<unknown> {
+  const headers: Record<string, string> = { "X-JMS-Device-Key": key, Accept: "application/json" };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
   const response = await fetch(base + path, {
     method,
-    headers: { "X-JMS-Device-Key": key, Accept: "application/json" },
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
     redirect: "error",
     signal: AbortSignal.timeout(5000),
   });
-  const body = await response.json().catch(() => null);
+  const answer = await response.json().catch(() => null);
   if (!response.ok) {
-    const error = body && typeof body === "object" && "error" in body ? String((body as { error: unknown }).error) : "";
+    const error = answer && typeof answer === "object" && "error" in answer ? String((answer as { error: unknown }).error) : "";
     throw new Error(`${response.status} ${error || response.statusText}`.trim());
   }
-  return body;
+  return answer;
 }
