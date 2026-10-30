@@ -69,13 +69,39 @@
   tick()
   setInterval(tick, 15000)
   const placeHead = () => {
-    const top = document.getElementById('information-widgets')
+    const top = document.getElementById('information-widgets') || document.getElementById('layout-groups')
     if (top && head.nextElementSibling !== top) top.before(head)
-    const input = document.querySelector('.information-widget-search input')
-    if (input && input.placeholder !== 'Suchen') input.placeholder = 'Suchen'
   }
   new MutationObserver(placeHead).observe(document.body, { childList: true, subtree: true })
   placeHead()
+
+  // Die Start-Dienste bleiben in einer verständlichen Reihenfolge. Prediger sehen
+  // ihre eigene Seite zuerst; für alle anderen bleiben Raspberry und JMS Control
+  // am unteren Ende der Liste.
+  const isPreacher = Boolean(me?.user && !me.user.open && (
+    /(prediger|preacher)/i.test(String(me.user.roleId || '').trim()) ||
+    /(prediger|preacher)/i.test(String(me.user.roleName || '').trim())
+  ))
+  const arrangeStartServices = () => {
+    const tab = document.getElementById('Start-tab')
+    if (tab && tab.getAttribute('aria-selected') === 'false') return
+    const group = [...document.querySelectorAll('.services-group')].find((item) =>
+      /^(Dienste|Services)$/i.test((item.querySelector('.service-group-name') || {}).textContent?.trim() || '')
+    )
+    const list = group?.querySelector('.services-list')
+    if (!list) return
+    const items = [...list.children]
+    const byName = new Map(items.map((item) => [item.querySelector('.service-name')?.textContent?.trim(), item]))
+    const names = isPreacher
+      ? ['Prediger', 'Intercom', 'Intercom-Chat', 'Nachricht auf Bühne', 'Nachricht auf Stage Display', 'Raspberry fernsteuern', 'JMS Control']
+      : ['Intercom', 'Intercom-Chat', 'Nachricht auf Bühne', 'Nachricht auf Stage Display', 'Prediger', 'Raspberry fernsteuern', 'JMS Control']
+    const ordered = names.map((name) => byName.get(name)).filter(Boolean)
+    ordered.push(...items.filter((item) => !ordered.includes(item)))
+    if (ordered.some((item, index) => list.children[index] !== item)) ordered.forEach((item) => list.append(item))
+  }
+  const serviceObserver = new MutationObserver(arrangeStartServices)
+  serviceObserver.observe(document.body, { childList: true, subtree: true })
+  arrangeStartServices()
 
   // Konto-Leiste unten links wie in allen anderen Diensten (JMS Control, Intercom, Companion …):
   // wer angemeldet ist, Konto wechseln, Abmelden – kommt aus dem Multiview (/.jms-auth/jms-bar.js)
@@ -227,6 +253,34 @@
     }
   }
 
+  // Die komplette Servicekarte ist anklickbar. Die bestehenden Links und Status-Buttons
+  // bleiben zuständig für ihre eigenen Aktionen; freie Kartenflächen öffnen den ersten Service-Link.
+  if (!document.documentElement.dataset.jmsCardLinks) {
+    document.documentElement.dataset.jmsCardLinks = '1'
+    const activateCard = (card) => {
+      const link = card?.querySelector('a[href]')
+      if (link) link.click()
+    }
+    document.addEventListener('click', (event) => {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      const card = target.closest('.service-card')
+      if (!card) return
+      // Icon/Text-Links sowie Container-Status und andere Bedienelemente behalten ihr Verhalten.
+      if (target.closest('a, button, input, select, textarea, [role="button"]')) return
+      activateCard(card)
+    })
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      const target = event.target
+      if (!(target instanceof Element)) return
+      const card = target.closest('.service-card')
+      if (!card || target.closest('a, button, input, select, textarea, [role="button"]')) return
+      event.preventDefault()
+      activateCard(card)
+    })
+  }
+
   // An- oder abgemeldet in einem anderen Dienst/Tab (gemeinsames Cookie): beim Zurückwechseln
   // und alle 15 s prüfen und dann neu laden – ohne dass man selbst neu laden muss
   if (!me || !me.access || !me.access.enabled) return
@@ -249,4 +303,10 @@
   window.addEventListener('focus', check)
   window.addEventListener('pageshow', check)
   setInterval(check, 5000)
+})()
+
+// Veranstaltungsbetrieb: gleiche Daten und Anmeldung wie JMS Control.
+;(() => {
+  const css=document.createElement('link');css.rel='stylesheet';css.href='/.jms-auth/event-ops.css?v=20261030-agenda';document.head.append(css)
+  const script=document.createElement('script');script.src='/.jms-auth/event-ops.js?v=20261030-agenda';script.defer=true;document.head.append(script)
 })()

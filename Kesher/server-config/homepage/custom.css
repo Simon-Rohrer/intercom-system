@@ -30,14 +30,25 @@ body::before {
   pointer-events: none;
 }
 /* ==================================================================
-   macOS-Stil: Begrüßung oben, Suche als kompakte Pille (wie Spotlight),
+   macOS-Stil: Begrüßung oben,
    Start/Admin als kleines Segment, gleich hohe Glas-Karten, ruhige Typografie.
    ================================================================== */
-#page_wrapper .container { max-width: 1240px !important; padding: 0 28px 120px; }
+#page_wrapper .container { max-width: 1240px !important; padding: 0 28px 190px; }
 #footer { display: none !important; }
 
 /* Begrüßung (custom.js fügt .jms-head ein) */
-.jms-head { margin: 44px 4px 18px; color: #fff; }
+.jms-head {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  margin: 0 4px 18px;
+  padding: max(18px, env(safe-area-inset-top)) 12px 14px;
+  border-radius: 0 0 20px 20px;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(10, 10, 12, 0.96) 0%, rgba(10, 10, 12, 0.86) 72%, rgba(10, 10, 12, 0) 100%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
+}
 .jms-head h1 {
   margin: 0;
   font: 700 34px/1.15 -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
@@ -46,8 +57,9 @@ body::before {
 }
 .jms-head p { margin: 6px 0 0; font-size: 15px; color: rgba(235, 235, 245, 0.7); font-variant-numeric: tabular-nums; }
 
-/* Suche + Umschalter in einer Zeile: Suche rechts, Umschalter links */
+/* Die Homepage-Widget-Leiste bleibt als Layout-Anker ausgeblendet. */
 #information-widgets {
+  display: none !important;
   margin: 0 !important;
   padding: 0 !important;
   background: transparent !important;
@@ -144,6 +156,8 @@ body::before {
   transition: transform 0.15s ease, background 0.15s ease !important;
 }
 .service-card:hover { background: rgba(255, 255, 255, 0.1) !important; transform: translateY(-1px); }
+.service-card { cursor: pointer; }
+.service-card:focus-within { outline: 2px solid rgba(90, 200, 250, 0.72); outline-offset: 2px; }
 .service-card:active { transform: scale(0.985); }
 .service-title { align-items: center; min-height: 74px; padding: 0 12px; gap: 12px; }
 .service-icon {
@@ -199,10 +213,10 @@ body::before {
 .services-list > li:nth-child(7n + 6) .service-icon { background: linear-gradient(160deg, #ff8fb1, #ff2d6f); }
 .services-list > li:nth-child(7n + 7) .service-icon { background: linear-gradient(160deg, #a5a5ad, #6c6c74); }
 
-/* Handy: Suche über dem Umschalter statt daneben, kleinere Begrüßung */
+/* Handy: kompakte Begrüßung und zusätzlicher Platz für die feste Kontoleiste */
 @media (max-width: 640px) {
-  #page_wrapper .container { padding: 0 14px 120px; }
-  .jms-head { margin: 28px 4px 14px; }
+  #page_wrapper .container { padding: 0 14px calc(260px + env(safe-area-inset-bottom)); }
+  .jms-head { margin: 0 4px 14px; padding-top: max(18px, env(safe-area-inset-top)); }
   .jms-head h1 { font-size: 28px; }
   #information-widgets { align-self: stretch; width: auto; margin-bottom: 12px !important; }
 }

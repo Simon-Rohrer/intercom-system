@@ -17,16 +17,6 @@
         icon: mdi-headset
         server: local-docker
         container: kesher
-    - Raspberry fernsteuern:
-        href: https://192.168.0.21:8443/?login=raspberry
-        description: Kesher – eine Raspberry-Station übernehmen und steuern
-        icon: mdi-raspberry-pi
-    - JMS Control:
-        href: https://192.168.0.21:8090
-        description: Die Zentrale – Multiviews, Layouts, Eingänge, Benutzer und Rechte
-        icon: mdi-monitor-dashboard
-        server: local-docker
-        container: multiview
     - Intercom-Chat:
         href: https://192.168.0.21:8090/remote.html?tab=chat
         description: Chat mit den anderen Rollen lesen und schreiben
@@ -43,7 +33,16 @@
         href: https://192.168.0.21:8090/prediger.html
         description: Folien, Notizen und Zeit für die Bühne
         icon: mdi-account-voice
-
+    - Raspberry fernsteuern:
+        href: https://192.168.0.21:8443/?login=raspberry
+        description: Kesher – eine Raspberry-Station übernehmen und steuern
+        icon: mdi-raspberry-pi
+    - JMS Control:
+        href: https://192.168.0.21:8090
+        description: Die Zentrale – Multiviews, Layouts, Eingänge, Benutzer und Rechte
+        icon: mdi-cog
+        server: local-docker
+        container: multiview
 # ----------------------------------------------------------------------------- Admin
 
 - Verwaltung:
@@ -203,7 +202,7 @@
         container: kesher
         showStats: true
     - JMS Control:
-        icon: mdi-monitor-dashboard
+        icon: mdi-cog
         description: Zentrale mit Multiviews, MediaMTX und zentraler Anmeldung
         server: local-docker
         container: multiview
