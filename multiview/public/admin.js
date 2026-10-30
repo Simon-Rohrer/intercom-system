@@ -3,6 +3,9 @@ import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } fr
 import { createChatView, chatOptions } from './chat.js'
 import { createUplinkView, mergeUplink, uplinkOptions } from './uplink.js'
 import { createYouTubeView, youtubeOptions } from './youtube.js'
+import { createTallyView, tallyOptions, tallyName } from './tally.js'
+import { createOpsView, opsOptions } from './ampel.js'
+import { createStreamHealthView, streamHealthOptions } from './streamhealth.js'
 import { createSlideshowView, ppSlides, slideshowOptions } from './slideshow.js'
 import { createAgendaView, agendaOptions, AGENDA_ACCENTS, AGENDA_CCLI_COLORS } from './agenda.js'
 import {
@@ -96,6 +99,10 @@ const uplinkViews = new Set()
 let uplink = null
 const youtubeViews = new Set()
 let youtube = null
+const tallyViews = new Set()
+const opsViews = new Set()
+let ops = null
+const healthViews = new Set()
 const slideshowViews = new Set()
 let slideshowData = null
 let templates = [] // gespeicherte Layouts { id, name, savedAt, owner, tiles, own }
@@ -113,6 +120,10 @@ function onMessage(msg) {
   } else if (msg.type === 'atem') {
     atem = msg
     renderAtemPill()
+    for (const view of tallyViews) {
+      if (view.el.isConnected) view.update(atem)
+      else tallyViews.delete(view)
+    }
     renderStatusStrip()
     renderAtem()
     renderDatalists()
@@ -131,6 +142,10 @@ function onMessage(msg) {
     for (const view of uplinkViews) {
       if (view.el.isConnected) view.update(uplink)
       else uplinkViews.delete(view)
+    }
+    for (const view of healthViews) {
+      if (view.el.isConnected) view.update({ uplink })
+      else healthViews.delete(view)
     }
     const hint = inspector.querySelector('[data-uplink-state]')
     if (hint) hint.textContent = uplinkStateText()
@@ -152,8 +167,20 @@ function onMessage(msg) {
       if (view.el.isConnected) view.update(youtube)
       else youtubeViews.delete(view)
     }
+    for (const view of healthViews) {
+      if (view.el.isConnected) view.update({ youtube })
+      else healthViews.delete(view)
+    }
     renderYouTubeSettings()
     renderStatusStrip()
+  } else if (msg.type === 'ops') {
+    ops = msg
+    for (const view of opsViews) {
+      if (view.el.isConnected) view.update(ops)
+      else opsViews.delete(view)
+    }
+    const hint = inspector.querySelector('[data-ops-state]')
+    if (hint) hint.textContent = opsStateText()
   } else if (msg.type === 'churchtools') {
     churchtools = msg
     renderChurchTools()
@@ -1802,6 +1829,12 @@ function syncTileMedia(el, tile) {
         ? JSON.stringify(['uplink', uplinkOptions(tile.uplink)])
       : tile.kind === 'youtube'
         ? JSON.stringify(['youtube', youtubeOptions(tile.youtube)])
+      : tile.kind === 'tally'
+        ? JSON.stringify(['tally', tallyOptions(tile.tally)])
+      : tile.kind === 'ops'
+        ? JSON.stringify(['ops', opsOptions(tile.ops)])
+      : tile.kind === 'streamhealth'
+        ? JSON.stringify(['streamhealth', streamHealthOptions(tile.streamhealth)])
       : tile.kind === 'slideshow'
         ? JSON.stringify(['slideshow', slideshowOptions(tile.slideshow)])
       : tile.kind === 'churchtools'
@@ -1815,7 +1848,7 @@ function syncTileMedia(el, tile) {
   el.dataset.mediaKey = key
   el.querySelector('.etile-media')?.remove()
   el.classList.toggle('live', Boolean(key))
-  el.classList.toggle('chat-tile', ['chat', 'churchtools', 'uplink', 'youtube', 'slideshow'].includes(tile.kind))
+  el.classList.toggle('chat-tile', ['chat', 'churchtools', 'uplink', 'youtube', 'slideshow', 'tally', 'ops', 'streamhealth'].includes(tile.kind))
   if (!key) return
   const media = document.createElement('div')
   media.className = 'etile-media'
@@ -1839,6 +1872,21 @@ function syncTileMedia(el, tile) {
     const view = createYouTubeView(tile.youtube)
     view.update(youtube)
     youtubeViews.add(view)
+    media.append(view.el)
+  } else if (tile.kind === 'tally') {
+    const view = createTallyView(tile.tally)
+    view.update(atem)
+    tallyViews.add(view)
+    media.append(view.el)
+  } else if (tile.kind === 'ops') {
+    const view = createOpsView(tile.ops)
+    view.update(ops)
+    opsViews.add(view)
+    media.append(view.el)
+  } else if (tile.kind === 'streamhealth') {
+    const view = createStreamHealthView(tile.streamhealth)
+    view.update({ youtube, uplink })
+    healthViews.add(view)
     media.append(view.el)
   } else if (tile.kind === 'slideshow') {
     const view = createSlideshowView(tile.slideshow)
@@ -1908,6 +1956,12 @@ function describeTile(tile) {
     return { title: 'ChurchTools-Ablauf', sub: [day, tile.ctFilter].filter(Boolean).join(' · ') }
   }
   if (tile.kind === 'uplink') return { title: 'Upload / Stream', sub: 'Internet-Upload (FRITZ!Box)' }
+  if (tile.kind === 'tally') {
+    const o = tallyOptions(tile.tally)
+    return { title: `Tally · ${tallyName(o, atem)}`, sub: o.mode === 'frame' ? 'Rahmen' : 'Feld' }
+  }
+  if (tile.kind === 'ops') return { title: 'Event-Ops', sub: opsOptions(tile.ops).all ? 'Ampel · alle Prüfungen' : 'Ampel · Probleme' }
+  if (tile.kind === 'streamhealth') return { title: 'Stream-Gesundheit', sub: 'Encoder · YouTube · Zuschauer · Upload' }
   if (tile.kind === 'slideshow') {
     const o = slideshowOptions(tile.slideshow)
     const parts = [o.images && 'Bilder', o.pp && 'ProPresenter', o.events && 'Veranstaltungen'].filter(Boolean)
@@ -2535,6 +2589,101 @@ function uplinkSection(tile) {
     }`
 }
 
+/** Auswahl des ATEM-Eingangs: alle Eingänge vom ATEM, sonst die der Quellen; der gewählte bleibt immer dabei */
+function tallyInputOptions(selected) {
+  const opts = new Map()
+  for (const [id, i] of Object.entries(atem.inputs || {})) opts.set(Number(id), `${id} – ${i.longName || i.shortName || ''}`.trim())
+  for (const s of config.sources) if (hasAtemInput(s) && !opts.has(Number(s.atemInput))) opts.set(Number(s.atemInput), `${s.atemInput} – ${s.name}`)
+  if (selected != null && !opts.has(selected)) opts.set(selected, `${selected} – Eingang ${selected}`)
+  const rows = [...opts.entries()].sort((a, b) => a[0] - b[0])
+  return [`<option value="" ${selected == null ? 'selected' : ''}>– kein Eingang –</option>`, ...rows.map(([v, label]) => `<option value="${v}" ${v === selected ? 'selected' : ''}>${esc(label)}</option>`)].join('')
+}
+
+/** Tally-Kachel: Eingang, Rahmen oder Feld, Beschriftung, Aufnahme/Streaming-Status */
+function tallySection(tile) {
+  const o = tallyOptions(tile.tally)
+  return `
+    <div class="meter-settings">
+      <h4>Tally</h4>
+      <label class="field"><span>ATEM-Eingang</span><select data-ta="input">${tallyInputOptions(o.input)}</select></label>
+      <label class="field"><span>Darstellung</span>
+        <select data-ta="mode">
+          <option value="field" ${o.mode === 'field' ? 'selected' : ''}>Feld – ganze Kachel rot/grün, mit Name</option>
+          <option value="frame" ${o.mode === 'frame' ? 'selected' : ''}>Rahmen – nur farbiger Rand, Inhalt durchsichtig</option>
+        </select></label>
+      ${
+        o.mode === 'frame'
+          ? `<label class="field"><span>Rahmenstärke <output>${o.border}×</output></span>
+        <input type="range" min="0.25" max="4" step="0.25" data-ta="border" value="${o.border}"></label>`
+          : `<label class="field"><span>Eigene Beschriftung (leer = Name vom ATEM)</span><input type="text" data-ta="label" value="${esc(o.label)}" maxlength="40"></label>
+      <label class="check"><input type="checkbox" data-ta="name" ${o.name ? 'checked' : ''}> Namen anzeigen</label>`
+      }
+      <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+        <input type="range" min="0.5" max="2.5" step="0.1" data-ta="size" value="${o.size}"></label>
+      <label class="check"><input type="checkbox" data-ta="status" ${o.status ? 'checked' : ''}> Aufnahme (REC) und Streaming des ATEM zeigen</label>
+      <p class="muted small">Rot = auf Sendung (Program), grün = Vorschau (Preview), dunkel = aus. „Rahmen“ ist für einen Pi gedacht, der das Kamerabild zeigt: Die Kachel bleibt durchsichtig, nur der Rand leuchtet. REC/STREAM gibt es nur bei ATEM-Modellen, die selbst aufnehmen bzw. streamen${atem.connected && atem.recording == null && atem.streaming == null ? ' – dieser ATEM meldet nichts davon' : ''}.</p>
+    </div>`
+}
+
+function opsStateText() {
+  if (!ops || ops.state === 'connecting') return 'Prüfungen laufen …'
+  if (ops.state === 'error') return `Fehler: ${ops.error || 'Prüfungen nicht abrufbar'}`
+  const c = ops.counts || {}
+  return `Stand ${new Date(ops.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} – ${c.ok ?? 0} grün, ${(c.warn ?? 0) + (c.unknown ?? 0)} gelb/offen, ${c.error ?? 0} rot`
+}
+
+/** Ampel „Event-Ops“: Titel, nur Probleme oder alles, Schriftgröße */
+function opsSection(tile) {
+  const o = opsOptions(tile.ops)
+  return `
+    <div class="meter-settings">
+      <h4>Ampel</h4>
+      <label class="field"><span>Titel</span><input type="text" data-ops="title" value="${esc(o.title)}" maxlength="40"></label>
+      <label class="field"><span>Liste</span>
+        <select data-ops="all">
+          <option value="" ${!o.all ? 'selected' : ''}>Nur Probleme zeigen</option>
+          <option value="1" ${o.all ? 'selected' : ''}>Alle Prüfungen zeigen</option>
+        </select></label>
+      <label class="check"><input type="checkbox" data-ops="event" ${o.event ? 'checked' : ''}> Name der Veranstaltung zeigen</label>
+      <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+        <input type="range" min="0.5" max="2.5" step="0.1" data-ops="size" value="${o.size}"></label>
+      <p class="muted small" data-ops-state>${esc(opsStateText())}</p>
+      <p class="muted small">Dieselben Prüfungen wie der <b>Technische Startcheck</b> im Veranstaltungsbetrieb (ATEM, ChurchTools, Companion, Kesher, ProPresenter, Raspberry-Stationen, Sichtprüfungen). Rot: ein benötigtes System meldet einen Fehler. Gelb: ein benötigtes System ist unbestätigt oder ein optionales meldet einen Fehler. Welche Systeme benötigt sind, legt der Admin je Veranstaltung im Startcheck fest. Der Server prüft alle 30 Sekunden, solange ein Layout diese Kachel hat.</p>
+    </div>`
+}
+
+function streamHealthStateText() {
+  const parts = []
+  if (youtube?.state === 'unconfigured') parts.push('YouTube nicht eingerichtet')
+  else if (youtube?.video?.status === 'live') parts.push('YouTube live')
+  if (youtube?.encoder && youtube.encoder.state !== 'unconfigured') parts.push(`Monarch: ${youtube.encoder.state}`)
+  if (uplink) parts.push(uplink.state === 'ok' ? 'FRITZ!Box verbunden' : uplink.state === 'off' ? 'Upload-Abfrage aus' : 'FRITZ!Box offline')
+  return parts.join(' · ') || 'Verbinde …'
+}
+
+/** Stream-Gesundheit: Titel, Schwellen der Upload-Reserve, Schriftgröße */
+function streamHealthSection(tile) {
+  const o = streamHealthOptions(tile.streamhealth)
+  return `
+    <div class="meter-settings">
+      <h4>Darstellung</h4>
+      <label class="field"><span>Titel</span><input type="text" data-sh="title" value="${esc(o.title)}" maxlength="40"></label>
+      <label class="check"><input type="checkbox" data-sh="header" ${o.header ? 'checked' : ''}> Kopfzeile mit Gesamtzustand</label>
+      <label class="check"><input type="checkbox" data-sh="note" ${o.note ? 'checked' : ''}> Störungsmeldung der YouTube-Überwachung darunter</label>
+      <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+        <input type="range" min="0.5" max="2.5" step="0.1" data-sh="size" value="${o.size}"></label>
+    </div>
+    <div class="meter-settings">
+      <h4>Warnschwellen Upload</h4>
+      <div class="row">
+        <label class="field"><span>Gelb: Reserve unter … %</span><input type="number" min="0" max="100" step="1" data-sh="warnReserve" value="${o.warnReserve}"></label>
+        <label class="field"><span>Rot: Reserve unter … %</span><input type="number" min="0" max="100" step="1" data-sh="badReserve" value="${o.badReserve}"></label>
+      </div>
+      <p class="muted small">${esc(streamHealthStateText())}</p>
+      <p class="muted small">Reserve = freier Anteil der Upload-Leitung (FRITZ!Box, Kachel „Upload / Stream“). Immer rot: Encoder sendet nicht, während YouTube live ist; kein Bild am Eingang der Monarch; YouTube empfängt nichts. Einrichtung unter <a href="#/einstellungen/youtube">Einstellungen → YouTube</a> (Monarch dort).</p>
+    </div>`
+}
+
 // Aufgeklappte Karten „Bereiche“ (bleibt beim Neuzeichnen des Inspektors offen)
 const ssAreasOpen = new Set()
 document.addEventListener(
@@ -2867,6 +3016,7 @@ const TILE_KIND_GROUPS = [
   ['Bild & Ton', [
     ['source', 'Videoquelle', 'Kamera, Stream, Testbild', 'blue', '<rect x="2.5" y="6" width="13" height="12" rx="2.5"/><path d="M15.5 10.5 21 7.5v9l-5.5-3"/>'],
     ['audio', 'Pegel-Fenster', 'Audiopegel vom ATEM', 'green', '<path d="M5 20V10M10 20V4M15 20v-7M20 20V8"/>'],
+    ['tally', 'Tally', 'Rot/Grün für einen ATEM-Eingang', 'red', '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="4"/>'],
   ]],
   ['ProPresenter', [
     ['propresenter', 'Folien', 'Aktuelle / nächste Folie', 'orange', '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'],
@@ -2883,6 +3033,8 @@ const TILE_KIND_GROUPS = [
     ['slideshow', 'Diashow', 'Bilder, Veranstaltungen …', 'pink', '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>'],
     ['youtube', 'YouTube Live', 'Zuschauer, Stream, Chat', 'red', '<rect x="3" y="6" width="18" height="12" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/>'],
     ['uplink', 'Upload / Stream', 'Internetleitung', 'indigo', '<path d="M12 19V6M6 11l6-6 6 6"/><path d="M4 21h16"/>'],
+    ['streamhealth', 'Stream-Gesundheit', 'Encoder, YouTube, Upload', 'indigo', '<path d="M3 12h4l3-7 4 14 3-7h4"/>'],
+    ['ops', 'Event-Ops', 'Ampel der Prüfungen', 'green', '<rect x="8" y="2" width="8" height="20" rx="3"/><circle cx="12" cy="6.5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="17.5" r="1.6"/>'],
     ['clock', 'Uhr', 'Aktuelle Uhrzeit', 'gray', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
     ['text', 'Text', 'Eigene Beschriftung', 'gray', '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>'],
   ]],
@@ -2996,6 +3148,9 @@ function tileInspector(tile, layout) {
         : ''
     }
     ${kind === 'uplink' ? uplinkSection(tile) : ''}
+    ${kind === 'tally' ? tallySection(tile) : ''}
+    ${kind === 'ops' ? opsSection(tile) : ''}
+    ${kind === 'streamhealth' ? streamHealthSection(tile) : ''}
     ${kind === 'youtube' ? youtubeSection(tile) : ''}
     ${kind === 'slideshow' ? slideshowSection(tile) : ''}
     ${kind === 'chat' ? chatSection(tile) : ''}
@@ -3098,6 +3253,50 @@ function onInspectorField(e) {
     if (out) out.textContent = `${Math.round(value * 100)} %`
     renderCanvas()
     if (el.type === 'checkbox') renderInspector()
+    changed()
+    return
+  }
+
+  if (el.dataset.ta) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const key = el.dataset.ta
+    const value =
+      el.type === 'checkbox' ? el.checked
+      : key === 'input' ? (el.value === '' ? null : Number(el.value))
+      : key === 'mode' || key === 'label' ? el.value
+      : Number(el.value)
+    tile.tally = { ...tallyOptions(tile.tally), [key]: value }
+    const out = el.closest('label').querySelector('output')
+    if (out) out.textContent = key === 'size' ? `${Math.round(value * 100)} %` : `${value}×`
+    renderCanvas()
+    if (key === 'mode' || key === 'input') renderInspector()
+    changed()
+    return
+  }
+
+  if (el.dataset.ops) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const key = el.dataset.ops
+    const value = el.type === 'checkbox' ? el.checked : key === 'title' ? el.value : key === 'all' ? el.value === '1' : Number(el.value)
+    tile.ops = { ...opsOptions(tile.ops), [key]: value }
+    const out = el.closest('label').querySelector('output')
+    if (out) out.textContent = `${Math.round(value * 100)} %`
+    renderCanvas()
+    changed()
+    return
+  }
+
+  if (el.dataset.sh) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const key = el.dataset.sh
+    const value = el.type === 'checkbox' ? el.checked : key === 'title' ? el.value : Number(el.value)
+    tile.streamhealth = { ...streamHealthOptions(tile.streamhealth), [key]: value }
+    const out = el.closest('label').querySelector('output')
+    if (out) out.textContent = `${Math.round(value * 100)} %`
+    renderCanvas()
     changed()
     return
   }
