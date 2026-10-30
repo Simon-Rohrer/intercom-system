@@ -9,6 +9,9 @@ import { createUplinkView, mergeUplink } from './uplink.js'
 import { createAvantisView } from './avantis.js'
 import { createGrandma3View } from './grandma3.js'
 import { createYouTubeView } from './youtube.js'
+import { createTallyView } from './tally.js'
+import { createOpsView } from './ampel.js'
+import { createStreamHealthView } from './streamhealth.js'
 import { createSlideshowView } from './slideshow.js'
 import { createProPresenterView, createPlaylistView, createPreacherView } from './propresenter.js'
 import { createStageView } from './stage.js'
@@ -89,6 +92,10 @@ const grandma3Views = new Set() // Kacheln „Licht“ (grandMA3)
 let grandma3 = null
 const youtubeViews = new Set() // Kacheln „YouTube Live“
 let youtube = null
+const tallyViews = new Set() // Kacheln „Tally“
+const opsViews = new Set() // Kacheln „Event-Ops“ (Ampel)
+let ops = null
+const healthViews = new Set() // Kacheln „Stream-Gesundheit“
 const slideshowViews = new Set() // Kacheln „Diashow“
 let slideshow = null
 let churchtools = { state: 'connecting', events: [] }
@@ -103,6 +110,7 @@ const ws = connect(
     } else if (msg.type === 'atem') {
       atem = msg
       updateOverlays()
+      for (const view of tallyViews) view.update(atem)
     } else if (msg.type === 'levels') {
       setLevels(msg)
     } else if (msg.type === 'server') {
@@ -128,15 +136,20 @@ const ws = connect(
     } else if (msg.type === 'youtube') {
       youtube = msg
       for (const view of youtubeViews) view.update(youtube)
+      for (const view of healthViews) view.update({ youtube })
     } else if (msg.type === 'uplink') {
       uplink = mergeUplink(uplink, msg)
       for (const view of uplinkViews) view.update(uplink)
+      for (const view of healthViews) view.update({ uplink })
     } else if (msg.type === 'avantis') {
       avantis = msg
       for (const view of avantisViews) view.update(avantis)
     } else if (msg.type === 'grandma3') {
       grandma3 = msg
       for (const view of grandma3Views) view.update(grandma3)
+    } else if (msg.type === 'ops') {
+      ops = msg
+      for (const view of opsViews) view.update(ops)
     } else if (msg.type === 'session_revoked') {
       location.reload() // Anmeldung übernommen: ohne persönlichen Chat weiter
     } else if (msg.type === 'chatFlash') {
@@ -202,6 +215,9 @@ function render() {
   avantisViews.clear()
   grandma3Views.clear()
   youtubeViews.clear()
+  tallyViews.clear()
+  opsViews.clear()
+  healthViews.clear()
   slideshowViews.clear()
   stageViews.clear()
 
@@ -332,6 +348,25 @@ function buildTile(tile, layout, usedStreams) {
     const view = createGrandma3View(tile.grandma3)
     view.update(grandma3)
     grandma3Views.add(view)
+    media.classList.add('chat')
+    media.append(view.el)
+  } else if (tile.kind === 'tally') {
+    // Als „Rahmen“ bleibt die Kachel durchsichtig (nur der farbige Rand), z. B. über dem Kamerabild am Pi
+    const view = createTallyView(tile.tally)
+    view.update(atem)
+    tallyViews.add(view)
+    media.classList.add(tile.tally?.mode === 'frame' ? 'transparent' : 'chat')
+    media.append(view.el)
+  } else if (tile.kind === 'ops') {
+    const view = createOpsView(tile.ops)
+    view.update(ops)
+    opsViews.add(view)
+    media.classList.add('chat')
+    media.append(view.el)
+  } else if (tile.kind === 'streamhealth') {
+    const view = createStreamHealthView(tile.streamhealth)
+    view.update({ youtube, uplink })
+    healthViews.add(view)
     media.classList.add('chat')
     media.append(view.el)
   } else if (tile.kind === 'churchtools') {

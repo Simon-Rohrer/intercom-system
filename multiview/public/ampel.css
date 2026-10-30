@@ -1,0 +1,113 @@
+/* Kachel „Event-Ops“ (Ampel) – gleiche Gestaltung wie die Kacheln „Upload / Stream“ und „YouTube Live“ */
+
+.ampel {
+  --am-bg: #000000;
+  --am-line: #2c2c2e;
+  --am-ink: #eceff3;
+  --am-ink-2: #a9b2be;
+  --am-ink-3: #6c7581;
+  --am-ok: #30d158;
+  --am-warn: #ffb020;
+  --am-bad: #ff5a4f;
+  --am-color: var(--am-ink-3);
+
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--am-bg);
+  color: var(--am-ink);
+  font-family: "Barlow", "Segoe UI", system-ui, sans-serif;
+  font-size: calc(clamp(10px, min(2.6cqw, 5cqh), 34px) * var(--am-scale, 1));
+  overflow: hidden;
+  text-align: left;
+  transition: background 0.4s ease;
+}
+.ampel.ok { --am-color: var(--am-ok); }
+.ampel.warn { --am-color: var(--am-warn); }
+.ampel.error { --am-color: var(--am-bad); background: #2a0505; }
+
+.am-header {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  padding: 0.55em 1.1em;
+  background: #0a0a0a;
+  border-bottom: 1px solid var(--am-line);
+  min-width: 0;
+  flex: none;
+}
+.am-title {
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 1.25em;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.am-pill {
+  margin-left: auto;
+  padding: 0.2em 0.7em;
+  border: 1px solid var(--am-color);
+  border-radius: 999px;
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 600;
+  font-size: 0.7em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--am-color);
+  white-space: nowrap;
+}
+
+.am-main {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  padding: 0.6em 1.1em 0.3em;
+  flex: none;
+}
+.am-lamp {
+  width: 2.6em;
+  height: 2.6em;
+  flex: none;
+  border-radius: 50%;
+  background: var(--am-color);
+  box-shadow: 0 0 1.2em var(--am-color);
+  transition: background 0.4s ease, box-shadow 0.4s ease;
+}
+.ampel.unknown .am-lamp { box-shadow: none; }
+.ampel.error .am-lamp { animation: am-pulse 1.2s ease-in-out infinite alternate; }
+.am-summary { display: flex; flex-direction: column; min-width: 0; line-height: 1.1; }
+.am-text { font-size: 1.6em; font-weight: 700; color: var(--am-color); }
+.am-event { color: var(--am-ink-2); font-size: 0.85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am-event:empty { display: none; }
+
+.am-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.2em 1.1em 0.4em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+  overflow: hidden;
+  min-height: 0;
+}
+.am-item { display: flex; align-items: center; gap: 0.55em; min-width: 0; font-size: 1em; }
+.am-dot { width: 0.7em; height: 0.7em; flex: none; border-radius: 50%; background: var(--am-ink-3); }
+.am-item.status-ok .am-dot, .am-item.status-idle .am-dot { background: var(--am-ok); }
+.am-item.status-warn .am-dot { background: var(--am-warn); }
+.am-item.status-error .am-dot { background: var(--am-bad); }
+.am-item.status-unknown .am-dot { background: var(--am-ink-3); }
+.am-short { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am-item.error .am-short { color: var(--am-bad); font-weight: 600; }
+.am-item.warn .am-short { color: var(--am-warn); }
+.am-opt { color: var(--am-ink-3); font-size: 0.7em; letter-spacing: 0.08em; text-transform: uppercase; flex: none; }
+
+.am-note { padding: 0 1.1em 0.5em; color: var(--am-ink-2); font-size: 0.85em; }
+.am-note:empty { display: none; }
+.ampel.stale .am-text, .ampel.stale .am-pill { color: var(--am-ink-3); border-color: var(--am-ink-3); }
+
+@keyframes am-pulse { from { opacity: 1; } to { opacity: 0.45; } }

@@ -1,0 +1,88 @@
+/* Kachel „Tally“: Rahmen (durchsichtig, nur Rand) oder Feld (ganze Fläche gefärbt) */
+
+.tally {
+  --ta-program: #ff1f1f;
+  --ta-preview: #19d24a;
+  --ta-off: #1c1c1e;
+  --ta-offline: #3a3a3c;
+  --ta-ink: #ffffff;
+  --ta-color: var(--ta-off);
+
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3em;
+  color: var(--ta-ink);
+  font-family: "Barlow", "Segoe UI", system-ui, sans-serif;
+  font-size: calc(clamp(10px, min(4cqw, 8cqh), 60px) * var(--ta-scale, 1));
+  text-align: center;
+  overflow: hidden;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.tally.program { --ta-color: var(--ta-program); }
+.tally.preview { --ta-color: var(--ta-preview); }
+.tally.offline { --ta-color: var(--ta-offline); }
+
+/* Feld: ganze Kachel in der Tally-Farbe */
+.tally.field { background: var(--ta-color); }
+.tally.field.off { color: #6c7581; }
+.tally.field.offline { color: #a9b2be; }
+
+/* Rahmen: Inhalt durchsichtig, nur ein Rand – liegt über dem Bild dahinter */
+.tally.frame {
+  background: transparent;
+  border: calc(clamp(4px, 2.2cqmin, 24px) * var(--ta-border, 1)) solid var(--ta-color);
+  justify-content: flex-end;
+  padding-bottom: 0.4em;
+}
+.tally.frame.off { border-color: transparent; }
+.tally.frame.offline { border-color: var(--ta-offline); border-style: dashed; }
+
+.ta-name {
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 1.6em;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  max-width: 92%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ta-state {
+  font-weight: 600;
+  font-size: 0.8em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+.ta-state:empty { display: none; }
+
+.ta-badges { display: flex; gap: 0.4em; }
+.ta-badge {
+  padding: 0.15em 0.6em;
+  border-radius: 0.3em;
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 0.75em;
+  letter-spacing: 0.12em;
+  background: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+}
+.ta-badge.rec::before,
+.ta-badge.stream::before {
+  content: "";
+  display: inline-block;
+  width: 0.55em;
+  height: 0.55em;
+  margin-right: 0.35em;
+  border-radius: 50%;
+  background: #ff3b30;
+  animation: ta-blink 1s ease-in-out infinite alternate;
+}
+.ta-badge.stream::before { background: #ffb020; }
+.ta-badge[hidden] { display: none; }
+@keyframes ta-blink { from { opacity: 1; } to { opacity: 0.35; } }

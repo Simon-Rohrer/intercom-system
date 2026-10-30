@@ -8,7 +8,7 @@ const https = require('https')
 const { spawn } = require('child_process')
 const express = require('express')
 const { WebSocketServer } = require('ws')
-const { Atem } = require('atem-connection')
+const { Atem, Enums: AtemEnums } = require('atem-connection')
 const { createKesherChat } = require('./kesher-chat')
 const { createKesherRoles } = require('./kesher-roles')
 const { createNeighbors } = require('./neighbors')
@@ -16,6 +16,7 @@ const { normalizeRaspberry, parsePiRequest, createPiRegistry, piScreenId, answer
 const { createChurchTools } = require('./churchtools')
 const { createEventOps, eventOpsRouter } = require('./event-ops')
 const { createOpsChecks } = require('./event-ops-checks')
+const { createOpsStatus } = require('./ops-status')
 const { createUplink, normalizeUplink } = require('./uplink')
 const { createAgendaPosition } = require('./agenda-position')
 const { createYouTube } = require('./youtube')
@@ -209,7 +210,8 @@ let atemIp = null
 let atemState = emptyAtemState()
 
 function emptyAtemState() {
-  return { connected: false, ip: atemIp, model: null, program: [], preview: [], inputs: {}, audioInputs: [] }
+  // recording/streaming: true/false – oder null bei Modellen, die nicht selbst aufnehmen bzw. streamen
+  return { connected: false, ip: atemIp, model: null, program: [], preview: [], inputs: {}, audioInputs: [], recording: null, streaming: null }
 }
 
 async function applyAtemIp() {
@@ -247,6 +249,9 @@ function refreshAtemState() {
       if (input) next.inputs[id] = { shortName: input.shortName, longName: input.longName }
     }
     next.audioInputs = Object.keys(s.fairlight?.inputs ?? {}).map(Number)
+    // Aufnahme und Streaming des ATEM selbst (für die Tally-Kachel)
+    next.recording = s.recording?.status ? s.recording.status.state === AtemEnums.RecordingStatus.Recording : null
+    next.streaming = s.streaming?.status ? s.streaming.status.state === AtemEnums.StreamingStatus.Streaming : null
   }
   if (JSON.stringify(next) !== JSON.stringify(atemState)) {
     atemState = next
@@ -1398,6 +1403,7 @@ function configChanged(origin = null) {
   applyUplink()
   applyConsoles()
   youtube.layoutsChanged()
+  opsStatus.layoutsChanged()
   slideshow.playlistsChanged()
   if (mediamtx.proc) writeMediamtxConfig()
 }
@@ -1508,6 +1514,7 @@ wss.on('connection', (ws, req) => {
   send(ws, avantis.snapshot())
   send(ws, grandma3.snapshot())
   send(ws, youtube.snapshot())
+  send(ws, opsStatus.snapshot())
   send(ws, slideshow.snapshot())
   send(ws, { type: 'propresenter', ...ppState })
   send(ws, { type: 'ppstage', ...stageState })
@@ -1853,6 +1860,15 @@ function requireAdmin(req, res, next) {
 const eventOps = createEventOps({ dataDir: DATA_DIR, churchTools, getRoles: loginRoles,
   getChecks: createOpsChecks({ getConfig: () => config, getAtem: () => atemState, getPp: () => ppState, churchTools, kesherChat }) })
 app.use(['/api/ops', '/.jms-auth/api/ops'], eventOpsRouter(eventOps, requireUser, requireAdmin))
+
+// Ampel „Event-Ops“ für die gleichnamige Kachel: dieselben Prüfungen wie der Startcheck, nur
+// solange ein Layout so eine Kachel hat; geht als Nachricht „ops“ an alle Anzeigen
+const opsStatus = createOpsStatus({
+  getDiagnostics: () => eventOps.diagnostics({ admin: true, name: 'Server' }),
+  wanted: () => (config.layouts || []).some((layout) => (layout.tiles || []).some((tile) => tile.kind === 'ops')),
+  onUpdate: broadcast,
+  log: console.log,
+})
 
 /** Kesher-Rollen für die Anmeldung (ohne die Rolle des Chat-Monitors). */
 function loginRoles() {
@@ -3316,6 +3332,7 @@ server.listen(PORT, HOST, () => {
   churchTools.start()
   monarch.start()
   youtube.start()
+  opsStatus.start()
   slideshow.start()
   dropbox.start()
   applyUplink()

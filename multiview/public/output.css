@@ -46,6 +46,8 @@ body.idle { cursor: none; }
 }
 
 .media.chat { background: #000000; }
+/* Tally-Rahmen: nichts hinter dem Rand – das Bild dahinter (z. B. am Pi) bleibt sichtbar */
+.media.transparent { background: transparent; }
 
 .tile.fit-cover .media video,
 .tile.fit-cover .media img { object-fit: cover; }
