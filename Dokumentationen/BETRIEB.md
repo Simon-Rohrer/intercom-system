@@ -83,6 +83,8 @@ docker compose -f deploy/compose/docker-compose.yml down
 | `8081/udp` | alter unverschlüsselter Audio-Relay; abgeschaltet |
 | `443/tcp` | HTTPS, wenn Caddy oder CertMagic davor läuft |
 | `80/tcp` | HTTP-Redirect oder CertMagic |
+| `8001/udp` (eingehend) | OSC-Empfang vom grandMA3 (Kachel „Licht“), Port in den Einstellungen änderbar |
+| `→ 192.168.1.70:51325/tcp` (ausgehend) | MIDI over TCP zur Avantis (Kachel „Mischpult“), nur mitlesen |
 
 ## Daten sichern
 
@@ -271,6 +273,61 @@ Einstellungen → YouTube → **Google-Anmeldung**: Client-ID und Clientschlüss
 
 - Die App muss in der Google Cloud Console **veröffentlicht** sein (Zielgruppe → „In Produktion“). Im Status „Testen“ verfällt die Anmeldung nach 7 Tagen – dann steht in den Einstellungen „Google-Anmeldung abgelaufen“, und man meldet sich neu an.
 - Anmelden mit dem Konto, dem der Kanal gehört (bei einem Brand-Account den Kanal auswählen). Passt der angemeldete Kanal nicht zum eingetragenen, zeigen die Einstellungen eine Warnung.
+
+## Mischpult Allen & Heath Avantis (Kachel „Mischpult“)
+
+JMS Control liest am Avantis über **MIDI over TCP** (Port 51325, dasselbe Protokoll wie der Companion-Anschluss) mit, welche Kanäle stumm sind und welche Szene zuletzt abgerufen wurde. **Es wird nichts gesteuert**: Der Server schickt nur die „Get Channel Name“-Anfragen aus dem A&H-Protokoll (SysEx, reine Abfrage) und wertet aus, was das Pult von sich aus sendet. Modul: `multiview/avantis.js`.
+
+**Einrichtung am Pult:** Utility → Control → **MIDI**: „MIDI over TCP/IP“ einschalten; der dort eingestellte MIDI-Kanal ist der *Basiskanal* (Companion `midiBase`, hier `1`). Das Pult erlaubt mehrere TCP-Verbindungen gleichzeitig; Companion darf weiterlaufen.
+
+**Einrichtung in JMS Control:** Einstellungen → **Avantis (Mischpult)**: Adresse `192.168.1.70`, Port `51325`, Basiskanal `1`. Darunter die **überwachten Kanäle** (Art, Nummer, Anzeigename, „kritisch“) – z. B. den Input des Pastor-Mikros als kritisch und die DCAs. Optional **Szenennamen** (das Pult meldet nur die Nummer). Alles liegt in `config.json` (`avantis`), keine Geheimnisse.
+
+**Was die Kachel zeigt:** Kopfzeile mit Verbindungsstand, je Kanal OFFEN (grün) / STUMM (rot) / `?` (noch keine Rückmeldung), darunter „Szene 12 · Gottesdienst“. Ist ein kritischer Kanal stumm, wird die Kachel dunkelrot mit großer Warnung „Pastor-Mikro stumm!“. Im Layout-Editor lassen sich Titel, Schriftgröße, Spalten, „nur stumme Kanäle“ und die Szenenzeile einstellen. Bedienen kann man von der Kachel aus nichts.
+
+**Protokoll (aus der A&H-Dokumentation „Avantis MIDI TCP Protocol“ und dem Companion-Modul `allenheath-avantis`):**
+
+| Nachricht | Bytes | Bedeutung |
+| --- | --- | --- |
+| Mute | `9N CH VEL` (+ `9N CH 00`) | Note On, VEL ≥ `40` = stumm, < `40` = offen; N = Basiskanal−1 + Versatz |
+| Szene | `BN 00 BANK` + `CN PROG` | Szene = BANK·128 + PROG + 1, auf dem Basiskanal |
+| Name holen | `F0 00 00 1A 50 10 01 00 0N 01 CH F7` | Antwort `… 0N 02 CH <Name> F7` |
+
+Versatz je Kanalart: Inputs 0 (Noten `00`–`3F`), Gruppen 1 (mono `00`–`27`, stereo ab `40`), Aux 2, Matrix 3, FX-Send/FX-Return/Main/DCA/Mute-Gruppen 4 (DCA 1–16 = `36`–`45`, Mute-Gruppen `46`–`4D`).
+
+**Wichtig / noch nicht am echten Pult verifiziert** (Pult war beim Bau nicht erreichbar; die Logik ist mit Mock-Sockets getestet, `multiview/test/avantis.test.js`):
+
+- Im MIDI-TCP-Protokoll gibt es **keine Abfrage des Mute-Zustands**. Nach dem Verbinden steht jeder Kanal auf `?`, bis das Pult die erste Mute-Änderung dafür schickt. Vor dem Gottesdienst also einmal jeden kritischen Kanal am Pult stumm und wieder an schalten (oder prüfen, ob das Pult beim Szenenabruf alle Mutes sendet – dann erledigt sich das von selbst).
+- Zu prüfen: Sendet das Pult Mute-Änderungen an alle TCP-Clients (Feedback), auch wenn sie am Pult selbst ausgelöst wurden? Antwortet es auf die Namensabfrage mit `02`? Kommt der Szenenabruf als Bank Select + Program Change? Stimmt der Notenversatz für DCAs (`36`) am Avantis?
+- Einen **Szenennamen** liefert das MIDI-Protokoll nicht; deshalb die Namensliste in den Einstellungen. Ohne Eintrag steht „Szene 12“, vor dem ersten Abruf „Seit der Verbindung keine Szene abgerufen“.
+- Alle 15 s schickt der Server als Lebenszeichen eine Namensabfrage. Bleibt die Antwort aus, obwohl das Pult vorher geantwortet hat, verbindet er neu. Hat das Pult *nie* geantwortet, bleibt die Verbindung bestehen (Verhalten wird am echten Pult geprüft).
+
+Prüfen vom Server aus: `nc -vz 192.168.1.70 51325` (Port offen?) und im Server-Log `Avantis: verbunden …`, `Avantis: Szene 12 abgerufen`.
+
+## Lichtpult grandMA3 (Kachel „Licht“)
+
+JMS Control hört per **OSC über UDP** mit, welcher Cue in den überwachten Sequenzen läuft, und zeigt je Sequenz eine Zeile „Licht: Lobpreis 3 (Cue 12)“. **Der Server sendet nichts an die Konsole** (kein `/cmd`); er nimmt nur entgegen, was die Konsole bei „Send“ von selbst schickt. Modul: `multiview/grandma3.js`. Die Konsole/onPC steht unter `192.168.0.231`; der Companion-Port 8000 ist der **OSC-Eingang** der Konsole (UDP, nicht der Web-Remote) – für uns ist nur die Gegenrichtung nötig.
+
+**Einrichtung an der Konsole:** Menu → **In & Outputs → OSC**: oben „Enable Output“ einschalten. Eine Zeile anlegen (oder die Companion-Zeile erweitern): **Destination IP** = `192.168.0.230` (JMS-Server), **Port** = `8001` (Empfangsport aus den Einstellungen), Mode **UDP**, **Send = Yes**. „Receive“ und „Receive Command“ sind für JMS Control nicht nötig. Das Feld **Prefix** leer lassen oder denselben Wert in JMS Control eintragen. Mit „EchoOutput = Yes“ sieht man im System Monitor der Konsole, was gesendet wird.
+
+**Einrichtung in JMS Control:** Einstellungen → **grandMA3 (Licht)**: Adresse der Konsole (nur deren Pakete zählen), Empfangsport `8001`, Prefix, Objektpfad (leer = Standard) und die **überwachten Sequenzen** (Nummer aus dem Sequence Pool, Anzeigename). Sequenzen, die im OSC-Verkehr auftauchen, aber nicht eingetragen sind, werden darunter als Vorschlag genannt. Alles liegt in `config.json` (`grandma3`).
+
+**Was die Konsole sendet (Handbuch 2.x, „Object Playback Feedback“):**
+
+```
+/13.13.1.6.<Seq>,sis,Go+,1,Sequence 1 Cue 12 "Lobpreis 3"   Taste gedrückt (1) / losgelassen (0), Arg 3 = Cue-Angabe
+/13.13.1.6.<Seq>,sif,FaderMaster,3,63.5                      Fader in Prozent
+/13.13.1.6.<Seq>,sii,FaderMaster,0,-1                        Drehgeber
+```
+
+Der Server nimmt aus dem dritten Argument Cue-Nummer und -Name (`… Cue <Nr> "<Name>"`); kommt ohne Cue-Angabe (z. B. „Off“), bleibt der letzte Cue stehen. Mit Prefix lautet die Adresse `/<Prefix>/13.13.1.6.<Seq>`. Der Objektpfad `13.13.1.6` kann sich mit der Softwareversion ändern (das Companion-Modul nutzt `14.14.1.6`; beide werden erkannt, ein anderer lässt sich in den Einstellungen eintragen – Adresse eines Objekts in der Konsole per Lua `Printf(...)` oder im System Monitor nachsehen).
+
+**Grenzen / noch nicht verifiziert** (Konsole war beim Bau nicht erreichbar; Parser mit Beispielpaketen getestet, `multiview/test/grandma3.test.js`):
+
+- Die Konsole meldet den Cue **nur bei Tastendruck/Fader** am Executor (laut Forum beim Loslassen von Go+). Ein Cue, der per Timecode, Makro oder Kommandozeile läuft, erzeugt möglicherweise keine OSC-Ausgabe – das muss am Pult geprüft werden. Einen rein lesenden „Status-Request“ bietet grandMA3-OSC nicht (nur `/cmd`, das steuert und wird bewusst nicht benutzt).
+- Falls nötig, kann ein kleines Lua-Plugin auf der Konsole periodisch den aktuellen Cue schicken; der Server versteht dafür `/jms/cue,iss,<Seq>,<CueNr>,<CueName>` (z. B. `SendOSC 1 "/jms/cue,iss,1,12,Lobpreis"` – Zeilennummer der OSC-Konfiguration anpassen). Das Plugin selbst ist noch nicht geschrieben.
+- Exaktes Format des dritten Arguments (Reihenfolge Sequenzname/Cue-Nummer/Cue-Name, Anführungszeichen) am echten Pult gegenprüfen; der Parser nimmt `Cue <Nummer>` als Anker und ist tolerant.
+
+Prüfen vom Server aus: Einstellungen → grandMA3 zeigt „Warte auf OSC an Port 8001“ bzw. „OSC kommt an (von 192.168.0.231)“ mit Uhrzeit des letzten Pakets; im Docker-Betrieb (`network_mode: host`) braucht es keine Portfreigabe, eine Firewall muss `8001/udp` eingehend erlauben.
 
 ## Chat automatisch leeren
 

@@ -6,6 +6,8 @@ import { createComposer } from './chat-compose.js'
 import { createAgendaView } from './agenda.js'
 import { createRosterView } from './roster.js'
 import { createUplinkView, mergeUplink } from './uplink.js'
+import { createAvantisView } from './avantis.js'
+import { createGrandma3View } from './grandma3.js'
 import { createYouTubeView } from './youtube.js'
 import { createSlideshowView } from './slideshow.js'
 import { createProPresenterView, createPlaylistView, createPreacherView } from './propresenter.js'
@@ -81,6 +83,10 @@ const rosterViews = new Set() // ChurchTools-Kacheln (Dienstplan)
 let ctPosition = { type: 'ctposition', positions: {} } // von Hand gesetzte Ablauf-Punkte
 const uplinkViews = new Set() // Upload-Kacheln (FRITZ!Box)
 let uplink = null
+const avantisViews = new Set() // Kacheln „Mischpult“ (Avantis)
+let avantis = null
+const grandma3Views = new Set() // Kacheln „Licht“ (grandMA3)
+let grandma3 = null
 const youtubeViews = new Set() // Kacheln „YouTube Live“
 let youtube = null
 const slideshowViews = new Set() // Kacheln „Diashow“
@@ -125,6 +131,12 @@ const ws = connect(
     } else if (msg.type === 'uplink') {
       uplink = mergeUplink(uplink, msg)
       for (const view of uplinkViews) view.update(uplink)
+    } else if (msg.type === 'avantis') {
+      avantis = msg
+      for (const view of avantisViews) view.update(avantis)
+    } else if (msg.type === 'grandma3') {
+      grandma3 = msg
+      for (const view of grandma3Views) view.update(grandma3)
     } else if (msg.type === 'session_revoked') {
       location.reload() // Anmeldung übernommen: ohne persönlichen Chat weiter
     } else if (msg.type === 'chatFlash') {
@@ -187,6 +199,8 @@ function render() {
   agendaViews.clear()
   rosterViews.clear()
   uplinkViews.clear()
+  avantisViews.clear()
+  grandma3Views.clear()
   youtubeViews.clear()
   slideshowViews.clear()
   stageViews.clear()
@@ -306,6 +320,18 @@ function buildTile(tile, layout, usedStreams) {
     const view = createUplinkView(tile.uplink)
     view.update(uplink)
     uplinkViews.add(view)
+    media.classList.add('chat')
+    media.append(view.el)
+  } else if (tile.kind === 'avantis') {
+    const view = createAvantisView(tile.avantis)
+    view.update(avantis)
+    avantisViews.add(view)
+    media.classList.add('chat')
+    media.append(view.el)
+  } else if (tile.kind === 'grandma3') {
+    const view = createGrandma3View(tile.grandma3)
+    view.update(grandma3)
+    grandma3Views.add(view)
     media.classList.add('chat')
     media.append(view.el)
   } else if (tile.kind === 'churchtools') {

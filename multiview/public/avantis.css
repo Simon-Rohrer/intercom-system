@@ -1,0 +1,152 @@
+/* Kachel „Mischpult“ (Avantis) – gleiche Gestaltung wie die Kacheln „Upload / Stream“ und Ablauf */
+
+.avantis {
+  --av-bg: #000000;
+  --av-line: #2c2c2e;
+  --av-ink: #eceff3;
+  --av-ink-2: #a9b2be;
+  --av-ink-3: #6c7581;
+  --av-ok: #30d158;
+  --av-bad: #ff5a4f;
+
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--av-bg);
+  color: var(--av-ink);
+  font-family: "Barlow", "Segoe UI", system-ui, sans-serif;
+  font-size: calc(clamp(10px, min(2.6cqw, 5cqh), 34px) * var(--av-scale, 1));
+  overflow: hidden;
+  text-align: left;
+  transition: background 0.4s ease;
+}
+
+.av-header {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  padding: 0.55em 1.1em;
+  background: #0a0a0a;
+  border-bottom: 1px solid var(--av-line);
+  min-width: 0;
+  flex: none;
+}
+.av-title {
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 1.25em;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.av-pill {
+  margin-left: auto;
+  padding: 0.2em 0.7em;
+  border: 1px solid var(--av-line);
+  border-radius: 999px;
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 600;
+  font-size: 0.7em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--av-ink-2);
+  white-space: nowrap;
+}
+.av-pill.bad { border-color: var(--av-bad); color: var(--av-bad); }
+
+/* Große Warnung: kritischer Kanal stumm */
+.av-alarm {
+  flex: none;
+  padding: 0.5em 1.1em;
+  background: var(--av-bad);
+  color: #fff;
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 800;
+  font-size: 2.2em;
+  line-height: 1.1;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  animation: av-pulse 1s ease-in-out infinite alternate;
+}
+.avantis.alarm { background: #2a0505; }
+@keyframes av-pulse {
+  from { opacity: 1; }
+  to { opacity: 0.55; }
+}
+
+.av-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: repeat(var(--av-cols, 1), minmax(0, 1fr));
+  align-content: start;
+  gap: 0 1em;
+  padding: 0.4em 1.1em;
+}
+.av-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  padding: 0.35em 0;
+  border-bottom: 1px solid var(--av-line);
+  min-width: 0;
+}
+.av-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 1.1em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.av-row.critical .av-name::before {
+  content: "●";
+  margin-right: 0.4em;
+  color: var(--av-ink-3);
+  font-size: 0.7em;
+  vertical-align: 0.15em;
+}
+.av-badge {
+  flex: none;
+  min-width: 4.2em;
+  text-align: center;
+  padding: 0.15em 0.6em;
+  border-radius: 0.3em;
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 0.95em;
+  letter-spacing: 0.08em;
+  border: 1px solid var(--av-line);
+  color: var(--av-ink-3);
+}
+.av-row.open .av-badge { color: var(--av-ok); border-color: var(--av-ok); }
+.av-row.muted .av-badge { color: #fff; background: var(--av-bad); border-color: var(--av-bad); }
+.av-row.muted .av-name { color: var(--av-bad); }
+.av-row.unknown .av-name { color: var(--av-ink-2); }
+
+.av-note {
+  flex: none;
+  padding: 0.3em 1.1em;
+  color: var(--av-ink-3);
+  font-size: 0.8em;
+}
+.av-note:empty { display: none; }
+
+.av-scene {
+  flex: none;
+  padding: 0.45em 1.1em;
+  border-top: 1px solid var(--av-line);
+  background: #0a0a0a;
+  color: var(--av-ink-2);
+  font-size: 0.95em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.av-scene:empty { display: none; }

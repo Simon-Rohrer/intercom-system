@@ -7,12 +7,14 @@
   <title>JMS - Control</title>
   <link rel="icon" type="image/svg+xml" href="jms-logo.svg">
   <script src="theme-boot.js"></script>
-  <link rel="stylesheet" href="admin.css?v=20261030-monitor-shortcuts">
+  <link rel="stylesheet" href="admin.css?v=20261030-avantis-grandma3">
   <link rel="stylesheet" href="meters.css">
   <link rel="stylesheet" href="chat.css">
   <link rel="stylesheet" href="agenda.css">
   <link rel="stylesheet" href="roster.css">
   <link rel="stylesheet" href="uplink.css">
+  <link rel="stylesheet" href="avantis.css">
+  <link rel="stylesheet" href="grandma3.css">
   <link rel="stylesheet" href="youtube.css">
   <link rel="stylesheet" href="slideshow.css">
   <link rel="stylesheet" href="propresenter.css">
@@ -225,6 +227,8 @@
                 <a href="#/einstellungen/kesher" data-section-link="kesher"><span class="app-icon green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg></span><span class="settings-nav-label">Kesher-Chat</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 <a href="#/einstellungen/churchtools" data-section-link="churchtools"><span class="app-icon purple"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg></span><span class="settings-nav-label">ChurchTools</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 <a href="#/einstellungen/youtube" data-section-link="youtube"><span class="app-icon red"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/></svg></span><span class="settings-nav-label">YouTube</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+                <a href="#/einstellungen/avantis" data-section-link="avantis"><span class="app-icon teal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4v16M12 4v16M18 4v16"/><rect x="4" y="9" width="4" height="3" rx="1"/><rect x="10" y="13" width="4" height="3" rx="1"/><rect x="16" y="7" width="4" height="3" rx="1"/></svg></span><span class="settings-nav-label">Avantis (Mischpult)</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+                <a href="#/einstellungen/grandma3" data-section-link="grandma3"><span class="app-icon orange"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0-3.5 10.9V17h7v-3.1A6 6 0 0 0 12 3z"/><path d="M9.5 20h5"/></svg></span><span class="settings-nav-label">grandMA3 (Licht)</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 <a href="#/einstellungen/dropbox" data-section-link="dropbox"><span class="app-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 2.5 7 7 10l5-3zM17 4l-5 3 5 3 4.5-3zM2.5 13 7 16l5-3-5-3zM17 10l-5 3 5 3 4.5-3zM7.5 17.5 12 20.5l4.5-3"/></svg></span><span class="settings-nav-label">Dropbox</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
               </div>
               <div class="settings-nav-group">
@@ -455,6 +459,83 @@
                 <a id="pp-preacher-link" href="prediger.html" target="_blank" rel="noopener"><code id="pp-preacher-url">/prediger.html</code></a>
                 · größere Folien: <code>?groesse=1.5</code> · Hintergrund mit ausblenden: <code>?ausblenden=alles</code>
               </div>
+            </div>
+
+            <div class="card" id="set-avantis" data-section="avantis">
+              <div class="card-head">
+                <div>
+                  <h2>Allen &amp; Heath Avantis</h2>
+                  <p class="muted">Mischpult über <b>MIDI over TCP</b> (Port 51325) mitlesen: Mute-Zustand der eingetragenen Kanäle und die zuletzt abgerufene Szene – für die Kachel <b>Mischpult</b>. JMS Control steuert nichts am Pult; es fragt nur Kanalnamen ab. Am Pult muss unter <b>Utility → Control → MIDI</b> „MIDI over TCP/IP“ eingeschaltet sein; der dort eingestellte MIDI-Kanal ist der Basiskanal.</p>
+                </div>
+              </div>
+              <div class="form-grid">
+                <label class="field"><span>Adresse des Pults</span>
+                  <input id="av-host" type="text" placeholder="192.168.1.70" spellcheck="false">
+                </label>
+                <label class="field"><span>Port</span>
+                  <input id="av-port" type="number" min="1" max="65535" placeholder="51325">
+                </label>
+                <label class="field"><span>MIDI-Basiskanal (wie in Companion „midiBase“)</span>
+                  <select id="av-midibase"></select>
+                </label>
+                <label class="check"><input id="av-enabled" type="checkbox"> Pult abfragen</label>
+                <div id="av-status" class="atem-status"></div>
+              </div>
+              <h3 class="insp-label">Überwachte Kanäle</h3>
+              <p class="muted small">Kritische Kanäle (z. B. das Pastor-Mikro) lösen in der Kachel eine große rote Warnung aus, sobald sie stumm sind. Ohne Anzeigename steht der Name vom Pult in der Kachel.</p>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead><tr><th>Art</th><th>Nr.</th><th>Anzeigename</th><th>Kritisch</th><th>Zustand</th><th></th></tr></thead>
+                  <tbody id="av-channel-rows"></tbody>
+                </table>
+              </div>
+              <div class="btn-row" style="margin-top:10px"><button class="btn small" type="button" data-action="av-add-channel">Kanal hinzufügen</button></div>
+              <details class="disclosure inner" style="margin-top:14px">
+                <summary>Szenennamen (für die Anzeige „Szene 12 · Gottesdienst“)</summary>
+                <p class="muted small">Das Pult meldet beim Abruf nur die Szenennummer. Hier kannst du Namen dazu eintragen.</p>
+                <div class="table-wrap">
+                  <table class="table">
+                    <thead><tr><th>Szene</th><th>Name</th><th></th></tr></thead>
+                    <tbody id="av-scene-rows"></tbody>
+                  </table>
+                </div>
+                <div class="btn-row" style="margin-top:10px"><button class="btn small" type="button" data-action="av-add-scene">Szene hinzufügen</button></div>
+              </details>
+            </div>
+
+            <div class="card" id="set-grandma3" data-section="grandma3">
+              <div class="card-head">
+                <div>
+                  <h2>grandMA3</h2>
+                  <p class="muted">Lichtpult per <b>OSC (UDP)</b> mithören: welcher Cue in den eingetragenen Sequenzen läuft – für die Kachel <b>Licht</b>. JMS Control sendet nichts an die Konsole. In der Konsole unter <b>Menu → In &amp; Outputs → OSC</b> eine Zeile anlegen: Destination IP = Adresse dieses Servers, Port = der Empfangsport unten, <b>Send = Yes</b> (Receive kann aus bleiben), dann OSC-Ausgabe oben einschalten.</p>
+                </div>
+              </div>
+              <div class="form-grid">
+                <label class="field"><span>Adresse der Konsole (nur deren Pakete zählen; leer = alle)</span>
+                  <input id="ma-host" type="text" placeholder="192.168.0.231" spellcheck="false">
+                </label>
+                <label class="field"><span>Empfangsport (UDP) am Server</span>
+                  <input id="ma-port" type="number" min="1" max="65535" placeholder="8001">
+                </label>
+                <label class="field"><span>Prefix (Spalte „Prefix“ in der Konsole, meist leer)</span>
+                  <input id="ma-prefix" type="text" placeholder="z. B. gma3" spellcheck="false">
+                </label>
+                <label class="field"><span>Objektpfad der Sequenzen (leer = 13.13.1.6 / 14.14.1.6)</span>
+                  <input id="ma-seqpath" type="text" placeholder="13.13.1.6" spellcheck="false">
+                </label>
+                <label class="check"><input id="ma-enabled" type="checkbox"> OSC empfangen</label>
+                <div id="ma-status" class="atem-status"></div>
+              </div>
+              <h3 class="insp-label">Überwachte Sequenzen</h3>
+              <p class="muted small">Die Sequenznummer steht in der Konsole im Sequence Pool. Taucht eine Sequenz im OSC-Verkehr auf, erscheint sie unten als Vorschlag.</p>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead><tr><th>Sequenz</th><th>Anzeigename</th><th>Aktueller Cue</th><th></th></tr></thead>
+                  <tbody id="ma-seq-rows"></tbody>
+                </table>
+              </div>
+              <div class="btn-row" style="margin-top:10px"><button class="btn small" type="button" data-action="ma-add-seq">Sequenz hinzufügen</button></div>
+              <p id="ma-seen" class="muted small" style="margin-top:10px"></p>
             </div>
 
             <div class="card" id="set-kesher" data-section="kesher">
@@ -830,7 +911,7 @@
   <datalist id="atem-input-list"></datalist>
   <div id="toast" class="toast" hidden></div>
 
-  <script type="module" src="admin.js?v=20261030-monitor-shortcuts"></script>
+  <script type="module" src="admin.js?v=20261030-avantis-grandma3"></script>
   <script>
     // Menü (☰) auf schmalen Bildschirmen. Bewusst einfaches Skript ohne Modul: so geht das Menü
     // auch, wenn admin.js auf einem alten Gerät nicht (vollständig) läuft.

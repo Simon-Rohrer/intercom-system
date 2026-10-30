@@ -20,6 +20,8 @@ const { createUplink, normalizeUplink } = require('./uplink')
 const { createAgendaPosition } = require('./agenda-position')
 const { createYouTube } = require('./youtube')
 const { createMonarch } = require('./monarch')
+const { createAvantis, normalizeAvantis } = require('./avantis')
+const { createGrandma3, normalizeGrandma3 } = require('./grandma3')
 const { createDropbox } = require('./dropbox')
 const { createSlideshow } = require('./slideshow')
 const { createMessageLinks } = require('./message-links')
@@ -127,6 +129,8 @@ function normalizeConfig(c) {
     chat: normalizeChat(c?.chat),
     churchtools: normalizeChurchTools(c?.churchtools),
     uplink: normalizeUplink(c?.uplink),
+    avantis: normalizeAvantis(c?.avantis),
+    grandma3: normalizeGrandma3(c?.grandma3),
     access: normalizeAccess(c?.access),
     raspberry: normalizeRaspberry(c?.raspberry),
   }
@@ -1284,6 +1288,21 @@ function applyUplink() {
   uplinkKey = key
 }
 
+// Allen & Heath Avantis (Mischpult, MIDI over TCP) für die Kachel „Mischpult“: Mutes und Szene – nur mitlesen
+const avantis = createAvantis({ getConfig: () => config.avantis, onUpdate: broadcast, log: console.log })
+// grandMA3 (Lichtpult, OSC per UDP) für die Kachel „Licht“: laufender Cue je Sequenz – nur empfangen
+const grandma3 = createGrandma3({ getConfig: () => config.grandma3, onUpdate: broadcast, log: console.log })
+let consolesKey = ''
+function applyConsoles() {
+  const key = JSON.stringify([normalizeAvantis(config.avantis), normalizeGrandma3(config.grandma3)])
+  if (key === consolesKey) return
+  if (consolesKey) {
+    avantis.reconfigure()
+    grandma3.reconfigure()
+  }
+  consolesKey = key
+}
+
 // Matrox Monarch HDX: der Encoder, der zu YouTube sendet (sendet er, kommt ein Bild an)
 const monarch = createMonarch({ dataDir: DATA_DIR, log: console.log })
 
@@ -1377,6 +1396,7 @@ function configChanged(origin = null) {
   applyProPresenter()
   churchTools.datesChanged()
   applyUplink()
+  applyConsoles()
   youtube.layoutsChanged()
   slideshow.playlistsChanged()
   if (mediamtx.proc) writeMediamtxConfig()
@@ -1485,6 +1505,8 @@ wss.on('connection', (ws, req) => {
   send(ws, churchTools.snapshot())
   send(ws, agendaPosition.snapshot())
   send(ws, uplink.snapshot())
+  send(ws, avantis.snapshot())
+  send(ws, grandma3.snapshot())
   send(ws, youtube.snapshot())
   send(ws, slideshow.snapshot())
   send(ws, { type: 'propresenter', ...ppState })
@@ -3298,4 +3320,7 @@ server.listen(PORT, HOST, () => {
   dropbox.start()
   applyUplink()
   uplink.start()
+  applyConsoles()
+  avantis.start()
+  grandma3.start()
 })
