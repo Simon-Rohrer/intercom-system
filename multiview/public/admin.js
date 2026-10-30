@@ -821,6 +821,7 @@ function renderOutputPanel() {
   const editable = canEditOutput(config, user, output.id)
   const admin = isAdmin()
   const qr = { show: false, corner: 'br', size: 's', ...output.dayQr }
+  const tf = { input: null, size: 'm', ...output.tallyFrame }
   const layoutSelect = editable
     ? `<select data-o="layoutId">${layoutOptions(output.layoutId)}</select>`
     : `<select disabled><option>${esc(outputLayoutName(output) ?? '– kein Layout –')} · nur ansehen</option></select>`
@@ -863,6 +864,16 @@ function renderOutputPanel() {
         </div>
       </div>
     </div>
+    <div class="qr-box">
+      <span class="group-title">Tally-Rahmen um den Bildschirm</span>
+      <label class="field"><span>Rot/grün, wenn dieser ATEM-Eingang auf Sendung bzw. in der Vorschau ist – über allem, egal welches Layout läuft (z. B. am Kameraplatz)</span><select data-output-tally="input">${tallyInputOptions(tf.input)}</select></label>
+      <div class="qr-option grow" ${tf.input == null ? 'hidden' : ''}>
+        <span class="group-title">Stärke</span>
+        <div class="segmented" role="radiogroup" aria-label="Stärke des Tally-Rahmens">
+          ${QR_SIZES.map(([v, label]) => `<button type="button" role="radio" data-tally-size="${v}" aria-checked="${tf.size === v}" class="${tf.size === v ? 'active' : ''}">${label}</button>`).join('')}
+        </div>
+      </div>
+    </div>
     <button class="btn small link danger" type="button" data-action="delete-output">Multiview entfernen</button>`
         : ''
     }`
@@ -898,10 +909,20 @@ function setDayQr(output, patch) {
   changed(0)
 }
 
+function setTallyFrame(output, patch) {
+  output.tallyFrame = { input: null, size: 'm', ...output.tallyFrame, ...patch }
+  renderOutputPanel()
+  changed(0)
+}
+
 function onOutputField(e) {
   const el = e.target
   const output = outputById(el)
   if (!output) return
+  if (el.dataset.outputTally === 'input') {
+    if (e.type !== 'change' || !isAdmin()) return
+    return setTallyFrame(output, { input: el.value === '' ? null : Number(el.value) })
+  }
   if (el.dataset.outputDayqr === 'show') {
     if (e.type !== 'change' || !isAdmin()) return
     return setDayQr(output, { show: el.checked })
@@ -946,6 +967,8 @@ $('#output-panel').addEventListener('click', async (e) => {
   if (corner) return setDayQr(outputById(corner), { corner: corner.dataset.qrCorner })
   const size = e.target.closest('[data-qr-size]')
   if (size) return setDayQr(outputById(size), { size: size.dataset.qrSize })
+  const tallySize = e.target.closest('[data-tally-size]')
+  if (tallySize) return setTallyFrame(outputById(tallySize), { size: tallySize.dataset.tallySize })
   const btn = e.target.closest('button[data-action]')
   if (!btn) return
   const output = outputById(btn)

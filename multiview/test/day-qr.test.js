@@ -7,8 +7,9 @@ test('legacy settings copy independently, preserve explicit overrides and all ou
   const old = [{ id: 'a', name: 'Licht', layoutId: 'quad', custom: 42 },
     { id: 'b', dayQr: { show: false, corner: 'tl', size: 'l' } }]
   const result = normalizeOutputDayQr(old, { show: true, corner: 'br', size: 'm' })
-  assert.deepEqual(result[0], { ...old[0], dayQr: { show: true, corner: 'br', size: 'm' } })
-  assert.deepEqual(result[1], old[1])
+  const noTally = { input: null, size: 'm' }
+  assert.deepEqual(result[0], { ...old[0], dayQr: { show: true, corner: 'br', size: 'm' }, tallyFrame: noTally })
+  assert.deepEqual(result[1], { ...old[1], tallyFrame: noTally })
   result[0].dayQr.show = false
   assert.equal(old[0].dayQr, undefined)
   assert.notEqual(result[0].dayQr, result[1].dayQr)

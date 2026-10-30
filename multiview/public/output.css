@@ -226,6 +226,35 @@ body {
   pointer-events: none;
 }
 
+/* Tally-Rahmen um den ganzen Bildschirm (Ausgabe-Einstellung) – über allem, auch dem Intercom */
+.screen-tally {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  --st-bw: clamp(10px, 2.2vmin, 28px);
+  --st-color: #ff1f1f;
+  border: var(--st-bw) solid var(--st-color);
+}
+.screen-tally[hidden] { display: none; }
+.screen-tally[data-size="s"] { --st-bw: clamp(6px, 1.2vmin, 16px); }
+.screen-tally[data-size="l"] { --st-bw: clamp(16px, 3.6vmin, 44px); }
+.screen-tally[data-state="preview"] { --st-color: #19d24a; }
+.screen-tally-badge {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.15em 0.9em 0.25em;
+  border-radius: 0 0 0.5em 0.5em;
+  background: var(--st-color);
+  color: #fff;
+  font: 700 clamp(14px, 2.4vmin, 30px)/1.1 "Barlow Condensed", "Arial Narrow", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.screen-tally[data-state="preview"] .screen-tally-badge { color: #002a0b; }
+
 /* Tages-QR-Code der Anmeldung: klein in einer Ecke, über allem, ohne den Inhalt zu verdecken */
 .day-qr {
   position: fixed;

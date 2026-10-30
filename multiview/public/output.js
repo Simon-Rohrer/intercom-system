@@ -9,7 +9,7 @@ import { createUplinkView, mergeUplink } from './uplink.js'
 import { createAvantisView } from './avantis.js'
 import { createGrandma3View } from './grandma3.js'
 import { createYouTubeView } from './youtube.js'
-import { createTallyView } from './tally.js'
+import { createTallyView, tallyState } from './tally.js'
 import { createOpsView } from './ampel.js'
 import { createStreamHealthView } from './streamhealth.js'
 import { createSlideshowView } from './slideshow.js'
@@ -107,9 +107,11 @@ const ws = connect(
       config = msg.config
       render()
       refreshDayQr()
+      updateTallyFrame()
     } else if (msg.type === 'atem') {
       atem = msg
       updateOverlays()
+      updateTallyFrame()
       for (const view of tallyViews) view.update(atem)
     } else if (msg.type === 'levels') {
       setLevels(msg)
@@ -672,6 +674,24 @@ keepAwake()
 // ---------------------------------------------------------------------------
 
 let serverAddresses = []
+// Tally-Rahmen um den ganzen Bildschirm (Einstellung der Ausgabe): rot = der gewählte ATEM-Eingang ist
+// auf Sendung, grün = Vorschau. Liegt über allen Kacheln und dem Intercom, egal welches Layout läuft –
+// gedacht für den Bildschirm am Kameraplatz.
+const tallyFrame = document.createElement('div')
+tallyFrame.className = 'screen-tally'
+tallyFrame.hidden = true
+tallyFrame.innerHTML = '<span class="screen-tally-badge"></span>'
+document.body.append(tallyFrame)
+
+function updateTallyFrame() {
+  const frame = config?.outputs.find((output) => output.id === currentOutputId)?.tallyFrame
+  const state = frame?.input != null ? tallyState(frame.input, atem) : 'off'
+  tallyFrame.hidden = state !== 'program' && state !== 'preview'
+  tallyFrame.dataset.state = state
+  tallyFrame.dataset.size = frame?.size || 'm'
+  tallyFrame.firstChild.textContent = state === 'program' ? 'Auf Sendung' : 'Vorschau'
+}
+
 let dayQrKey = ''
 let dayQrRequest = 0
 const dayQr = document.createElement('figure')

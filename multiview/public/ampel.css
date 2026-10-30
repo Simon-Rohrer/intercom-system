@@ -85,17 +85,21 @@
 .am-event { color: var(--am-ink-2); font-size: 0.85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .am-event:empty { display: none; }
 
+/* Reicht die Höhe nicht (große Schrift, viele Punkte), geht die Liste rechts in einer weiteren Spalte weiter */
 .am-list {
   list-style: none;
   margin: 0;
   padding: 0.2em 1.1em 0.4em;
   display: flex;
   flex-direction: column;
-  gap: 0.25em;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 0.25em 1.8em;
+  flex: 1 1 auto;
   overflow: hidden;
   min-height: 0;
 }
-.am-item { display: flex; align-items: center; gap: 0.55em; min-width: 0; font-size: 1em; }
+.am-item { display: flex; align-items: center; gap: 0.55em; min-width: 0; max-width: 100%; font-size: 1em; }
 .am-dot { width: 0.7em; height: 0.7em; flex: none; border-radius: 50%; background: var(--am-ink-3); }
 .am-item.status-ok .am-dot, .am-item.status-idle .am-dot { background: var(--am-ok); }
 .am-item.status-warn .am-dot { background: var(--am-warn); }
