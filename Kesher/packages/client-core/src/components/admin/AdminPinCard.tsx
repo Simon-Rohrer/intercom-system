@@ -1,12 +1,14 @@
 import React from "react";
+import { multiviewRolesUrl } from "./AdminRolesCard";
 import { AdminCardHeader } from "./AdminCardHeader";
 import { useAdminCardOpenState } from "./adminCardOpen";
 
 type AdminPinCardProps = {
+  central?: boolean;
   onUpdateAdminPin: (currentPin: string, newPin: string) => Promise<void>;
 };
 
-export function AdminPinCard({ onUpdateAdminPin }: AdminPinCardProps) {
+export function AdminPinCard({ onUpdateAdminPin, central = false }: AdminPinCardProps) {
   const [isOpen, setIsOpen] = useAdminCardOpenState();
   const [pinCurrentInput, setPinCurrentInput] = React.useState("");
   const [pinNewInput, setPinNewInput] = React.useState("");
@@ -45,6 +47,20 @@ export function AdminPinCard({ onUpdateAdminPin }: AdminPinCardProps) {
       setPinBusy(false);
     }
   };
+
+  if (central) return (
+    <div className="admin-card">
+      <div className="admin-card-body">
+        <div className="admin-roles-overlay-card" role="note">
+          <h3>Admin-PIN wird in JMS Control verwaltet</h3>
+          <p>Das Admin-Passwort wird zentral in JMS Control unter Benutzer &amp; Rechte → Admin-PIN festgelegt und geändert. Es gilt auch für die Admin-Anmeldung in Kesher.</p>
+          <a className="button primary admin-roles-overlay-link" href={multiviewRolesUrl().replace("#/zugang/rollen", "#/einstellungen/zugang/anmeldung")}>
+            Admin-Passwort in JMS Control ändern
+          </a>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="admin-card">

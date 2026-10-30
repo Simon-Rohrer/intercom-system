@@ -198,6 +198,7 @@ export type Bootstrap = PublicBootstrap & {
   users: User[];
   /** Roles are managed in the Multiview (central login), not here. */
   centralRoles?: boolean;
+  centralAdminPin?: boolean;
   // Mirror session (e.g. the Kesher tile in JMS Control): shows and controls the
   // device that really uses the role instead of occupying it.
   secondary?: boolean;

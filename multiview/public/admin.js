@@ -142,8 +142,10 @@ function onMessage(msg) {
     }
     renderSlideshowSettings()
     renderStatusStrip()
-    // Stand der Playlist in der gerade bearbeiteten Diashow-Kachel (nicht, während dort getippt wird)
-    if ($('#ss-tile-pp-state') && document.activeElement?.dataset?.ss !== 'ppPlaylist') renderInspector()
+    refreshSlideshowAreaCards()
+    const ppState = $('#ss-tile-pp-state')
+    const selected = currentLayout()?.tiles.find((t) => t.id === selectedTileId)
+    if (ppState && selected) ppState.textContent = slideshowPpState(slideshowOptions(selected.slideshow))
   } else if (msg.type === 'youtube') {
     youtube = msg
     for (const view of youtubeViews) {
@@ -161,6 +163,7 @@ function onMessage(msg) {
       else agendaViews.delete(view)
     }
     for (const view of slideshowViews) if (view.el.isConnected) view.update({ churchtools })
+    refreshSlideshowAreaCards()
   } else if (msg.type === 'chat') {
     chat = msg
     renderChatStatus()
@@ -351,8 +354,41 @@ function showPage() {
   if (page === 'services') renderServices()
   renderAll()
   window.scrollTo(0, 0)
+  scheduleSettingsNavHeight()
 }
 window.addEventListener('hashchange', showPage)
+
+// The navigation starts below the settings heading before it becomes sticky.
+// Size it from its actual viewport position so the last row always stays reachable.
+let settingsNavFrame = 0
+function scheduleSettingsNavHeight() {
+  if (settingsNavFrame) return
+  settingsNavFrame = requestAnimationFrame(() => {
+    settingsNavFrame = 0
+    const nav = document.querySelector('#page-einstellungen .settings-nav')
+    if (!nav) return
+    if (window.matchMedia('(max-width: 760px)').matches) {
+      nav.style.removeProperty('--settings-nav-height')
+      return
+    }
+    if (!nav.getClientRects().length) return
+    const viewport = window.visualViewport
+    const bottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight
+    const height = Math.max(0, Math.floor(bottom - Math.max(0, nav.getBoundingClientRect().top) - 16)) + 'px'
+    if (nav.style.getPropertyValue('--settings-nav-height') !== height)
+      nav.style.setProperty('--settings-nav-height', height)
+  })
+}
+window.addEventListener('scroll', scheduleSettingsNavHeight, { passive: true })
+window.addEventListener('resize', scheduleSettingsNavHeight, { passive: true })
+window.visualViewport?.addEventListener('resize', scheduleSettingsNavHeight, { passive: true })
+window.visualViewport?.addEventListener('scroll', scheduleSettingsNavHeight, { passive: true })
+if (typeof ResizeObserver !== 'undefined') {
+  const observer = new ResizeObserver(scheduleSettingsNavHeight)
+  for (const el of document.querySelectorAll('#page-einstellungen > .page-head, #page-einstellungen .settings-layout')) observer.observe(el)
+}
+document.fonts?.ready.then(scheduleSettingsNavHeight)
+scheduleSettingsNavHeight()
 
 // --- Einstellungen: Übersicht und Unterseiten -----------------------------------------
 // Am Desktop stehen Leiste und Unterseite nebeneinander. Auf dem Handy ist #/einstellungen
@@ -2243,12 +2279,12 @@ function meterSection(tile) {
 // Playlists von ProPresenter für die Auswahl „feste Playlist“ (einmal laden, bei Bedarf neu)
 let ppPlaylistChoices = null
 async function loadPpPlaylists(force = false) {
-  if (ppPlaylistChoices && !force) return
-  ppPlaylistChoices = { loading: true, playlists: [] }
+  if (ppPlaylistChoices?.loading || (ppPlaylistChoices && !force)) return
+  ppPlaylistChoices = { loading: true, playlists: ppPlaylistChoices?.playlists || [] }
   const data = await fetch('/api/propresenter/playlists', { cache: 'no-store' })
-    .then((r) => r.json())
+    .then((r) => r.ok ? r.json() : { ok: false, error: 'Playlists konnten nicht geladen werden', playlists: [] })
     .catch(() => ({ ok: false, error: 'Nicht erreichbar', playlists: [] }))
-  ppPlaylistChoices = { loading: false, error: data.ok ? '' : data.error, playlists: data.playlists || [] }
+  ppPlaylistChoices = { loading: false, error: data.ok ? '' : data.error || 'Playlists konnten nicht geladen werden', playlists: data.ok && Array.isArray(data.playlists) ? data.playlists : ppPlaylistChoices.playlists }
   if (selectedTileId && ['playlist', 'slideshow'].includes(currentLayout()?.tiles.find((t) => t.id === selectedTileId)?.kind)) renderInspector()
 }
 
@@ -2534,9 +2570,35 @@ function slideshowAreasCard(kind, hidden) {
                   `<label class="switch"><input type="checkbox" data-ss-area="${kind}" data-name="${esc(name)}" ${hidden.includes(name) ? '' : 'checked'}><span class="switch-track"></span><span>${esc(name)}</span></label>`,
               )
               .join('')}</div>`
-          : '<p class="muted small">Die Kalender kommen von ChurchTools, sobald es verbunden ist.</p>'
+          : !slideshowData
+            ? '<p class="muted small" role="status">Bereiche werden geladen …</p>'
+            : slideshowData.ct?.error
+              ? '<p class="muted small">Bereiche konnten nicht geladen werden. Prüfe die Verbindung unter <a href="#/einstellungen/churchtools">Einstellungen → ChurchTools</a>.</p>'
+              : '<p class="muted small">Noch keine öffentlichen Kalender verfügbar. Neue Bereiche erscheinen hier automatisch.</p>'
       }
     </details>`
+}
+
+/** Nachgeladene Kalender ergänzen, ohne andere Eingaben oder den Klappzustand zu verändern. */
+function refreshSlideshowAreaCards() {
+  const tile = currentLayout()?.tiles.find((t) => t.id === selectedTileId)
+  if (tile?.kind !== 'slideshow') return
+  const o = slideshowOptions(tile.slideshow)
+  for (const card of inspector.querySelectorAll('[data-ss-areas]')) {
+    const kind = card.dataset.ssAreas
+    const wrapper = document.createElement('div')
+    wrapper.innerHTML = slideshowAreasCard(kind, kind === 'ct' ? o.ctHidden : o.eventHidden)
+    const body = wrapper.firstElementChild.innerHTML
+    if (card.innerHTML === body) continue
+    const active = card.contains(document.activeElement) ? document.activeElement : null
+    const name = active?.dataset.name
+    card.innerHTML = body
+    if (active) {
+      const control = [...card.querySelectorAll('[data-ss-area]')].find((el) => el.dataset.name === name)
+      const nextFocus = control ?? card.querySelector('summary')
+      nextFocus.focus({ preventScroll: true })
+    }
+  }
 }
 
 /** Quellen der Diashow – eine Kachel zeigt immer genau eine davon */
@@ -2608,22 +2670,38 @@ function slideshowSection(tile) {
     <p class="muted small">Gerade dabei: ${esc(count)}. Bilder verwaltest du unter <a href="#/einstellungen/diashow">Einstellungen → Diashow</a>.</p>`
 }
 
-/** Diashow-Kachel mit „Folien aus ProPresenter“: welche Playlist (je Kachel eine eigene) */
+/** Status der gespeicherten Folien für die ausgewählte Playlist. */
+function slideshowPpState(o) {
+  const list = o.ppPlaylist ? slideshowData?.ppLists?.[o.ppPlaylist.toLowerCase()] : null
+  if (!o.ppPlaylist) return 'Noch keine Playlist ausgewählt – die Kachel bleibt leer.'
+  if (!list) return 'Die Folien werden aus ProPresenter geladen …'
+  return `${list.slides.length} Folien${list.error ? ` · ${list.error}` : ''}`
+}
+
+/** Diashow-Kachel mit „Folien aus ProPresenter“: vorhandene Playlist auswählen. */
 function slideshowPpField(o) {
   void loadPpPlaylists()
-  const names = (ppPlaylistChoices?.playlists || []).map((p) => p.name).filter(Boolean)
-  const list = o.ppPlaylist ? slideshowData?.ppLists?.[o.ppPlaylist.toLowerCase()] : null
-  const state = !o.ppPlaylist
-    ? 'Noch keine Playlist eingetragen – die Kachel bleibt leer.'
-    : !list
-      ? 'Wird gleich aus ProPresenter geholt …'
-      : `${list.state === 'ok' ? '<span style="color:var(--green)">●</span>' : '<span style="color:var(--amber)">●</span>'} ${list.slides.length} Folien${list.error ? ` · ${esc(list.error)}` : ''}`
+  const names = new Map()
+  for (const p of ppPlaylistChoices?.playlists || []) {
+    if (typeof p.name === 'string' && p.name.trim()) names.set(p.name.trim().toLowerCase(), { name: p.name.trim(), cached: false })
+  }
+  for (const list of Object.values(slideshowData?.ppLists || {})) {
+    if (list.playlist && !names.has(list.playlist.toLowerCase())) names.set(list.playlist.toLowerCase(), { name: list.playlist, cached: true })
+  }
+  const selected = o.ppPlaylist.toLowerCase()
+  if (o.ppPlaylist && !names.has(selected)) names.set(selected, { name: o.ppPlaylist, cached: true })
+  const loading = ppPlaylistChoices?.loading
+  const error = ppPlaylistChoices?.error
   return `<div class="meter-settings">
       <h4>ProPresenter</h4>
       <label class="field"><span>Playlist in ProPresenter</span>
-        <input type="text" data-ss="ppPlaylist" list="ss-pp-names" value="${esc(o.ppPlaylist)}" maxlength="80" placeholder="z. B. Ankündigungen" autocomplete="off"></label>
-      <datalist id="ss-pp-names">${names.map((n) => `<option value="${esc(n)}"></option>`).join('')}</datalist>
-      <p class="muted small" id="ss-tile-pp-state">${state}</p>
+        <select data-ss="ppPlaylist" ${loading && !names.size ? 'disabled' : ''} aria-describedby="ss-playlists-state">
+          <option value="" ${selected ? '' : 'selected'}>${loading && !names.size ? 'Playlists werden geladen …' : 'Playlist auswählen'}</option>
+          ${[...names.entries()].sort(([, a], [, b]) => a.name.localeCompare(b.name, 'de')).map(([key, entry]) => `<option value="${esc(key === selected ? o.ppPlaylist : entry.name)}" ${key === selected ? 'selected' : ''}>${esc(entry.name)}${entry.cached ? ' (gespeichert)' : ''}</option>`).join('')}
+        </select></label>
+      <p class="muted small" id="ss-playlists-state" role="status">${loading ? 'Playlists werden von ProPresenter geladen …' : error ? esc(error) + '. Die gespeicherte Auswahl bleibt erhalten.' : !names.size ? 'Keine Playlists gefunden. Lege eine Playlist in ProPresenter an und lade die Liste neu.' : 'Wähle die Playlist, deren Folien diese Kachel zeigen soll.'}</p>
+      <button type="button" class="btn small" data-action="pp-playlists-reload" ${loading ? 'disabled' : ''}>Playlists neu laden</button>
+      <p class="muted small" id="ss-tile-pp-state">${esc(slideshowPpState(o))}</p>
       <p class="muted small">Jede Diashow-Kachel kann eine andere Playlist zeigen. Die Folien werden auf dem Server gespeichert und laufen weiter, wenn ProPresenter aus ist.</p>
     </div>`
 }
@@ -2979,7 +3057,7 @@ function onInspectorField(e) {
     if (!el.checked) hidden.push(el.dataset.name)
     tile.slideshow = { ...o, [key]: hidden }
     renderCanvas()
-    renderInspector()
+    refreshSlideshowAreaCards()
     changed()
     return
   }
@@ -3005,6 +3083,7 @@ function onInspectorField(e) {
     if (out) out.textContent = `${value} s`
     renderCanvas()
     if (el.type === 'checkbox') renderInspector()
+    if (key === 'ppPlaylist' && $('#ss-tile-pp-state')) $('#ss-tile-pp-state').textContent = slideshowPpState(tile.slideshow)
     changed()
     return
   }
@@ -4780,7 +4859,7 @@ const SEARCH_ENTRIES = [
   { label: 'Bildschirme', href: '#/einstellungen/bildschirme', admin: true, words: 'einstellungen hdmi monitor anschluss server raspberry pi intercom' },
   { label: 'Angemeldete Geräte', href: '#/einstellungen/geraete', admin: true, words: 'einstellungen online ip sitzung abmelden' },
   { label: 'Rollen', href: '#/einstellungen/zugang/rollen', admin: true, words: 'benutzer rechte sehen bearbeiten licht ton' },
-  { label: 'Anmeldung & Admin-PIN', href: '#/einstellungen/zugang/anmeldung', admin: true, words: 'benutzer pin passwort admin' },
+  { label: 'Admin-PIN', href: '#/einstellungen/zugang/anmeldung', admin: true, words: 'benutzer pin passwort admin' },
   { label: 'Anmeldung für alle Dienste', href: '#/einstellungen/zugang/dienste', admin: true, words: 'benutzer tagescode qr feste geräte gateway' },
   { label: 'Link für Ordner (Meldung ohne Anmeldung)', href: '#/einstellungen/zugang/nachrichten', admin: true, words: 'ordner beamer stage display bühne meldung qr helfer' },
   { label: 'Zugangsdaten der Dienste (Portainer, Router)', href: '#/einstellungen/zugang/zugangsdaten', admin: true, words: 'passwort portainer router speedport automatisch anmelden' },
@@ -4876,6 +4955,13 @@ function renderProfileCard() {
     .join('')
   const outputs = myOutputs()
   const live = outputs.filter((o) => o.layoutId).length
+  const outputTiles = outputs.map((output) => `<a class="app-tile" href="${esc(outputUrl(output))}"
+      target="_blank" rel="noopener" data-monitor-shortcut="${esc(output.id)}"
+      title="${esc(output.name)} – Monitoransicht öffnen" aria-label="${esc(output.name)} – Monitoransicht öffnen (neuer Tab)">
+      <span class="app-icon indigo"><svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="2.5" y="3.5" width="19" height="13" rx="2"/><path d="M8 21h8M12 16.5V21M12 4v12M3 10h18"/>
+      </svg></span><span class="app-label">${esc(output.name)}</span>
+    </a>`).join('')
   el.innerHTML = `<div class="glass profile-me">
       ${user?.open ? avatarHtml({ name: 'J C' }, { cls: 'avatar xl' }) : `<button type="button" class="avatar-btn" data-avatar-pick title="Profilbild ändern" aria-label="Profilbild ändern">${avatarHtml(user, { cls: 'avatar xl' })}<span class="avatar-edit" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span></button>`}
       <h2>${esc(user?.open ? 'JMS Control' : user?.name)}</h2>
@@ -4886,7 +4972,15 @@ function renderProfileCard() {
       </div>`}
       <p class="profile-stat"><b>${outputs.length}</b> Multiview${outputs.length === 1 ? '' : 's'} · <b>${live}</b> mit Layout</p>
     </div>
-    <div class="glass app-grid">${tiles}</div>`
+    <div class="glass profile-shortcuts">
+      <nav class="app-grid" aria-label="Schnellzugriffe">${tiles}</nav>
+      <hr class="profile-shortcuts-divider">
+      <section class="profile-multiviews" aria-labelledby="profile-multiviews-title">
+        <h3 id="profile-multiviews-title">Meine Multiviews</h3>
+        ${outputs.length ? `<nav class="app-grid" aria-label="Multiview-Monitoransichten">${outputTiles}</nav>`
+          : '<p class="muted profile-multiviews-empty">Für deine Rolle sind noch keine Multiviews freigegeben.</p>'}
+      </section>
+    </div>`
   if (!user?.open) {
     el.append(loginQrCard)
     if (!loginQrCard.dataset.started) renewHeroQr()
@@ -4961,7 +5055,7 @@ $('#user-card').addEventListener('click', async (e) => {
 $('#admin-form').addEventListener('submit', async (e) => {
   e.preventDefault()
   const error = $('#admin-error')
-  error.textContent = me?.access?.pinSource === 'kesher' ? 'Prüfe bei Kesher …' : ''
+  error.textContent = ''
   const res = await fetch('/api/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -5089,7 +5183,6 @@ function renderStatusStrip() {
 
 // --- Benutzer & Rechte (Admin) ----------------------------------------------
 
-let pinChoice = null // im Formular gewählte PIN-Quelle
 const lockIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>'
 let accessKey = ''
 const pencilIcon = '<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="m13.5 6.5 4 4"/></svg>'
@@ -5156,92 +5249,113 @@ $('#service-creds-card')?.addEventListener('click', async (e) => {
   await loadServiceCreds()
 })
 
+function accessRolesKey() {
+  return JSON.stringify([kesherRoles(), chat.rooms, config.outputs.map((o) => [o.id, o.name]), config.access.roles])
+}
+
+function roleOutputSummary(rights) {
+  const count = config.outputs.filter((o) => rights.outputs.includes(o.id)).length
+  return count ? `${count} ausgewählt` : 'Multiviews auswählen'
+}
+
+function roleOutputPicker(role, rights) {
+  if (rights.chatOnly) return '<span class="muted">Keine Freigabe · nur Chat</span>'
+  if (!config.outputs.length) return '<span class="muted">Noch keine Multiviews</span>'
+  return `<details class="role-outputs" data-role-output-picker>
+    <summary aria-label="Multiview-Rechte für ${esc(role.name)}: ${roleOutputSummary(rights)}"><span data-role-output-summary>${roleOutputSummary(rights)}</span>${iconChevronDown}</summary>
+    <div class="role-output-options" role="group" aria-label="Multiview-Rechte für ${esc(role.name)}">
+      <p class="muted">Mehrere auswählen und Rechte festlegen.</p>
+      ${config.outputs.map((o) => {
+        const selected = rights.outputs.includes(o.id)
+        return `<div class="role-output-option">
+          <label class="check"><input type="checkbox" data-role-output="${esc(o.id)}" ${selected ? 'checked' : ''}><span>${esc(o.name)}</span></label>
+          <select data-role-output-level="${esc(o.id)}" aria-label="Rechte für ${esc(o.name)}" ${selected ? '' : 'disabled'}>
+            <option value="view">Sehen</option><option value="edit" ${rights.edit.includes(o.id) ? 'selected' : ''}>Bearbeiten</option>
+          </select>
+        </div>`
+      }).join('')}
+    </div>
+  </details>`
+}
+
 function renderAccess() {
   if (!config || !isAdmin() || page !== 'einstellungen' || settingsSection !== 'zugang') return
   if (!serviceCreds) loadServiceCreds()
   // Nicht neu aufbauen, während jemand eine PIN tippt
-  if ($('#access-pin-card').contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return
+  if ($('#access-pin-card').contains(document.activeElement) || [...$('#access-pin-card').querySelectorAll('input')].some((input) => input.value)) return
 
-  const enabled = me.access?.enabled
-  const fromKesher = me.access?.pinSource === 'kesher'
-  const source = pinChoice ?? (enabled && !fromKesher ? 'own' : 'kesher')
+  const passwordField = (name, label, autocomplete) => `<div class="field">
+    <label for="admin-password-${name}">${label}</label>
+    <div class="admin-password-input"><input id="admin-password-${name}" type="password" name="${name}"
+      autocomplete="${autocomplete}" maxlength="128" required>
+      <button type="button" class="icon-btn" data-password-toggle="admin-password-${name}"
+        aria-label="${label} anzeigen" aria-pressed="false" title="Passwort anzeigen">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button></div></div>`
   $('#access-pin-card').innerHTML = `
-    <div class="card-head"><div><h2>Anmeldung</h2>
-      <p class="muted">Mit einer Admin-PIN wird die Anmeldung eingeschaltet. Danach meldet sich jeder mit Namen und Kesher-Rolle an, der Admin mit der PIN.</p></div></div>
-    <div class="access-state ${enabled ? 'on' : 'open'}">${lockIcon}
-      <div>${
-        enabled
-          ? `<b>Anmeldung aktiv</b> – Admin-PIN ${fromKesher ? '<b>wie im Kesher-Admin</b> (wird bei Kesher geprüft)' : '<b>eigene PIN</b>'}. Ohne Anmeldung lässt sich nichts ändern; Monitore und Companion laufen weiter ohne Anmeldung.`
-          : '<b>Zugang offen.</b> Jeder im Netzwerk kann alles ändern. Richte die Admin-PIN ein, um Rollen und Rechte zu nutzen.'
-      }</div>
-    </div>
-    <form id="pin-form" class="pin-form" autocomplete="off">
-      <div class="field" style="grid-column:1/-1"><span>Admin-PIN</span>
-        <div class="segmented" role="radiogroup">
-          <button type="button" data-pin-source="kesher" class="${source === 'kesher' ? 'active' : ''}">Wie im Kesher-Admin (empfohlen)</button>
-          <button type="button" data-pin-source="own" class="${source === 'own' ? 'active' : ''}">Eigene PIN</button>
-        </div>
-      </div>
-      ${enabled ? '<label class="field"><span>Bisherige Admin-PIN</span><input type="password" inputmode="numeric" name="currentPin" autocomplete="off" required></label>' : ''}
-      ${enabled ? '' : `<label class="field"><span>Dein Name</span><input type="text" name="name" value="${esc(user?.name || 'Admin')}" required></label>`}
-      ${
-        source === 'kesher'
-          ? `<label class="field"><span>Admin-PIN von Kesher</span><input type="password" inputmode="numeric" name="pin" autocomplete="off" required></label>`
-          : `<label class="field"><span>Neue PIN (4–12 Ziffern)</span><input type="password" inputmode="numeric" name="pin" pattern="\\d{4,12}" autocomplete="new-password" required></label>
-             <label class="field"><span>PIN wiederholen</span><input type="password" inputmode="numeric" name="pin2" autocomplete="new-password" required></label>`
-      }
-      <div class="btn-row" style="grid-column:1/-1"><button class="btn primary" type="submit">${
-        enabled ? 'Übernehmen' : source === 'kesher' ? 'Mit Kesher-PIN einschalten' : 'PIN festlegen und einschalten'
-      }</button>
-        </div>
+    <div class="card-head"><div><h2>Admin-PIN</h2>
+      <p class="muted">Das Admin-Passwort wird zentral in JMS Control verwaltet und gilt auch für Kesher.</p></div></div>
+    <form id="pin-form" class="pin-form" autocomplete="on">
+      ${passwordField('currentPin', 'Altes Passwort', 'current-password')}
+      ${passwordField('pin', 'Neues Passwort', 'new-password')}
+      ${passwordField('confirmPin', 'Neues Passwort bestätigen', 'new-password')}
+      <div class="btn-row" style="grid-column:1/-1"><button class="btn primary" type="submit">Speichern</button></div>
     </form>
-    <p class="muted" style="font-size:12.5px;margin-top:10px">${
-      source === 'kesher'
-        ? 'JMS Control speichert die PIN nicht – es fragt bei jeder Admin-Anmeldung Kesher. Ändert sich die PIN in Kesher, gilt sie hier sofort mit. Ist Kesher nicht erreichbar, geht die Admin-Anmeldung so lange nicht.'
-        : 'Die PIN wird nur als Hash auf dem Server gespeichert.'
-    }</p>
-    <p class="form-error" id="pin-error"></p>`
+    <p class="muted">4 bis 128 Zeichen. Nach dem Speichern ist eine erneute Anmeldung erforderlich.</p>
+    <p class="form-error" id="pin-error" role="status" aria-live="polite"></p>`
 
   const roles = kesherRoles()
-  const key = JSON.stringify([roles, chat.rooms, config.outputs.map((o) => [o.id, o.name]), config.access.roles])
+  const key = accessRolesKey()
   if (key !== accessKey || !$('#access-roles').childElementCount) {
     accessKey = key
+    const openPicker = $('#access-roles [data-role-output-picker][open]')
+    const openRole = openPicker?.closest('[data-role]')?.dataset.role
+    const scrollTop = openPicker?.querySelector('.role-output-options').scrollTop ?? 0
+    const focused = openPicker?.contains(document.activeElement) ? document.activeElement : null
+    const focusedOutput = focused?.dataset.roleOutput ?? focused?.dataset.roleOutputLevel
+    const focusLevel = focused && 'roleOutputLevel' in focused.dataset
     $('#access-roles').innerHTML = !roles.length
       ? `<p class="muted">Keine Rollen – ist Kesher verbunden? (Einstellungen → Kesher-Chat)</p>`
       : `<div class="table-wrap"><table class="table role-table">
-          <thead><tr><th>Rolle</th><th>Hört in Kesher (Chat)</th><th>Multiviews <span class="muted" style="font-weight:500">– antippen: aus → sehen → bearbeiten</span></th><th>Neue Layouts anlegen</th><th>Folien steuern</th><th>Raspberry Pis</th></tr></thead>
+          <thead><tr><th>Rolle</th><th>Hört in Kesher (Chat)</th><th>Multiview-Rechte</th><th>Neue Layouts anlegen</th><th>Folien steuern</th><th>Raspberry Pis</th><th>Multianmeldung</th></tr></thead>
           <tbody>${roles
             .map((r) => {
               const rights = roleRights(config, { roleId: r.id })
               return `<tr data-role="${esc(r.id)}">
-                <td><div class="role-name">${esc(r.name)}</div>
+                <td><div class="role-name">${esc(r.name)}</div>${rights.chatOnly ? '<small class="muted">Nur Chat · ohne PIN oder Tagescode</small>' : ''}
                   <div class="role-actions">
                     <button type="button" class="icon-btn" data-role-rename title="Umbenennen" aria-label="${esc(r.name)} umbenennen">${pencilIcon}</button>
                     <button type="button" class="icon-btn" data-role-copy title="Als Vorlage für eine neue Rolle" aria-label="${esc(r.name)} kopieren">${copyIcon}</button>
                     <button type="button" class="icon-btn danger" data-role-delete title="Löschen" aria-label="${esc(r.name)} löschen">${trashIcon}</button>
                   </div></td>
                 <td class="muted" style="font-size:12.5px">${esc(listensTo(r.id)) || '–'}</td>
-                <td><div class="chip-set">${
-                  config.outputs
-                    .map(
-                      (o) => {
-                        const level = rights.edit.includes(o.id) ? 'edit' : rights.outputs.includes(o.id) ? 'view' : 'off'
-                        const hint = { off: 'kein Zugriff', view: 'nur sehen', edit: 'sehen und bearbeiten' }[level]
-                        return `<button type="button" class="chip level-${level}" data-role-output="${esc(o.id)}" title="${esc(o.name)}: ${hint}">${esc(o.name)}<span class="chip-level">${{ off: '', view: 'sehen', edit: 'bearbeiten' }[level]}</span></button>`
-                      },
-                    )
-                    .join('') || '<span class="muted">Noch keine Multiviews</span>'
-                }</div></td>
-                <td><label class="switch"><input type="checkbox" data-role-edit ${rights.editLayouts ? 'checked' : ''}><span class="switch-track"></span><span class="muted">einrichten</span></label></td>
-                <td><label class="switch"><input type="checkbox" data-role-slides ${rights.controlSlides ? 'checked' : ''}><span class="switch-track"></span><span class="muted">ProPresenter</span></label></td>
-                <td><label class="switch"><input type="checkbox" data-role-pis ${rights.controlPis ? 'checked' : ''}><span class="switch-track"></span><span class="muted">ein/aus</span></label></td>
+                <td>${roleOutputPicker(r, rights)}</td>
+                <td><label class="switch"><input type="checkbox" data-role-edit ${rights.chatOnly ? 'disabled' : ''} ${rights.editLayouts ? 'checked' : ''}><span class="switch-track"></span><span class="muted">einrichten</span></label></td>
+                <td><label class="switch"><input type="checkbox" data-role-slides ${rights.chatOnly ? 'disabled' : ''} ${rights.controlSlides ? 'checked' : ''}><span class="switch-track"></span><span class="muted">ProPresenter</span></label></td>
+                <td><label class="switch"><input type="checkbox" data-role-pis ${rights.chatOnly ? 'disabled' : ''} ${rights.controlPis ? 'checked' : ''}><span class="switch-track"></span><span class="muted">ein/aus</span></label></td>
+                <td><label class="switch"><input type="checkbox" data-role-multi ${rights.multiLogin ? 'checked' : ''} aria-label="Multianmeldung für ${esc(r.name)}" aria-describedby="multi-login-help"><span class="switch-track"></span><span class="muted">erlauben</span></label></td>
               </tr>`
             })
             .join('')}</tbody></table></div>
+        <p class="muted" id="multi-login-help">Multianmeldung: Wenn du diese Funktion einschaltest, können mehrere Personen gleichzeitig mit dieser Rolle angemeldet sein. Jede Person meldet sich mit ihrem eigenen Namen an. Die Rechte der Rolle bleiben unverändert. Beim Ausschalten bleiben bestehende Anmeldungen erhalten; neue sind erst wieder möglich, wenn die Rolle frei ist.</p>
         <div class="btn-row" style="margin-top:14px">
           <button class="btn" type="button" id="roles-suggest">Multiviews nach Rollennamen vorschlagen</button>
           <span class="muted" style="font-size:12.5px;align-self:center">z. B. „Licht 1“ und „Licht 2“ → Multiview „Licht“. Bestehende Häkchen bleiben.</span>
         </div>`
+    if (openRole) {
+      const row = [...$('#access-roles').querySelectorAll('tr[data-role]')].find((el) => el.dataset.role === openRole)
+      const picker = row?.querySelector('[data-role-output-picker]')
+      if (picker) {
+        picker.open = true
+        if (focused) {
+          const controls = [...picker.querySelectorAll(focusLevel ? '[data-role-output-level]' : '[data-role-output]')]
+          const control = controls.find((el) => (el.dataset.roleOutput ?? el.dataset.roleOutputLevel) === focusedOutput)
+          const nextFocus = control ?? picker.querySelector('summary')
+          nextFocus.focus({ preventScroll: true })
+        }
+        picker.querySelector('.role-output-options').scrollTop = scrollTop
+      }
+    }
   }
 }
 
@@ -5258,6 +5372,7 @@ function suggestRights() {
   const norm = (t) => String(t).toLowerCase().replace(/[^a-z0-9äöüß]+/g, ' ').trim()
   let added = 0
   for (const role of kesherRoles()) {
+    if (roleRights(config, { roleId: role.id })?.chatOnly) continue
     const words = norm(role.name).split(' ')
     const matches = config.outputs.filter((o) => {
       const name = norm(o.name)
@@ -5286,7 +5401,29 @@ $('#settings-access-content').addEventListener('change', (e) => {
   if (!row) return
   const roleId = row.dataset.role
   const current = config.access.roles[roleId] ?? { outputs: [], editLayouts: false, controlSlides: false, controlPis: false }
-  if ('roleEdit' in e.target.dataset) {
+  if ('roleMulti' in e.target.dataset) {
+    current.multiLogin = e.target.checked
+  } else if (current.chatOnly) return
+  else if ('roleOutput' in e.target.dataset || 'roleOutputLevel' in e.target.dataset) {
+    const id = e.target.dataset.roleOutput ?? e.target.dataset.roleOutputLevel
+    if (!config.outputs.some((o) => o.id === id)) return
+    const rights = roleRights(config, { roleId })
+    const selecting = 'roleOutput' in e.target.dataset
+    const selected = selecting ? e.target.checked : rights.outputs.includes(id)
+    const level = selecting ? 'view' : e.target.value
+    if (!['view', 'edit'].includes(level)) return
+    current.outputs = rights.outputs.filter((output) => output !== id)
+    current.edit = rights.edit.filter((output) => output !== id)
+    if (selected) current.outputs.push(id)
+    if (selected && level === 'edit') current.edit.push(id)
+    const picker = row.querySelector('[data-role-output-picker]')
+    const select = [...picker.querySelectorAll('[data-role-output-level]')].find((el) => el.dataset.roleOutputLevel === id)
+    select.disabled = !selected
+    select.value = level
+    const summary = roleOutputSummary(current)
+    picker.querySelector('[data-role-output-summary]').textContent = summary
+    picker.querySelector('summary').setAttribute('aria-label', `Multiview-Rechte für ${kesherRoles().find((r) => r.id === roleId)?.name ?? roleId}: ${summary}`)
+  } else if ('roleEdit' in e.target.dataset) {
     current.editLayouts = e.target.checked
   } else if ('roleSlides' in e.target.dataset) {
     current.controlSlides = e.target.checked
@@ -5294,28 +5431,23 @@ $('#settings-access-content').addEventListener('change', (e) => {
     current.controlPis = e.target.checked
   } else return
   config.access.roles[roleId] = current
-  accessKey = JSON.stringify([kesherRoles(), config.outputs.map((o) => [o.id, o.name]), config.access.roles])
+  accessKey = accessRolesKey()
   changed(0)
 })
 
-// Multiview-Recht einer Rolle weiterschalten: aus → sehen → bearbeiten → aus
-$('#settings-access-content').addEventListener('click', (e) => {
-  const chip = e.target.closest('[data-role-output]')
-  const row = chip?.closest('tr[data-role]')
-  if (!row) return
-  const roleId = row.dataset.role
-  const rights = roleRights(config, { roleId })
-  const id = chip.dataset.roleOutput
-  const level = rights.edit.includes(id) ? 'edit' : rights.outputs.includes(id) ? 'view' : 'off'
-  const next = { off: 'view', view: 'edit', edit: 'off' }[level]
-  const outputs = rights.outputs.filter((x) => x !== id)
-  const edit = rights.edit.filter((x) => x !== id)
-  if (next !== 'off') outputs.push(id)
-  if (next === 'edit') edit.push(id)
-  config.access.roles[roleId] = { ...(config.access.roles[roleId] ?? {}), outputs, edit, editLayouts: rights.editLayouts }
-  accessKey = ''
-  renderAccess()
-  changed(0)
+// Das Auswahlmenü bleibt bei Änderungen offen und schließt außerhalb bzw. mit Escape.
+document.addEventListener('click', (e) => {
+  for (const picker of document.querySelectorAll('[data-role-output-picker][open]')) {
+    if (!picker.contains(e.target)) picker.open = false
+  }
+})
+$('#settings-access-content').addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return
+  const picker = e.target.closest('[data-role-output-picker][open]')
+  if (!picker) return
+  e.preventDefault()
+  picker.open = false
+  picker.querySelector('summary').focus()
 })
 
 // --- Rollen anlegen, umbenennen, löschen (gespeichert in Kesher) ---------------
@@ -5398,26 +5530,36 @@ $('#settings-access-content').addEventListener('submit', async (e) => {
   e.preventDefault()
   const form = new FormData(e.target)
   const error = $('#pin-error')
-  const source = $('#pin-form [data-pin-source].active')?.dataset.pinSource || 'kesher'
-  if (source === 'own' && form.get('pin') !== form.get('pin2')) return (error.textContent = 'Die beiden PINs stimmen nicht überein.')
-  error.textContent = source === 'kesher' ? 'Prüfe bei Kesher …' : ''
-  const res = await fetch('/api/access/pin', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ source, pin: form.get('pin'), currentPin: form.get('currentPin'), name: form.get('name') }),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok || !data.ok) return (error.textContent = data.error || `Fehler (HTTP ${res.status})`)
+  if (form.get('pin') !== form.get('confirmPin')) return (error.textContent = 'Die neuen Passwörter stimmen nicht überein.')
+  const button = e.target.querySelector('[type="submit"]')
+  button.disabled = true
   error.textContent = ''
-  toast(me.access.enabled ? 'Admin-PIN übernommen' : 'Anmeldung ist eingeschaltet – du bist als Admin angemeldet')
-  setTimeout(() => location.reload(), 900)
+  try {
+    const res = await fetch('/api/access/pin', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin: form.get('pin'), currentPin: form.get('currentPin'), confirmPin: form.get('confirmPin') }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.ok) throw new Error(data.error || `Fehler (HTTP ${res.status})`)
+    e.target.reset()
+    toast('Admin-Passwort gespeichert. Bitte erneut anmelden.')
+    setTimeout(() => location.reload(), 900)
+  } catch (err) {
+    error.textContent = err.message || 'Speichern fehlgeschlagen. Bitte erneut versuchen.'
+  } finally { button.disabled = false }
 })
 
 $('#settings-access-content').addEventListener('click', async (e) => {
-  const choice = e.target.closest('[data-pin-source]')
-  if (choice) {
-    pinChoice = choice.dataset.pinSource
-    return renderAccess()
+  const toggle = e.target.closest('[data-password-toggle]')
+  if (toggle) {
+    const input = document.getElementById(toggle.dataset.passwordToggle)
+    const show = input.type === 'password'
+    input.type = show ? 'text' : 'password'
+    toggle.setAttribute('aria-pressed', String(show))
+    const label = document.querySelector(`label[for="${input.id}"]`).textContent
+    toggle.setAttribute('aria-label', `${label} ${show ? 'verbergen' : 'anzeigen'}`)
+    toggle.title = `Passwort ${show ? 'verbergen' : 'anzeigen'}`
+    return
   }
   if (e.target.closest('#roles-suggest')) return suggestRights()
 })

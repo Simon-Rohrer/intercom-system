@@ -318,7 +318,8 @@ type BootstrapResponse struct {
 	AppVersion      VersionInfo      `json:"appVersion"`
 	// CentralRoles: roles are created, renamed and deleted in the Multiview
 	// (central login of the JMS server), not in Kesher's admin.
-	CentralRoles bool `json:"centralRoles,omitempty"`
+	CentralRoles    bool `json:"centralRoles,omitempty"`
+	CentralAdminPIN bool `json:"centralAdminPin,omitempty"`
 	// Secondary: this session only mirrors and remote-controls the role
 	// (e.g. the Kesher tile in JMS Control). It never occupies the role; its
 	// room changes and talk keys go to the device that really uses the role.

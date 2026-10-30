@@ -160,49 +160,19 @@ func TestWebSocketOriginsBehindCentralProxy(t *testing.T) {
 	}
 }
 
-func TestAdminPINChangeRevokesCentralAndLocalAdmins(t *testing.T) {
+func TestCentralAdminPasswordCannotBeChangedInKesher(t *testing.T) {
 	s := newCompanionTestServer(t)
-	state := configureCentralTestServer(t, s, true)
-	session := centralSessionFromResponse(t, s, postCentralLogin(s, signCentralTicket(t, testCentralSecret, state.claims("pin-ticket"))))
-	legacy := s.sessions.Create(User{Username: "admin"})
-	req := httptest.NewRequest(http.MethodPut, "/api/admin/pin", strings.NewReader(`{"newPin":"765432"}`))
-	rec := httptest.NewRecorder()
-	s.handleAdminPin(rec, req, session)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("PIN update status %d: %s", rec.Code, rec.Body.String())
-	}
-	if state.revocations != 1 {
-		t.Fatal("central admins were not revoked")
-	}
-	if _, ok := s.sessions.Get(session.Token); ok {
-		t.Fatal("central local token remains")
-	}
-	if _, ok := s.sessions.Get(legacy.Token); ok {
-		t.Fatal("independent local admin token remains")
-	}
-	stored, err := s.store.GetAdminPIN(context.Background())
-	if err != nil || stored != "765432" {
-		t.Fatal("new PIN not persisted")
-	}
-}
-
-func TestAdminPINChangeFailsClosedWhenRevocationUnavailable(t *testing.T) {
-	s := newCompanionTestServer(t)
-	state := configureCentralTestServer(t, s, true)
-	session := centralSessionFromResponse(t, s, postCentralLogin(s, signCentralTicket(t, testCentralSecret, state.claims("unavailable-revoke"))))
-	state.mu.Lock()
-	state.revocationUnavailable = true
-	state.mu.Unlock()
+	configureCentralTestServer(t, s, true)
 	req := httptest.NewRequest(http.MethodPut, "/api/admin/pin", strings.NewReader(`{"newPin":"765432"}`))
 	req.Header.Set("X-Admin-Pin", defaultAdminPIN)
 	rec := httptest.NewRecorder()
-	s.handleAdminPin(rec, req, session)
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("PIN update status %d", rec.Code)
+	s.handleAdminPin(rec, req, Session{})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status %d", rec.Code)
 	}
 	stored, err := s.store.GetAdminPIN(context.Background())
 	if err != nil || stored != defaultAdminPIN {
-		t.Fatal("PIN changed without central revocation")
+		t.Fatal("local password was changed")
 	}
 }
 

@@ -864,31 +864,38 @@ a.status-tile:hover { border-color: var(--accent-line); }
 /* ------------------------------------------------------------------ Benutzer & Rechte */
 
 .role-table td { vertical-align: top; }
+.role-table .switch { position: relative; }
+.role-table .switch input { width: 1px; height: 1px; margin: 0; }
 .role-name { font-weight: 650; white-space: nowrap; }
 .role-actions { display: flex; gap: 2px; margin: 6px 0 0 -8px; }
 .role-actions .icon-btn { width: 30px; height: 30px; }
 .role-actions .icon { width: 16px; height: 16px; }
 .icon-btn.danger:hover { color: var(--red); background: var(--red-soft); }
-.chip-set { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 11px;
-  border-radius: 999px;
-  border: 1px solid var(--line-strong);
-  background: var(--surface);
-  color: var(--text-2);
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  user-select: none;
+/* Mehrfachauswahl im bestehenden Rollenraster; die Liste bleibt im Scrollbereich. */
+.role-outputs { width: 290px; max-width: 76vw; }
+.role-outputs > summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 44px; padding: 10px 12px; list-style: none; cursor: pointer;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font-weight: 600;
 }
-.chip input { position: absolute; opacity: 0; pointer-events: none; }
-.chip:has(input:checked) { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-text); }
-.chip:has(input:checked)::before { content: "✓"; font-weight: 800; }
-.chip:has(input:focus-visible) { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.role-outputs > summary::-webkit-details-marker { display: none; }
+.role-outputs > summary:hover { background: var(--surface-2); }
+.role-outputs > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.role-outputs > summary .icon { width: 16px; height: 16px; flex: none; transition: transform 0.15s ease; }
+.role-outputs[open] > summary { border-color: var(--accent-line); background: var(--accent-soft); }
+.role-outputs[open] > summary .icon { transform: rotate(180deg); }
+.role-output-options {
+  margin-top: 6px; padding: 8px; max-height: 310px; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.role-output-options > p { margin: 2px 4px 8px; font-size: 12px; }
+.role-output-option { display: flex; align-items: center; gap: 8px; border-radius: 6px; }
+.role-output-option:hover { background: var(--surface-2); }
+.role-output-option .check { flex: 1; min-width: 0; min-height: 44px; padding: 6px 4px; font-size: 13px; }
+.role-output-option .check span { overflow-wrap: anywhere; }
+.role-output-option select { width: 120px; flex: none; min-height: 44px; padding-left: 8px; padding-right: 18px; font-size: 12.5px; }
 .pin-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; align-items: end; }
 .access-state { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: var(--radius-sm); margin-bottom: 18px; }
 .access-state.open { background: var(--amber-soft); border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent); }
@@ -1030,17 +1037,6 @@ a.status-tile:hover { border-color: var(--accent-line); }
 .chat-compose-status:empty { display: none; }
 .chat-compose-status.error { color: var(--red); }
 .chat-compose-status.ok { color: var(--green); }
-
-/* Rechte pro Multiview: aus / sehen / bearbeiten (Benutzer & Rechte) */
-.chip[data-role-output] { font: inherit; font-size: 12.5px; font-weight: 600; }
-.chip .chip-level { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
-.chip .chip-level:empty { display: none; }
-.chip.level-off { color: var(--muted); border-style: dashed; }
-.chip.level-view { background: var(--surface-2); border-color: var(--line-strong); color: var(--text); }
-.chip.level-view .chip-level { color: var(--muted); }
-.chip.level-view::before { content: "👁"; font-size: 12px; }
-.chip.level-edit { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-text); }
-.chip.level-edit::before { content: "✎"; font-weight: 800; }
 
 /* Anmeldung für alle Dienste: Tagescode und feste Geräte (Benutzer & Rechte) */
 .day-code { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; margin-bottom: 20px; }
@@ -1921,8 +1917,9 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: calc(100vh - 100px);
+  max-height: var(--settings-nav-height, calc(100vh - 100px));
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 12px;
   border-radius: 20px;
   border: 1px solid var(--line);
@@ -2458,7 +2455,36 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 }
 
 /* Diashow: Bereiche (Kalender) einzeln schalten */
+details.ss-areas { padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+details.ss-areas > summary { min-height: 32px; line-height: 32px; }
+.ss-areas .switch { position: relative; min-height: 44px; }
+.ss-areas .switch input { width: 1px; height: 1px; margin: 0; }
+.ss-areas .switch > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.ss-areas .switch-list { gap: 2px; }
+.ss-areas > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .ss-areas > summary .muted { margin-left: 6px; font-weight: 500; }
 .switch-list { display: grid; gap: 10px; }
 .switch-list .switch { font-weight: 500; }
 .switch:has(input:disabled) { opacity: 0.45; cursor: default; }
+
+/* Central administrator password: independent visibility controls. */
+.admin-password-input { position: relative; display: flex; align-items: center; }
+.admin-password-input input { width: 100%; padding-right: 48px; }
+.admin-password-input .icon-btn { position: absolute; right: 5px; width: 38px; height: 38px; }
+
+/* Übersicht: allgemeine Schnellzugriffe und rollenabhängige Monitoransichten. */
+.profile-shortcuts { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.profile-shortcuts > .app-grid { flex: 1; }
+.profile-shortcuts-divider { align-self: center; width: calc(100% - 48px); margin: 0; border: 0; border-top: 1px solid var(--line-strong, var(--line)); }
+.profile-multiviews { padding-top: 20px; }
+.profile-multiviews h3 { padding: 0 20px; text-align: center; font-size: 14px; font-weight: 600; color: var(--muted); }
+.profile-multiviews .app-grid { padding-top: 16px; }
+.profile-multiviews .app-icon svg { fill: none; stroke: currentColor; stroke-width: 1.9; }
+.profile-shortcuts .app-tile { min-width: 0; text-align: center; }
+.profile-shortcuts .app-label { max-width: 100%; overflow-wrap: anywhere; }
+.profile-multiviews-empty { padding: 16px 24px 24px; text-align: center; }
+.profile-shortcuts .app-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+@media (max-width: 760px) {
+  .profile-shortcuts-divider { width: calc(100% - 24px); }
+  .profile-multiviews { padding-top: 16px; }
+}

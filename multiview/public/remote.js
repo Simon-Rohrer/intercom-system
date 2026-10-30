@@ -71,6 +71,15 @@ async function start() {
   $('#user-role').textContent = user.open ? 'Zugang offen' : user.roleName
   $('#logout-btn').hidden = user.open
   $('#editor-link').hidden = !user.admin
+  $('#dashboard-link').hidden = Boolean(user.chatOnly)
+  $('#theme-btn').hidden = Boolean(user.chatOnly)
+  $('#avatar').disabled = Boolean(user.chatOnly)
+  if (user.chatOnly) {
+    applyPrefs({ ...currentPrefs(), theme: 'dark', wallpaper: 'blau' })
+    tab = 'chat'
+    renderTabs()
+    document.body.classList.remove('booting')
+  }
   renderTheme()
   // Chat schreiben nur angemeldet – dann als die eigene Rolle (Admin wählt eine)
   if (!user.open) {
@@ -172,6 +181,7 @@ function render() {
 
 /** Welche Bereiche es für diesen Nutzer gibt. */
 function availableTabs() {
+  if (user.chatOnly) return ['chat']
   return [
     'outputs',
     'chat',
@@ -478,7 +488,7 @@ function renderChat() {
   $('#chat-list').innerHTML =
     messages
       .map((m) => {
-        const mine = own ? m.fromRoleId === own : false
+        const mine = own ? m.fromRoleId === own && m.from === user.name : false
         const d = day(m.timestamp)
         const dayLine = d !== lastDay ? `<li class="rm-day">${esc(d)}</li>` : ''
         const sameSender = d === lastDay && lastFrom === `${m.from}|${m.fromRoleId}`

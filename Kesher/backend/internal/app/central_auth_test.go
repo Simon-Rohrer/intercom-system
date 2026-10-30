@@ -355,3 +355,56 @@ func TestCentralClientRequiresHTTPSAndValidCertificate(t *testing.T) {
 		t.Fatal("untrusted TLS certificate accepted")
 	}
 }
+
+func TestCentralMultiLoginUsesServerPolicy(t *testing.T) {
+	for _, multi := range []bool{false, true} {
+		t.Run(fmt.Sprint(multi), func(t *testing.T) {
+			s := newCompanionTestServer(t)
+			state := configureCentralTestServer(t, s, false)
+			if err := s.store.CreateRole(context.Background(), "licht", "Licht", "", "ptt", false); err != nil {
+				t.Fatal(err)
+			}
+			state.status.MultiLogin = multi
+			first := s.sessions.CreateCentral(User{ID: "first", Username: "Anna", RoleID: "licht"}, centralSessionStatus{SessionID: "other-session", Version: "version-1", ExpiresAt: time.Now().Add(time.Minute).UnixMilli()}, false)
+			body, _ := json.Marshal(centralAdminLoginRequest{Ticket: signCentralTicket(t, testCentralSecret, state.claims("multi-ticket"))})
+			rec := httptest.NewRecorder()
+			s.handleCentralSessionLogin(rec, httptest.NewRequest(http.MethodPost, "/api/login/central", strings.NewReader(string(body))))
+			expected := http.StatusConflict
+			if multi {
+				expected = http.StatusOK
+			}
+			if rec.Code != expected {
+				t.Fatalf("got %d, want %d: %s", rec.Code, expected, rec.Body.String())
+			}
+			if _, ok := s.sessions.Get(first.Token); !ok {
+				t.Fatal("existing person was logged out")
+			}
+			if multi {
+				second := centralSessionFromResponse(t, s, rec)
+				if second.Token == first.Token || second.Secondary {
+					t.Fatal("independent login was not created")
+				}
+				s.sessions.Delete(second.Token)
+				if _, ok := s.sessions.Get(first.Token); !ok {
+					t.Fatal("logout affected another person")
+				}
+			}
+		})
+	}
+}
+
+func TestChatOnlyCannotEnterKesherOrKeepExistingSession(t *testing.T) {
+	s := newCompanionTestServer(t)
+	state := configureCentralTestServer(t, s, false)
+	state.status.ChatOnly = true
+	body, _ := json.Marshal(centralAdminLoginRequest{Ticket: signCentralTicket(t, testCentralSecret, state.claims("chat-only-ticket"))})
+	rec := httptest.NewRecorder()
+	s.handleCentralSessionLogin(rec, httptest.NewRequest(http.MethodPost, "/api/login/central", strings.NewReader(string(body))))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("chat-only ticket returned %d", rec.Code)
+	}
+	session := s.sessions.CreateCentral(User{Username: state.status.Name, RoleID: state.status.RoleID}, state.status, false)
+	if matchesCentralSession(session, state.status) {
+		t.Fatal("chat-only session retained Kesher access")
+	}
+}

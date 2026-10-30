@@ -69,13 +69,15 @@ function parseCookies(header) {
  * Ältere Einstellungen ohne „edit“: alles Freigegebene war bearbeitbar – so bleibt es.
  */
 function normalizeRole(r) {
+  const chatOnly = r?.chatOnly === true
   const ids = (list) => (Array.isArray(list) ? list.filter((id) => typeof id === 'string') : [])
-  const outputs = ids(r?.outputs)
+  const outputs = chatOnly ? [] : ids(r?.outputs)
   const edit = Array.isArray(r?.edit) ? ids(r.edit).filter((id) => outputs.includes(id)) : [...outputs]
   return {
-    outputs, edit, editLayouts: Boolean(r && typeof r === 'object' && r.editLayouts !== false),
-    controlSlides: r?.controlSlides === true,
-    controlPis: r?.controlPis === true,
+    outputs, edit, editLayouts: !chatOnly && Boolean(r && typeof r === 'object' && r.editLayouts !== false),
+    controlSlides: !chatOnly && r?.controlSlides === true,
+    controlPis: !chatOnly && r?.controlPis === true,
+    chatOnly, multiLogin: r?.multiLogin === true,
   }
 }
 
@@ -193,6 +195,7 @@ function createAccess({
   onRevoke = () => {},
   kesherActiveRoles = async () => [],
   getRoles = () => [],
+  getRoleRights = () => null,
   ipOf = () => '',
   onChange = () => {},
   allowBootstrap = false,
@@ -479,6 +482,8 @@ function createAccess({
   }
 
   const validRole = (roleId) => roleStatus(roleId) === true
+  const rightsOf = (roleId) => normalizeRole(getRoleRights(roleId))
+  const chatOnlyRole = (roleId) => validRole(roleId) && rightsOf(roleId).chatOnly
 
   function trimFailures(collection, windowMs) {
     const now = Date.now()
@@ -512,7 +517,7 @@ function createAccess({
     try {
       const value = String(pin ?? '')
       let matches = false
-      if (/^\d{4,12}$/.test(value)) {
+      if (value.length >= 4 && value.length <= 128) {
         if (verifier || secret.adminPin?.kesher) {
           let timeoutTimer
           const timeout = new Promise((resolve) => {
@@ -675,9 +680,10 @@ function createAccess({
     if (bootstrapping && !enabled()) return { admin: true, open: true, name: '', roleId: ADMIN }
     const session = sessionOf(req)
     if (!session) return null
-    if (!session.admin && gatewayActive() && !machineOf(req) && !deviceGrant(req)) return null
+    if (!session.admin && !chatOnlyRole(session.roleId) && gatewayActive() && !machineOf(req) && !deviceGrant(req)) return null
     return {
       admin: session.admin, open: false, name: session.name, roleId: session.roleId,
+      chatOnly: !session.admin && chatOnlyRole(session.roleId),
       sessionId: session.id, group: session.group ?? session.id, expiresAt: session.expiresAt, version: session.version,
     }
   }
@@ -694,6 +700,7 @@ function createAccess({
     }
     return {
       active: true, sessionId: session.id, admin: session.admin, roleId: session.roleId,
+      chatOnly: !session.admin && chatOnlyRole(session.roleId), multiLogin: !session.admin && rightsOf(session.roleId).multiLogin,
       name: session.name, expiresAt: session.expiresAt, version: session.version,
     }
   }
@@ -744,6 +751,7 @@ function createAccess({
     const occupied = occupiedRoles()
     const ownRole = sessionOf(req)?.roleId
     for (const roleId of await rolesInKesher()) if (!occupied[roleId] && roleId !== ownRole) occupied[roleId] = KESHER_HOLDER
+    for (const roleId of Object.keys(occupied)) if (rightsOf(roleId).multiLogin) delete occupied[roleId]
     return occupied
   }
 
@@ -775,7 +783,7 @@ function createAccess({
     } else {
       if (roleStatus(roleId) === null) throw fail(503, 'Rollen werden geladen – bitte kurz warten')
       if (!validRole(roleId)) throw fail(400, 'Bitte eine gültige Rolle wählen')
-      if (gatewayActive() && !machineOf(req) && !deviceGrant(req)) throw fail(403, 'Bitte zuerst den Tagescode eingeben')
+      if (!chatOnlyRole(roleId) && gatewayActive() && !machineOf(req) && !deviceGrant(req)) throw fail(403, 'Bitte zuerst den Tagescode eingeben')
     }
     return lockRole(roleId, async () => {
       if (admin && (authenticatedVersion !== secret.version || authenticatedRevision !== adminRevision))
@@ -786,24 +794,24 @@ function createAccess({
       if (!admin) {
         const inKesher = ownSession?.roleId !== roleId && (await rolesInKesher()).has(roleId)
         if (roleStatus(roleId) === null) throw fail(503, 'Rollen werden geladen – bitte kurz warten')
-        if (!validRole(roleId) || (gatewayActive() && !machineOf(req) && !deviceGrant(req)))
+        if (!validRole(roleId) || (!chatOnlyRole(roleId) && gatewayActive() && !machineOf(req) && !deviceGrant(req)))
           throw fail(403, 'Die Rolle oder Gerätefreigabe ist nicht mehr gültig')
         const holders = Object.values(secret.sessions).filter((session) =>
           !session.admin && session.roleId === roleId && (session.group ?? session.id) !== ownGroup)
         const active = holders.filter(isActive)
-        if (active.length) {
+        if (!rightsOf(roleId).multiLogin && active.length) {
           const holder = active.sort((left, right) => right.seen - left.seen)[0]
           throw Object.assign(fail(409, 'Die Rolle ist schon angemeldet – von ' + holder.name + '. Bitte eine andere Rolle wählen.'),
             { holder: { name: holder.name, seen: holder.seen } })
         }
-        if (inKesher)
+        if (!rightsOf(roleId).multiLogin && inKesher)
           throw Object.assign(fail(409, 'Die Rolle ist schon angemeldet – direkt in Kesher. Bitte eine andere Rolle wählen.'),
             { holder: { name: KESHER_HOLDER, kesher: true } })
-        endSessions(holders, 'abgelaufen')
+        if (!rightsOf(roleId).multiLogin) endSessions(holders, 'abgelaufen')
       }
       if (ownSession)
         endSessions(Object.values(secret.sessions).filter((session) => (session.group ?? session.id) === ownGroup), 'neu angemeldet')
-      const device = admin ? null : deviceGrant(req)
+      const device = admin || chatOnlyRole(roleId) ? null : deviceGrant(req)
       const token = newSession({ name: cleanName, roleId, admin, device, machine: machineBinding(req) }, ipOf(req))
       res.setHeader('Set-Cookie', cookieFor(token, req))
       log('Zugang: ' + cleanName + ' angemeldet als ' + (admin ? 'Admin' : roleId))
@@ -816,6 +824,19 @@ function createAccess({
     res.setHeader('Set-Cookie', COOKIE + '=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' + secureSuffix(req))
   }
 
+  async function changeAdminPassword(body, user, req) {
+    if (body.source === 'kesher' || body.off) throw fail(400, 'Das Admin-Passwort wird ausschließlich in JMS Control verwaltet')
+    if (typeof body.pin !== 'string' || typeof body.confirmPin !== 'string' || body.pin !== body.confirmPin)
+      throw fail(400, 'Die neuen Passwörter stimmen nicht überein')
+    return setAdminPin({ pin: body.pin, currentPin: body.currentPin, source: 'own' }, user, req)
+  }
+
+  async function verifyCentralAdminPassword(pin, sourceIp) {
+    // Never delegate back to Kesher: this prevents a verification loop during migration.
+    if (pinSource() !== 'own') throw fail(503, 'Zentrales Admin-Passwort ist noch nicht eingerichtet')
+    return checkPin(pin, { ip: sourceIp, socket: { remoteAddress: sourceIp }, headers: {} })
+  }
+
   async function setAdminPin({ pin, currentPin, source, off }, user, req) {
     if (off) throw fail(400, 'Die zentrale Anmeldung kann nicht ohne Admin-PIN betrieben werden')
     const authenticatedVersion = secret.version
@@ -823,13 +844,13 @@ function createAccess({
     if (enabled() && (!user?.admin || !(await checkPin(currentPin, req))))
       throw fail(403, 'Bisherige PIN falsch')
     if (!enabled() && !bootstrapping) throw fail(503, 'Sicherheitsdaten sind nicht eingerichtet')
-    const value = String(pin ?? '').trim()
+    const value = String(pin ?? '')
     let nextPin
     if (source === 'kesher') {
       if (!(await checkPin(value, req, verifyKesherPin))) throw fail(403, 'Das ist nicht die Admin-PIN von Kesher')
       nextPin = { kesher: true }
     } else {
-      if (!/^\d{4,12}$/.test(value)) throw fail(400, 'Die PIN braucht 4 bis 12 Ziffern')
+      if (value.length < 4 || value.length > 128 || !value.trim()) throw fail(400, 'Das Passwort braucht 4 bis 128 Zeichen')
       nextPin = hashPin(value)
     }
     if (authenticatedVersion !== secret.version || authenticatedRevision !== adminRevision)
@@ -851,6 +872,7 @@ function createAccess({
    * freigeschaltet (wie mit dem Tagescode), Name und Rolle wählt man danach selbst.
    */
   function createQrToken(user, req, { mode = 'login' } = {}) {
+    if (!user?.admin && chatOnlyRole(user?.roleId)) throw fail(403, 'Diese Rolle darf ausschließlich chatten')
     prune()
     const session = rawSessionById(user?.sessionId)
     if (!validSession(session) || session.version !== user?.version || lookupSession(req)?.id !== session.id)
@@ -900,6 +922,7 @@ function createAccess({
     if (!entry || entry.expires <= Date.now()) return false
     const sourceSession = rawSessionById(entry.id)
     if (!validSession(sourceSession) || sourceSession.version !== entry.version || (entry.device && !validGrant(entry.device))) return false
+    if (!sourceSession.admin && chatOnlyRole(sourceSession.roleId)) return false
     if (entry.mode === 'unlock') return unlockByQr(entry, req, res)
     if (!matchesMachine(req, entry.machine)) return false
     if (!sourceSession.admin && gatewayActive() && !entry.device && !machineOf(req) && !deviceGrant(req)) return false
@@ -945,8 +968,8 @@ function createAccess({
       throw fail(400, 'Ungültiger SSO-Ziel- oder Browsernachweis')
     prune()
     const session = rawSessionById(user.sessionId)
-    const device = deviceGrant(req)
-    if (!session || (!session.admin && gatewayActive() && !machineOf(req) && !device)) return null
+    const device = user.chatOnly ? null : deviceGrant(req)
+    if (!session || (!session.admin && !user.chatOnly && gatewayActive() && !machineOf(req) && !device)) return null
     const ticket = randomToken()
     ssoTickets.set(sha256(ticket), {
       id: session.id, version: session.version, device, machine: session.machine, audienceOrigin, codeChallenge,
@@ -969,14 +992,14 @@ function createAccess({
     const session = rawSessionById(entry.id)
     if (!validSession(session) || session.version !== entry.version || (entry.device && !validGrant(entry.device))) return false
     if (!matchesMachine(req, entry.machine)) return false
-    if (!session.admin && gatewayActive() && !entry.device && !machineOf(req) && !deviceGrant(req)) return false
+    if (!session.admin && !chatOnlyRole(session.roleId) && gatewayActive() && !entry.device && !machineOf(req) && !deviceGrant(req)) return false
     const ownSession = lookupSession(req)
     if (ownSession && ownSession.id !== session.id && ownSession.group !== session.group) endSessions([ownSession], 'neu angemeldet')
     const token = randomToken()
     secret.sessions[sha256(token)] = session
     write()
     res.append('Set-Cookie', cookieFor(token, req))
-    if (entry.device) approveDevice(ip, req, res, entry.device)
+    if (entry.device && (session.admin || !chatOnlyRole(session.roleId))) approveDevice(ip, req, res, entry.device)
     return true
   }
 
@@ -1163,10 +1186,11 @@ function createAccess({
   }
 
   function check({ service, ip }, req) {
-    if (!gatewayActive()) return { action: 'allow', user: null }
     const level = SERVICE_LEVELS[service] ?? 'admin'
     const user = userOf(req)
     const machine = machineOf(req)
+    if (user?.chatOnly) return { action: service === 'multiview' ? 'allow' : 'forbidden', user }
+    if (!gatewayActive()) return { action: 'allow', user: null }
     if (!user && machine?.mode === 'station' && level === 'user' && machineServes(machine, service)) return { action: 'allow', user }
     if (!machine && !user?.admin && !deviceGrant(req)) return { action: 'code', user }
     if (!user) return { action: 'login', user: null }
@@ -1180,6 +1204,7 @@ function createAccess({
   }
 
   function createTicket(user, audience, key, { mirror = null } = {}) {
+    if (!user?.admin && chatOnlyRole(user?.roleId)) throw fail(403, 'Diese Rolle darf ausschließlich chatten')
     if (!key) throw fail(503, 'JMS_AUTH_SECRET ist nicht eingerichtet')
     const session = rawSessionById(user?.sessionId)
     if (!validSession(session) || session.version !== user?.version) throw fail(401, 'Bitte erneut anmelden')
@@ -1195,7 +1220,7 @@ function createAccess({
 
   return {
     enabled, pinSource, userOf, sessionOf, sessionIdOf, sessionStatusById, occupiedRoles, occupiedForLogin,
-    login, createSsoTicket, redeemSsoTicket, logout, setAdminPin, createQrToken, redeemQrToken, sessions, endSession, revokeAdmins,
+    login, createSsoTicket, redeemSsoTicket, logout, setAdminPin, changeAdminPassword, verifyCentralAdminPassword, createQrToken, redeemQrToken, sessions, endSession, revokeAdmins,
     gateway, setGateway, dayCode, renewDayCode, deviceStatus, devicesToday, redeemDayCode, check, trusted, createTicket,
     approvePermanent, permanentDevices, revokePermanent, refreshDeviceCookie,
     listMachines, createMachine, rotateMachine, reassignPiMachines, revokeMachine, machineOf, machineStatus, machineByFingerprint, machineServes,
@@ -1237,7 +1262,7 @@ function editableOutputs(config, user) {
  */
 function canEditLayout(config, user, layout) {
   const rights = roleRights(config, user)
-  if (!rights || !layout) return false
+  if (!rights || rights.chatOnly || !layout) return false
   if (rights.admin) return true
   if (layout.shared) return false
   if (layout.owner === user.roleId) return true
@@ -1248,7 +1273,7 @@ function canEditLayout(config, user, layout) {
 /** Layouts, die der Nutzer sieht (und auf seine Multiviews schalten darf). */
 function visibleLayouts(config, user) {
   const rights = roleRights(config, user)
-  if (!rights) return []
+  if (!rights || rights.chatOnly) return []
   if (rights.admin) return config.layouts
   const outputs = editableOutputs(config, user)
   return config.layouts.filter(

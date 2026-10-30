@@ -87,7 +87,7 @@ async function pullFromCentral() {
   if (!sso?.origin || sso.central) return false
   const me = await getJson('/api/me')
   if (me?.user && !me.user.open) {
-    location.replace(next)
+    await continueAfterLogin()
     return true
   }
   const back = location.pathname + location.search.replace(/[?&]sso=0/, '').replace(/^&/, '?')
@@ -99,6 +99,14 @@ async function pullFromCentral() {
 /** Nach dem Anmelden weiter – an einer anderen Adresse über die zentrale, damit es dort auch gilt. */
 async function continueAfterLogin() {
   const sso = await ssoInfo
+  const me = await getJson('/api/me')
+  if (me?.user?.chatOnly) {
+    const chat = '/remote.html?tab=chat'
+    if (sso?.origin && !sso.central) {
+      return location.replace('/.jms-auth/sso/push?next=/.jms-auth/chat')
+    }
+    return location.replace(chat)
+  }
   if (sso?.origin && !sso.central) return location.replace(`/.jms-auth/sso/push?next=${encodeURIComponent(next)}`)
   location.replace(next)
 }
@@ -120,13 +128,8 @@ async function main() {
   if (!params.has('wechseln')) {
     watchLogin('', { url: api('/api/me'), onChange: (state) => state.user && !state.user.open && continueAfterLogin() })
   }
-  const device = await getJson('/api/device')
-  const roleSwitchNeedsCode =
-    !adminOnly &&
-    params.has('wechseln') &&
-    me?.user?.admin &&
-    device?.hasGrant === false
-  if (!adminOnly && ((device?.required && !device.approved) || roleSwitchNeedsCode)) return showCodeStep()
+  // Choose the role first. Restricted chat roles need no device code; other roles
+  // still enter the existing code step when the server requires approval.
   showLoginStep()
 }
 
@@ -409,6 +412,11 @@ async function showLoginStep() {
     const admin = $('#role').value === 'admin'
     $('#pin-field').hidden = !admin
     $('#pin').required = admin
+    const chatOnly = roles.find((role) => role.id === $('#role').value)?.chatOnly
+    $('#login-lead').textContent = chatOnly
+      ? 'Nur Chat: Name eingeben und anmelden. Keine PIN, kein QR-Code und kein Tagescode erforderlich.'
+      : admin ? 'Als Admin anmelden – Name und Admin-PIN eingeben.'
+        : 'Name eingeben und Rolle wählen. Falls dein Gerät noch nicht freigeschaltet ist, folgt der Tagescode.'
   }
   syncPin()
   $('#role').addEventListener('change', syncPin)

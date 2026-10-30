@@ -4834,6 +4834,7 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request, session
 		AckEnabled:      s.isAckEnabled(),
 		AppVersion:      GetVersionInfo(),
 		CentralRoles:    s.cfg.JMSAuthSecret != "",
+		CentralAdminPIN: s.cfg.JMSAuthURL != "",
 		Secondary:       session.Secondary,
 	})
 }
@@ -6224,6 +6225,10 @@ type updateAdminPINRequest struct {
 }
 
 func (s *Server) handleAdminPin(w http.ResponseWriter, r *http.Request, session Session) {
+	if s.cfg.JMSAuthURL != "" {
+		http.Error(w, "Admin-Passwort wird zentral in JMS Control verwaltet", http.StatusConflict)
+		return
+	}
 	if !s.requireAdmin(w, r, session) {
 		return
 	}

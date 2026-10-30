@@ -3,6 +3,7 @@
 const crypto = require('crypto')
 const http = require('http')
 const https = require('https')
+const net = require('net')
 
 const DEFAULT_ORIGINS = [
   ...['intercom.internal', 'kesher.internal', 'jmscontrol.internal', 'multiview.internal',
@@ -60,7 +61,9 @@ function safePath(value, fallback = '/') {
 function verifySignedRequest(secret, action, body, now = Date.now()) {
   if (!secret || !body || !Number.isSafeInteger(body.issuedAt) || Math.abs(now - body.issuedAt) > 30_000) return false
   if (!/^[a-f0-9]{64}$/.test(body.signature || '')) return false
-  const message = action === 'introspect' ? `kesher:introspect:${body.sessionId}:${body.issuedAt}`
+  if (action === 'verify-pin' && (typeof body.pin !== 'string' || body.pin.length > 128 || !net.isIP(body.sourceIp || ''))) return false
+  const message = action === 'verify-pin' ? `kesher:verify-pin:${body.sourceIp}:${body.issuedAt}:${crypto.createHash('sha256').update(body.pin).digest('hex')}`
+    : action === 'introspect' ? `kesher:introspect:${body.sessionId}:${body.issuedAt}`
     : action === 'machine' ? `kesher:machine:${body.deviceId}:${body.version}:${body.issuedAt}` : `kesher:${action}:${body.issuedAt}`
   if (action === 'introspect' && (typeof body.sessionId !== 'string' || !body.sessionId || body.sessionId.length > 128)) return false
   if (action === 'machine' && [body.deviceId, body.version].some((value) => typeof value !== 'string' || !value || value.length > 128)) return false

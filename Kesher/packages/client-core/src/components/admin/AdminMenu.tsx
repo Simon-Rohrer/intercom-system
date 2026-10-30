@@ -102,7 +102,7 @@ export function AdminMenu({
               </div>
             ) : active.id === "security" ? (
               <div className="admin-section-cards">
-                <AdminPinCard onUpdateAdminPin={onUpdateAdminPin} />
+                <AdminPinCard onUpdateAdminPin={onUpdateAdminPin} central={!!appData.centralAdminPin} />
               </div>
             ) : (
               <AdminConfigCard

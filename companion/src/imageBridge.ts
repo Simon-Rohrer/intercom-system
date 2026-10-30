@@ -37,9 +37,12 @@ export class ImageBridge {
   private lastConnectAt = 0;
   private lastDisconnectAt = 0;
 
-  // Store images by slot and by composite bank/slot key.
+  // Page 0 uses keys 0..99. Legacy latest-slot lookups must live in
+  // separate maps or any other page's update overwrites page 0.
   private imageStorage = new Map<number, Buffer>();
   private textStorage = new Map<number, string>();
+  private latestSlotImages = new Map<number, Buffer>();
+  private latestSlotTexts = new Map<number, string>();
 
   constructor(
     private instance: ModuleInstance,
@@ -105,11 +108,11 @@ export class ImageBridge {
     }
 
     // Preserve direct lookup for old feedback options that still store composite values.
-    const rawDirect = this.imageStorage.get(rawSlot);
+    const rawDirect = rawSlot >= 100 ? this.imageStorage.get(rawSlot) : undefined;
     if (rawDirect) return rawDirect;
 
     // Fallback for legacy feedback option storage by plain slot index.
-    const direct = this.imageStorage.get(slot);
+    const direct = this.latestSlotImages.get(slot);
     if (direct) return direct;
 
     // Backward-compatible lookup for legacy composite key format.
@@ -139,10 +142,10 @@ export class ImageBridge {
       return this.textStorage.get(page * 100 + slot);
     }
 
-    const rawDirect = this.textStorage.get(rawSlot);
+    const rawDirect = rawSlot >= 100 ? this.textStorage.get(rawSlot) : undefined;
     if (rawDirect) return rawDirect;
 
-    const direct = this.textStorage.get(slot);
+    const direct = this.latestSlotTexts.get(slot);
     if (direct) return direct;
 
     const legacy = this.textStorage.get(100 + slot);
@@ -163,6 +166,8 @@ export class ImageBridge {
   clearImages(): void {
     this.imageStorage.clear();
     this.textStorage.clear();
+    this.latestSlotImages.clear();
+    this.latestSlotTexts.clear();
   }
 
   /**
@@ -338,21 +343,11 @@ export class ImageBridge {
       }
 
       // Keep plain slot storage only for legacy lookups where no page is known.
-      this.imageStorage.set(buttonIndex, imageBuffer);
+      this.latestSlotImages.set(buttonIndex, imageBuffer);
       if (displayText) {
-        this.textStorage.set(buttonIndex, displayText);
+        this.latestSlotTexts.set(buttonIndex, displayText);
       } else {
-        this.textStorage.delete(buttonIndex);
-      }
-
-      // Preserve raw keys if upstream sends composite indices.
-      if (rawButtonIndex !== buttonIndex) {
-        this.imageStorage.set(rawButtonIndex, imageBuffer);
-        if (displayText) {
-          this.textStorage.set(rawButtonIndex, displayText);
-        } else {
-          this.textStorage.delete(rawButtonIndex);
-        }
+        this.latestSlotTexts.delete(buttonIndex);
       }
 
       this.instance.log(

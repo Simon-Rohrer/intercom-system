@@ -5,9 +5,29 @@ import {
 } from "@companion-module/base";
 import type { ModuleInstance } from "./main.js";
 import {
-  deriveTextColor,
+  normalizePreviewImageBase64,
   parseButtonBgColor,
 } from "./presets.js";
+import { hasPadding, padPng, type Padding } from "./pngPadding.js";
+
+// Zuletzt verschobene Bilder je Taste: Feedbacks laufen oft (Blinken), das PNG nur bei Änderung neu rechnen
+const paddedImages = new Map<string, { source: string; key: string; png64: string }>();
+
+function paddedPng64(feedbackId: string, png64: string, padding: Padding): string {
+  if (!hasPadding(padding)) return png64;
+  const key = [padding.top, padding.right, padding.bottom, padding.left].join(",");
+  const cached = paddedImages.get(feedbackId);
+  if (cached && cached.source === png64 && cached.key === key) return cached.png64;
+  let result = png64;
+  try {
+    result = padPng(Buffer.from(png64, "base64"), padding)?.toString("base64") || png64;
+  } catch {
+    result = png64;
+  }
+  if (paddedImages.size > 500) paddedImages.clear();
+  paddedImages.set(feedbackId, { source: png64, key, png64: result });
+  return result;
+}
 
 function optionValue(value: unknown): unknown {
   if (
@@ -235,8 +255,6 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
         };
         const bgcolor = parseButtonBgColor(button.color);
         return {
-          text: self.resolveSyncedButtonLabel(button),
-          color: deriveTextColor(bgcolor),
           bgcolor,
         };
       },
@@ -273,6 +291,16 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
           label: "Kesher source profile username",
           default: "",
         },
+        {
+          id: "paddingInfo",
+          type: "static-text",
+          label: "Bild verschieben (px)",
+          value: "Abstand des Kesher-Bilds zum Tastenrand in Pixeln (Taste = 72 × 72 px). Negative Werte schieben über den Rand. Den Text verschiebt Companion selbst: Position im Stil bzw. bei Ebenen-Tasten X/Y/Breite/Höhe.",
+        },
+        { id: "padTop", type: "number", label: "Abstand oben (px)", default: 0, min: -72, max: 72 },
+        { id: "padBottom", type: "number", label: "Abstand unten (px)", default: 0, min: -72, max: 72 },
+        { id: "padLeft", type: "number", label: "Abstand links (px)", default: 0, min: -72, max: 72 },
+        { id: "padRight", type: "number", label: "Abstand rechts (px)", default: 0, min: -72, max: 72 },
       ],
       callback: (feedback) => {
         // Keep legacy compatibility for existing buttons that still store bankIndex.
@@ -303,13 +331,11 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
         const button = importedButton || (pageNumber === undefined
           ? self.getCurrentPageButtonConfig(slotIndex)
           : self.getProfileButtonConfig(pageNumber, slotIndex)) ||
-          self.getCurrentPageButtonConfig(slotIndex) ||
           { index: slotIndex };
         const bgcolor = parseButtonBgColor(button.color);
-        const liveText = self.getButtonText(slotIndex, pageNumber);
+        // Label and text colour belong to Companion Style. Live Kesher
+        // updates must not replace user text, blank labels or variables.
         const fallbackStyle = {
-          text: liveText || self.resolveSyncedButtonLabel(button),
-          color: deriveTextColor(bgcolor),
           bgcolor,
         };
 
@@ -322,10 +348,19 @@ export function UpdateFeedbacks(self: ModuleInstance): void {
         // Companion takes the image only as base64 text (png64) – a "png" buffer was silently
         // dropped, so keys showed just the black fallback text without colours/state.
         const img = self.getButtonImage(slotIndex, pageNumber);
-        const result: CompanionAdvancedFeedbackResult = img
+        // Inactive pages may not have streamed a live image yet after startup.
+        // Use that exact button's published preview until its first update.
+        const sourcePng64 = img?.toString("base64") || normalizePreviewImageBase64(button.previewImageBuffer);
+        const png64 = sourcePng64 && paddedPng64(feedback.id, sourcePng64, {
+          top: numberOption(feedbackOptions, ["padTop"], 0),
+          right: numberOption(feedbackOptions, ["padRight"], 0),
+          bottom: numberOption(feedbackOptions, ["padBottom"], 0),
+          left: numberOption(feedbackOptions, ["padLeft"], 0),
+        });
+        const result: CompanionAdvancedFeedbackResult = png64
           ? {
               ...fallbackStyle,
-              png64: img.toString("base64"),
+              png64,
               pngalignment: "center:center",
               show_topbar: false,
             }

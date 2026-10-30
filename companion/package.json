@@ -1,9 +1,10 @@
 {
   "name": "companion-module-kesher",
-  "version": "0.2.5",
+  "version": "0.2.9",
   "main": "dist/main.js",
   "type": "module",
   "scripts": {
+    "test": "node --test test/*.test.cjs",
     "build": "rimraf dist && tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch",
     "package": "npm run build && companion-module-build"

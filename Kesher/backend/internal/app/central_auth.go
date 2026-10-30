@@ -39,13 +39,15 @@ type centralTicketClaims struct {
 }
 
 type centralSessionStatus struct {
-	Active    bool   `json:"active"`
-	SessionID string `json:"sessionId"`
-	Admin     bool   `json:"admin"`
-	RoleID    string `json:"roleId"`
-	Name      string `json:"name"`
-	ExpiresAt int64  `json:"expiresAt"`
-	Version   string `json:"version"`
+	ChatOnly   bool   `json:"chatOnly"`
+	MultiLogin bool   `json:"multiLogin"`
+	Active     bool   `json:"active"`
+	SessionID  string `json:"sessionId"`
+	Admin      bool   `json:"admin"`
+	RoleID     string `json:"roleId"`
+	Name       string `json:"name"`
+	ExpiresAt  int64  `json:"expiresAt"`
+	Version    string `json:"version"`
 }
 
 var errInvalidCentralTicket = errors.New("invalid ticket")
@@ -183,6 +185,9 @@ func (s *Server) revokeSession(session Session) {
 }
 
 func matchesCentralSession(session Session, status centralSessionStatus) bool {
+	if status.ChatOnly {
+		return false
+	}
 	if session.CentralMirror {
 		return status.Active && status.SessionID == session.CentralSessionID && status.Version == session.CentralVersion && status.ExpiresAt > time.Now().UnixMilli() && !session.CentralAdmin
 	}
@@ -312,7 +317,7 @@ func (s *Server) handleCentralLogin(w http.ResponseWriter, r *http.Request, admi
 		return
 	}
 	status, err := s.centralStatus(r.Context(), claims.SessionID)
-	if err != nil || status.Version != claims.Version || status.Admin != claims.Admin || status.Name != claims.Name || status.RoleID != claims.RoleID {
+	if err != nil || status.ChatOnly || status.Version != claims.Version || status.Admin != claims.Admin || status.Name != claims.Name || status.RoleID != claims.RoleID {
 		http.Error(w, "central session invalid", http.StatusUnauthorized)
 		return
 	}
@@ -337,7 +342,7 @@ func (s *Server) handleCentralLogin(w http.ResponseWriter, r *http.Request, admi
 			http.Error(w, "invalid role", http.StatusBadRequest)
 			return
 		}
-		if existing, conflict := s.sessions.LatestForRole(claims.RoleID); conflict && !req.Secondary && !existing.Secondary && existing.CentralSessionID != claims.SessionID {
+		if existing, conflict := s.sessions.LatestForRole(claims.RoleID); conflict && !status.MultiLogin && !req.Secondary && !existing.Secondary && existing.CentralSessionID != claims.SessionID {
 			s.writeJSON(w, http.StatusConflict, LoginConflictResponse{RequiresTakeover: true, ConflictRoleID: claims.RoleID, ConflictRoleName: s.roleNameByID(r.Context(), claims.RoleID), ConflictUsername: existing.Username})
 			return
 		}

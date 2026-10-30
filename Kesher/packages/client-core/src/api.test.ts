@@ -355,6 +355,13 @@ describe("api helpers", () => {
     expect(data.self.id).toBe("u1");
   });
 
+  it("preserves the central admin password authority in authenticated bootstrap", async () => {
+    server.use(http.get("http://localhost/api/bootstrap", () =>
+      HttpResponse.json({ self: { id: "admin", username: "Admin" }, users: [], roles: [], rooms: [], centralAdminPin: true }),
+    ));
+    expect((await bootstrap("token-123")).centralAdminPin).toBe(true);
+  });
+
   it("keeps the mirror flag of a secondary session (Kesher tile in JMS Control)", async () => {
     server.use(
       http.get("http://localhost/api/bootstrap", () =>

@@ -87,3 +87,18 @@ test('Pi configuration uses the authenticated registry association and never the
   assert.deepEqual(stationLauncherConfig(raspberry, { capabilities: [], raspberryClientId: 'pi1' }), { managed: false })
   assert.equal(stationLauncherConfig(raspberry, { capabilities: ['pi-config'], raspberryClientId: 'unknown' }).config.clients.length, 0)
 })
+
+
+test('chat-only configuration and websocket feed exclude every other system', () => {
+  const original = config()
+  original.access.roles.tech = { chatOnly: true, outputs: ['one'], editLayouts: true, controlSlides: true }
+  const user = { roleId: 'tech', chatOnly: true }
+  const visible = viewConfig(original, user)
+  assert.deepEqual(visible.outputs, [])
+  assert.deepEqual(visible.layouts, [])
+  assert.equal(visible.access.roles.tech.editLayouts, false)
+  for (const type of ['atem', 'ppstage', 'propresenter', 'levels', 'churchtools', 'uplink', 'youtube', 'slideshow', 'devices', 'screens', 'templates_changed'])
+    assert.equal(filterMessage({ type, private: 'secret' }, original, user), null, type)
+  const chat = filterMessage({ type: 'chat', rooms: [], messages: [{ id: 'global' }, { id: 'private', audience: ['light'] }] }, original, user)
+  assert.deepEqual(chat.messages.map(m => m.id), ['global'])
+})

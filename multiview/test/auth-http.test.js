@@ -250,3 +250,12 @@ test('Raw WebSocket proxy preserves frames and closes both sides on central revo
   guard.revoke(['session-one'])
   await Promise.all([clientClosed, upstreamClosed])
 })
+
+test('signed central password verification binds password and source IP, rejects stale or forged requests', () => {
+  const secret = 'server-only-test-secret'
+  const body = { pin: 'A password ä!', sourceIp: '192.0.2.10', issuedAt: Date.now() }
+  body.signature = crypto.createHmac('sha256', secret).update(`kesher:verify-pin:${body.sourceIp}:${body.issuedAt}:${crypto.createHash('sha256').update(body.pin).digest('hex')}`).digest('hex')
+  assert.equal(verifySignedRequest(secret, 'verify-pin', body), true)
+  for (const change of [{ pin: 'changed' }, { sourceIp: '192.0.2.11' }, { sourceIp: 'invalid' }, { issuedAt: body.issuedAt - 60000 }, { signature: '0'.repeat(64) }])
+    assert.equal(verifySignedRequest(secret, 'verify-pin', { ...body, ...change }), false)
+})

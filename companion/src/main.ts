@@ -515,9 +515,7 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
 
   getButtonEffectValue(buttonIndex: number, pageNumber?: number): number {
     const page = Number.isFinite(pageNumber) ? Math.trunc(pageNumber as number) : this.currentPageNumber;
-    const pageScoped = this.getButtonImageEffectValue(buttonIndex, page);
-    if (pageScoped !== undefined) return pageScoped;
-    return this.buttonImageEffectValues.get(buttonIndex) ?? 0;
+    return this.getButtonImageEffectValue(buttonIndex, page) ?? 0;
   }
 
   getCurrentPageButtonEffectValue(buttonIndex: number): number {
@@ -760,14 +758,12 @@ export class ModuleInstance extends InstanceBase<ModuleConfig> {
     const value = Number.isFinite(effectValue) ? Math.trunc(effectValue) : 0;
     if (slot < 0 || slot > 99) return;
 
-    const page = Number.isFinite(pageNumber) ? Math.trunc(pageNumber as number) : -1;
-    const key = page >= 0 ? page * 100 + slot : slot;
+    const page = Number.isFinite(pageNumber) ? Math.trunc(pageNumber as number) : this.currentPageNumber;
+    if (page < 0) return;
+    const key = page * 100 + slot;
     if (this.buttonImageEffectValues.get(key) === value) return;
 
     this.buttonImageEffectValues.set(key, value);
-    if (page === this.currentPageNumber) {
-      this.buttonImageEffectValues.set(slot, value)
-    }
     this.checkFeedbacks("dynamic_button_image");
   }
 

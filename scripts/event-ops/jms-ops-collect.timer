@@ -1,0 +1,8 @@
+[Unit]
+Description=JMS Betriebsstatus jede Minute aktualisieren
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+[Install]
+WantedBy=timers.target

@@ -5,6 +5,9 @@ const { launcherConfig } = require('./raspberry-pis')
 
 function viewConfig(config, user, station = null) {
   if (user?.admin) return config
+  if (user?.chatOnly || roleRights(config, user)?.chatOnly)
+    return { outputs: [], layouts: [], sources: [], screens: [], raspberry: { managed: false, clients: [] },
+      access: { roles: { [user.roleId]: roleRights(config, user) } } }
   if (!user && station?.capabilities?.some((capability) => ['display', 'control'].includes(capability)))
     return { ...config, raspberry: { managed: false, clients: [] }, access: { roles: {} } }
   const outputs = allowedOutputs(config, user)
@@ -30,6 +33,7 @@ function filterMessage(msg, config, user, station = null) {
     user = { roleId: station.roleId, admin: false }
   }
   if (!user) return null
+  if ((user.chatOnly || roleRights(config, user)?.chatOnly) && !['config', 'server', 'chat', 'chatFlash'].includes(msg.type)) return null
   if (msg.type === 'config') return { ...msg, config: viewConfig(config, user) }
   // Nur die Versionskennung – damit offene Seiten nach einem Update von selbst neu laden
   if (msg.type === 'server') return { type: 'server', bootId: msg.bootId }
@@ -49,4 +53,17 @@ function stationLauncherConfig(raspberry, machine) {
   return launcherConfig(raspberry, { clientId: machine.raspberryClientId })
 }
 
-module.exports = { viewConfig, filterMessage, stationLauncherConfig }
+// Explicit allowlist: a chat session cannot use another API, download, proxy or control page.
+function chatOnlyRequestAllowed(method, requestPath) {
+  const path = requestPath.replace(/^\/\.jms-auth(?=\/)/, '')
+  const read = method === 'GET' || method === 'HEAD'
+  if (read && ['/api/me', '/api/login/roles', '/api/device', '/api/sso', '/api/chat', '/check', '/login',
+    '/chat', '/sso/start', '/sso/issue', '/sso/accept', '/sso/push'].includes(path)) return true
+  if (method === 'POST' && ['/api/login', '/api/logout', '/logout', '/api/chat/send'].includes(path)) return true
+  if (!read) return false
+  return ['/remote.html', '/login.html', '/remote.js', '/remote.css', '/admin.css', '/login.js',
+    '/common.js', '/rights.js', '/theme.js', '/theme-boot.js', '/avatar.js', '/chat-compose.js',
+    '/legacy-runtime.js', '/services.js', '/watch-login.js', '/jms-logo.svg', '/prediger-icon.png'].includes(path) || /^\/fonts\/[a-z0-9-]+\.woff2$/.test(path) || /^\/api\/wallpaper\/[a-z0-9-]+\.jpg$/.test(path)
+}
+
+module.exports = { viewConfig, filterMessage, stationLauncherConfig, chatOnlyRequestAllowed }

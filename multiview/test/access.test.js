@@ -169,7 +169,7 @@ test('ungültige oder doppelte Cookies verursachen keinen Absturz und keine Anme
 
 test('unbekannte Rolle hat keine Rechte zum Erstellen von Layouts', () => {
   const rights = roleRights({ access: { roles: {} } }, { roleId: 'unknown', admin: false })
-  assert.deepEqual(rights, { admin: false, outputs: [], edit: [], editLayouts: false, controlSlides: false, controlPis: false })
+  assert.deepEqual(rights, { admin: false, outputs: [], edit: [], editLayouts: false, controlSlides: false, controlPis: false, chatOnly: false, multiLogin: false })
   assert.equal(roleRights({ access: { roles: {} } }, { roleId: '__proto__', admin: false }).editLayouts, false)
 })
 
@@ -629,7 +629,7 @@ test('Sessionstatus liefert keine Tokens und abgelaufene Sessions werden ausdrü
   const cookies = await loginAs(access)
   const user = access.userOf(request(cookies))
   const state = access.sessionStatusById(user.sessionId)
-  assert.deepEqual(Object.keys(state).sort(), ['active', 'admin', 'expiresAt', 'name', 'roleId', 'sessionId', 'version'].sort())
+  assert.deepEqual(Object.keys(state).sort(), ['active', 'admin', 'chatOnly', 'multiLogin', 'expiresAt', 'name', 'roleId', 'sessionId', 'version'].sort())
   assert.equal(JSON.stringify(state).includes(cookies.mv_session), false)
   access.endSession(user.sessionId)
   assert.equal(access.sessionStatusById(user.sessionId).active, false)
@@ -729,4 +729,77 @@ test('Feste IP-Adresse und Freigabe ohne Ablauf', async () => {
   restarted.revokePermanent(ip.id)
   assert.equal(restarted.deviceStatus(OTHER, request({}, OTHER)).approved, false)
   assert.equal(restarted.userOf(request(ton, OTHER)), null)
+})
+
+
+test('chat-only login needs no device approval, permits independent sessions and cannot escalate', async () => {
+  const rights = { chatOnly: true, multiLogin: true, outputs: ['private'], editLayouts: true, controlSlides: true }
+  const { access, dataDir } = await setup({ getRoleRights: () => rights })
+  access.setGateway({ enabled: true })
+  const [first, second] = await Promise.all([
+    loginAs(access, 'video', {}, CLIENT, 'Anna'), loginAs(access, 'video', {}, CLIENT, 'Ben'),
+  ])
+  assert.equal(access.userOf(request(first)).chatOnly, true)
+  assert.equal(access.userOf(request(second)).name, 'Ben')
+  assert.notEqual(first.mv_session, second.mv_session)
+  assert.equal(access.deviceStatus(CLIENT, request(first)).hasGrant, false)
+  assert.equal((await access.occupiedForLogin(request())).video, undefined)
+  for (const service of ['kesher', 'dashboard', 'companion', 'portainer', 'glances', 'dns', 'router'])
+    assert.equal(access.check({ service }, request(first)).action, 'forbidden', service)
+  assert.throws(() => access.createQrToken(access.userOf(request(first)), request(first)), /ausschließlich chatten/)
+  assert.throws(() => access.createTicket(access.userOf(request(first)), 'kesher', 'fixture'), /ausschließlich chatten/)
+  const f = flow()
+  const ticket = access.createSsoTicket(CLIENT, request(first), f.issue)
+  const accepted = response()
+  assert.equal(access.redeemSsoTicket(ticket, CLIENT, request(), accepted, f.redeem), true)
+  assert.equal(accepted.cookies.jms_device, undefined)
+  assert.equal(access.userOf(request(accepted.cookies)).chatOnly, true)
+  rights.multiLogin = false
+  await assert.rejects(loginAs(access, 'video', {}, CLIENT, 'Chris'), { status: 409 })
+  assert.equal(access.userOf(request(second)).name, 'Ben')
+  access.logout(request(first), response())
+  assert.equal(access.userOf(request(second)).name, 'Ben')
+  const restored = create({ dataDir, getRoleRights: () => rights })
+  assert.equal(restored.userOf(request(second)).chatOnly, true)
+  rights.chatOnly = false
+  assert.equal(restored.userOf(request(second)), null)
+  await assert.rejects(loginAs(restored, 'video', {}, CLIENT, 'Chris'), { status: 403 })
+})
+
+test('ordinary multi-login still requires the day code and preserves both sessions', async () => {
+  const { access } = await setup({ getRoleRights: () => ({ multiLogin: true }), kesherActiveRoles: async () => ['video'] })
+  access.setGateway({ enabled: true })
+  await assert.rejects(loginAs(access), { status: 403 })
+  const [a, b] = await Promise.all([loginAs(access, 'video', approve(access), CLIENT, 'Anna'), loginAs(access, 'video', approve(access), CLIENT, 'Ben')])
+  assert.equal(access.userOf(request(a)).name, 'Anna')
+  assert.equal(access.userOf(request(b)).name, 'Ben')
+  assert.equal(access.sessionStatusById(access.userOf(request(a)).sessionId).multiLogin, true)
+})
+
+test('central password change validates old password and confirmation, stores hash and revokes sessions', async () => {
+  const { access, dataDir } = await setup()
+  const cookies = await loginAs(access, 'admin')
+  const req = request(cookies)
+  const user = access.userOf(req)
+  await assert.rejects(access.changeAdminPassword({ currentPin: '123456', pin: 'new secret', confirmPin: 'different' }, user, req), /stimmen nicht/)
+  await assert.rejects(access.changeAdminPassword({ currentPin: 'wrong', pin: 'new secret', confirmPin: 'new secret' }, user, req), /Bisherige PIN falsch/)
+  await assert.rejects(access.changeAdminPassword({ currentPin: '123456', pin: 'new secret', confirmPin: 'new secret', source: 'kesher' }, user, req), /ausschließlich/)
+  await access.changeAdminPassword({ currentPin: '123456', pin: 'new secret ä!', confirmPin: 'new secret ä!' }, user, req)
+  assert.equal(access.userOf(req), null)
+  assert.equal(access.pinSource(), 'own')
+  const stored = fs.readFileSync(path.join(dataDir, 'access-secret.json'), 'utf8')
+  assert.ok(!stored.includes('new secret'))
+  assert.equal(await access.verifyCentralAdminPassword('new secret ä!', '192.0.2.21'), true)
+  assert.equal(await access.verifyCentralAdminPassword('123456', '192.0.2.21'), false)
+  await access.login({ name: 'Admin', roleId: 'admin', pin: 'new secret ä!' }, request({}, '192.0.2.22'), response())
+})
+
+test('central verification never delegates back to Kesher', async () => {
+  const { access, dataDir } = await setup()
+  access.flush()
+  const stored = JSON.parse(fs.readFileSync(path.join(dataDir, 'access-secret.json')))
+  stored.adminPin = { kesher: true }
+  fs.writeFileSync(path.join(dataDir, 'access-secret.json'), JSON.stringify(stored))
+  const legacy = create({ dataDir, verifyKesherPin: () => { throw Error('must not delegate') } })
+  await assert.rejects(legacy.verifyCentralAdminPassword('123456', '192.0.2.1'), /noch nicht eingerichtet/)
 })

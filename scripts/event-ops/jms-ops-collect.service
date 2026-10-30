@@ -1,0 +1,13 @@
+[Unit]
+Description=JMS Betriebsuebersicht nur lesend erfassen
+After=docker.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/jms-ops/collect-ops.py
+Nice=15
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/jms-ops /var/lib/docker/volumes/multiview_multiview-data/_data

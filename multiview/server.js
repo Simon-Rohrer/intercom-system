@@ -14,6 +14,8 @@ const { createKesherRoles } = require('./kesher-roles')
 const { createNeighbors } = require('./neighbors')
 const { normalizeRaspberry, parsePiRequest, createPiRegistry, piScreenId, answerVersion } = require('./raspberry-pis')
 const { createChurchTools } = require('./churchtools')
+const { createEventOps, eventOpsRouter } = require('./event-ops')
+const { createOpsChecks } = require('./event-ops-checks')
 const { createUplink, normalizeUplink } = require('./uplink')
 const { createYouTube } = require('./youtube')
 const { createMonarch } = require('./monarch')
@@ -23,7 +25,7 @@ const { createMessageLinks } = require('./message-links')
 const QRCode = require('qrcode')
 const { normalizeDayQr, normalizeOutputDayQr } = require('./day-qr')
 const { createSsoHandlers, createSocketGuard, proxyWebSocket, sameOriginRequest, machineRequest, nativeMachineRequest, withoutOwnCookies, safePath, verifySignedRequest, DEFAULT_ORIGINS } = require('./auth-http')
-const { viewConfig, filterMessage, stationLauncherConfig } = require('./auth-permissions')
+const { viewConfig, filterMessage, stationLauncherConfig, chatOnlyRequestAllowed } = require('./auth-permissions')
 const { deviceAssertion, startSatelliteBridge } = require('./device-transport')
 const {
   createAccess, normalizeAccess, roleRights, allowedOutputs, editableOutputs, visibleLayouts, canEditLayout, applyRestrictedChanges, claimLayouts, ADMIN,
@@ -1506,6 +1508,13 @@ app.use((req, res, next) => {
   next()
 })
 app.use(express.json({ limit: '5mb' }))
+app.use((req, res, next) => {
+  const user = access.userOf(req)
+  if (!user?.chatOnly) return next()
+  if (req.method === 'GET' && ['/', '/index.html'].includes(req.path)) return res.redirect(302, '/remote.html?tab=chat')
+  if (!chatOnlyRequestAllowed(req.method, req.path)) return res.status(403).json({ ok: false, error: 'Diese Rolle darf ausschließlich chatten' })
+  next()
+})
 // Alte Browser (z. B. iPad mit iOS 12) bekommen umgeschriebene Dateien, siehe legacy.js
 app.use(require('./legacy').legacyMiddleware(path.join(__dirname, 'public')))
 app.use(express.static(path.join(__dirname, 'public')))
@@ -1700,6 +1709,7 @@ const access = createAccess({
   dataDir: DATA_DIR,
   allowBootstrap: false,
   getRoles: () => kesherChat.snapshot().roles?.length ? loginRoles() : null,
+  getRoleRights: (roleId) => config.access?.roles?.[roleId],
   log: console.log,
   // Admin-PIN wie im Kesher-Admin: Kesher prüft sie
   verifyKesherPin: (pin, req) => kesherChat.verifyAdminPin(pin, { sourceIp: clientIp(req), secret: AUTH_SECRET }),
@@ -1803,9 +1813,16 @@ function requireAdmin(req, res, next) {
   next()
 }
 
+// Veranstaltungsbetrieb: getrennte Datendatei, dieselbe Anmeldung auf JMS und Dashboard.
+const eventOps = createEventOps({ dataDir: DATA_DIR, churchTools, getRoles: loginRoles,
+  getChecks: createOpsChecks({ getConfig: () => config, getAtem: () => atemState, getPp: () => ppState, churchTools, kesherChat }) })
+app.use(['/api/ops', '/.jms-auth/api/ops'], eventOpsRouter(eventOps, requireUser, requireAdmin))
+
 /** Kesher-Rollen für die Anmeldung (ohne die Rolle des Chat-Monitors). */
 function loginRoles() {
   return (kesherChat.snapshot().roles ?? []).filter((r) => r.id !== config.chat.roleId)
+    .map((role) => ({ ...role, chatOnly: config.access?.roles?.[role.id]?.chatOnly === true,
+      multiLogin: config.access?.roles?.[role.id]?.multiLogin === true }))
 }
 
 function roleName(roleId) {
@@ -1870,7 +1887,7 @@ app.get(['/api/me', '/.jms-auth/api/me'], (req, res) => {
   const rights = roleRights(config, user)
   res.json({
     access: { enabled: access.enabled(), pinSource: access.pinSource() },
-    user: user && { name: user.name, roleId: user.roleId, roleName: roleName(user.roleId), admin: user.admin, open: user.open, sessionId: user.sessionId, version: user.version, expiresAt: user.expiresAt, avatar: user.open ? null : avatarUrl(user.name) },
+    user: user && { name: user.name, roleId: user.roleId, roleName: roleName(user.roleId), admin: user.admin, open: user.open, chatOnly: user.chatOnly, sessionId: user.sessionId, version: user.version, expiresAt: user.expiresAt, avatar: user.open || user.chatOnly ? null : avatarUrl(user.name) },
     device: access.deviceStatus(clientIp(req), req),
     rights: rights && {
       admin: rights.admin,
@@ -2079,7 +2096,7 @@ app.get(['/api/qr.svg', '/.jms-auth/api/qr.svg'], async (req, res) => {
 // Admin: PIN und angemeldete Geräte
 app.post('/api/access/pin', requireAdmin, async (req, res) => {
   try {
-    await access.setAdminPin(req.body || {}, req.user, req)
+    await access.changeAdminPassword(req.body || {}, req.user, req)
     res.json({ ok: true, enabled: access.enabled() })
   } catch (err) {
     res.status(err.status || 400).json({ ok: false, error: err.message })
@@ -2229,6 +2246,7 @@ app.get('/.jms-auth/check', (req, res) => {
   // Seitenaufruf im Browser: zur Anmeldeseite. Alles andere (API, WebSocket): 401 mit dem Weg dorthin
   const wantsPage =
     (req.get('x-forwarded-method') || 'GET') === 'GET' && /text\/html/.test(req.get('accept') || '') && !req.get('upgrade')
+  if (action === 'forbidden' && user?.chatOnly && wantsPage) return res.redirect(302, '/.jms-auth/chat')
   if (action === 'forbidden')
     return wantsPage ? res.status(403).type('html').send(forbiddenPage(user, next, service)) : res.status(403).json({ ok: false, error: 'Nur für den Admin' })
   if (wantsPage) return res.redirect(302, loginPath(next, service))
@@ -2236,6 +2254,8 @@ app.get('/.jms-auth/check', (req, res) => {
 })
 
 app.get('/.jms-auth/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')))
+app.get('/.jms-auth/chat', requireUser, (req, res) =>
+  res.redirect(302, `${process.env.JMS_SSO_ORIGIN || ''}/remote.html?tab=chat`))
 
 // Fremde Oberflächen hinter der zentralen Anmeldung (Companion) merken An- und Abmeldung in anderen
 // Tabs nicht selbst. Caddy schickt ihre Seitenaufrufe (Accept: text/html) hierher (Baustein
@@ -2538,6 +2558,18 @@ app.get('/.jms-auth/sso/push', sso.push)
 app.post('/.jms-auth/api/session-status', (req, res) => {
   if (!verifySignedRequest(AUTH_SECRET, 'introspect', req.body)) return res.status(403).json({ active: false })
   res.json(access.sessionStatusById(req.body.sessionId))
+})
+
+// Authenticated server-to-server check; credentials and source IP are bound to the HMAC.
+app.post('/.jms-auth/api/verify-pin', async (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  if (!verifySignedRequest(AUTH_SECRET, 'verify-pin', req.body)) return res.status(403).json({ valid: false })
+  try {
+    const valid = await access.verifyCentralAdminPassword(req.body.pin, req.body.sourceIp)
+    res.json({ valid })
+  } catch (err) {
+    res.status(err.status || 503).json({ valid: false })
+  }
 })
 
 app.post('/.jms-auth/api/revoke-admin', (req, res) => {

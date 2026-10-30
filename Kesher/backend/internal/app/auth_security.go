@@ -126,6 +126,28 @@ func (s *Server) verifyAdminPIN(w http.ResponseWriter, r *http.Request, presente
 	}
 	success := false
 	defer func() { finish(success) }()
+	if s.cfg.JMSAuthURL != "" {
+		issuedAt := time.Now().UnixMilli()
+		sourceIP := adminPINSource(r)
+		digest := sha256.Sum256([]byte(presented))
+		payload := map[string]any{
+			"pin": presented, "sourceIp": sourceIP, "issuedAt": issuedAt,
+			"signature": s.centralSignature(fmt.Sprintf("kesher:verify-pin:%s:%d:%x", sourceIP, issuedAt, digest)),
+		}
+		var result struct {
+			Valid bool `json:"valid"`
+		}
+		if err := s.centralRequest(r.Context(), "verify-pin", payload, &result); err != nil {
+			http.Error(w, "central password verification unavailable", http.StatusServiceUnavailable)
+			return false
+		}
+		if !result.Valid {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return false
+		}
+		success = true
+		return true
+	}
 	s.adminCredentialsMu.RLock()
 	defer s.adminCredentialsMu.RUnlock()
 	configured, err := s.store.GetAdminPIN(r.Context())

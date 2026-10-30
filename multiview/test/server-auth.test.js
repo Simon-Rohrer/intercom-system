@@ -16,9 +16,13 @@ const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mill
 
 for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`real HTTP server enforces device, role, CSRF, SSO and websocket revocation on ${serviceHost}`, { timeout: 30_000 }, async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jms-http-auth-'))
-  const roles = [{ id: 'lighting', name: 'Licht' }, { id: 'video', name: 'Regie' }, { id: 'chat-monitor', name: 'Monitor' }]
+  const sentChat = []
+  const roles = [{ id: 'techniker', name: 'Techniker' }, { id: 'lighting', name: 'Licht' }, { id: 'video', name: 'Regie' }, { id: 'chat-monitor', name: 'Monitor' }]
   const mock = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'application/json')
+    if (request.url === '/api/companion/chat-text') {
+      let body = ''; request.on('data', chunk => { body += chunk }); request.on('end', () => { sentChat.push(JSON.parse(body)); response.end(JSON.stringify({ ok: true })) }); return
+    }
     if (request.url === '/api/login') return response.end(JSON.stringify({ token: 'fixture-only' }))
     if (request.url === '/api/bootstrap') return response.end(JSON.stringify({ roles, self: { id: 'monitor', roleId: 'chat-monitor' }, rooms: [], broadcastGroups: [] }))
     if (request.url === '/api/public-bootstrap') return response.end(JSON.stringify({ roles, activeRoleIds: [] }))
@@ -52,7 +56,7 @@ for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`rea
       dayQr: { show: true, corner: 'br', size: 's' },
       layouts: [{ id: 'light-layout', name: 'Licht', tiles: [] }, { id: 'video-layout', name: 'Regie', tiles: [] }],
       outputs: [{ id: 'light-output', name: 'Licht', layoutId: 'light-layout' }, { id: 'video-output', name: 'Regie', layoutId: 'video-layout' }],
-      access: { roles: { lighting: { outputs: ['light-output'], edit: ['light-output'], editLayouts: false } } },
+      access: { roles: { techniker: { chatOnly: true, multiLogin: true }, lighting: { outputs: ['light-output'], edit: ['light-output'], editLayouts: false } } },
       chat: { url: `http://127.0.0.1:${mock.address().port}`, username: 'Fixture', roleId: 'chat-monitor' },
       raspberry: { clients: [{ id: 'pi1', name: 'Buehne', roleId: 'lighting', deviceId: 'pi-buehne', ipAddress: '192.168.0.41' }] },
     }))
@@ -92,7 +96,7 @@ for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`rea
     let ready = false
     for (let attempt = 0; attempt < 100; attempt++) {
       if (child.exitCode !== null) throw new Error(`Server exited: ${logs}`)
-      try { ready = (await request('/api/login/roles')).data.roles?.length === 2 } catch {}
+      try { ready = (await request('/api/login/roles')).data.roles?.length === 3 } catch {}
       if (ready) break
       await wait(50)
     }
@@ -113,6 +117,43 @@ for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`rea
     const adminJar = {}
     const adminLogin = await request('/api/login', { method: 'POST', jar: adminJar, body: { name: 'Fixture Admin', roleId: 'admin', pin: '472593' } })
     assert.equal(adminLogin.status, 200, JSON.stringify(adminLogin.data))
+    const techA = {}, techB = {}
+    for (const [jar, name] of [[techA, 'Anna'], [techB, 'Ben']]) {
+      assert.equal((await request('/api/login', { method: 'POST', jar, body: { name, roleId: 'techniker' } })).status, 200)
+      const me = (await request('/api/me', { jar })).data
+      assert.equal(me.user.chatOnly, true)
+      assert.equal(me.device.hasGrant, false)
+      assert.deepEqual(me.rights.outputs, [])
+      assert.deepEqual(me.rights.layouts, [])
+    }
+    assert.equal((await request('/api/login/roles', { jar: techA })).data.occupied.techniker, undefined)
+    for (const route of ['/api/config', '/api/state', '/api/templates', '/api/churchtools', '/api/propresenter/playlists', '/api/access/gateway', '/api/display/day-code', '/api/raspberry-pis/status', '/api/output/light-output/user', '/output.html', '/prediger.html', '/admin.js'])
+      assert.equal((await request(route, { jar: techA })).status, 403, route)
+    for (const route of ['/api/me/qr', '/.jms-auth/api/me/qr', '/api/propresenter/stage-message', '/api/propresenter/announce', '/api/output/light-output/layout/light-layout', '/api/me/avatar', '/api/device', '/api/access/roles'])
+      assert.equal((await request(route, { method: 'POST', jar: techA, body: {} })).status, 403, route)
+    assert.equal((await request('/api/config', { method: 'PUT', jar: techA, body: { access: { roles: { techniker: { chatOnly: false } } } } })).status, 403)
+    assert.equal((await request('/api/chat', { jar: techA })).status, 200)
+    assert.equal((await request('/api/chat/send', { method: 'POST', jar: techA, body: { text: 'Fixture message', roleId: 'lighting' } })).status, 200)
+    assert.equal(sentChat.at(-1).roleId, 'techniker')
+    assert.equal(sentChat.at(-1).username, 'Anna')
+    assert.equal((await request('/api/chat/send', { method: 'POST', jar: techA, body: { text: 'Private', roomId: 'not-allowed' } })).status, 400)
+    assert.equal((await request('/', { jar: techA })).headers.get('location'), '/remote.html?tab=chat')
+    for (const service of ['kesher', 'dashboard', 'companion', 'portainer', 'glances', 'dns', 'router'])
+      assert.equal((await request('/.jms-auth/check?service=' + service, { jar: techA })).status, 403, service)
+    const techFeed = []
+    const techWs = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { Host: serviceHost, Origin: `https://${serviceHost}`, 'X-Forwarded-Proto': 'https', Cookie: `mv_session=${techA.mv_session}` } })
+    activeSockets.push(techWs)
+    techWs.on('message', raw => techFeed.push(JSON.parse(raw)))
+    await once(techWs, 'open')
+    await wait(120)
+    assert.ok(techFeed.some(message => message.type === 'chat'))
+    assert.ok(techFeed.every(message => ['chat', 'chatFlash', 'server', 'config'].includes(message.type)), JSON.stringify(techFeed))
+    assert.deepEqual(techFeed.find(message => message.type === 'config').config.outputs, [])
+    assert.equal((await request('/api/logout', { method: 'POST', jar: techA })).status, 200)
+    await wait(120)
+    assert.equal(techWs.readyState, WebSocket.CLOSED)
+    assert.equal((await request('/api/me', { jar: techB })).data.user.name, 'Ben')
+    await request('/api/logout', { method: 'POST', jar: techB })
     // Alte globale Anzeige wird einmalig und dauerhaft auf alle Multiviews übernommen.
     const migrated = JSON.parse(fs.readFileSync(path.join(directory, 'config.json'), 'utf8'))
     assert.equal(Object.hasOwn(migrated, 'dayQr'), false)

@@ -9,12 +9,14 @@ export function roleRights(config, user) {
   const all = config.outputs.map((o) => o.id)
   if (user.admin) return { admin: true, editLayouts: true, controlSlides: true, controlPis: true, outputs: all, edit: all }
   const r = config.access?.roles?.[user.roleId]
-  const outputs = (r?.outputs ?? []).filter((id) => all.includes(id))
+  const chatOnly = r?.chatOnly === true || user.chatOnly === true
+  const outputs = chatOnly ? [] : (r?.outputs ?? []).filter((id) => all.includes(id))
   return {
     admin: false,
-    editLayouts: Boolean(r && r.editLayouts !== false),
-    controlSlides: Boolean(r?.controlSlides),
-    controlPis: Boolean(r?.controlPis),
+    editLayouts: !chatOnly && Boolean(r && r.editLayouts !== false),
+    controlSlides: !chatOnly && Boolean(r?.controlSlides),
+    controlPis: !chatOnly && Boolean(r?.controlPis),
+    chatOnly, multiLogin: r?.multiLogin === true,
     outputs,
     // Bearbeiten (umschalten, laufendes Layout ändern); ohne Angabe wie früher: alles Freigegebene
     edit: Array.isArray(r?.edit) ? r.edit.filter((id) => outputs.includes(id)) : outputs,

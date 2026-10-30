@@ -542,7 +542,13 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
     return data
   }
 
-  return { start: refresh, refresh, connect, disconnect, snapshot, stop, datesChanged, api }
+  // Derselbe normalisierte Ablauf für die explizit gewählte Veranstaltung der Übersicht.
+  async function agendaForEvent(event) {
+    if (!secret?.token || !secret?.url) throw new Error('ChurchTools ist nicht verbunden')
+    return loadAgenda(secret.url, secret.token, event)
+  }
+
+  return { start: refresh, refresh, connect, disconnect, snapshot, stop, datesChanged, api, agendaForEvent }
 }
 
 module.exports = { createChurchTools }

@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0a0a0b">
   <title>JMS - Control</title>
+  <link rel="icon" type="image/svg+xml" href="jms-logo.svg">
   <script src="theme-boot.js"></script>
-  <link rel="stylesheet" href="admin.css">
+  <link rel="stylesheet" href="admin.css?v=20261030-monitor-shortcuts">
   <link rel="stylesheet" href="meters.css">
   <link rel="stylesheet" href="chat.css">
   <link rel="stylesheet" href="agenda.css">
@@ -15,6 +16,8 @@
   <link rel="stylesheet" href="slideshow.css">
   <link rel="stylesheet" href="propresenter.css">
   <link rel="stylesheet" href="stage.css">
+  <link rel="stylesheet" href="/event-ops.css?v=20261030-agenda">
+  <script defer src="/event-ops.js?v=20261030-agenda"></script>
 </head>
 <body class="booting">
   <div class="app">
@@ -108,6 +111,7 @@
           </div>
 
           <div id="profile-card" class="profile-hero"></div>
+          <div id="event-ops-overview" class="ops"></div>
 
           <div id="status-strip" class="status-strip"></div>
         </section>
@@ -718,7 +722,7 @@
           </div>
           <nav class="settings-list" aria-label="Bereiche von Benutzer &amp; Rechte">
             <a href="#/einstellungen/zugang/rollen" data-access-section-link="rollen"><span class="app-icon indigo"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c1-3.5 3.5-5.5 6.5-5.5s5.5 2 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.5c2.5 0 4.5 1.8 5.5 4.5"/></svg></span><span class="settings-nav-label">Rollen</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
-            <a href="#/einstellungen/zugang/anmeldung" data-access-section-link="anmeldung"><span class="app-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span><span class="settings-nav-label">Anmeldung &amp; Admin-PIN</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+            <a href="#/einstellungen/zugang/anmeldung" data-access-section-link="anmeldung"><span class="app-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span><span class="settings-nav-label">Admin-PIN</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
             <a href="#/einstellungen/zugang/dienste" data-access-section-link="dienste"><span class="app-icon teal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.5 8-8 9-4.5-1-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></span><span class="settings-nav-label">Anmeldung für alle Dienste</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
             <a href="#/einstellungen/zugang/zugangsdaten" data-access-section-link="zugangsdaten"><span class="app-icon orange"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3"/></svg></span><span class="settings-nav-label">Zugangsdaten der Dienste</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
             <a href="#/einstellungen/zugang/nachrichten" data-access-section-link="nachrichten"><span class="app-icon green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span><span class="settings-nav-label">Link für Ordner</span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
@@ -781,7 +785,7 @@
     <p class="muted">Mit der Admin-PIN wechselst du auf dieser Seite zum Admin. Deine Rolle wird dabei frei.</p>
     <form id="admin-form" class="auth-form" autocomplete="off">
       <label class="field"><span>Admin-PIN</span>
-        <input type="password" id="admin-pin" inputmode="numeric" autocomplete="current-password" required>
+        <input type="password" id="admin-pin" maxlength="128" autocomplete="current-password" required>
       </label>
       <div class="btn-row"><button class="btn primary" type="submit">Als Admin anmelden</button></div>
       <p class="form-error" id="admin-error"></p>
@@ -825,7 +829,7 @@
   <datalist id="atem-input-list"></datalist>
   <div id="toast" class="toast" hidden></div>
 
-  <script type="module" src="admin.js"></script>
+  <script type="module" src="admin.js?v=20261030-monitor-shortcuts"></script>
   <script>
     // Menü (☰) auf schmalen Bildschirmen. Bewusst einfaches Skript ohne Modul: so geht das Menü
     // auch, wenn admin.js auf einem alten Gerät nicht (vollständig) läuft.
