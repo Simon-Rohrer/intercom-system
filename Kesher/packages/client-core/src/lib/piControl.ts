@@ -1,4 +1,5 @@
 import { centralLoginAvailable } from "./centralLogin";
+import { discardBody } from "./responseBody";
 
 /**
  * Ein/Aus (Ruhemodus) und Neu starten der Raspberry Pis aus dem Intercom. Das schaltet
@@ -20,7 +21,10 @@ export async function fetchPiControl(signal?: AbortSignal): Promise<PiControlSta
   if (!centralLoginAvailable()) return null;
   try {
     const res = await fetch(CONTROL_URL, { cache: "no-store", credentials: "same-origin", signal });
-    if (!res.ok || !res.headers.get("content-type")?.includes("json")) return null;
+    if (!res.ok || !res.headers.get("content-type")?.includes("json")) {
+      discardBody(res);
+      return null;
+    }
     const data = (await res.json()) as {
       allowed?: boolean;
       pis?: { deviceId?: unknown; standby?: unknown }[];

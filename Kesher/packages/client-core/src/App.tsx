@@ -107,6 +107,7 @@ import { useSettings } from "./hooks/useSettings";
 import { useAudioDevices } from "./hooks/useAudioDevices";
 import { useIntercomSession } from "./hooks/useIntercomSession";
 import { useNativeAudio } from "./hooks/useNativeAudio";
+import { discardBody } from "./lib/responseBody";
 
 const adminPathname = "/admin";
 const loginPathname = "/login";
@@ -491,7 +492,10 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           cache: "no-store",
           credentials: "same-origin",
         });
-        if (!res.ok || !res.headers.get("content-type")?.includes("json")) return;
+        if (!res.ok || !res.headers.get("content-type")?.includes("json")) {
+          discardBody(res);
+          return;
+        }
         const data = (await res.json()) as {
           access?: { enabled?: boolean };
           user?: Partial<CentralIdentity> & { open?: boolean } | null;

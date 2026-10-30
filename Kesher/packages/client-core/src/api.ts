@@ -27,6 +27,7 @@ import type {
 } from "./types";
 import { toStringArray } from "./lib/normalize";
 import { normalizeAudioState } from "./lib/presence";
+import { discardBody } from "./lib/responseBody";
 
 const adminPinHeaderName = "X-Admin-Pin";
 
@@ -568,6 +569,7 @@ export function normalizeStreamDeckSettings(data: unknown): StreamDeckSettings {
 export async function getPublicBootstrap(): Promise<PublicBootstrap> {
   const res = await fetch(apiUrl("/api/public-bootstrap"), { cache: "no-store" });
   if (!res.ok) {
+    discardBody(res);
     throw new ApiError(res.status, "", "Öffentliche Startdaten konnten nicht geladen werden");
   }
   const raw = (await res.json()) as unknown;
@@ -626,10 +628,11 @@ export async function bootstrap(token: string): Promise<Bootstrap> {
 }
 
 export async function logout(token: string): Promise<void> {
-  await fetch(apiUrl("/api/logout"), {
+  const res = await fetch(apiUrl("/api/logout"), {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   });
+  discardBody(res);
 }
 
 export async function getRealtimeStats(
@@ -645,7 +648,10 @@ export async function getRealtimeStats(
     cache: "no-store",
     signal,
   });
-  if (!res.ok) throw new Error("Echtzeit-Statistiken konnten nicht geladen werden");
+  if (!res.ok) {
+    discardBody(res);
+    throw new Error("Echtzeit-Statistiken konnten nicht geladen werden");
+  }
   return res.json() as Promise<RealtimeStatsResponse>;
 }
 
@@ -662,7 +668,10 @@ export async function getRaspberryPiStations(
     cache: "no-store",
     signal,
   });
-  if (!res.ok) throw new Error("Raspberry-Pi-Stationen konnten nicht geladen werden");
+  if (!res.ok) {
+    discardBody(res);
+    throw new Error("Raspberry-Pi-Stationen konnten nicht geladen werden");
+  }
   return res.json() as Promise<RaspberryPiStationsResponse>;
 }
 
@@ -675,7 +684,10 @@ export async function getRaspberryPiStationStatuses(
     cache: "no-store",
     signal,
   });
-  if (!res.ok) throw new Error("Raspberry-Pi-Stationen konnten nicht geladen werden");
+  if (!res.ok) {
+    discardBody(res);
+    throw new Error("Raspberry-Pi-Stationen konnten nicht geladen werden");
+  }
   return res.json() as Promise<RaspberryPiStationsResponse>;
 }
 
@@ -683,7 +695,10 @@ export async function getRaspberryPiRemoteStations(): Promise<RaspberryPiRemoteS
   const res = await fetch(apiUrl("/api/raspberry-pis/remote"), {
     cache: "no-store",
   });
-  if (!res.ok) throw new Error("Raspberry-Pi-Fernstationen konnten nicht geladen werden");
+  if (!res.ok) {
+    discardBody(res);
+    throw new Error("Raspberry-Pi-Fernstationen konnten nicht geladen werden");
+  }
   const raw = (await res.json()) as Record<string, unknown>;
   const stations = Array.isArray(raw.stations) ? raw.stations : [];
   return {
@@ -760,7 +775,10 @@ export async function getStatus(
     cache: "no-store",
     signal,
   });
-  if (!res.ok) throw new Error("Status konnte nicht geladen werden");
+  if (!res.ok) {
+    discardBody(res);
+    throw new Error("Status konnte nicht geladen werden");
+  }
   return res.json() as Promise<StatusResponse>;
 }
 
@@ -783,6 +801,7 @@ async function apiMutation(
   if (!res.ok) {
     throw new Error(await res.text());
   }
+  discardBody(res);
 }
 
 export async function createRole(
@@ -1092,7 +1111,10 @@ export async function getTelegramStatus(
       [adminPinHeaderName]: adminPin,
     },
   });
-  if (!res.ok) throw new Error("Telegram-Status konnte nicht geladen werden");
+  if (!res.ok) {
+    discardBody(res);
+    throw new Error("Telegram-Status konnte nicht geladen werden");
+  }
   return res.json() as Promise<TelegramStatus>;
 }
 
@@ -1142,7 +1164,10 @@ export async function getTelegramAllowlist(
       [adminPinHeaderName]: adminPin,
     },
   });
-  if (!res.ok) throw new Error("Telegram-Freigabeliste konnte nicht geladen werden");
+  if (!res.ok) {
+    discardBody(res);
+    throw new Error("Telegram-Freigabeliste konnte nicht geladen werden");
+  }
   return res.json() as Promise<TelegramAllowlistEntry[]>;
 }
 

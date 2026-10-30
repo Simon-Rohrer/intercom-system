@@ -1,4 +1,5 @@
 import { getGlobalApiBaseUrl } from "../api";
+import { discardBody } from "./responseBody";
 
 /** Built scripts and styles of a page (e.g. "/assets/index-E5zoNbc9.js"), sorted. */
 export function assetSignature(html: string): string {
@@ -27,7 +28,10 @@ export function watchForNewVersion(onNewVersion: () => void = () => window.locat
     busy = true;
     try {
       const res = await fetch(`/?version-check=${Date.now()}`, { cache: "no-store", credentials: "same-origin" });
-      if (!res.ok || !res.headers.get("content-type")?.includes("html")) return;
+      if (!res.ok || !res.headers.get("content-type")?.includes("html")) {
+        discardBody(res);
+        return;
+      }
       const next = assetSignature(await res.text());
       if (next && next !== current) {
         done = true;

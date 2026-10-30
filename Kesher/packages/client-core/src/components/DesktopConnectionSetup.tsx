@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { normalizeServerAddressInput } from "../api";
+import { discardBody } from "../lib/responseBody";
 import { useApiBaseUrl } from "../hooks/useApiBaseUrl";
 import "./DesktopConnectionSetup.css";
 
@@ -57,7 +58,7 @@ export function DesktopConnectionSetup({
         method: "GET",
         signal: controller.signal,
       });
-
+      discardBody(response);
       return response.ok;
     } catch {
       return false;

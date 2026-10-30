@@ -1,4 +1,5 @@
 import { centralLoginAvailable } from "../../lib/centralLogin";
+import { discardBody } from "../../lib/responseBody";
 import { isDesktopApp } from "./shellLinks";
 
 /**
@@ -107,6 +108,8 @@ export function loadJmsTheme(): void {
       if (res.ok && res.headers.get("content-type")?.includes("json")) {
         const me = (await res.json()) as { prefs?: ThemePrefs } | null;
         prefs = me?.prefs ?? {};
+      } else {
+        discardBody(res);
       }
     } catch {
       // no central login reachable: keep the built-in look

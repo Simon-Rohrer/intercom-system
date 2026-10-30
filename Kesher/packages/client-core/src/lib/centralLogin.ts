@@ -2,6 +2,7 @@ import { getGlobalApiBaseUrl, isUnauthorizedError } from "../api";
 import { tokenStorageKey } from "../app/settings";
 import type { LoginSuccess } from "../types";
 import { urlRequestsMirror } from "./autoLogin";
+import { discardBody } from "./responseBody";
 
 /**
  * Central login of the JMS server (served by the Multiview, routed by Caddy
@@ -79,6 +80,7 @@ export async function fetchCentralIdentity(): Promise<CentralIdentity | null> {
       credentials: "same-origin",
     });
     if (!res.ok || !res.headers.get("content-type")?.includes("json")) {
+      discardBody(res);
       return null;
     }
     const data = (await res.json()) as {
