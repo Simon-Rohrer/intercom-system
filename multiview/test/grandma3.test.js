@@ -109,7 +109,7 @@ test('grandMA3: Sequenznachrichten mit und ohne Prefix, fremde Adressen ignorier
 })
 
 test('grandMA3: Konfiguration normalisieren', () => {
-  assert.deepEqual(normalizeGrandma3(undefined), { enabled: true, host: '', port: 8001, prefix: '', seqPath: '', sequences: [] })
+  assert.deepEqual(normalizeGrandma3(undefined), { enabled: true, host: '', port: 8011, prefix: '', seqPath: '', sequences: [] })
   const cfg = normalizeGrandma3({
     host: '192.168.0.231',
     port: '9000',
@@ -158,12 +158,12 @@ test('grandMA3: lauscht, hält Cue je Sequenz, ignoriert fremde Absender, bindet
   const updates = []
   const logs = []
   let clock = 5000
-  let config = { host: '192.168.0.231', port: 8001, sequences: [{ number: 1, name: 'Licht' }, { number: 3, name: '' }] }
+  let config = { host: '192.168.0.231', port: 8011, sequences: [{ number: 1, name: 'Licht' }, { number: 3, name: '' }] }
   const ma = createGrandma3({ getConfig: () => config, onUpdate: (m) => updates.push(m), log: (l) => logs.push(l), dgramImpl, now: () => clock })
   t.after(() => ma.stop())
   ma.start()
   const s = dgramImpl.sockets[0]
-  assert.equal(s.bound, 8001)
+  assert.equal(s.bound, 8011)
   await tick()
   assert.equal(ma.snapshot().state, 'listening')
   let snap = ma.snapshot()

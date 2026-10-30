@@ -4706,7 +4706,7 @@ $('#set-avantis').addEventListener('click', (e) => {
 // Einstellungen: grandMA3 (Lichtpult, OSC nur empfangen)
 // ---------------------------------------------------------------------------
 
-const GRANDMA3_DEFAULTS = { enabled: true, host: '', port: 8001, prefix: '', seqPath: '', sequences: [] }
+const GRANDMA3_DEFAULTS = { enabled: true, host: '', port: 8011, prefix: '', seqPath: '', sequences: [] }
 
 function grandma3Config() {
   config.grandma3 = { ...GRANDMA3_DEFAULTS, ...config.grandma3 }
@@ -4754,7 +4754,7 @@ for (const id of ['#ma-host', '#ma-port', '#ma-prefix', '#ma-seqpath', '#ma-enab
   $(id).addEventListener('change', () => {
     const g = grandma3Config()
     g.host = $('#ma-host').value.trim()
-    g.port = Number($('#ma-port').value) || 8001
+    g.port = Number($('#ma-port').value) || 8011
     g.prefix = $('#ma-prefix').value.trim().replace(/^\/+|\/+$/g, '')
     g.seqPath = $('#ma-seqpath').value.trim()
     g.enabled = $('#ma-enabled').checked

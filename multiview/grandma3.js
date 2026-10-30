@@ -14,7 +14,7 @@
 
 const dgram = require('dgram')
 
-const DEFAULT_PORT = 8001
+const DEFAULT_PORT = 8011
 const DEFAULT_SEQ_PATHS = ['13.13.1.6', '14.14.1.6']
 const MAX_SEQUENCES = 32
 const MAX_SEEN = 64

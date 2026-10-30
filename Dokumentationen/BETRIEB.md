@@ -83,7 +83,7 @@ docker compose -f deploy/compose/docker-compose.yml down
 | `8081/udp` | alter unverschlüsselter Audio-Relay; abgeschaltet |
 | `443/tcp` | HTTPS, wenn Caddy oder CertMagic davor läuft |
 | `80/tcp` | HTTP-Redirect oder CertMagic |
-| `8001/udp` (eingehend) | OSC-Empfang vom grandMA3 (Kachel „Licht“), Port in den Einstellungen änderbar |
+| `8011/udp` (eingehend) | OSC-Empfang vom grandMA3 (Kachel „Licht“), Port in den Einstellungen änderbar |
 | `→ 192.168.1.70:51325/tcp` (ausgehend) | MIDI over TCP zur Avantis (Kachel „Mischpult“), nur mitlesen |
 
 ## Daten sichern
@@ -337,7 +337,7 @@ Der Server nimmt aus dem dritten Argument Cue-Nummer und -Name (`… Cue <Nr> "<
 - Falls nötig, kann ein kleines Lua-Plugin auf der Konsole periodisch den aktuellen Cue schicken; der Server versteht dafür `/jms/cue,iss,<Seq>,<CueNr>,<CueName>` (z. B. `SendOSC 1 "/jms/cue,iss,1,12,Lobpreis"` – Zeilennummer der OSC-Konfiguration anpassen). Das Plugin selbst ist noch nicht geschrieben.
 - Exaktes Format des dritten Arguments (Reihenfolge Sequenzname/Cue-Nummer/Cue-Name, Anführungszeichen) am echten Pult gegenprüfen; der Parser nimmt `Cue <Nummer>` als Anker und ist tolerant.
 
-Prüfen vom Server aus: Einstellungen → grandMA3 zeigt „Warte auf OSC an Port 8001“ bzw. „OSC kommt an (von 192.168.0.231)“ mit Uhrzeit des letzten Pakets; im Docker-Betrieb (`network_mode: host`) braucht es keine Portfreigabe, eine Firewall muss `8001/udp` eingehend erlauben.
+Prüfen vom Server aus: Einstellungen → grandMA3 zeigt „Warte auf OSC an Port 8011“ bzw. „OSC kommt an (von 192.168.0.231)“ mit Uhrzeit des letzten Pakets; im Docker-Betrieb (`network_mode: host`) braucht es keine Portfreigabe, eine Firewall muss `8011/udp` eingehend erlauben.
 
 ## Chat automatisch leeren
 
