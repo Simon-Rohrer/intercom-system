@@ -128,3 +128,77 @@ test('Leerer ChurchTools-Platzhalter zeigt verständlichen Leerzustand beim rich
     assert.ok(!texts(view.el).includes(popcorn.name))
   } finally { global.document = original }
 })
+
+// Statuszeile: laufender Punkt nach Uhr oder von Hand, Restzeit, Abweichung, nächster Punkt
+const plan = [
+  { id: 1, type: 'header', title: 'Gottesdienst', start: '2026-11-01T09:00:00Z', duration: 0 },
+  { id: 2, type: 'song', title: 'Lied 1', start: '2026-11-01T09:00:00Z', duration: 300 },
+  { id: 3, type: 'normal', title: 'Begrüßung', start: '2026-11-01T09:05:00Z', duration: 300, responsible: 'Anna' },
+  { id: 4, type: 'normal', title: 'Predigt', start: '2026-11-01T09:10:00Z', duration: 1800, responsible: 'Pastor' },
+]
+
+test('Statuszeile nach Uhr: Restzeit des laufenden Punkts, Abweichung 0, nächster Punkt', async () => {
+  const { agendaStatus, fmtRemaining, fmtDeviation } = await selection
+  const st = agendaStatus(plan, { now: at('2026-11-01T09:06:30Z') })
+  assert.equal(st.current.title, 'Begrüßung')
+  assert.equal(st.manual, false)
+  assert.equal(st.remainingSec, 210)
+  assert.equal(st.deviationMin, 0)
+  assert.equal(st.level, 'ok')
+  assert.equal(st.next.title, 'Predigt')
+  assert.equal(st.next.responsible, 'Pastor')
+  // Vor dem Beginn: kein laufender Punkt, aber der kommende
+  const before = agendaStatus(plan, { now: at('2026-11-01T08:50:00Z') })
+  assert.equal(before.current, null)
+  assert.equal(before.next.title, 'Lied 1')
+  assert.equal(before.remainingSec, null)
+  // Nach dem Ende: nichts mehr
+  const after = agendaStatus(plan, { now: at('2026-11-01T10:00:00Z') })
+  assert.equal(after.current, null)
+  assert.equal(after.next, null)
+  assert.equal(fmtRemaining(210), '3:30')
+  assert.equal(fmtRemaining(-80), '−1:20')
+  assert.equal(fmtRemaining(3725), '1:02:05')
+  assert.equal(fmtDeviation(4), '+4 min')
+  assert.equal(fmtDeviation(-2), '−2 min')
+  assert.equal(fmtDeviation(0), '±0 min')
+})
+
+test('Von Hand gesetzter Punkt: Abweichung = Ist-Start minus Plan, Schwellen grün/gelb/rot', async () => {
+  const { agendaStatus } = await selection
+  // Predigt (Plan 09:10) um 09:14 gestartet → +4 min, Standard: gelb; Restzeit ab dem Klick
+  const position = { itemIndex: 3, itemId: 4, at: '2026-11-01T09:14:00Z' }
+  const st = agendaStatus(plan, { position, now: at('2026-11-01T09:15:00Z') })
+  assert.equal(st.manual, true)
+  assert.equal(st.current.title, 'Predigt')
+  assert.equal(st.deviationMin, 4)
+  assert.equal(st.level, 'warn')
+  assert.equal(st.remainingSec, 29 * 60)
+  assert.equal(st.next, null)
+  assert.equal(agendaStatus(plan, { position, now: at('2026-11-01T09:15:00Z'), warnMin: 5 }).level, 'ok')
+  assert.equal(agendaStatus(plan, { position, now: at('2026-11-01T09:15:00Z'), warnMin: 1, badMin: 3 }).level, 'bad')
+  // Früher als geplant gestartet: negative Abweichung, Betrag zählt für die Farbe
+  const early = agendaStatus(plan, { position: { itemIndex: 3, itemId: 4, at: '2026-11-01T09:03:00Z' }, now: at('2026-11-01T09:04:00Z') })
+  assert.equal(early.deviationMin, -7)
+  assert.equal(early.level, 'bad')
+  // Überzogen: Restzeit negativ
+  const over = agendaStatus(plan, { position: { itemIndex: 2, itemId: 3, at: '2026-11-01T09:05:00Z' }, now: at('2026-11-01T09:11:00Z') })
+  assert.equal(over.current.title, 'Begrüßung')
+  assert.equal(over.remainingSec, -60)
+  assert.equal(over.next.title, 'Predigt')
+})
+
+test('Gesetzter Punkt: über die ID wiedergefunden, bei Überschrift/zu alt/unpassend ignoriert', async () => {
+  const { resolvePosition, agendaStatus } = await selection
+  const now = at('2026-11-01T09:15:00Z')
+  // Ablauf in ChurchTools verschoben: Index zeigt auf einen anderen Punkt, die ID findet ihn
+  assert.deepEqual(resolvePosition(plan, { itemIndex: 2, itemId: 4, at: '2026-11-01T09:14:00Z' }, now), { index: 3, at: at('2026-11-01T09:14:00Z') })
+  assert.equal(resolvePosition(plan, { itemIndex: 0, itemId: 1, at: '2026-11-01T09:14:00Z' }, now), null) // Überschrift
+  assert.equal(resolvePosition(plan, { itemIndex: 3, itemId: 999, at: '2026-11-01T09:14:00Z' }, now), null) // Punkt weg
+  assert.equal(resolvePosition(plan, { itemIndex: 3, itemId: 4, at: '2026-10-30T09:14:00Z' }, now), null) // älter als ein Tag
+  assert.equal(resolvePosition(plan, null, now), null)
+  // Ohne ID zählt der Index
+  assert.equal(resolvePosition(plan, { itemIndex: 2, at: '2026-11-01T09:14:00Z' }, now).index, 2)
+  // Ungültige Position → wieder nach Uhr
+  assert.equal(agendaStatus(plan, { position: { itemIndex: 0, itemId: 1, at: '2026-11-01T09:14:00Z' }, now }).manual, false)
+})

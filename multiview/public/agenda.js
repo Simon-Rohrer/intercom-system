@@ -105,6 +105,9 @@ export function pickNextEvent(todays, upcoming, filter, now = Date.now(), timeZo
 }
 
 const DENSITIES = ['compact', 'normal', 'airy']
+const STATUS_MODES = ['off', 'top', 'bottom']
+// So lange gilt ein von Hand gesetzter Punkt (danach wieder nach Uhrzeit)
+const POSITION_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const ACCENTS = ['#00d1ff', '#30d158', '#ffb020', '#ff5a4f', '#bf5af2', '#ffffff']
 const CCLI_COLORS = ['#a9b2be', '#ffffff', '#00d1ff', '#ffd60a', '#ffb020', '#30d158', '#ff5a4f', '#bf5af2']
 
@@ -128,11 +131,118 @@ export function agendaOptions(look) {
     columns: String(o.columns || ''), // nur diese Programmspalten (Komma), leer = alle
     ccliSize: Number.isFinite(Number(o.ccliSize)) && o.ccliSize != null ? Math.min(2.5, Math.max(0.5, Number(o.ccliSize))) : 1,
     ccliColor: CCLI_COLORS.includes(o.ccliColor) ? o.ccliColor : CCLI_COLORS[0],
+    // Statuszeile: Restzeit, Abweichung vom Plan, nächster Punkt (oben, unten oder aus)
+    status: STATUS_MODES.includes(o.status) ? o.status : 'off',
+    warnMin: num(o.warnMin, 2, 0, 60), // bis hier grün …
+    badMin: num(o.badMin, 5, 0, 180), // … bis hier gelb, darüber rot
+    control: bool(o.control, false), // laufenden Punkt per Klick setzen (Bedienung)
   }
+}
+
+function num(v, d, min, max) {
+  const n = Number(v)
+  return v != null && v !== '' && Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : d
+}
+
+/**
+ * Von Hand gesetzter Punkt (Server-Nachricht „ctposition“) auf den Ablauf abbilden:
+ * { index, at } oder null, wenn er nicht (mehr) passt. Hat sich der Ablauf in
+ * ChurchTools verschoben, findet die ID den Punkt wieder.
+ */
+export function resolvePosition(items, position, now = Date.now()) {
+  if (!position || !Number.isInteger(position.itemIndex)) return null
+  const at = Date.parse(position.at)
+  if (!Number.isFinite(at) || now - at > POSITION_MAX_AGE_MS) return null
+  const list = items || []
+  const fits = (i) => list[i] && list[i].type !== 'header' && (position.itemId == null || list[i].id === position.itemId)
+  let index = fits(position.itemIndex) ? position.itemIndex : -1
+  if (index < 0 && position.itemId != null) index = list.findIndex((item) => item.type !== 'header' && item.id === position.itemId)
+  return index >= 0 ? { index, at } : null
+}
+
+/**
+ * Lage im Ablauf für die Statuszeile: laufender Punkt (nach Uhr oder von Hand gesetzt),
+ * Restzeit in Sekunden, Abweichung vom Plan in Minuten (+ = hinter Plan) mit Stufe
+ * (ok/warn/bad nach den Schwellen) und der nächste Punkt.
+ */
+export function agendaStatus(items, { position = null, now = Date.now(), warnMin = 2, badMin = 5 } = {}) {
+  const list = items || []
+  const isPoint = (item) => item && item.type !== 'header'
+  const manual = resolvePosition(list, position, now)
+  let index = manual ? manual.index : -1
+  if (!manual) {
+    index = list.findIndex((item) => {
+      if (!isPoint(item)) return false
+      const start = Date.parse(item.start)
+      return start <= now && now < start + (item.duration || 0) * 1000
+    })
+  }
+  const current = index >= 0 ? list[index] : null
+  let remainingSec = null
+  let deviationMin = null
+  let level = null
+  if (current) {
+    const planned = Date.parse(current.start)
+    const start = manual ? manual.at : planned
+    remainingSec = Math.round((start + (current.duration || 0) * 1000 - now) / 1000)
+    deviationMin = manual && Number.isFinite(planned) ? Math.round((manual.at - planned) / 60000) : 0
+    const abs = Math.abs(deviationMin)
+    level = abs <= warnMin ? 'ok' : abs <= badMin ? 'warn' : 'bad'
+  }
+  const nextIndex =
+    index >= 0
+      ? list.findIndex((item, j) => j > index && isPoint(item))
+      : list.findIndex((item) => isPoint(item) && Date.parse(item.start) > now)
+  return {
+    index,
+    current,
+    manual: Boolean(manual),
+    startedAt: manual ? manual.at : null,
+    remainingSec,
+    deviationMin,
+    level,
+    nextIndex,
+    next: nextIndex >= 0 ? list[nextIndex] : null,
+  }
+}
+
+/** 222 s → "3:42", −80 s → "−1:20" */
+export function fmtRemaining(seconds) {
+  if (seconds == null || !Number.isFinite(seconds)) return '–'
+  const sign = seconds < 0 ? '−' : ''
+  const s = Math.abs(Math.round(seconds))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  return h ? `${sign}${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${sign}${m}:${String(sec).padStart(2, '0')}`
+}
+
+/** +4 → "+4 min", −2 → "−2 min", 0 → "±0 min" */
+export function fmtDeviation(minutes) {
+  if (minutes == null || !Number.isFinite(minutes)) return '–'
+  return `${minutes > 0 ? '+' : minutes < 0 ? '−' : '±'}${Math.abs(minutes)} min`
+}
+
+/** Laufenden Punkt am Server setzen (itemIndex null = wieder nach Uhrzeit). Wirft mit Meldung. */
+export async function postPosition(eventId, itemIndex) {
+  const res = await fetch('/api/churchtools/agenda/position', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ eventId, itemIndex }),
+  })
+  let data = null
+  try {
+    data = await res.json()
+  } catch {
+    data = null
+  }
+  if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`)
+  return data
 }
 
 export const AGENDA_ACCENTS = ACCENTS
 export const AGENDA_CCLI_COLORS = CCLI_COLORS
+export const AGENDA_STATUS_MODES = STATUS_MODES
 
 /** Text in die Zwischenablage – auch ohne HTTPS bzw. ohne Clipboard-API (ältere Geräte) */
 async function copyText(text) {
@@ -211,13 +321,55 @@ export function createAgendaView(tile) {
   const pill = el('span', 'agenda-pill')
   header.append(titleBox, when, pill)
   const body = el('div', 'agenda-body')
-  root.append(header, body)
+  // Statuszeile: Restzeit · Abweichung · nächster Punkt (optional oben oder unten)
+  const status = el('div', 'agenda-status')
+  const stRest = statusCell(status, 'Rest')
+  const stDev = statusCell(status, 'Plan')
+  const stNext = statusCell(status, 'Dann')
+  const autoBtn = el('button', 'agenda-auto', 'Nach Uhr')
+  autoBtn.type = 'button'
+  autoBtn.title = 'Laufenden Punkt wieder nach der Uhrzeit bestimmen'
+  autoBtn.hidden = true
+  status.append(autoBtn)
+  root.classList.toggle('status-top', look.status === 'top')
+  root.classList.toggle('status-bottom', look.status === 'bottom')
+  root.classList.toggle('has-control', look.control)
+  if (look.status === 'top') root.append(header, status, body)
+  else if (look.status === 'bottom') root.append(header, body, status)
+  else root.append(header, body)
+  const toast = el('div', 'agenda-toast')
+  toast.hidden = true
+  root.append(toast)
 
   let data = null
-  let rows = [] // { li, item, bar }
+  let positions = {} // Event-ID → von Hand gesetzter Punkt (Server-Nachricht „ctposition“)
+  let rows = [] // { li, item, bar, index }
   let live = false // nur beim heutigen Tag: laufenden Punkt markieren
   let shownId = null // gezeigtes Event, um beim Weiterrücken neu zu zeichnen
   let manualUntil = 0 // bis dahin kein automatisches Mitscrollen
+  let toastTimer = null
+
+  function showToast(text) {
+    toast.textContent = text
+    toast.hidden = false
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => (toast.hidden = true), 3500)
+  }
+
+  /** Punkt am Server setzen; Fehler kurz in der Kachel zeigen */
+  async function setPosition(eventId, itemIndex) {
+    pauseFollow()
+    try {
+      await postPosition(eventId, itemIndex)
+    } catch (err) {
+      showToast(`Punkt nicht gesetzt: ${err.message}`)
+    }
+  }
+  if (look.control)
+    autoBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      if (shownId != null) setPosition(shownId, null)
+    })
 
   function pauseFollow() {
     manualUntil = Date.now() + MANUAL_MS
@@ -255,6 +407,7 @@ export function createAgendaView(tile) {
   function message(text) {
     rows = []
     body.replaceChildren(el('p', 'agenda-empty', text))
+    renderStatus(null)
   }
 
   const view = {
@@ -267,7 +420,55 @@ export function createAgendaView(tile) {
       pill.title = ct?.error || ''
       render()
     },
+    /** Von Hand gesetzte Punkte aller Events (Server-Nachricht „ctposition“) */
+    updatePosition(msg) {
+      positions = msg?.positions || {}
+      if (rows.length) tick()
+    },
     tick,
+    tickStatus,
+  }
+
+  /** Lage im Ablauf des gezeigten Events (laufender Punkt, Restzeit, Abweichung) */
+  function currentStatus(event) {
+    if (!event?.agenda || !live) return null
+    return agendaStatus(event.agenda.items, {
+      position: positions[String(event.id)],
+      now: Date.now(),
+      warnMin: look.warnMin,
+      badMin: look.badMin,
+    })
+  }
+
+  function renderStatus(st) {
+    if (look.status === 'off') return
+    status.classList.remove('level-ok', 'level-warn', 'level-bad')
+    status.classList.toggle('manual', Boolean(st?.manual))
+    autoBtn.hidden = !(look.control && st?.manual)
+    if (!st) {
+      setCell(stRest, '–', '')
+      setCell(stDev, '–', '')
+      setCell(stNext, '–', '')
+      return
+    }
+    const tz = data?.timeZone
+    if (st.current) {
+      setCell(stRest, fmtRemaining(st.remainingSec), st.remainingSec < 0 ? 'überzogen' : st.current.title)
+      status.classList.add(`level-${st.level}`)
+      const dev = st.deviationMin
+      setCell(stDev, st.manual ? fmtDeviation(dev) : 'nach Plan', st.manual ? (dev > 0 ? 'hinter Plan' : dev < 0 ? 'vor Plan' : 'im Plan') : 'nach Uhrzeit')
+    } else {
+      setCell(stRest, '–', st.next ? 'noch nicht begonnen' : 'Ablauf vorbei')
+      setCell(stDev, '–', '')
+    }
+    if (st.next) setCell(stNext, st.next.title, [st.next.responsible, fmtTime(st.next.start, tz)].filter(Boolean).join(' · '))
+    else setCell(stNext, 'Ende', '')
+  }
+
+  /** Nur die Statuszeile (Sekundentakt) – ohne Punkte neu zu markieren */
+  function tickStatus() {
+    if (look.status === 'off' || !rows.length || !live) return
+    renderStatus(currentStatus(currentEvent()))
   }
 
   /** Welches Event die Kachel gerade zeigen soll (null = keins). */
@@ -287,6 +488,7 @@ export function createAgendaView(tile) {
     eventName.textContent = ''
     when.textContent = ''
     label.textContent = 'Ablauf'
+    renderStatus(null)
     if (!ct || ct.state === 'unconfigured') return message('ChurchTools ist nicht verbunden.\nEinstellungen → ChurchTools')
     const day = options.date || ct.date
     const events = ct.days?.[day]
@@ -325,10 +527,11 @@ export function createAgendaView(tile) {
       if (item.beforeEvent && !look.before) continue
       const li = el('li', `agenda-item type-${item.type}`)
       if (item.beforeEvent) li.classList.add('before-event')
+      const index = event.agenda.items.indexOf(item)
       if (item.type === 'header') {
         li.append(el('span', 'agenda-time', fmtTime(item.start, tz)), el('span', 'agenda-head', item.title))
         list.append(li)
-        rows.push({ li, item, bar: null })
+        rows.push({ li, item, bar: null, index })
         continue
       }
       const main = el('div', 'agenda-main')
@@ -354,8 +557,21 @@ export function createAgendaView(tile) {
       }
       const bar = el('span', 'agenda-progress')
       li.append(el('span', 'agenda-time', fmtTime(item.start, tz)), main, el('span', 'agenda-dur', fmtDuration(item.duration)), bar)
+      if (look.control && live) {
+        // Bedienung: diesen Punkt jetzt als laufenden setzen (alle Kacheln folgen)
+        const go = el('button', 'agenda-go', '▶')
+        go.type = 'button'
+        go.title = `„${item.title}“ jetzt starten`
+        go.setAttribute('aria-label', `${item.title} jetzt starten`)
+        go.addEventListener('click', (e) => {
+          e.stopPropagation()
+          setPosition(event.id, index)
+        })
+        go.addEventListener('keydown', (e) => e.stopPropagation())
+        li.append(go)
+      }
       list.append(li)
-      const row = { li, item, bar }
+      const row = { li, item, bar, index }
       rows.push(row)
       if (lines.length) {
         li.classList.add('has-sub')
@@ -389,18 +605,29 @@ export function createAgendaView(tile) {
     if (data && (currentEvent()?.id ?? null) !== shownId) return render()
     if (!rows.length || !live) return
     const now = Date.now()
+    const st = currentStatus(currentEvent())
+    renderStatus(st)
     let current = null
     for (const row of rows) {
-      const start = row.item.start ? Date.parse(row.item.start) : NaN
-      const end = start + row.item.duration * 1000
       const isHeader = row.item.type === 'header'
-      const running = !isHeader && start <= now && now < end
-      const done = !isHeader ? now >= end : false
+      let start = row.item.start ? Date.parse(row.item.start) : NaN
+      let running
+      let done
+      if (st?.manual) {
+        // Von Hand gesetzt: dieser Punkt läuft seit dem Klick, alle davor sind erledigt
+        running = !isHeader && row.index === st.index
+        done = !isHeader && row.index < st.index
+        if (running) start = st.startedAt
+      } else {
+        running = !isHeader && start <= now && now < start + row.item.duration * 1000
+        done = !isHeader ? now >= start + row.item.duration * 1000 : false
+      }
+      const end = start + row.item.duration * 1000
       row.li.classList.toggle('current', running)
       row.li.classList.toggle('done', done)
       if (running) {
         current = row
-        row.bar.style.width = `${Math.min(100, ((now - start) / (end - start)) * 100)}%`
+        row.bar.style.width = `${Math.min(100, end > start ? ((now - start) / (end - start)) * 100 : 100)}%`
       } else if (row.bar) row.bar.style.width = '0'
     }
     // Ablauf vorbei: Kopfzeilen der erledigten Abschnitte ebenfalls abdunkeln
@@ -431,9 +658,31 @@ export function createAgendaView(tile) {
   return view
 }
 
+/** Zelle der Statuszeile: Beschriftung klein, Wert groß, Zusatz darunter */
+function statusCell(parent, label) {
+  const cell = el('span', 'agenda-st')
+  const value = el('b', null, '–')
+  const sub = el('small', null, '')
+  cell.append(el('i', null, label), value, sub)
+  cell.value = value
+  cell.sub = sub
+  parent.append(cell)
+  return cell
+}
+
+function setCell(cell, value, sub) {
+  cell.value.textContent = value
+  cell.sub.textContent = sub || ''
+  cell.sub.hidden = !sub
+}
+
 setInterval(() => {
   for (const view of views) {
     if (!view.el.isConnected) views.delete(view)
     else view.tick()
   }
 }, 5000)
+// Restzeit im Sekundentakt
+setInterval(() => {
+  for (const view of views) if (view.el.isConnected) view.tickStatus()
+}, 1000)

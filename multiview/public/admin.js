@@ -4,7 +4,8 @@ import { createChatView, chatOptions } from './chat.js'
 import { createUplinkView, mergeUplink, uplinkOptions } from './uplink.js'
 import { createYouTubeView, youtubeOptions } from './youtube.js'
 import { createSlideshowView, ppSlides, slideshowOptions } from './slideshow.js'
-import { createAgendaView, agendaOptions, AGENDA_ACCENTS, AGENDA_CCLI_COLORS } from './agenda.js'
+import { createAgendaView, agendaOptions, AGENDA_ACCENTS, AGENDA_CCLI_COLORS, AGENDA_STATUS_MODES } from './agenda.js'
+import { createRosterView, rosterOptions } from './roster.js'
 import {
   createProPresenterView, createPlaylistView, createPreacherView, ppOptions, playlistOptions, preacherOptions,
 } from './propresenter.js'
@@ -92,6 +93,8 @@ let chat = { state: 'connecting', messages: [], stationName: '' }
 const chatViews = new Set()
 let churchtools = { state: 'connecting', events: [] }
 const agendaViews = new Set()
+const rosterViews = new Set() // Kacheln „Dienstplan“
+let ctPosition = { type: 'ctposition', positions: {} } // von Hand gesetzte Ablauf-Punkte
 const uplinkViews = new Set()
 let uplink = null
 const youtubeViews = new Set()
@@ -162,8 +165,17 @@ function onMessage(msg) {
       if (view.el.isConnected) view.update(churchtools)
       else agendaViews.delete(view)
     }
+    for (const view of rosterViews) {
+      if (view.el.isConnected) view.update(churchtools)
+      else rosterViews.delete(view)
+    }
     for (const view of slideshowViews) if (view.el.isConnected) view.update({ churchtools })
     refreshSlideshowAreaCards()
+    // Dienste-Katalog für den Filter der Dienstplan-Kachel nachziehen
+    if (inspector.querySelector('[data-roster-catalog]')) renderInspector()
+  } else if (msg.type === 'ctposition') {
+    ctPosition = msg
+    for (const view of agendaViews) if (view.el.isConnected) view.updatePosition(ctPosition)
   } else if (msg.type === 'chat') {
     chat = msg
     renderChatStatus()
@@ -1806,6 +1818,8 @@ function syncTileMedia(el, tile) {
         ? JSON.stringify(['slideshow', slideshowOptions(tile.slideshow)])
       : tile.kind === 'churchtools'
         ? JSON.stringify(['churchtools', tile.ctFilter, tile.ctResponsible, tile.ctNotes, tile.ctSongInfo, tile.ctCcli, tile.ctDate, tile.ctMode, agendaOptions(tile.agendaLook)])
+      : tile.kind === 'services'
+        ? JSON.stringify(['services', tile.ctFilter, tile.ctDate, tile.ctMode, rosterOptions(tile.roster)])
         : livePreview && source
         ? JSON.stringify([source.type, source.device, source.url, source.name])
         : livePreview && tile.kind === 'kesher' && editorKesherUrl(tile)
@@ -1815,7 +1829,7 @@ function syncTileMedia(el, tile) {
   el.dataset.mediaKey = key
   el.querySelector('.etile-media')?.remove()
   el.classList.toggle('live', Boolean(key))
-  el.classList.toggle('chat-tile', ['chat', 'churchtools', 'uplink', 'youtube', 'slideshow'].includes(tile.kind))
+  el.classList.toggle('chat-tile', ['chat', 'churchtools', 'services', 'uplink', 'youtube', 'slideshow'].includes(tile.kind))
   if (!key) return
   const media = document.createElement('div')
   media.className = 'etile-media'
@@ -1827,8 +1841,14 @@ function syncTileMedia(el, tile) {
     media.append(view.el)
   } else if (tile.kind === 'churchtools') {
     const view = createAgendaView(tile)
+    view.updatePosition(ctPosition)
     view.update(churchtools)
     agendaViews.add(view)
+    media.append(view.el)
+  } else if (tile.kind === 'services') {
+    const view = createRosterView(tile)
+    view.update(churchtools)
+    rosterViews.add(view)
     media.append(view.el)
   } else if (tile.kind === 'uplink') {
     const view = createUplinkView(tile.uplink)
@@ -1906,6 +1926,16 @@ function describeTile(tile) {
         ? 'nächstes Event'
         : 'heute'
     return { title: 'ChurchTools-Ablauf', sub: [day, tile.ctFilter].filter(Boolean).join(' · ') }
+  }
+  if (tile.kind === 'services') {
+    const day = tile.ctDate
+      ? new Date(`${tile.ctDate}T12:00:00Z`).toLocaleDateString('de-DE', { timeZone: 'UTC' })
+      : tile.ctMode === 'next'
+        ? 'nächstes Event'
+        : 'heute'
+    const o = rosterOptions(tile.roster)
+    const scope = o.groups.length || o.services.length ? 'Auswahl' : 'alle Dienste'
+    return { title: 'Dienstplan', sub: [day, tile.ctFilter, scope].filter(Boolean).join(' · ') }
   }
   if (tile.kind === 'uplink') return { title: 'Upload / Stream', sub: 'Internet-Upload (FRITZ!Box)' }
   if (tile.kind === 'slideshow') {
@@ -2805,7 +2835,79 @@ function agendaLookSection(tile) {
       <p class="muted small">Im Monitor-Modus und im Vollbild steht neben der CCLI-Nummer ein Knopf „Kopieren“.</p>
       <label class="field"><span>Nur diese Programmspalten (Komma getrennt, leer = alle)</span>
         <input type="text" data-ag="columns" value="${esc(o.columns)}" placeholder="z. B. Technik, Programm"></label>
+      <h4>Statuszeile</h4>
+      <label class="field"><span>Restzeit, Abweichung vom Plan und nächster Punkt</span>
+        <select data-ag="status">
+          <option value="off" ${o.status === 'off' ? 'selected' : ''}>Aus</option>
+          <option value="top" ${o.status === 'top' ? 'selected' : ''}>Oben (unter der Kopfzeile)</option>
+          <option value="bottom" ${o.status === 'bottom' ? 'selected' : ''}>Unten</option>
+        </select></label>
+      <div class="row2">
+        <label class="field"><span>Grün bis … min Abweichung</span><input type="number" min="0" max="60" step="1" data-ag="warnMin" value="${o.warnMin}"></label>
+        <label class="field"><span>Gelb bis … min (darüber rot)</span><input type="number" min="0" max="180" step="1" data-ag="badMin" value="${o.badMin}"></label>
+      </div>
+      ${check('control', 'Laufenden Punkt per Klick setzen (Knopf ▶ je Punkt, „Nach Uhr“ zurück)')}
+      <p class="muted small">Der laufende Punkt ergibt sich aus der Uhrzeit. Setzt ein Operator ihn von Hand (Knopf ▶ auf einem Monitor, Companion oder <code>POST /api/churchtools/agenda/position</code>), folgen alle Kacheln; die Abweichung ist dann die tatsächliche Startzeit minus Plan („+4 min“ = hinter Plan). Setzen dürfen Admin, Technikstationen und Rollen mit „Folien steuern“.</p>
     </div>`
+}
+
+/** Datum und Event-Filter – gleich für Ablauf- und Dienstplan-Kachel. */
+function ctEventSection(tile) {
+  return `
+      <label class="field"><span>Datum</span>
+        <select data-t="ctDateMode">
+          <option value="today" ${!tile.ctDate && tile.ctMode !== 'next' ? 'selected' : ''}>Heute</option>
+          <option value="next" ${!tile.ctDate && tile.ctMode === 'next' ? 'selected' : ''}>Nächstes Event</option>
+          <option value="fixed" ${tile.ctDate ? 'selected' : ''}>Festes Datum …</option>
+        </select>
+      </label>
+      ${tile.ctDate ? `<label class="field"><span>Tag</span><input type="date" data-t="ctDate" value="${esc(tile.ctDate)}" required></label>` : ''}
+      <label class="field"><span>Event (Name oder Kalender enthält, leer = laufendes/nächstes)</span><input type="text" data-t="ctFilter" value="${esc(tile.ctFilter)}" placeholder="z. B. Gottesdienst"></label>`
+}
+
+/** Dienstplan-Kachel: Auswahl der Dienstgruppen/Dienste und Darstellung. */
+function rosterSection(tile) {
+  const o = rosterOptions(tile.roster)
+  const check = (key, label) =>
+    `<label class="check"><input type="checkbox" data-ro="${key}" ${o[key] ? 'checked' : ''}> ${label}</label>`
+  const catalog = churchtools.serviceCatalog || []
+  const groups = new Set(o.groups)
+  const services = new Set(o.services)
+  const picker = catalog.length
+    ? `<div class="roster-picker" data-roster-catalog>
+        ${catalog
+          .map(
+            (g) => `<div class="roster-pick-group">
+          <label class="check"><input type="checkbox" data-ro-group="${g.id ?? ''}" ${g.id != null && groups.has(Number(g.id)) ? 'checked' : ''} ${g.id == null ? 'disabled' : ''}> <b>${esc(g.name)}</b></label>
+          <div class="roster-pick-services">${g.services
+            .map((s) => `<label class="check"><input type="checkbox" data-ro-service="${s.id}" ${services.has(Number(s.id)) ? 'checked' : ''}> ${esc(s.name)}</label>`)
+            .join('')}</div>
+        </div>`,
+          )
+          .join('')}
+      </div>`
+    : `<p class="muted small" data-roster-catalog>${
+        churchtools.state === 'connected'
+          ? 'Dienste werden geladen … (braucht im ChurchTools-Benutzer Leserecht auf Dienste und Dienstgruppen)'
+          : 'Dienstgruppen erscheinen hier, sobald ChurchTools verbunden ist.'
+      }</p>`
+  return `
+    ${ctEventSection(tile)}
+    <div class="insp-section">
+      <h4 class="insp-label">Dienste (leer = alle)</h4>
+      ${picker}
+      <p class="muted small">Eine ganze Dienstgruppe oder einzelne Dienste anhaken. Ohne Auswahl zeigt die Kachel alle Dienste des Events.</p>
+    </div>
+    <div class="meter-settings">
+      <h4>Darstellung</h4>
+      <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+        <input type="range" min="0.5" max="3" step="0.1" data-ro="size" value="${o.size}"></label>
+      ${check('header', 'Kopfzeile (Event, Datum, Status)')}
+      ${check('groupTitles', 'Dienstgruppen als Überschriften')}
+      ${check('openOnly', 'Nur unbesetzte und angefragte Dienste')}
+      ${check('comments', 'Kommentar der Einteilung anzeigen')}
+    </div>
+    <p class="muted">Zeigt, wer in ChurchTools für das Event eingeteilt ist – gruppiert nach Dienstgruppe. <b>Rot</b>: Dienst nicht besetzt. <b>Gelb</b>: eingeteilt, aber noch nicht zugesagt. Die Eventauswahl ist dieselbe wie bei der Ablauf-Kachel. Der Server fragt die Dienste nur ab, solange eine Dienstplan-Kachel existiert. Verbindung unter <a href="#/einstellungen/churchtools">Einstellungen</a>.</p>`
 }
 
 /** Chat-Kachel: Schriftgröße und was angezeigt wird. */
@@ -2880,6 +2982,7 @@ const TILE_KIND_GROUPS = [
   ]],
   ['Info & Medien', [
     ['churchtools', 'ChurchTools', 'Ablauf des Events', 'purple', '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>'],
+    ['services', 'Dienstplan', 'Wer ist heute dran?', 'purple', '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 4h5M16 8h5M16 12h5"/>'],
     ['slideshow', 'Diashow', 'Bilder, Veranstaltungen …', 'pink', '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>'],
     ['youtube', 'YouTube Live', 'Zuschauer, Stream, Chat', 'red', '<rect x="3" y="6" width="18" height="12" rx="3"/><path d="M10 9.5v5l4.5-2.5z"/>'],
     ['uplink', 'Upload / Stream', 'Internetleitung', 'indigo', '<path d="M12 19V6M6 11l6-6 6 6"/><path d="M4 21h16"/>'],
@@ -2978,15 +3081,7 @@ function tileInspector(tile, layout) {
     ${
       kind === 'churchtools'
         ? `
-      <label class="field"><span>Datum</span>
-        <select data-t="ctDateMode">
-          <option value="today" ${!tile.ctDate && tile.ctMode !== 'next' ? 'selected' : ''}>Heute</option>
-          <option value="next" ${!tile.ctDate && tile.ctMode === 'next' ? 'selected' : ''}>Nächstes Event</option>
-          <option value="fixed" ${tile.ctDate ? 'selected' : ''}>Festes Datum …</option>
-        </select>
-      </label>
-      ${tile.ctDate ? `<label class="field"><span>Tag</span><input type="date" data-t="ctDate" value="${esc(tile.ctDate)}" required></label>` : ''}
-      <label class="field"><span>Event (Name oder Kalender enthält, leer = laufendes/nächstes)</span><input type="text" data-t="ctFilter" value="${esc(tile.ctFilter)}" placeholder="z. B. Gottesdienst"></label>
+      ${ctEventSection(tile)}
       <label class="check"><input type="checkbox" data-t="ctResponsible" ${tile.ctResponsible !== false ? 'checked' : ''}> Verantwortliche anzeigen</label>
       <label class="check"><input type="checkbox" data-t="ctNotes" ${tile.ctNotes === true ? 'checked' : ''}> Notizen anzeigen</label>
       <label class="check"><input type="checkbox" data-t="ctSongInfo" ${tile.ctSongInfo !== false ? 'checked' : ''}> Tonart und Arrangement bei Songs</label>
@@ -2995,6 +3090,7 @@ function tileInspector(tile, layout) {
       <p class="muted">Zeigt den Ablauf eines Events aus ChurchTools. <b>Heute</b>: das laufende, sonst das nächste Event von heute. <b>Nächstes Event</b>: das laufende, sonst das nächste – auch an späteren Tagen (bis 6 Wochen voraus). <b>Festes Datum</b>: nur dieser Tag. Events ohne Ablauf erscheinen mit „Kein Ablauf hinterlegt“. Ein Klick auf einen Punkt klappt die Programmspalten auf. Die CCLI-Nummer braucht im ChurchTools-Benutzer Leserecht auf Songs. Verbindung unter <a href="#/einstellungen/churchtools">Einstellungen</a>.</p>`
         : ''
     }
+    ${kind === 'services' ? rosterSection(tile) : ''}
     ${kind === 'uplink' ? uplinkSection(tile) : ''}
     ${kind === 'youtube' ? youtubeSection(tile) : ''}
     ${kind === 'slideshow' ? slideshowSection(tile) : ''}
@@ -3126,11 +3222,42 @@ function onInspectorField(e) {
     const tile = layout.tiles.find((t) => t.id === selectedTileId)
     if (!tile) return
     const key = el.dataset.ag
-    const value = el.type === 'checkbox' ? el.checked : el.type === 'range' ? Number(el.value) : el.value
+    const value = el.type === 'checkbox' ? el.checked : el.type === 'range' || el.type === 'number' ? Number(el.value) : el.value
     tile.agendaLook = { ...agendaOptions(tile.agendaLook), [key]: value }
     const out = el.closest('label').querySelector('output')
     if (out) out.textContent = `${Math.round(value * 100)} %`
     renderCanvas()
+    changed()
+    return
+  }
+
+  if (el.dataset.ro) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const key = el.dataset.ro
+    const value = el.type === 'checkbox' ? el.checked : el.type === 'range' ? Number(el.value) : el.value
+    tile.roster = { ...rosterOptions(tile.roster), [key]: value }
+    const out = el.closest('label').querySelector('output')
+    if (out) out.textContent = `${Math.round(value * 100)} %`
+    renderCanvas()
+    changed()
+    return
+  }
+
+  if (el.dataset.roGroup != null || el.dataset.roService != null) {
+    // Dienstplan: Dienstgruppen bzw. einzelne Dienste an- oder abwählen
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const o = rosterOptions(tile.roster)
+    const list = el.dataset.roGroup != null ? 'groups' : 'services'
+    const id = Number(el.dataset.roGroup ?? el.dataset.roService)
+    if (!Number.isFinite(id)) return
+    const set = new Set(o[list])
+    if (el.checked) set.add(id)
+    else set.delete(id)
+    tile.roster = { ...o, [list]: [...set] }
+    renderCanvas()
+    renderInspector()
     changed()
     return
   }

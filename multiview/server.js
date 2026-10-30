@@ -17,6 +17,7 @@ const { createChurchTools } = require('./churchtools')
 const { createEventOps, eventOpsRouter } = require('./event-ops')
 const { createOpsChecks } = require('./event-ops-checks')
 const { createUplink, normalizeUplink } = require('./uplink')
+const { createAgendaPosition } = require('./agenda-position')
 const { createYouTube } = require('./youtube')
 const { createMonarch } = require('./monarch')
 const { createDropbox } = require('./dropbox')
@@ -1246,17 +1247,29 @@ function sessionsChanged() {
   }, 300)
 }
 
+/** Kachel-Arten, die ein ChurchTools-Event zeigen (gleiche Datumsauswahl) */
+const CT_TILE_KINDS = ['churchtools', 'services']
 const churchTools = createChurchTools({
   dataDir: DATA_DIR,
   getConfig: () => config.churchtools,
-  // Fest gewählte Tage aller ChurchTools-Kacheln
+  // Fest gewählte Tage aller ChurchTools-Kacheln (Ablauf und Dienstplan)
   getDates: () =>
-    config.layouts.flatMap((l) => l.tiles.filter((t) => t.kind === 'churchtools' && t.ctDate).map((t) => t.ctDate)),
+    config.layouts.flatMap((l) => l.tiles.filter((t) => CT_TILE_KINDS.includes(t.kind) && t.ctDate).map((t) => t.ctDate)),
   // Filter der Kacheln „Nächstes Event“: dafür wird das nächste Event der kommenden Tage gesucht
   getFilters: () =>
     config.layouts.flatMap((l) =>
-      l.tiles.filter((t) => t.kind === 'churchtools' && !t.ctDate && t.ctMode === 'next').map((t) => t.ctFilter || ''),
+      l.tiles.filter((t) => CT_TILE_KINDS.includes(t.kind) && !t.ctDate && t.ctMode === 'next').map((t) => t.ctFilter || ''),
     ),
+  // Dienste je Event nur abfragen, wenn eine Dienstplan-Kachel sie zeigt
+  wantServices: () => config.layouts.some((l) => l.tiles.some((t) => t.kind === 'services')),
+  onUpdate: broadcast,
+  log: console.log,
+})
+
+// Laufender Punkt im Ablauf, von Hand gesetzt (Kachel „Ablauf“ mit Bedienung, Companion, API)
+const agendaPosition = createAgendaPosition({
+  dataDir: DATA_DIR,
+  getEvents: () => churchTools.loadedEvents(),
   onUpdate: broadcast,
   log: console.log,
 })
@@ -1470,6 +1483,7 @@ wss.on('connection', (ws, req) => {
   send(ws, serverInfo())
   send(ws, kesherChat.snapshot())
   send(ws, churchTools.snapshot())
+  send(ws, agendaPosition.snapshot())
   send(ws, uplink.snapshot())
   send(ws, youtube.snapshot())
   send(ws, slideshow.snapshot())
@@ -3056,6 +3070,25 @@ app.post('/api/churchtools/disconnect', requireAdmin, (req, res) => {
 app.post('/api/churchtools/refresh', requireAdmin, async (req, res) => {
   await churchTools.refresh()
   res.json(churchTools.snapshot())
+})
+
+// Laufender Punkt im Ablauf von Hand setzen (Rechte wie bei der Folien-Steuerung: Admin,
+// Technikstation oder Rolle mit „Folien steuern“). Body: { eventId, itemIndex } – itemIndex null
+// = wieder nach Uhrzeit – oder { eventId, action: 'next' | 'previous' | 'auto' } für Companion.
+app.get('/api/churchtools/agenda/position', requireTrusted, requireDisplayReader, (req, res, next) => {
+  // Ohne eventId nur lesen; mit eventId ist es ein Steuerbefehl einer Station (GET wie bei Companion)
+  if (req.query.eventId == null) return res.json(agendaPosition.snapshot())
+  next()
+})
+app.all('/api/churchtools/agenda/position', requireTrusted, requireMutation, requireSlideOperator, (req, res) => {
+  const body = req.method === 'GET' ? req.query : req.body || {}
+  try {
+    const itemIndex = body.itemIndex === null || body.itemIndex === 'null' ? null : body.itemIndex === undefined ? undefined : Number(body.itemIndex)
+    const snap = agendaPosition.set({ eventId: body.eventId, itemIndex, action: body.action }, req.user?.name || 'Station')
+    res.json({ ok: true, position: snap.positions[String(body.eventId)] || null })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
 })
 
 // WebRTC-Anmeldung (WHEP) an MediaMTX weiterreichen, damit Browser nur diesen Port brauchen

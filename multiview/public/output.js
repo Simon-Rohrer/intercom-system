@@ -4,6 +4,7 @@ import { createChatView } from './chat.js'
 import { chatFor, chatRoleFor } from './rights.js'
 import { createComposer } from './chat-compose.js'
 import { createAgendaView } from './agenda.js'
+import { createRosterView } from './roster.js'
 import { createUplinkView, mergeUplink } from './uplink.js'
 import { createYouTubeView } from './youtube.js'
 import { createSlideshowView } from './slideshow.js'
@@ -75,7 +76,9 @@ fetch('/api/me', { cache: 'no-store' })
   })
 let chat = { state: 'connecting', messages: [], stationName: '' }
 let bootId = null
-const agendaViews = new Set() // ChurchTools-Kacheln
+const agendaViews = new Set() // ChurchTools-Kacheln (Ablauf)
+const rosterViews = new Set() // ChurchTools-Kacheln (Dienstplan)
+let ctPosition = { type: 'ctposition', positions: {} } // von Hand gesetzte Ablauf-Punkte
 const uplinkViews = new Set() // Upload-Kacheln (FRITZ!Box)
 let uplink = null
 const youtubeViews = new Set() // Kacheln „YouTube Live“
@@ -108,7 +111,11 @@ const ws = connect(
     } else if (msg.type === 'churchtools') {
       churchtools = msg
       for (const view of agendaViews) view.update(churchtools)
+      for (const view of rosterViews) view.update(churchtools)
       for (const view of slideshowViews) view.update({ churchtools })
+    } else if (msg.type === 'ctposition') {
+      ctPosition = msg
+      for (const view of agendaViews) view.updatePosition(ctPosition)
     } else if (msg.type === 'slideshow') {
       slideshow = msg
       for (const view of slideshowViews) view.update({ slideshow })
@@ -178,6 +185,7 @@ function render() {
   chatViews.clear()
   composers.clear()
   agendaViews.clear()
+  rosterViews.clear()
   uplinkViews.clear()
   youtubeViews.clear()
   slideshowViews.clear()
@@ -302,8 +310,15 @@ function buildTile(tile, layout, usedStreams) {
     media.append(view.el)
   } else if (tile.kind === 'churchtools') {
     const view = createAgendaView(tile)
+    view.updatePosition(ctPosition)
     view.update(churchtools)
     agendaViews.add(view)
+    media.classList.add('chat')
+    media.append(view.el)
+  } else if (tile.kind === 'services') {
+    const view = createRosterView(tile)
+    view.update(churchtools)
+    rosterViews.add(view)
     media.classList.add('chat')
     media.append(view.el)
   } else if (tile.kind === 'propresenter' || tile.kind === 'playlist' || tile.kind === 'preacher') {

@@ -35,7 +35,7 @@ RUN set -eu; \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
-COPY event-ops.js event-ops-checks.js server.js day-qr.js uplink.js youtube.js monarch.js dropbox.js slideshow.js auth-http.js auth-permissions.js device-transport.js kesher-chat.js kesher-roles.js churchtools.js access.js neighbors.js raspberry-pis.js message-links.js legacy.js legacy-runtime.js ./
+COPY event-ops.js event-ops-checks.js server.js day-qr.js uplink.js roster.js agenda-position.js youtube.js monarch.js dropbox.js slideshow.js auth-http.js auth-permissions.js device-transport.js kesher-chat.js kesher-roles.js churchtools.js access.js neighbors.js raspberry-pis.js message-links.js legacy.js legacy-runtime.js ./
 COPY public ./public
 COPY seed ./seed
 COPY wallpapers/*.jpg ./wallpapers/

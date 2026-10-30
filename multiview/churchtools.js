@@ -7,6 +7,7 @@
 
 const fs = require('fs')
 const path = require('path')
+const { normalizeEventServices, serviceMap, serviceCatalog } = require('./roster')
 
 const REFRESH_MS = 60 * 1000
 const MAX_DAYS = 10 // so viele verschiedene Tage werden höchstens abgefragt
@@ -61,7 +62,7 @@ function isDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && !Number.isNaN(Date.parse(value))
 }
 
-function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters = () => [], onUpdate, log = console.log }) {
+function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters = () => [], wantServices = () => false, onUpdate, log = console.log }) {
   const secretFile = path.join(dataDir, 'churchtools-secret.json')
   let secret = readSecret() // { url, token, user }
   let state = secret?.token ? 'connecting' : 'unconfigured'
@@ -108,6 +109,8 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
       days,
       upcoming,
       overview,
+      // Dienstgruppen mit ihren Diensten (für den Filter der Kachel „Dienstplan“)
+      serviceCatalog: catalog,
     }
   }
 
@@ -240,7 +243,7 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
   }
 
   function wantedKey(today) {
-    return JSON.stringify([wantedDays(today), wantedFilters()])
+    return JSON.stringify([wantedDays(today), wantedFilters(), Boolean(wantServices())])
   }
 
   /** Nach einer Änderung der Kacheln: neu gewählte Tage und Filter sofort laden. */
@@ -290,6 +293,42 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
       serviceGroups = { ...serviceGroups, at: Date.now() - 55 * 60 * 1000 }
     }
     return serviceGroups.map
+  }
+
+  // Dienste (Ton, Licht, Kamera …) mit Dienstgruppe, selten geändert
+  let serviceDefs = { at: 0, base: '', map: new Map() }
+  let catalog = [] // Dienstgruppen mit Diensten für die Kachel-Einstellungen
+  async function loadServices(base, token) {
+    if (serviceDefs.base === base && Date.now() - serviceDefs.at < 60 * 60 * 1000) return serviceDefs.map
+    try {
+      const { data } = await request(base, '/services', { token })
+      serviceDefs = { at: Date.now(), base, map: serviceMap(data?.data || []) }
+      catalog = serviceCatalog(serviceDefs.map, await loadServiceGroups(base, token))
+    } catch {
+      // Ohne Namen trotzdem anzeigen ("Dienst 12"); später erneut versuchen
+      serviceDefs = { ...serviceDefs, at: Date.now() - 55 * 60 * 1000 }
+    }
+    return serviceDefs.map
+  }
+
+  /**
+   * Eingeteilte Dienste eines Events. Die Eventliste bringt die Dienste je nach
+   * ChurchTools-Version schon mit, sonst holt /events/{id} sie nach.
+   */
+  async function loadEventServices(base, token, e) {
+    try {
+      let list = e.eventServices
+      if (!Array.isArray(list)) {
+        const { data } = await request(base, `/events/${e.id}`, { token })
+        list = data?.data?.eventServices || []
+      }
+      const defs = await loadServices(base, token)
+      return { services: normalizeEventServices(list, defs, await loadServiceGroups(base, token)), servicesError: '' }
+    } catch (err) {
+      if (err.status === 403) return { services: null, servicesError: 'Keine Berechtigung für die Dienste' }
+      if (err.status === 404) return { services: null, servicesError: 'Event nicht gefunden' }
+      throw err
+    }
   }
 
   // CCLI-Nummern der Songs (braucht im ChurchTools-Benutzer Leserecht auf Songs)
@@ -401,8 +440,15 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
       .filter((e) => !e.isCanceled && dateIn(tz, new Date(e.startDate)) === day)
       .sort((a, b) => Date.parse(a.startDate) - Date.parse(b.startDate))
     const result = []
-    for (const e of list) result.push({ ...eventInfo(e), ...(await loadAgenda(base, token, e)) })
+    for (const e of list) result.push(await loadEvent(base, token, e))
     return result
+  }
+
+  /** Event mit Ablauf und – wenn eine Dienstplan-Kachel sie braucht – den Diensten. */
+  async function loadEvent(base, token, e) {
+    const event = { ...eventInfo(e), ...(await loadAgenda(base, token, e)) }
+    if (wantServices()) Object.assign(event, await loadEventServices(base, token, e))
+    return event
   }
 
   /**
@@ -423,7 +469,7 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
       if (!open.length) break
       const event = eventInfo(e)
       if (!open.some((f) => matchesFilter(event, f))) continue
-      const full = { ...event, ...(await loadAgenda(base, token, e)) }
+      const full = await loadEvent(base, token, e)
       found.push(full)
       for (let i = open.length - 1; i >= 0; i--) if (matchesFilter(full, open[i])) open.splice(i, 1)
     }
@@ -487,6 +533,8 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
     try {
       const wanted = wantedDays(today)
       daysKey = wantedKey(today)
+      // Der Dienste-Katalog ist für die Kachel-Einstellungen immer da (eine Abfrage pro Stunde)
+      await loadServices(base, token)
       const next = {}
       for (const day of wanted) next[day] = await loadDay(base, token, tz, day)
       try {
@@ -548,7 +596,12 @@ function createChurchTools({ dataDir, getConfig, getDates = () => [], getFilters
     return loadAgenda(secret.url, secret.token, event)
   }
 
-  return { start: refresh, refresh, connect, disconnect, snapshot, stop, datesChanged, api, agendaForEvent }
+  /** Alle geladenen Events mit Ablauf (heute, feste Tage, nächste Events) – für die Ablauf-Position. */
+  function loadedEvents() {
+    return [...Object.values(days).flat(), ...upcoming]
+  }
+
+  return { start: refresh, refresh, connect, disconnect, snapshot, stop, datesChanged, api, agendaForEvent, loadedEvents }
 }
 
 module.exports = { createChurchTools }

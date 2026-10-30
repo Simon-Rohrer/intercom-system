@@ -234,3 +234,90 @@ body.can-copy .agenda-copy { display: inline-block; }
 .agenda.density-airy .agenda-item.type-header { padding-top: 1.2em; }
 .agenda.density-airy .agenda-main { gap: 0.3em; }
 .agenda.hide-done .agenda-item.done:not(.current) { display: none; }
+
+/* Statuszeile: Restzeit · Abweichung vom Plan · nächster Punkt (Kachel-Einstellung „Statuszeile“) */
+.agenda.status-top { grid-template-rows: auto auto minmax(0, 1fr); }
+.agenda.status-bottom { grid-template-rows: auto minmax(0, 1fr) auto; }
+.agenda.no-header.status-top { grid-template-rows: auto minmax(0, 1fr); }
+.agenda.no-header.status-bottom { grid-template-rows: minmax(0, 1fr) auto; }
+.agenda-status {
+  display: flex;
+  align-items: stretch;
+  background: var(--k-rack);
+  border-bottom: 1px solid var(--k-line);
+  min-width: 0;
+}
+.agenda.status-bottom .agenda-status { border-bottom: 0; border-top: 1px solid var(--k-line); }
+.agenda-st {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: center;
+  gap: 0.05em;
+  min-width: 0;
+  padding: 0.45em 1.2em;
+  border-right: 1px solid var(--k-line);
+}
+.agenda-st:nth-child(3) { flex: 1 1 auto; border-right: 0; }
+.agenda-st i {
+  font-style: normal;
+  font-family: var(--k-font-label);
+  font-weight: 600;
+  font-size: 0.65em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--k-ink-3);
+}
+.agenda-st b {
+  font-family: var(--k-font-mono);
+  font-size: 1.5em;
+  font-weight: 700;
+  line-height: 1.05;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agenda-st:nth-child(3) b { font-family: var(--k-font-body); font-weight: 600; font-size: 1.25em; }
+.agenda-st small { font-size: 0.75em; color: var(--k-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Abweichung vom Plan: grün ≤ warn, gelb ≤ bad, rot darüber (Schwellen in den Kachel-Einstellungen) */
+.agenda-status.level-ok .agenda-st:nth-child(2) b { color: var(--k-ok); }
+.agenda-status.level-warn .agenda-st:nth-child(2) b { color: var(--k-call); }
+.agenda-status.level-bad .agenda-st:nth-child(2) b { color: var(--k-bad); }
+.agenda-status.level-bad .agenda-st:nth-child(2) { background: rgba(255, 90, 79, 0.12); }
+.agenda-status.manual .agenda-st:nth-child(1) b { color: var(--k-accent); }
+.agenda-auto,
+.agenda-go {
+  font: 600 0.8em var(--k-font-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--k-ink);
+  background: var(--k-face-hi);
+  border: 1px solid var(--k-line-strong);
+  border-radius: 0.35em;
+  padding: 0.2em 0.6em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.agenda-auto { align-self: center; margin: 0 1em 0 0.4em; }
+.agenda-auto:hover, .agenda-go:hover { border-color: var(--k-accent); color: var(--k-accent); }
+.agenda-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 1em;
+  transform: translateX(-50%);
+  max-width: 90%;
+  padding: 0.4em 0.9em;
+  background: var(--k-bad);
+  color: #000;
+  font-weight: 600;
+  font-size: 0.85em;
+  border-radius: 0.4em;
+  z-index: 2;
+}
+
+/* Bedienung: Punkt per Klick als laufenden setzen (Kachel-Einstellung „Laufenden Punkt per Klick setzen“) */
+.agenda.has-control .agenda-item:not(.type-header) { grid-template-columns: 3.4em minmax(0, 1fr) auto auto; }
+.agenda.has-control.no-time .agenda-item:not(.type-header) { grid-template-columns: minmax(0, 1fr) auto auto; }
+.agenda.has-control.no-dur .agenda-item:not(.type-header) { grid-template-columns: 3.4em minmax(0, 1fr) auto; }
+.agenda.has-control.no-time.no-dur .agenda-item:not(.type-header) { grid-template-columns: minmax(0, 1fr) auto; }
+.agenda-go { align-self: center; padding: 0.15em 0.55em; }
+.agenda-item.current .agenda-go { border-color: var(--k-accent); color: var(--k-accent); }

@@ -62,7 +62,7 @@ test('Chat and broadcast filtering enforces role audience instead of frontend-on
 
 test('Restricted stations receive neither presentation state nor configuration or chat without read capabilities', () => {
   const heartbeat = { roleId: 'light', capabilities: ['heartbeat'] }
-  for (const type of ['config', 'atem', 'propresenter', 'ppstage', 'churchtools', 'chat', 'chatFlash', 'devices', 'screens', 'server', 'sessions_changed'])
+  for (const type of ['config', 'atem', 'propresenter', 'ppstage', 'churchtools', 'ctposition', 'chat', 'chatFlash', 'devices', 'screens', 'server', 'sessions_changed'])
     assert.equal(filterMessage({ type, config: config(), messages: [], rooms: [] }, config(), null, heartbeat), null, type)
   const chatOnly = { roleId: 'light', capabilities: ['chat-monitor'] }
   assert.equal(filterMessage({ type: 'config', config: config() }, config(), null, chatOnly), null)
@@ -97,7 +97,7 @@ test('chat-only configuration and websocket feed exclude every other system', ()
   assert.deepEqual(visible.outputs, [])
   assert.deepEqual(visible.layouts, [])
   assert.equal(visible.access.roles.tech.editLayouts, false)
-  for (const type of ['atem', 'ppstage', 'propresenter', 'levels', 'churchtools', 'uplink', 'youtube', 'slideshow', 'devices', 'screens', 'templates_changed'])
+  for (const type of ['atem', 'ppstage', 'propresenter', 'levels', 'churchtools', 'ctposition', 'uplink', 'youtube', 'slideshow', 'devices', 'screens', 'templates_changed'])
     assert.equal(filterMessage({ type, private: 'secret' }, original, user), null, type)
   const chat = filterMessage({ type: 'chat', rooms: [], messages: [{ id: 'global' }, { id: 'private', audience: ['light'] }] }, original, user)
   assert.deepEqual(chat.messages.map(m => m.id), ['global'])
