@@ -1,26 +1,33 @@
 // Admin-Seite nur für den Admin zeigen. Wer angemeldet ist, sagt die zentrale Anmeldung im
 // Multiview (/.jms-auth/api/me, Caddy leitet das auf jeder Adresse dorthin). Das räumt nur das
 // Dashboard auf – Companion, Portainer und Glances prüft Caddy ohnehin selbst.
-// Ist die Anmeldung aus oder nicht erreichbar, bleibt die Admin-Seite sichtbar.
+// Sicher im Zweifel: Die Admin-Seite ist erst einmal verborgen und erscheint nur, wenn die Anmeldung
+// ausdrücklich einen Admin meldet (oder die Anmeldung ganz ausgeschaltet ist). Antwortet der Multiview
+// gerade nicht (z. B. beim Neustart), wird es alle 3 s erneut versucht – bis dahin bleibt sie zu.
 ;(async () => {
-  let admin = true
-  try {
-    const res = await fetch('/.jms-auth/api/me', { credentials: 'same-origin', cache: 'no-store' })
-    const me = res.ok ? await res.json() : null
-    if (me?.access?.enabled) admin = Boolean(me.user?.admin)
-  } catch {}
-  if (admin) return
-
-  // Ohne Admin-Seite bleibt nur „Start“ – dann braucht es die Umschaltleiste nicht
   const style = document.createElement('style')
-  style.textContent = '#myTab { display: none !important; }'
+  style.textContent = '#myTab { display: none !important; } [id="Admin"] { display: none !important; }'
   document.head.append(style)
   // Wer mit …#admin kommt, landet auf der Startseite
-  if (location.hash.toLowerCase() !== '#admin') return
-  for (let i = 0; i < 50; i++) {
-    const start = document.getElementById('Start-tab')
-    if (start) return start.click()
-    await new Promise((resolve) => setTimeout(resolve, 100))
+  if (location.hash.toLowerCase() === '#admin') {
+    ;(async () => {
+      for (let i = 0; i < 50; i++) {
+        const start = document.getElementById('Start-tab')
+        if (start) return start.click()
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+    })()
+  }
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      const res = await fetch('/.jms-auth/api/me', { credentials: 'same-origin', cache: 'no-store' })
+      if (res.ok) {
+        const me = await res.json()
+        if (!me?.access?.enabled || me.user?.admin === true) style.remove()
+        return
+      }
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 3000))
   }
 })()
 
@@ -307,6 +314,6 @@
 
 // Veranstaltungsbetrieb: gleiche Daten und Anmeldung wie JMS Control.
 ;(() => {
-  const css=document.createElement('link');css.rel='stylesheet';css.href='/.jms-auth/event-ops.css?v=20261030-agenda';document.head.append(css)
-  const script=document.createElement('script');script.src='/.jms-auth/event-ops.js?v=20261030-agenda';script.defer=true;document.head.append(script)
+  const css=document.createElement('link');css.rel='stylesheet';css.href='/.jms-auth/event-ops.css?v=20261030-agenda-manual';document.head.append(css)
+  const script=document.createElement('script');script.src='/.jms-auth/event-ops.js?v=20261030-agenda-manual';script.defer=true;document.head.append(script)
 })()
