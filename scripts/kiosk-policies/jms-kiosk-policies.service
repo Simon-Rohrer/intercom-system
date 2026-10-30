@@ -1,0 +1,19 @@
+[Unit]
+Description=Keep Chromium snap kiosk policies synchronized
+After=local-fs.target
+ConditionPathExists=/var/snap/chromium/current
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/python3 /usr/local/lib/jms-kiosk-policies/sync.py
+StateDirectory=jms-kiosk-policies
+StateDirectoryMode=0700
+UMask=0022
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/snap/chromium
+RestrictAddressFamilies=AF_UNIX
+TimeoutStartSec=30

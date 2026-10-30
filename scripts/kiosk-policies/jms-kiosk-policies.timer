@@ -1,0 +1,11 @@
+[Unit]
+Description=Fallback check for Chromium kiosk policies
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Unit=jms-kiosk-policies.service
+
+[Install]
+WantedBy=timers.target

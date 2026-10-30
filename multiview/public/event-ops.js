@@ -20,16 +20,58 @@
   if(dashboard){new MutationObserver(place).observe(document.body,{childList:true,subtree:true});place()}
   const adminTab=()=>dashboard && document.getElementById('Admin-tab')?.getAttribute('aria-selected')==='true'
   const notice=t=>{let el=root.querySelector('[data-ops-notice]');if(el)el.textContent=t}
-  function countdown(){const el=root.querySelector('[data-countdown]');if(!el || !overview?.event)return;const e=overview.event,delta=Date.parse(e.startDate)-Date.now();el.textContent=Date.parse(e.endDate)<Date.now()?'Veranstaltung beendet':delta<0?'Veranstaltung läuft':delta>86400000?'Beginn am '+date(e.startDate):`Beginn in ${Math.floor(delta/3600000)} Std. ${Math.floor(delta/60000)%60} Min.`}
+  function countdown(){const el=root.querySelector('[data-countdown]');if(!el || !overview?.event)return;if(overview.playback?.mode==='manual'){el.textContent=overview.playback.endedAt?'Veranstaltung beendet':'Veranstaltung läuft · manuell';return}const e=overview.event,delta=Date.parse(e.startDate)-Date.now();el.textContent=Date.parse(e.endDate)<Date.now()?'Veranstaltung beendet':delta<0?'Veranstaltung läuft':delta>86400000?'Beginn am '+date(e.startDate):`Beginn in ${Math.floor(delta/3600000)} Std. ${Math.floor(delta/60000)%60} Min.`}
+  // Der CT-Zeitplan ist keine Rückmeldung einer tatsächlichen Weiterschaltung.
+  function agendaPosition(items, now) {
+    const timed=items.map((item,index)=>({index,start:Date.parse(item.start),duration:Number(item.duration),type:item.type})).filter(x=>x.type!=='header' && Number.isFinite(x.start))
+    const active=timed.filter(x=>x.duration>0 && x.start<=now && now<x.start+x.duration*1000).sort((a,b)=>b.start-a.start || b.index-a.index)[0]
+    const next=timed.filter(x=>x.start>now && (!active || x.index>active.index)).sort((a,b)=>a.start-b.start || a.index-b.index)[0]
+    return {current:active?.index ?? -1,next:next?.index ?? -1,end:active?active.start+active.duration*1000:null,hasTiming:timed.some(x=>x.duration>0),future:timed.some(x=>x.start>now)}
+  }
+  const agendaTitle=item=>item.title || item.song?.title || 'Ablaufpunkt'
+  const remaining=ms=>{const s=Math.max(0,Math.ceil(ms/1000));return s>=3600?`${Math.floor(s/3600)}:${String(Math.floor(s/60)%60).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`:`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`}
+  // Im manuellen Betrieb ist der beim Start geladene Ablauf für alle Geräte fixiert.
+  function manualTimeline(items,playback,now){
+    const result=items.map(i=>({...i})),steps=playback.steps,last=steps.at(-1),current=playback.endedAt?-1:last.index
+    for(let i=0;i<steps.length;i++){const step=steps[i];result[step.index].start=step.at;const end=steps[i+1]?.at || playback.endedAt;if(end)result[step.index].duration=Math.max(0,(Date.parse(end)-Date.parse(step.at))/1000)}
+    const end=Date.parse(last.at)+Math.max(0,Number(items[last.index].duration)||0)*1000
+    let cursor=Math.max(now,end)
+    for(let i=last.index+1;i<result.length;i++){result[i].start=new Date(cursor).toISOString();if(result[i].type!=='header')cursor+=Math.max(0,Number(result[i].duration)||0)*1000}
+    const next=current<0?-1:result.findIndex((item,i)=>i>last.index && item.type!=='header')
+    return {items:result,current,next,end,hasTiming:true,future:next>=0,finished:!!playback.endedAt}
+  }
+  let agendaView,agendaPlayback,serverOffset=0
+  function agendaTick(){
+    const box=root.querySelector('[data-agenda-now]');if(!box || !agendaView)return
+    const now=Date.now()+serverOffset,manual=agendaPlayback?.mode==='manual'
+    const position=manual?manualTimeline(agendaView.items || [],agendaPlayback,now):agendaPosition(agendaView.items || [],now)
+    const items=position.items || agendaView.items || [],current=items[position.current],next=items[position.next]
+    const clock=x=>new Date(x).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})
+    root.querySelectorAll('[data-agenda-index]').forEach(row=>{const index=Number(row.dataset.agendaIndex),active=index===position.current;row.classList.toggle('is-current',active);if(active)row.setAttribute('aria-current','step');else row.removeAttribute('aria-current');const time=row.querySelector('time');if(time && items[index]?.start)time.textContent=clock(items[index].start)})
+    const over=current && Number(current.duration)>0 && position.end<now,rest=current && !(Number(current.duration)>0)?'Ohne geplante Dauer':over?'Überzogen +'+remaining(now-position.end):'Noch '+remaining(position.end-now)
+    const html=current?`<div class="ops-agenda-now-head"><span class="ops-pill ${over?'warn':'ok'}">${manual?'Läuft · manuell':'Jetzt laut Ablauf'}</span><span class="ops-agenda-remaining" role="timer" aria-label="Restzeit oder Überziehung">${rest}</span></div><strong class="ops-agenda-now-title">${esc(agendaTitle(current))}</strong><small>${manual?'Gestartet '+esc(clock(current.start))+' · ':''}Geplantes Ende ${esc(clock(position.end))}${agendaView.stale?' · Letzter geladener Stand':''}</small>`:`<small>${manual?'Ablauf manuell beendet.':!position.hasTiming?'Keine geplante Dauer für den aktuellen Punkt verfügbar.':position.future?'Aktuell kein laufender Punkt im Zeitplan.':'Geplanter Ablauf beendet.'}</small>`
+    const upcoming=next?`<div class="ops-agenda-next"><small>Als Nächstes · ${esc(clock(next.start))}${current?'':' · in '+remaining(Date.parse(next.start)-now)}</small><strong>${esc(agendaTitle(next))}</strong></div>`:current?'<div class="ops-agenda-next"><small>Letzter Ablaufpunkt.</small></div>':''
+    const finish=manual && current?`<small class="ops-agenda-end">Voraussichtliches Ende ${esc(clock(items.reduce((end,item,i)=>i<position.current || item.type==='header'?end:Math.max(end,Date.parse(item.start)+Math.max(0,Number(item.duration)||0)*1000),Math.max(now,position.end))))}</small>`:''
+    const content=html+upcoming+finish;if(box.innerHTML!==content)box.innerHTML=content
+    box.classList.toggle('has-current',Boolean(current));box.classList.toggle('is-overrun',Boolean(over))
+  }
+  function playbackControls(d){
+    if(!d.admin)return d.playback?.mode==='manual'?'<small>Manuelle Ablaufsteuerung · gemeinsamer Stand für alle Geräte.</small>':''
+    const p=d.playback,manual=p?.mode==='manual',items=d.agenda?.items || [],last=manual?p.steps.at(-1).index:-1,hasNext=items.some((item,i)=>i>last && item.type!=='header')
+    if(manual)return `<div class="ops-actions ops-playback"><button class="ops-primary" data-playback="next" ${p.endedAt?'disabled':''}>${hasNext?'Nächster Punkt':'Ablauf beenden'}</button><button data-playback="back" ${!p.endedAt && p.steps.length<2?'disabled':''}>Letzten Schritt zurücknehmen</button><button data-playback="auto">Zurück zum CT-Zeitplan</button></div><small>Manuell · Weiterschalten verschiebt die folgenden Zeiten. Ablaufstand vom Start; CT-Änderungen werden nach Rückkehr zum Zeitplan übernommen.</small>`
+    const pos=agendaPosition(items,Date.now()+serverOffset),initial=pos.current>=0?pos.current:pos.next>=0?pos.next:items.findIndex(i=>i.type!=='header')
+    return `<div class="ops-playback-start"><label>Manuell starten bei<select data-playback-index>${items.map((item,i)=>item.type==='header'?'':`<option value="${i}" ${i===initial?'selected':''}>${esc(agendaTitle(item))}</option>`).join('')}</select></label><button data-playback="start" ${d.agenda?.error?'disabled':''}>Hier starten</button></div>`
+  }
   function agendaCard(d){
+    agendaView=d.agenda;agendaPlayback=d.playback
     const a=d.agenda,items=a?.items || [],clock=x=>x?new Date(x).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}):'–'
     const row=(item,index)=>{
       const title=item.title || item.song?.title || (item.type==='header'?'Abschnitt':'Ablaufpunkt')
       if(item.type==='header')return `<li class="ops-agenda-section"><strong>${esc(title)}</strong></li>`
       const notes=[item.note,...(item.columns || []).filter(c=>c.note).map(c=>`${c.group}: ${c.note}`)].filter(Boolean)
-      return `<li class="ops-agenda-row"><time>${esc(clock(item.start))}</time><div><strong>${esc(title)}</strong>${item.responsible?`<small>${esc(item.responsible)}</small>`:''}${notes.length?`<details data-keep="agenda-note-${esc(d.event.id)}-${index}"><summary>Hinweise</summary>${notes.map(n=>`<p class="ops-agenda-note">${esc(n)}</p>`).join('')}</details>`:''}</div><span class="ops-agenda-duration">${item.duration>0?esc(Math.round(item.duration/60*10)/10)+' Min.':''}</span></li>`
+      return `<li class="ops-agenda-row" data-agenda-index="${index}"><time>${esc(clock(item.start))}</time><div><strong>${esc(title)}</strong>${item.responsible?`<small>${esc(item.responsible)}</small>`:''}${notes.length?`<details data-keep="agenda-note-${esc(d.event.id)}-${index}"><summary>Hinweise</summary>${notes.map(n=>`<p class="ops-agenda-note">${esc(n)}</p>`).join('')}</details>`:''}</div><span class="ops-agenda-duration">${item.duration>0?esc(Math.round(item.duration/60*10)/10)+' Min.':''}</span></li>`
     }
-    return `<section class="ops-agenda" aria-label="Ablauf der ausgewählten Veranstaltung"><div class="ops-head"><h3>Ablauf aus ChurchTools</h3>${a?.updatedAt?`<small>Stand ${esc(date(a.updatedAt))}</small>`:''}</div>${a?.error?`<p class="ops-message">${esc(a.error)}${a.stale&&items.length?' Angezeigt wird der letzte geladene Stand.':''}</p>`:''}${items.length?`<ol class="ops-agenda-list">${items.slice(0,6).map(row).join('')}</ol>${items.length>6?`<details class="ops-agenda-more" data-keep="agenda-more-${esc(d.event.id)}"><summary>Vollständigen Ablauf anzeigen · ${items.length-6} weitere Punkte</summary><ol class="ops-agenda-list" start="7">${items.slice(6).map((item,i)=>row(item,i+6)).join('')}</ol></details>`:''}`:!a?.error?'<p class="ops-muted">Der Ablauf ist leer.</p>':''}</section>`
+    return `<section class="ops-agenda" aria-label="Ablauf der ausgewählten Veranstaltung"><div class="ops-head"><h3>Ablauf aus ChurchTools</h3>${a?.updatedAt?`<small>Stand ${esc(date(a.updatedAt))}</small>`:''}</div>${a?.error?`<p class="ops-message">${esc(a.error)}${a.stale&&items.length?' Angezeigt wird der letzte geladene Stand.':''}</p>`:''}${items.length?`<div class="ops-agenda-now" data-agenda-now aria-label="Aktueller und nächster Punkt nach Zeitplan"></div>${playbackControls(d)}<ol class="ops-agenda-list">${items.slice(0,6).map(row).join('')}</ol>${items.length>6?`<details class="ops-agenda-more" data-keep="agenda-more-${esc(d.event.id)}"><summary>Vollständigen Ablauf anzeigen · ${items.length-6} weitere Punkte</summary><ol class="ops-agenda-list" start="7">${items.slice(6).map((item,i)=>row(item,i+6)).join('')}</ol></details>`:''}`:!a?.error?'<p class="ops-muted">Der Ablauf ist leer.</p>':''}</section>`
   }
   function eventCard(d){return `<article class="ops-card"><div class="ops-head">${heading('event','Heute im Einsatz','Veranstaltung & Hinweise')}</div>
     ${d.admin?`<label>Veranstaltung<select data-event-select aria-label="Veranstaltung auswählen"><option value="" ${!d.selectedEventId?'selected':''}>Automatisch: laufend / nächste</option>${d.events.map(e=>`<option value="${esc(e.id)}" ${e.id===d.selectedEventId?'selected':''}>${esc(date(e.startDate)+' · '+e.name)}</option>`).join('')}</select></label>`:''}
@@ -61,15 +103,21 @@
     const open=[...root.querySelectorAll('details[open][data-keep]')].map(e=>e.dataset.keep)
     root.innerHTML=`<div data-ops-notice class="ops-message" role="status" aria-live="polite"></div><div class="ops-grid">${dashboard?(adminTab()&&diag?diagnosticCard(diag):'')+(issues?issuesCard(issues):'')+(adminTab()&&diag?backupCard(diag):''):(overview?eventCard(overview)+teamCard(overview)+readyCard(overview):'<p>Veranstaltung wird geladen …</p>')}</div>`
     for(const name of open)root.querySelector(`details[data-keep="${name}"]`)?.setAttribute('open','')
-    countdown()
+    countdown();agendaTick()
   }
-  async function refresh(force=false){if(loading){pendingRefresh ||= force;return;}loading=true;try{if(dashboard){const res=await Promise.all([api('/issues'),me.admin?api('/diagnostics'):null]);issues=res[0];diag=res[1]}else overview=await api('/overview');render(force)}catch(e){if(!root.innerHTML)root.innerHTML='<div class="ops-card"><p data-ops-notice role="status"></p><button data-reload>Erneut laden</button></div>';notice(e.message)}finally{loading=false;if(pendingRefresh){pendingRefresh=false;await refresh(true)}}}
+  async function refresh(force=false){if(loading){pendingRefresh ||= force;return;}loading=true;try{if(dashboard){const res=await Promise.all([api('/issues'),me.admin?api('/diagnostics'):null]);issues=res[0];diag=res[1]}else {overview=await api('/overview');serverOffset=overview.serverNow?Date.parse(overview.serverNow)-Date.now():0}render(force)}catch(e){if(!root.innerHTML)root.innerHTML='<div class="ops-card"><p data-ops-notice role="status"></p><button data-reload>Erneut laden</button></div>';notice(e.message)}finally{loading=false;if(pendingRefresh){pendingRefresh=false;await refresh(true)}}}
   function modal(title,fields,save){dialog?.remove();dialog=document.createElement('dialog');dialog.className='ops-dialog';dialog.innerHTML=`<div class="ops"><form class="ops-card ops-fields"><div class="ops-head"><h2>${esc(title)}</h2><button type="button" data-close aria-label="Schließen">✕</button></div>${fields}<p class="ops-message" data-error role="alert"></p><div class="ops-actions"><button class="ops-primary" type="submit">Speichern</button><button type="button" data-close>Abbrechen</button></div></form></div>`;document.body.append(dialog);dialog.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>dialog.close());dialog.addEventListener('close',()=>{dialog.remove();dialog=null;refresh(true)},{once:true});dialog.querySelector('form').onsubmit=async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('[type=submit]');button.disabled=true;try{await save(new FormData(form),form);dialog.close()}catch(err){form.querySelector('[data-error]').textContent=err.message}finally{button.disabled=false}};dialog.showModal()}
   const input=(name,label,value='',max=200)=>`<label>${label}<input name="${name}" value="${esc(value)}" maxlength="${max}"></label>`
   root.addEventListener('change',async e=>{if(e.target.matches('[data-event-select]')){e.target.disabled=true;try{await api('/event',{action:'select',eventId:e.target.value,revision:overview.revision});await refresh(true)}catch(err){notice(err.message);await refresh(true)}finally{e.target.disabled=false}}})
   root.addEventListener('click',async e=>{
     const b=e.target.closest('button');if(!b)return
     if(b.hasAttribute('data-reload'))return refresh(true)
+    if(b.hasAttribute('data-playback')){
+      const action=b.dataset.playback,d=overview,body={action,eventId:d.event.id,previous:d.playback?.updatedAt || '',index:Number(root.querySelector('[data-playback-index]')?.value)}
+      if(action==='auto')return modal('Zurück zum CT-Zeitplan', '<p>Die manuelle Steuerung wird beendet. Danach gilt wieder der ursprüngliche Zeitplan aus ChurchTools.</p>',()=>api('/playback',body))
+      const controls=[...root.querySelectorAll('[data-playback]')].map(el=>({el,disabled:el.disabled}));controls.forEach(x=>x.el.disabled=true)
+      try{await api('/playback',body);await refresh(true)}catch(err){await refresh(true);notice(err.message)}finally{controls.forEach(({el,disabled})=>{if(el.isConnected)el.disabled=disabled})}return
+    }
     if(b.hasAttribute('data-note')){const d=overview;return modal('Hinweis zur Veranstaltung',`<label>Hinweis<textarea name="note" maxlength="2000">${esc(d.note)}</textarea></label>`,f=>api('/event',{action:'note',eventId:d.event.id,revision:d.revision,note:f.get('note')}))}
     if(b.hasAttribute('data-ready')){const d=overview,role=b.dataset.ready,r=d.ready[role];return modal('Bereitschaft · '+d.roles.find(x=>x.id===role).name,`<label>Status<select name="status">${['preparing','ready','help'].map(s=>`<option value="${s}" ${r?.status===s?'selected':''}>${label[s]}</option>`).join('')}</select></label><label>Kurzer Hinweis (optional)<textarea name="note" maxlength="300">${esc(r?.note)}</textarea></label><small>Gemeldet als ${esc(me.name)} · ${esc(d.event.name)}</small>`,f=>api('/ready',{eventId:d.event.id,roleId:role,status:f.get('status'),note:f.get('note'),previous:r?.at || ''}))}
     if(b.hasAttribute('data-requirements')){const d=diag;return modal('Benötigte Systeme',`<p>Nur diese Systeme zählen für den Startcheck von „${esc(d.event.name)}“.</p>${d.checks.map(c=>`<label class="ops-checkbox"><input type="checkbox" name="required" value="${esc(c.id)}" ${c.required?'checked':''}>${esc(c.name)}</label>`).join('')}`,f=>api('/requirements',{eventId:d.event.id,revision:d.revision,required:f.getAll('required')}))}
@@ -78,5 +126,5 @@
   })
   async function shrinkPhoto(file){if(file.size>20000000)throw Error('Bitte ein Foto unter 20 MB verwenden.');const url=URL.createObjectURL(file);try{const img=new Image();await new Promise((ok,no)=>{img.onload=ok;img.onerror=()=>no(Error('Foto konnte nicht gelesen werden.'));img.src=url});const scale=Math.min(1,1400/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/jpeg',.8)}finally{URL.revokeObjectURL(url)}}
   if(dashboard){document.addEventListener('click',e=>{if(e.target.closest('#myTab'))setTimeout(()=>render(true),100)});window.addEventListener('hashchange',()=>render(true))}
-  await refresh(true);setInterval(()=>{if(!document.hidden && (dashboard || !overviewHost.closest('[hidden]')))refresh()},15000);setInterval(countdown,15000)
+  await refresh(true);setInterval(()=>{if(!document.hidden && (dashboard || !overviewHost.closest('[hidden]')))refresh()},3000);setInterval(countdown,15000);setInterval(()=>{if(!document.hidden)agendaTick()},1000)
 })()

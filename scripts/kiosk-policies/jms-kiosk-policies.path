@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch Chromium snap revisions and central kiosk policies
+
+[Path]
+PathChanged=/var/snap/chromium
+PathChanged=/etc/chromium/policies/managed
+Unit=jms-kiosk-policies.service
+
+[Install]
+WantedBy=multi-user.target

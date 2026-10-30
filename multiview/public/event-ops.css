@@ -82,3 +82,21 @@
 .ops .ops-agenda-note { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; margin-bottom:8px; }
 .ops .ops-agenda-more { margin-top:4px; }
 @media(max-width:520px) { .ops .ops-event-time { gap:8px; } .ops .ops-agenda-row { grid-template-columns:40px minmax(0,1fr) auto; gap:8px; } }
+
+/* Aktueller CT-Zeitplan: auch bei geschlossenem vollständigen Ablauf sichtbar. */
+.ops .ops-agenda-now { padding:14px; margin:12px 0; border:1px solid var(--ops-line); border-radius:16px; background:rgba(128,128,140,.06); overflow-wrap:anywhere; }
+.ops .ops-agenda-now.has-current { border-color:rgba(48,209,88,.45); background:rgba(48,209,88,.08); }
+.ops .ops-agenda-now-head { display:flex; flex-wrap:wrap; gap:8px 12px; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.ops .ops-agenda-remaining { font-size:16px; font-weight:700; font-variant-numeric:tabular-nums; }
+.ops .ops-agenda-now-title { display:block; margin-bottom:5px; font-size:17px; }
+.ops .ops-agenda-next { padding-top:10px; margin-top:10px; border-top:1px solid var(--ops-line); }
+.ops .ops-agenda-next strong { display:block; margin-top:4px; font-size:14px; }
+.ops .ops-agenda-row.is-current { background:rgba(48,209,88,.1); border-radius:10px; box-shadow:inset 3px 0 0 #30b85a; padding-left:10px; padding-right:10px; }
+
+.ops .ops-playback-start { display:flex; align-items:end; gap:10px; flex-wrap:wrap; margin:12px 0; }
+.ops .ops-playback-start label { flex:1; min-width:0; }
+.ops .ops-playback-start select { max-width:100%; }
+.ops .ops-playback { margin:12px 0; }
+.ops .ops-agenda-now.is-overrun { border-color:rgba(233,173,69,.6); background:rgba(233,173,69,.1); }
+.ops .ops-agenda-end { margin-top:12px; }
+@media(max-width:520px){.ops .ops-playback-start label { flex-basis:100%; }}

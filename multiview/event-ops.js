@@ -60,7 +60,8 @@ function createEventOps({ dataDir, churchTools, getRoles, getChecks = async () =
     return catalogFlight
   }
   function selected() {
-    return catalog.events.find(e=>e.id===state.selectedEventId) || catalog.events.find(e=>Date.parse(e.endDate || e.startDate)>now()) || null
+    const running=Object.values(state.events).map(e=>e.playback).filter(p=>p?.mode==='manual' && p.event).sort((a,b)=>Date.parse(b.updatedAt)-Date.parse(a.updatedAt))[0]
+    return catalog.events.find(e=>e.id===state.selectedEventId) || (!state.selectedEventId && running?.event) || catalog.events.find(e=>Date.parse(e.endDate || e.startDate)>now()) || null
   }
   async function team(id) {
     if(!id)return {rows:[],error:'',at:0}
@@ -101,7 +102,7 @@ function createEventOps({ dataDir, churchTools, getRoles, getChecks = async () =
     const event=selected(), [t,agenda]=await Promise.all([team(event?.id),eventAgenda(event)]), data=event ? state.events[event.id] || {} : {}
     const all=roles()
     return {ok:true, revision:state.revision, admin:!!user.admin, roleId:user.roleId, selectedEventId:state.selectedEventId, events:catalog.events, event,
-      agenda, error:catalog.error, team:t.rows, teamError:t.error, teamUpdatedAt:t.updatedAt ? new Date(t.updatedAt).toISOString():null,
+      agenda:data.playback?.mode==='manual'?{...agenda,items:data.playback.items,updatedAt:data.playback.agendaUpdatedAt,error:'',stale:false}:agenda, playback:data.playback || null, serverNow:new Date(now()).toISOString(), error:catalog.error, team:t.rows, teamError:t.error, teamUpdatedAt:t.updatedAt ? new Date(t.updatedAt).toISOString():null,
       note:data.note || '', roles:all.map(r=>({id:r.id,name:r.name})), ready:data.ready || {},
       churchtoolsUrl:churchTools.snapshot().url || ''}
   }
@@ -117,6 +118,38 @@ function createEventOps({ dataDir, churchTools, getRoles, getChecks = async () =
       const id=current(body.eventId)
       save(s=>{eventData(s,id).note=text(body.note,2000)},user,'Veranstaltungshinweis geändert')
     }else fail('Unbekannte Aktion')
+  }
+  async function playback(user,body) {
+    if(!user.admin)fail('Nur der Admin darf den Ablauf weiterschalten.',403)
+    await events();current(body.eventId)
+    const event=selected(), agenda=body.action==='start'?await eventAgenda(event):null
+    const id=current(body.eventId),prev=state.events[id]?.playback
+    if((body.previous || '')!==(prev?.updatedAt || ''))fail('Der Ablauf wurde inzwischen weitergeschaltet. Bitte aktualisieren.',409)
+    const at=new Date(now()).toISOString(),updatedAt=changedAt(prev?.updatedAt)
+    let next
+    if(body.action==='auto') {
+      next={mode:'auto',updatedAt}
+    }else if(body.action==='start') {
+      if(prev?.mode==='manual')fail('Die manuelle Steuerung läuft bereits.',409)
+      if(agenda.error || !agenda.items.length)fail('Zum Starten wird ein aktueller ChurchTools-Ablauf benötigt.')
+      const index=Number(body.index)
+      if(!Number.isInteger(index) || !agenda.items[index] || agenda.items[index].type==='header')fail('Bitte einen Ablaufpunkt auswählen.')
+      next={mode:'manual',event:structuredClone(event),agendaUpdatedAt:agenda.updatedAt,items:structuredClone(agenda.items),steps:[{index,at}],endedAt:null,updatedAt}
+    }else {
+      if(prev?.mode!=='manual')fail('Bitte zuerst die manuelle Steuerung starten.',409)
+      next=structuredClone(prev);next.updatedAt=updatedAt
+      if(body.action==='next') {
+        if(next.endedAt)fail('Der Ablauf ist bereits beendet.',409)
+        const index=next.items.findIndex((item,i)=>i>next.steps.at(-1).index && item.type!=='header')
+        if(index<0)next.endedAt=at;else next.steps.push({index,at})
+      }else if(body.action==='back') {
+        if(next.endedAt)next.endedAt=null
+        else if(next.steps.length>1)next.steps.pop()
+        else fail('Es gibt noch keinen vorherigen manuellen Schritt.')
+      }else fail('Unbekannte Ablaufaktion')
+    }
+    next.by=text(user.name || 'Admin',100)
+    save(s=>{eventData(s,id).playback=next},user,'Ablaufsteuerung: '+({start:'manuell gestartet',next:next.endedAt?'beendet':'weitergeschaltet',back:'letzten Schritt zurückgenommen',auto:'CT-Zeitplan wieder aktiviert'}[body.action]))
   }
   async function ready(user,body) {
     await events();const id=current(body.eventId), role=text(body.roleId,100)
@@ -191,7 +224,7 @@ function createEventOps({ dataDir, churchTools, getRoles, getChecks = async () =
     return {ok:true,id}
   }
   const photoFile=name=>/^[a-f0-9-]{36}\.(jpeg|png|webp)$/.test(name)?path.join(dataDir,'ops-photos',name):null
-  return {overview,mutateEvent,ready,diagnostics,requirements,manual,issues,changeIssue,photoFile}
+  return {overview,mutateEvent,playback,ready,diagnostics,requirements,manual,issues,changeIssue,photoFile}
 }
 function eventOpsRouter(ops, requireUser, requireAdmin) {
   const r=express.Router()
@@ -199,6 +232,7 @@ function eventOpsRouter(ops, requireUser, requireAdmin) {
   const run=fn=>(req,res)=>Promise.resolve().then(()=>fn(req,res)).catch(e=>res.status(e.status || 500).json({ok:false,error:e.status?e.message:'Die Daten konnten nicht verarbeitet werden. Bitte erneut versuchen.'}))
   r.get('/overview',run(async(req,res)=>res.json(await ops.overview(req.user))))
   r.post('/event',requireAdmin,run(async(req,res)=>{await ops.mutateEvent(req.user,req.body);res.json({ok:true})}))
+  r.post('/playback',requireAdmin,run(async(req,res)=>{await ops.playback(req.user,req.body);res.json({ok:true})}))
   r.post('/ready',run(async(req,res)=>{await ops.ready(req.user,req.body);res.json({ok:true})}))
   r.get('/diagnostics',requireAdmin,run(async(req,res)=>res.json(await ops.diagnostics(req.user))))
   r.post('/requirements',requireAdmin,run(async(req,res)=>{await ops.requirements(req.user,req.body);res.json({ok:true})}))
