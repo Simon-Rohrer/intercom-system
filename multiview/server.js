@@ -149,6 +149,8 @@ function normalizeScreens(list) {
       outputId: typeof s.outputId === 'string' && s.outputId ? s.outputId : null,
       // Monitor hochkant (90° bzw. 270°) oder über Kopf (180°) aufgehängt: Bild drehen (0 = normal)
       rotate: [90, 180, 270].includes(Number(s.rotate)) ? Number(s.rotate) : 0,
+      // Tally-Rahmen nur auf diesem Bildschirm (z. B. Pi am Kameraplatz), unabhängig von der Ausgabe
+      tallyInput: s.tallyInput != null && s.tallyInput !== '' && Number.isInteger(Number(s.tallyInput)) && Number(s.tallyInput) >= 0 ? Number(s.tallyInput) : null,
     }))
 }
 

@@ -684,7 +684,11 @@ tallyFrame.innerHTML = '<span class="screen-tally-badge"></span>'
 document.body.append(tallyFrame)
 
 function updateTallyFrame() {
-  const frame = config?.outputs.find((output) => output.id === currentOutputId)?.tallyFrame
+  // Am Bildschirm eingestellt (Bildschirme → Tally) gilt nur dort und vor der Einstellung der Ausgabe
+  const screen = screenRef && config?.screens?.find((s) => s.id === screenRef)
+  const frame = screen?.tallyInput != null
+    ? { input: screen.tallyInput, size: 'm' }
+    : config?.outputs.find((output) => output.id === currentOutputId)?.tallyFrame
   const state = frame?.input != null ? tallyState(frame.input, atem) : 'off'
   tallyFrame.hidden = state !== 'program' && state !== 'preview'
   tallyFrame.dataset.state = state

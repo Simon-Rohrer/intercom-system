@@ -1110,6 +1110,7 @@ function screenRowCells(screen) {
       <td><span class="muted">Multiview</span></td>
       <td><select data-s="outputId" aria-label="Multiview">${outputOptions}</select></td>
       <td><select data-s="rotate" aria-label="Drehung">${SCREEN_ROTATIONS.map(([v, l]) => `<option value="${v}" ${(saved?.rotate || 0) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+      <td><select data-s="tallyInput" aria-label="Tally-Rahmen">${tallyInputOptions(saved?.tallyInput ?? null)}</select></td>
       <td class="screen-actions">${previewButton}</td>`
   }
   const pi = screen.pi
@@ -1124,6 +1125,7 @@ function screenRowCells(screen) {
       .join('')}</div></td>
     <td><select data-ps="outputId" aria-label="Multiview" ${multiview ? '' : 'disabled'}>${outputOptions}</select></td>
     <td><select data-ps="rotate" aria-label="Drehung" ${multiview ? '' : 'disabled'}>${SCREEN_ROTATIONS.map(([v, l]) => `<option value="${v}" ${(saved?.rotate || 0) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+    <td><select data-ps="tallyInput" aria-label="Tally-Rahmen" ${multiview ? '' : 'disabled'}>${tallyInputOptions(saved?.tallyInput ?? null)}</select></td>
     <td class="screen-actions">${previewButton}</td>`
 }
 
@@ -1178,7 +1180,7 @@ function onScreenField(e) {
   const id = el.closest('tr').dataset.id
   let screen = config.screens.find((s) => s.id === id)
   if (!screen) config.screens.push((screen = { id, name: '', outputId: null }))
-  screen[key] = key === 'name' ? el.value : key === 'rotate' ? Number(el.value) || 0 : el.value || null
+  screen[key] = key === 'name' ? el.value : key === 'rotate' ? Number(el.value) || 0 : key === 'tallyInput' ? (el.value === '' ? null : Number(el.value)) : el.value || null
   if (key !== 'name') el.blur()
   renderScreens()
   renderCompanion()
@@ -1212,7 +1214,7 @@ $('#screen-rows').addEventListener('change', (e) => {
   const id = `pi-${e.target.closest('[data-pi-screen]').dataset.piScreen}`
   let screen = config.screens.find((s) => s.id === id)
   if (!screen) config.screens.push((screen = { id, name: '', outputId: null }))
-  screen[key] = key === 'rotate' ? Number(e.target.value) || 0 : e.target.value || null
+  screen[key] = key === 'rotate' ? Number(e.target.value) || 0 : key === 'tallyInput' ? (e.target.value === '' ? null : Number(e.target.value)) : e.target.value || null
   e.target.blur()
   renderScreens()
   renderCompanion()
