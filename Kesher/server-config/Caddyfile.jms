@@ -272,7 +272,7 @@
 			import jms_node
 		}
 	}
-	reverse_proxy http://192.168.0.250 {
+	reverse_proxy http://192.168.0.239 {
 		import jms_clean
 		header_up Host {upstream_hostport}
 		header_down Location ^http://192\.168\.0\.250(.*)$ $1

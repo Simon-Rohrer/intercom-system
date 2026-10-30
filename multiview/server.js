@@ -2266,7 +2266,7 @@ const WATCHED_SERVICES = {
   companion: process.env.COMPANION_URL || 'http://127.0.0.1:8000',
   // Eigene Anmeldung am Dienst: der Admin wird dort automatisch angemeldet (siehe unten)
   portainer: process.env.PORTAINER_URL || 'https://127.0.0.1:9443',
-  router: process.env.ROUTER_URL || 'http://192.168.0.250',
+  router: process.env.ROUTER_URL || 'http://192.168.0.239',
   dns: process.env.DNS_URL || 'http://127.0.0.1:8083',
   glances: process.env.GLANCES_URL || 'http://127.0.0.1:61208',
 }
@@ -2503,7 +2503,7 @@ app.get(/^\/\.jms-auth\/page\/([a-z]+)(\/.*)?$/, async (req, res) => {
   const type = String(page.headers['content-type'] || '')
   for (const c of [].concat(page.headers['set-cookie'] || [])) if (PAGE_COOKIE_SERVICES.has(service)) res.append('Set-Cookie', c)
   if (page.status >= 300 && page.status < 400) {
-    // Weiterleitungen auf die Adresse des Dienstes selbst (Router: http://192.168.0.250/…) bleiben auf dieser Adresse
+    // Weiterleitungen auf die Adresse des Dienstes selbst (Router: http://192.168.0.239/…) bleiben auf dieser Adresse
     const origin = new URL(upstream).origin
     const target = String(page.headers.location || '/')
     return res.redirect(page.status, target.startsWith(origin) ? target.slice(origin.length) || '/' : target)
