@@ -61,7 +61,7 @@ for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`rea
       raspberry: { clients: [{ id: 'pi1', name: 'Buehne', roleId: 'lighting', deviceId: 'pi-buehne', ipAddress: '192.168.0.41' }] },
     }))
     child = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-      env: { ...process.env, DATA_DIR: directory, HOST: '127.0.0.1', PORT: String(port), JMS_DISABLE_HARDWARE: '1', JMS_AUTH_SECRET: 'isolated-fixture-secret', JMS_SSO_ORIGIN: 'https://192.168.0.21:8090', JMS_DEVICE_PROXY_SECRET: proxySecret },
+      env: { ...process.env, DATA_DIR: directory, HOST: '127.0.0.1', PORT: String(port), JMS_DISABLE_HARDWARE: '1', JMS_AUTH_SECRET: 'isolated-fixture-secret', JMS_SSO_ORIGIN: 'https://192.168.0.230:8090', JMS_DEVICE_PROXY_SECRET: proxySecret },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let logs = ''
@@ -186,7 +186,7 @@ for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`rea
     assert.equal(me.headers.get('cache-control'), 'no-store')
     assert.equal(me.headers.get('x-frame-options'), null)
     assert.match(me.headers.get('content-security-policy'), /^frame-ancestors 'self' /)
-    assert.ok(me.headers.get('content-security-policy').includes('https://192.168.0.21:3000'))
+    assert.ok(me.headers.get('content-security-policy').includes('https://192.168.0.230:3000'))
     assert.ok(!me.headers.get('content-security-policy').includes('*'))
     assert.ok(me.data.user.sessionId && me.data.user.version && me.data.user.expiresAt > Date.now())
     const config = await request('/api/config', { jar: userJar })
@@ -233,7 +233,7 @@ for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`rea
       assert.equal(result.status, 302)
       next = result.headers.get('location')
     }
-    assert.equal((await request('/api/me', { host: '192.168.0.21:8090', jar: centralJar })).data.user.sessionId, me.data.user.sessionId)
+    assert.equal((await request('/api/me', { host: '192.168.0.230:8090', jar: centralJar })).data.user.sessionId, me.data.user.sessionId)
     assert.equal((await request('/.jms-auth/sso/start', { host: 'unregistered.local', jar: {} })).status, 400)
     const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
       headers: { Host: serviceHost, Origin: `https://${serviceHost}`, 'X-Forwarded-Proto': 'https', 'X-Forwarded-For': '203.0.113.90', Cookie: Object.entries(userJar).map(([key, value]) => `${key}=${value}`).join('; ') },
@@ -241,7 +241,7 @@ for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`rea
     activeSockets.push(socket)
     await once(socket, 'open')
     const closed = once(socket, 'close')
-    assert.equal((await request('/api/logout', { method: 'POST', jar: centralJar, host: '192.168.0.21:8090', body: {} })).status, 200)
+    assert.equal((await request('/api/logout', { method: 'POST', jar: centralJar, host: '192.168.0.230:8090', body: {} })).status, 200)
     const [closeCode] = await Promise.race([closed, wait(2000).then(() => { throw new Error('WebSocket survived logout') })])
     assert.equal(closeCode, 4401)
     assert.equal((await request('/api/me', { jar: userJar })).data.user, null)

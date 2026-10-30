@@ -42,8 +42,6 @@ test('Caddy passes an empty fingerprint for non-certificate clients and captures
 test('Caddy requests certificates for IP clients without SNI and validates presented certificates', () => {
   assert.match(config, /default_sni 192\.168\.0\.230/)
   assert.match(config, /https:\/\/:8090, https:\/\/:8443[\s\S]*?mode verify_if_given[\s\S]*?trusted_ca_cert_file \/etc\/jms-auth\/device-ca.crt/)
-  // neue Server-IP .230 und bis zur Abschaltung die alte .21
-  for (const ip of ['230', '21'])
-    for (const port of [8090, 8443, 3000, 8000, 61208, 9443, 8250])
-      assert.match(config, new RegExp(`servers 192\\.168\\.0\\.${ip}:${port} \\{\\s*strict_sni_host insecure_off`))
+  for (const port of [8090, 8443, 3000, 8000, 61208, 9443, 8250])
+    assert.match(config, new RegExp(`servers 192\\.168\\.0\\.230:${port} \\{\\s*strict_sni_host insecure_off`))
 })

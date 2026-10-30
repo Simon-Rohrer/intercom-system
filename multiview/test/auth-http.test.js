@@ -47,7 +47,7 @@ function ssoFixture() {
       return true
     },
   }
-  const handlers = createSsoHandlers({ access, centralOrigin: 'https://192.168.0.21:8090', ipOf: () => 'client', loginPath: () => '/login', now: () => now })
+  const handlers = createSsoHandlers({ access, centralOrigin: 'https://192.168.0.230:8090', ipOf: () => 'client', loginPath: () => '/login', now: () => now })
   return { handlers, issued, redeemed, advance: () => { now += 60_001 } }
 }
 
@@ -143,7 +143,7 @@ test('SSO pull is bound to browser verifier, exact target origin and one use', (
 
 test('SSO refuses wildcard-like names, alternate ports and invalid issuer state', () => {
   const fixture = ssoFixture()
-  for (const origin of ['https://evil.local', 'https://evil.jms.de', 'https://intercom.local:9999', 'https://192.168.0.21:9999',
+  for (const origin of ['https://evil.local', 'https://evil.jms.de', 'https://intercom.local:9999', 'https://192.168.0.230:9999',
     'https://evil.internal', 'https://sub.intercom.internal', 'https://intercom.internal:9999', 'https://setup.internal']) {
     const result = response()
     fixture.handlers.start(request(origin), result)
@@ -196,7 +196,7 @@ test('SSO push gets verifier from central before issuing a target login ticket',
   assert.equal(new URL(started.location).origin, 'https://intercom.local')
   const issued = response()
   fixture.handlers.issue(follow(started.location), issued)
-  assert.equal(new URL(issued.location).origin, 'https://192.168.0.21:8090')
+  assert.equal(new URL(issued.location).origin, 'https://192.168.0.230:8090')
   const accepted = response()
   fixture.handlers.accept(follow(issued.location, started.cookies[0].split(';')[0]), accepted)
   assert.equal(accepted.location, 'https://intercom.local/room')

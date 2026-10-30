@@ -338,7 +338,7 @@ class LauncherTests(unittest.TestCase):
         return {
             "managed": True,
             "config": {
-                "server_url": "https://192.168.0.21:8443",
+                "server_url": "https://192.168.0.230:8443",
                 "clients": [
                     {
                         "device_id": "kamera-1-pi",
@@ -358,7 +358,7 @@ class LauncherTests(unittest.TestCase):
         return response
 
     def test_display_only_change_is_detected(self):
-        local = {"config_url": "https://192.168.0.21:8090/api/raspberry-pis/config"}
+        local = {"config_url": "https://192.168.0.230:8090/api/raspberry-pis/config"}
         intercom = launcher.merge_managed_config(local, self.managed_response())
         multiview = launcher.merge_managed_config(local, self.multiview_response())
         self.assertTrue(launcher.display_only_change(intercom, multiview))
@@ -373,7 +373,7 @@ class LauncherTests(unittest.TestCase):
 
     def test_config_watch_switches_display_without_restart_and_long_polls(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = self.write_local_config(directory, config_url="https://192.168.0.21:8090/api/raspberry-pis/config")
+            path = self.write_local_config(directory, config_url="https://192.168.0.230:8090/api/raspberry-pis/config")
             local = launcher.read_config_file(path)
             current = launcher.merge_managed_config(local, self.managed_response())
             first = dict(self.managed_response(), version="v1")
@@ -403,7 +403,7 @@ class LauncherTests(unittest.TestCase):
 
     def test_show_tab_activates_an_open_tab_or_opens_it(self):
         calls = []
-        pages = '[{"id": "k", "type": "page", "url": "https://192.168.0.21:8443/?autoLogin=1"}]'
+        pages = '[{"id": "k", "type": "page", "url": "https://192.168.0.230:8443/?autoLogin=1"}]'
 
         def call(path, method="GET", timeout=3):
             calls.append((path, method))
@@ -414,16 +414,16 @@ class LauncherTests(unittest.TestCase):
             return "Target activated"
 
         with mock.patch.object(launcher, "devtools_call", side_effect=call):
-            self.assertTrue(launcher.show_tab("https://192.168.0.21:8443/?x=1", "https://192.168.0.21:8443"))
-            self.assertTrue(launcher.show_tab("https://192.168.0.21:8090/output.html?screen=pi-a", "https://192.168.0.21:8090/output.html"))
+            self.assertTrue(launcher.show_tab("https://192.168.0.230:8443/?x=1", "https://192.168.0.230:8443"))
+            self.assertTrue(launcher.show_tab("https://192.168.0.230:8090/output.html?screen=pi-a", "https://192.168.0.230:8090/output.html"))
         self.assertIn(("/json/activate/k", "GET"), calls)
-        self.assertIn(("/json/new?https%3A%2F%2F192.168.0.21%3A8090%2Foutput.html%3Fscreen%3Dpi-a", "PUT"), calls)
+        self.assertIn(("/json/new?https%3A%2F%2F192.168.0.230%3A8090%2Foutput.html%3Fscreen%3Dpi-a", "PUT"), calls)
 
     def test_close_tabs_closes_only_matching_tabs(self):
         calls = []
         pages = (
-            '[{"id": "k", "type": "page", "url": "https://192.168.0.21:8443/?autoLogin=1"},'
-            ' {"id": "m", "type": "page", "url": "https://192.168.0.21:8090/output.html?screen=pi-a"}]'
+            '[{"id": "k", "type": "page", "url": "https://192.168.0.230:8443/?autoLogin=1"},'
+            ' {"id": "m", "type": "page", "url": "https://192.168.0.230:8090/output.html?screen=pi-a"}]'
         )
 
         def call(path, method="GET", timeout=3):
@@ -431,14 +431,14 @@ class LauncherTests(unittest.TestCase):
             return pages if path == "/json/list" else "Target is closing"
 
         with mock.patch.object(launcher, "devtools_call", side_effect=call):
-            prefix = launcher.multiview_tab_prefix("https://192.168.0.21:8090/api/raspberry-pis/config")
-            self.assertEqual(prefix, "https://192.168.0.21:8090/output.html")
+            prefix = launcher.multiview_tab_prefix("https://192.168.0.230:8090/api/raspberry-pis/config")
+            self.assertEqual(prefix, "https://192.168.0.230:8090/output.html")
             self.assertEqual(launcher.close_tabs(prefix), 1)
         self.assertEqual(calls, ["/json/list", "/json/close/m"])
 
     def test_close_tabs_without_chromium_does_nothing(self):
         with mock.patch.object(launcher, "devtools_pages", return_value=None):
-            self.assertEqual(launcher.close_tabs("https://192.168.0.21:8090/output.html"), 0)
+            self.assertEqual(launcher.close_tabs("https://192.168.0.230:8090/output.html"), 0)
 
     def test_memory_action_closes_the_multiview_when_memory_is_low(self):
         low = launcher.MEMORY_LOW_MB - 1
@@ -508,7 +508,7 @@ class LauncherTests(unittest.TestCase):
     def test_managed_settings_replace_the_file_but_keep_local_secrets(self):
         local = dict(self.config, config_url="https://mv/api", heartbeat_secret="geheim")
         merged = launcher.merge_managed_config(local, self.managed_response())
-        self.assertEqual(merged["server_url"], "https://192.168.0.21:8443")
+        self.assertEqual(merged["server_url"], "https://192.168.0.230:8443")
         self.assertEqual(merged["clients"][0]["name"], "Kamera-1")
         self.assertEqual(merged["heartbeat_secret"], "geheim")
         self.assertEqual(merged["config_url"], "https://mv/api")
@@ -518,7 +518,7 @@ class LauncherTests(unittest.TestCase):
 
     def test_effective_config_comes_from_the_multiview_and_is_cached(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = self.write_local_config(directory, config_url="https://192.168.0.21:8090/api/raspberry-pis/config")
+            path = self.write_local_config(directory, config_url="https://192.168.0.230:8090/api/raspberry-pis/config")
             cache = Path(directory) / "cache.json"
             with mock.patch.object(launcher, "fetch_managed_config", return_value=self.managed_response()) as fetch, \
                 mock.patch.object(launcher, "managed_config_cache_path", return_value=cache):
@@ -537,7 +537,7 @@ class LauncherTests(unittest.TestCase):
 
     def test_effective_config_falls_back_to_cache_then_file(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = self.write_local_config(directory, config_url="https://192.168.0.21:8090/api/raspberry-pis/config")
+            path = self.write_local_config(directory, config_url="https://192.168.0.230:8090/api/raspberry-pis/config")
             cache = Path(directory) / "cache.json"
             with mock.patch.object(launcher, "fetch_managed_config", return_value=None), \
                 mock.patch.object(launcher, "managed_config_cache_path", return_value=cache):
@@ -566,7 +566,7 @@ class LauncherTests(unittest.TestCase):
 
     def test_config_watch_restarts_on_changes_only(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = self.write_local_config(directory, config_url="https://192.168.0.21:8090/api/raspberry-pis/config")
+            path = self.write_local_config(directory, config_url="https://192.168.0.230:8090/api/raspberry-pis/config")
             local = launcher.read_config_file(path)
             current = launcher.merge_managed_config(local, self.managed_response())
             changed = self.managed_response()
@@ -588,7 +588,7 @@ class LauncherTests(unittest.TestCase):
     def test_device_requests_load_ca_and_client_key(self):
         context = mock.Mock()
         with mock.patch.object(launcher.ssl, "create_default_context", return_value=context) as create:
-            result = launcher.ssl_context_for_url("https://192.168.0.21:8090/api/healthz")
+            result = launcher.ssl_context_for_url("https://192.168.0.230:8090/api/healthz")
         self.assertIs(result, context)
         create.assert_called_once_with(cafile="/etc/jms-device/server-ca.crt")
         context.load_cert_chain.assert_called_once_with(
@@ -597,7 +597,7 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(context.minimum_version, launcher.ssl.TLSVersion.TLSv1_2)
 
     def test_device_requests_reject_http_and_url_credentials(self):
-        for url in ("http://192.168.0.21/api", "https://user:password@192.168.0.21/api"):
+        for url in ("http://192.168.0.230/api", "https://user:password@192.168.0.230/api"):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 launcher.ssl_context_for_url(url)
 
@@ -608,14 +608,14 @@ class LauncherTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "allow_insecure_tls"):
             launcher.browser_command(config, self.config["server_url"])
         with self.assertRaisesRegex(ValueError, "https"):
-            launcher.normalize_config_url("http://192.168.0.21/config")
+            launcher.normalize_config_url("http://192.168.0.230/config")
         with self.assertRaisesRegex(ValueError, "https"):
-            launcher.normalize_server_url("http://192.168.0.21")
+            launcher.normalize_server_url("http://192.168.0.230")
 
     def test_device_redirects_are_rejected(self):
         handler = launcher.NoDeviceRedirect()
-        request = launcher.Request("https://192.168.0.21:8090/config")
-        for target in ("http://192.168.0.21/config", "https://untrusted.example/config"):
+        request = launcher.Request("https://192.168.0.230:8090/config")
+        for target in ("http://192.168.0.230/config", "https://untrusted.example/config"):
             with self.subTest(target=target), self.assertRaises(launcher.HTTPError):
                 handler.redirect_request(request, None, 302, "Found", {}, target)
 

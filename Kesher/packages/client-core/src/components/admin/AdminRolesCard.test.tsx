@@ -240,8 +240,8 @@ describe("AdminRolesCard", () => {
   });
 
   it("points to the roles page of JMS Control on the matching address", () => {
-    expect(multiviewRolesUrl({ hostname: "192.168.0.21" })).toBe(
-      "https://192.168.0.21:8090/#/zugang/rollen",
+    expect(multiviewRolesUrl({ hostname: "192.168.0.230" })).toBe(
+      "https://192.168.0.230:8090/#/zugang/rollen",
     );
     expect(multiviewRolesUrl({ hostname: "kesher.jms.de" })).toBe(
       "https://multiview.jms.de/#/zugang/rollen",

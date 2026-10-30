@@ -4,7 +4,6 @@ import { WebSocket as UndiciWebSocket, fetch as undiciFetch } from "undici";
 
 const allowedOrigins = new Set([
   "https://192.168.0.230:8443",
-  "https://192.168.0.21:8443",
   "https://intercom.local",
   "https://kesher.local",
   "https://intercom.jms.de",

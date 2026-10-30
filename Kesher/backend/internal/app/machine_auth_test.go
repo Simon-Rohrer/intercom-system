@@ -176,7 +176,7 @@ func TestMachineLoginRequiresRegistryAndBoundRole(t *testing.T) {
 func TestMachineSpoofedGatewayHeadersCannotLogin(t *testing.T) {
 	server := newCompanionTestServer(t)
 	configureMachineTestServer(t, server)
-	for _, address := range []string{"127.0.0.1:3000", "192.168.0.21:4000", "192.168.0.161:5000"} {
+	for _, address := range []string{"127.0.0.1:3000", "192.168.0.230:4000", "192.168.0.161:5000"} {
 		request := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(`{"username":"CameraOne","roleId":"audio"}`))
 		request.RemoteAddr = address
 		request.Header.Set("X-JMS-Gateway", "machine")

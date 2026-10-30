@@ -10,7 +10,7 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
-ALLOW="192.168.0.230 192.168.0.21"
+ALLOW="192.168.0.230"
 PORT="61208"
 
 usage() {

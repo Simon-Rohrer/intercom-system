@@ -244,10 +244,10 @@ test('IP-Ausnahmen können nicht mehr angelegt werden', async () => {
 })
 
 test('eigene Serveradressen und Loopback besitzen keinen Maschinenzugang', async (context) => {
-  context.mock.method(os, 'networkInterfaces', () => ({ lan: [{ address: '192.168.0.21' }] }))
+  context.mock.method(os, 'networkInterfaces', () => ({ lan: [{ address: '192.168.0.230' }] }))
   const { access } = await setup()
   access.setGateway({ enabled: true })
-  for (const address of ['192.168.0.21', '127.0.0.1', '::1', '::ffff:127.0.0.1']) {
+  for (const address of ['192.168.0.230', '127.0.0.1', '::1', '::ffff:127.0.0.1']) {
     assert.equal(access.check({ service: 'kesher', ip: address }, request({}, address)).action, 'code')
     assert.equal(access.check({ service: 'companion', ip: address }, request({}, address)).action, 'code')
     assert.equal(access.trusted(address, request({}, address)), false)

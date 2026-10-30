@@ -38,25 +38,7 @@
 		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
 		protocols h1 h2
 	}
-	servers 192.168.0.21:8443 {
-		strict_sni_host insecure_off
-		listener_wrappers {
-			http_redirect
-			tls
-		}
-		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
-		protocols h1 h2
-	}
 	servers 192.168.0.230:8090 {
-		strict_sni_host insecure_off
-		listener_wrappers {
-			http_redirect
-			tls
-		}
-		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
-		protocols h1 h2
-	}
-	servers 192.168.0.21:8090 {
 		strict_sni_host insecure_off
 		listener_wrappers {
 			http_redirect
@@ -74,25 +56,7 @@
 		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
 		protocols h1 h2
 	}
-	servers 192.168.0.21:8000 {
-		strict_sni_host insecure_off
-		listener_wrappers {
-			http_redirect
-			tls
-		}
-		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
-		protocols h1 h2
-	}
 	servers 192.168.0.230:3000 {
-		strict_sni_host insecure_off
-		listener_wrappers {
-			http_redirect
-			tls
-		}
-		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
-		protocols h1 h2
-	}
-	servers 192.168.0.21:3000 {
 		strict_sni_host insecure_off
 		listener_wrappers {
 			http_redirect
@@ -110,25 +74,7 @@
 		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
 		protocols h1 h2
 	}
-	servers 192.168.0.21:61208 {
-		strict_sni_host insecure_off
-		listener_wrappers {
-			http_redirect
-			tls
-		}
-		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
-		protocols h1 h2
-	}
 	servers 192.168.0.230:9443 {
-		strict_sni_host insecure_off
-		listener_wrappers {
-			http_redirect
-			tls
-		}
-		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
-		protocols h1 h2
-	}
-	servers 192.168.0.21:9443 {
 		strict_sni_host insecure_off
 		listener_wrappers {
 			http_redirect
@@ -141,14 +87,10 @@
 		strict_sni_host insecure_off
 		protocols h1 h2
 	}
-	servers 192.168.0.21:8250 {
-		strict_sni_host insecure_off
-		protocols h1 h2
-	}
 }
 
 (lan_port) {
-	bind 192.168.0.230 192.168.0.21
+	bind 192.168.0.230
 	import jms_tls
 }
 
@@ -294,12 +236,12 @@
 }
 
 # ---------------------------------------------------------------------------
-# Port-Adressen: https://192.168.0.21:<port>
+# Port-Adressen: https://192.168.0.230:<port>
 # ---------------------------------------------------------------------------
 
 # Kesher (Container auf 127.0.0.1:8080)
 https://:8090, https://:8443, https://:8000, https://:3000, https://:61208, https://:9443, https://:8250 {
-	bind 192.168.0.230 192.168.0.21
+	bind 192.168.0.230
 	tls internal {
 		client_auth {
 			mode verify_if_given
@@ -309,13 +251,13 @@ https://:8090, https://:8443, https://:8000, https://:3000, https://:61208, http
 	respond 404
 }
 
-https://192.168.0.230:8443, https://192.168.0.21:8443 {
+https://192.168.0.230:8443 {
 	import lan_port
 	import kesher_web
 }
 
 # Multiview (Container mit HOST=127.0.0.1)
-https://192.168.0.230:8090, https://192.168.0.21:8090 {
+https://192.168.0.230:8090 {
 	import lan_port
 	reverse_proxy 127.0.0.1:8090 {
 		import jms_node
@@ -323,7 +265,7 @@ https://192.168.0.230:8090, https://192.168.0.21:8090 {
 }
 
 # Bitfocus Companion – vorher die Admin-Oberfläche auf 127.0.0.1:8000 umstellen
-https://192.168.0.230:8000, https://192.168.0.21:8000 {
+https://192.168.0.230:8000 {
 	import lan_port
 	import jms_auth companion
 	import jms_watch companion
@@ -333,7 +275,7 @@ https://192.168.0.230:8000, https://192.168.0.21:8000 {
 }
 
 # Dashboard (Homepage) – Compose-Port vorher auf "127.0.0.1:3000:3000"
-https://192.168.0.230:3000, https://192.168.0.21:3000 {
+https://192.168.0.230:3000 {
 	import lan_port
 	import jms_auth dashboard
 	import dashboard_no_cache
@@ -343,7 +285,7 @@ https://192.168.0.230:3000, https://192.168.0.21:3000 {
 }
 
 # Glances – vorher nur auf 127.0.0.1 lauschen lassen
-https://192.168.0.230:61208, https://192.168.0.21:61208 {
+https://192.168.0.230:61208 {
 	import lan_port
 	import jms_auth glances
 	import jms_watch glances
@@ -353,7 +295,7 @@ https://192.168.0.230:61208, https://192.168.0.21:61208 {
 }
 
 # Portainer – Compose-Port vorher auf "127.0.0.1:9443:9443" (Portainer hat eigenes HTTPS)
-https://192.168.0.230:9443, https://192.168.0.21:9443 {
+https://192.168.0.230:9443 {
 	import lan_port
 	import jms_auth portainer
 	import jms_watch portainer
@@ -366,7 +308,7 @@ https://192.168.0.230:9443, https://192.168.0.21:9443 {
 }
 
 # Router (Speedport) – nur Admin, automatische Anmeldung (siehe jms_router)
-https://192.168.0.230:8250, https://192.168.0.21:8250 {
+https://192.168.0.230:8250 {
 	import lan_port
 	import jms_auth router
 	import jms_router

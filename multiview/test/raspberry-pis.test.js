@@ -6,7 +6,7 @@ const { normalizeRaspberry, launcherConfig, parsePiRequest, createPiRegistry, pi
 
 const RASPBERRY = normalizeRaspberry({
   managed: true,
-  serverUrl: '192.168.0.21:8443/',
+  serverUrl: '192.168.0.230:8443/',
   connectTimeoutSeconds: '30',
   clients: [
     {
@@ -24,7 +24,7 @@ const RASPBERRY = normalizeRaspberry({
 })
 
 test('Einstellungen werden aufgeräumt', () => {
-  assert.equal(RASPBERRY.serverUrl, 'https://192.168.0.21:8443')
+  assert.equal(RASPBERRY.serverUrl, 'https://192.168.0.230:8443')
   assert.equal(RASPBERRY.allowInsecureTls, false)
   assert.equal(RASPBERRY.connectTimeoutSeconds, 30)
   assert.equal(RASPBERRY.audioWaitSeconds, null)
@@ -45,7 +45,7 @@ test('Pi bekommt nur seinen eigenen Eintrag, im Format der Datei', () => {
     managed: true,
     config: {
       allow_insecure_tls: false,
-      server_url: 'https://192.168.0.21:8443',
+      server_url: 'https://192.168.0.230:8443',
       browser_connect_timeout_seconds: 30,
       clients: [
         {

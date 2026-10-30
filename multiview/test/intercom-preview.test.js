@@ -28,7 +28,7 @@ function setup({ embedded = true, viewer = user, stationUser = null, nextUser = 
   const context = vm.createContext({
     URL, URLSearchParams, Map, Set, Boolean, String, JSON,
     config: { chat: { url: 'http://127.0.0.1:8080' }, outputs: [{ id: 'licht', layoutId: 'layout' }], layouts: [layout] },
-    location: { hostname: '192.168.0.21' }, embedded, viewer, viewerReady: true, stationUser,
+    location: { hostname: '192.168.0.230' }, embedded, viewer, viewerReady: true, stationUser,
     frames: new Map(), frameLayer, currentOutputId: 'licht', renderedKey: 'old', renders: 0,
     document: { createElement: element }, setInterval() {},
     applyBox(el, value) { el.box = value.id },
@@ -146,7 +146,7 @@ test('Beide äußeren Vorschau-Frames delegieren Mikrofon und Lautsprecher', () 
 
 test('Kesher liegt auf derselben Adresse wie JMS Control (Port 8443), damit die Anmeldung mitgeht', () => {
   const { context } = setup()
-  assert.equal(context.kesherPublicOrigin('192.168.0.21'), 'https://192.168.0.21:8443')
+  assert.equal(context.kesherPublicOrigin('192.168.0.230'), 'https://192.168.0.230:8443')
   assert.equal(context.kesherPublicOrigin('jmscontrol.internal'), 'https://jmscontrol.internal:8443')
   context.location.hostname = 'multiview.jms.de'
   assert.equal(new URL(context.kesherUrl({ ...tile, kesherRoleId: 'licht-multiview' })).origin, 'https://multiview.jms.de:8443')

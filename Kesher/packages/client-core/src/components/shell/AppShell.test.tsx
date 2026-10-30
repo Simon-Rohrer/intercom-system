@@ -107,7 +107,7 @@ describe("shell links", () => {
   it("points Dashboard to the dashboard of the current address", () => {
     expect(dashboardUrl({ hostname: "intercom.local" })).toBe("https://technik.local/");
     expect(dashboardUrl({ hostname: "kesher.jms.de" })).toBe("https://dashboard.jms.de/");
-    expect(dashboardUrl({ hostname: "192.168.0.21" })).toBe("https://192.168.0.21:3000/");
+    expect(dashboardUrl({ hostname: "192.168.0.230" })).toBe("https://192.168.0.230:3000/");
     expect(dashboardUrl({ hostname: "intercom.internal" })).toBe("https://technik.internal/");
   });
 

@@ -129,7 +129,7 @@ func TestWebSocketOriginsAreRestricted(t *testing.T) {
 // loopback upstream Host. Test that deployed path, not just matching hosts.
 func TestWebSocketOriginsBehindCentralProxy(t *testing.T) {
 	for _, origin := range []string{
-		"https://intercom.internal", "https://kesher.internal", "https://192.168.0.21:8443",
+		"https://intercom.internal", "https://kesher.internal", "https://192.168.0.230:8443",
 		"https://intercom.local", "https://kesher.local",
 		"https://jmscontrol.internal:8443", "https://multiview.jms.de:8443", "https://jmscontrol.local:8443",
 	} {
