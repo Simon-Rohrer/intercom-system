@@ -1,0 +1,12 @@
+[Unit]
+Description=JMS-Server: Arbeitsstand des Server-Checkouts als Zweig „server-stand“ nach GitHub sichern
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=master
+Group=master
+ExecStart=/usr/local/lib/jms-server-stand/jms-server-stand.sh
+Nice=10
+IOSchedulingClass=idle

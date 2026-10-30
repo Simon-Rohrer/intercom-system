@@ -409,6 +409,16 @@ Der Server fragt ChurchTools jede Minute ab. Pro Kachel lässt sich unter *Datum
 
 **Dienstplan („Wer ist heute dran?“):** Die Kachel-Art **Dienstplan** zeigt für das Event der Kachel (gleiche Datumsauswahl und derselbe Event-Filter wie beim Ablauf) die in ChurchTools eingeteilten Personen je Dienst, gruppiert nach Dienstgruppe. **Rot**: Dienst nicht besetzt („Kamera 2 – nicht besetzt“), **gelb**: eingeteilt, aber noch nicht zugesagt. Unter *Dienste* lassen sich ganze Dienstgruppen oder einzelne Dienste anhaken (leer = alle), dazu „Nur unbesetzte und angefragte Dienste“ und die Schriftgröße. Das Server-Konto braucht in ChurchTools Leserechte auf Dienste und Dienstgruppen; die Dienste je Event (`/events/{id}`) fragt der Server nur ab, solange mindestens eine Dienstplan-Kachel existiert. Bei Diensten mit „Namen verbergen“ steht „Name in ChurchTools verborgen“.
 
+## Server-Stand automatisch auf GitHub (30.10.2026)
+
+Wird direkt auf dem Server gearbeitet, ohne zu committen, sichert der Timer `jms-server-stand.timer` den Arbeitsstand von `~/intercom-system` **stündlich** als Zweig **`server-stand`** auf GitHub (Skript `scripts/server-stand/jms-server-stand.sh`). Der Checkout bleibt dabei unberührt: kein Commit auf `main`, kein Stash, kein Zweigwechsel – der Stand wird über einen eigenen Index gebaut (`.gitignore` gilt) und nur hochgeladen, wenn sich etwas geändert hat. Vergleichen: `git diff main origin/server-stand`.
+
+**Das Repository ist öffentlich.** Vor jedem Hochladen werden alle von `main` abweichenden Dateien geprüft: Schlüsseldateien (`*.key`, `*.pem`, `.env`, `access-secret*` …), private Schlüssel, GitHub-/Slack-/AWS-/Tailscale-/Telegram-Tokens, fest eingetragene Passwörter/Tokens und die Geheimnisse der laufenden Container (Multiview, Kesher). Bei einem Fund wird **nichts** hochgeladen; `journalctl -u jms-server-stand` nennt nur die Dateinamen, Zustand in `~/.local/state/jms-server-stand/status.json`.
+
+- Einrichten: `sudo bash scripts/server-stand/install.sh` (legt den Deploy-Schlüssel `/home/master/.ssh/jms-server-stand` an und gibt den öffentlichen Teil aus). Ein **Admin des Repositorys** trägt ihn unter GitHub → Settings → Deploy keys mit **„Allow write access“** ein. Ohne den Schlüssel wird der Stand nur lokal als Zweig `server-stand` gesichert.
+- Probelauf: `bash /usr/local/lib/jms-server-stand/jms-server-stand.sh --dry-run`
+- Sofort sichern: `sudo systemctl start jms-server-stand.service`
+
 ## Wichtig im Fehlerfall
 
 1. Läuft der Container?
