@@ -15,7 +15,7 @@ export function GetConfigFields(): SomeCompanionConfigField[] {
       type: "textinput",
       id: "host",
       label: "Backend host",
-      default: "192.168.0.21",
+      default: "192.168.0.230",
       width: 8,
     },
     {

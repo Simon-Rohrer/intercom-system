@@ -12,33 +12,33 @@
 
 - Dienste:
     - Intercom:
-        href: https://192.168.0.21:8443
+        href: https://192.168.0.230:8443
         description: Kesher – sprechen, hören, Chat
         icon: mdi-headset
         server: local-docker
         container: kesher
     - Intercom-Chat:
-        href: https://192.168.0.21:8090/remote.html?tab=chat
+        href: https://192.168.0.230:8090/remote.html?tab=chat
         description: Chat mit den anderen Rollen lesen und schreiben
         icon: mdi-chat-processing
     - Nachricht auf Bühne:
-        href: https://192.168.0.21:8090/remote.html?tab=beamer
+        href: https://192.168.0.230:8090/remote.html?tab=beamer
         description: Text an ProPresenter – der Bediener zeigt ihn auf dem Beamer
         icon: mdi-projector-screen
     - Nachricht auf Stage Display:
-        href: https://192.168.0.21:8090/remote.html?tab=stage
+        href: https://192.168.0.230:8090/remote.html?tab=stage
         description: Kurze Nachricht für die Bühne (Stage Display)
         icon: mdi-message-text
     - Prediger:
-        href: https://192.168.0.21:8090/prediger.html
+        href: https://192.168.0.230:8090/prediger.html
         description: Folien, Notizen und Zeit für die Bühne
         icon: mdi-account-voice
     - Raspberry fernsteuern:
-        href: https://192.168.0.21:8443/?login=raspberry
+        href: https://192.168.0.230:8443/?login=raspberry
         description: Kesher – eine Raspberry-Station übernehmen und steuern
         icon: mdi-raspberry-pi
     - JMS Control:
-        href: https://192.168.0.21:8090
+        href: https://192.168.0.230:8090
         description: Die Zentrale – Multiviews, Layouts, Eingänge, Benutzer und Rechte
         icon: mdi-cog
         server: local-docker
@@ -47,17 +47,17 @@
 
 - Verwaltung:
     - Companion:
-        href: https://192.168.0.21:8000
+        href: https://192.168.0.230:8000
         description: Stream-Deck-Tasten und Automationen
         icon: mdi-gesture-tap-button
     - Portainer:
-        href: https://192.168.0.21:9443
+        href: https://192.168.0.230:9443
         description: Container verwalten (Admin wird automatisch angemeldet)
         icon: mdi-docker
         server: local-docker
         container: portainer
     - Glances:
-        href: https://192.168.0.21:61208
+        href: https://192.168.0.230:61208
         description: Auslastung, Prozesse und Temperaturen im Detail
         icon: mdi-chart-line
         server: local-docker
@@ -69,7 +69,7 @@
         server: local-docker
         container: adguardhome
     - Router:
-        href: https://192.168.0.21:8250
+        href: https://192.168.0.230:8250
         description: Speedport, WLAN „JMS Interkom“ (Admin wird automatisch angemeldet)
         icon: mdi-router-wireless
 

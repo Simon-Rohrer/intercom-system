@@ -3,7 +3,7 @@
 //   …local  → Namen im lokalen Netz (technik.local, intercom.local …)
 //   …jms.de → die jms.de-Namen, wo es sie gibt
 //   …internal → dieselben Namen mit .internal (auch über Tailscale)
-//   IP      → dieselbe IP mit dem Port des Dienstes (z. B. https://192.168.0.21:3000)
+//   IP      → dieselbe IP mit dem Port des Dienstes (z. B. https://192.168.0.230:3000)
 
 export const SERVICE_GROUPS = [
   {

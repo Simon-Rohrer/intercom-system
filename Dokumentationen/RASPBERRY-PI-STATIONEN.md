@@ -22,7 +22,7 @@ hostname -I
 ## Einstellungen im Multiview (empfohlen)
 
 Seit Launcher-Version 10 stehen die Einstellungen der Pis im Multiview unter
-**Einstellungen → Raspberry Pis** (`https://192.168.0.21:8090/#/einstellungen/raspberry`, nur Admin):
+**Einstellungen → Raspberry Pis** (`https://192.168.0.230:8090/#/einstellungen/raspberry`, nur Admin):
 Kesher-Adresse, Zertifikat, Wartezeiten und pro Station Name, Rolle, Ansicht, MAC-Adressen,
 Audio-Geräte und Sparmodus. Ab Launcher-Version 14 hält der Pi seine Anfrage offen (Long-Poll
 mit `version`/`waitSeconds`): Der Multiview antwortet sofort, sobald sich etwas für diesen Pi
@@ -34,7 +34,7 @@ sie wird über die Fernsteuerung (unten) sofort im laufenden Intercom umgeschalt
 Dafür steht in `/etc/kesher/raspberry-pis.json` auf dem Pi zusätzlich:
 
 ```json
-"config_url": "https://192.168.0.21:8090/api/raspberry-pis/config"
+"config_url": "https://192.168.0.230:8090/api/raspberry-pis/config"
 ```
 
 So funktioniert es:
@@ -53,7 +53,7 @@ So funktioniert es:
   zeigt die wirksamen Einstellungen und woher sie kommen (`multiview`, `cache` oder `file`).
 
 Fernsteuern: Im Dashboard **Raspberry fernsteuern** öffnet Kesher direkt im Reiter
-*Raspberry* (`https://192.168.0.21:8443/?login=raspberry`), ohne automatische Anmeldung mit der
+*Raspberry* (`https://192.168.0.230:8443/?login=raspberry`), ohne automatische Anmeldung mit der
 eigenen Rolle. Dort mit **Steuern** eine verbundene Station übernehmen.
 
 ## Ton fernsteuern aus JMS Control
@@ -222,7 +222,7 @@ Untergruppe pro Pi: Prozessor, Arbeitsspeicher, Temperatur, Speicherkarte, Lesen
 Prozesse. Die Werte liefert Glances auf dem Pi:
 
 ```bash
-sudo ./install-glances.sh            # nur 192.168.0.21 (der Server) darf abfragen
+sudo ./install-glances.sh            # nur 192.168.0.230 (der Server) darf abfragen
 sudo ./install-glances.sh --remove   # Dienst wieder entfernen
 ```
 

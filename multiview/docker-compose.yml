@@ -23,7 +23,7 @@ services:
       JMS_SATELLITE_TLS_DIR: /run/jms-device/satellite
       # Zentrale Adresse für den Abgleich der Anmeldung zwischen IP und .local-Namen
       # (dort gilt ein Cookie für alle Dienste; die .local-Seiten holen die Anmeldung von dort)
-      JMS_SSO_ORIGIN: "https://192.168.0.21:8090"
+      JMS_SSO_ORIGIN: "https://192.168.0.230:8090"
     volumes:
       - multiview-data:/data
       - /etc/jms-auth/services/kesher.key:/run/jms-device/kesher.key:ro

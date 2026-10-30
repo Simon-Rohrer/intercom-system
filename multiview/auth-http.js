@@ -9,7 +9,8 @@ const DEFAULT_ORIGINS = [
   ...['intercom.internal', 'kesher.internal', 'jmscontrol.internal', 'multiview.internal',
     'technik.internal', 'dashboard.internal', 'companion.internal', 'glances.internal',
     'portainer.internal', 'dns.internal', 'router.internal'].map((host) => `https://${host}`),
-  ...[8090, 8443, 8000, 3000, 61208, 9443, 8250].map((port) => `https://192.168.0.21:${port}`),
+  // Server-IP seit 30.10.2026: 192.168.0.230; die alte .21 bleibt bis zur Abschaltung erlaubt
+  ...['192.168.0.230', '192.168.0.21'].flatMap((ip) => [8090, 8443, 8000, 3000, 61208, 9443, 8250].map((port) => `https://${ip}:${port}`)),
   ...['intercom.jms.de', 'kesher.jms.de', 'intercom.local', 'kesher.local', 'multiview.jms.de', 'jmscontrol.local',
     'dashboard.jms.de', 'dashboard.local', 'technik.local', 'companion.jms.de', 'companion.local',
     'glances.jms.de', 'glances.local', 'portainer.jms.de', 'portainer.local', 'dns.jms.de', 'dns.local',

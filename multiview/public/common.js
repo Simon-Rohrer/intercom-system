@@ -419,7 +419,7 @@ export function kesherMissing(tile) {
 }
 
 // ---------------------------------------------------------------------------
-// QR-Codes: immer die IP-Adresse des Servers im LAN (https://192.168.0.21:8090), nie Namen wie
+// QR-Codes: immer die IP-Adresse des Servers im LAN (https://192.168.0.230:8090), nie Namen wie
 // jmscontrol.local – die lösen viele Handys nicht auf. Gilt für alle QR-Codes (Monitore, Editor,
 // Handy-Fernsteuerung, Link für Ordner, Tagescode).
 // ---------------------------------------------------------------------------

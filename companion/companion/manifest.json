@@ -3,7 +3,7 @@
   "name": "kesher",
   "shortname": "kesher",
   "description": "Control Kesher intercom browser sessions via Companion",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "license": "MIT",
   "repository": "git+https://github.com/KesherCom/kesher.git",
   "bugs": "https://github.com/KesherCom/kesher/issues",

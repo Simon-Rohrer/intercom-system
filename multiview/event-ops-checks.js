@@ -13,7 +13,7 @@ function createOpsChecks({getConfig, getAtem, getPp, churchTools, kesherChat}) {
     const rows=[]
     const add=(id,name,status,detail,steps,more={})=>rows.push({id,name,status,detail,steps,defaultRequired:true,...more})
     add('jms','JMS Control','ok','Web-Anwendung antwortet.','Bei Darstellungsproblemen die Seite neu laden. Keine Browserdaten während der Veranstaltung löschen.')
-    add('kesher','Kesher','connected'===chat.state?'ok':'error',chat.state==='connected'?'Chat-Verbindung aufgebaut.':'JMS Control hat keine aktive Chat-Verbindung.','Kesher öffnen. Ist die gewünschte Station angemeldet? Headset und Sprechprobe vor Ort prüfen.',{href:'https://192.168.0.21:8443/'})
+    add('kesher','Kesher','connected'===chat.state?'ok':'error',chat.state==='connected'?'Chat-Verbindung aufgebaut.':'JMS Control hat keine aktive Chat-Verbindung.','Kesher öffnen. Ist die gewünschte Station angemeldet? Headset und Sprechprobe vor Ort prüfen.',{href:'https://192.168.0.230:8443/'})
     add('churchtools','ChurchTools',ct.state==='connected'?'ok':'error',ct.state==='connected'?'Verbindung zur Ablaufplanung vorhanden.':'Die Verbindung zur Ablaufplanung ist unterbrochen.','Internetverbindung und ChurchTools-Zugang unter Einstellungen prüfen.')
     add('atem','ATEM-Steuerung',atem.connected?'ok':c.atem.ip?'error':'unknown',atem.connected?'ATEM-Steuerprotokoll verbunden.':'Keine ATEM-Steuerverbindung.','Stromversorgung, Netzwerkkabel und konfigurierte ATEM-Adresse prüfen. Eine Steuerverbindung bestätigt kein Kamerabild.',{defaultRequired:!!c.atem.ip})
     const ppPort=await tcp(c.propresenter.host,c.propresenter.port)
@@ -23,7 +23,7 @@ function createOpsChecks({getConfig, getAtem, getPp, churchTools, kesherChat}) {
       const res=await fetch('http://127.0.0.1:8000/api/connections',{signal:AbortSignal.timeout(1800)})
       if(!res.ok)throw Error('HTTP')
       const connections=await res.json();if(!Array.isArray(connections))throw Error('shape')
-      add('companion','Companion','ok','Companion antwortet mit dem Verbindungsstatus.','Companion öffnen und die betroffene Verbindung kontrollieren.',{href:'https://192.168.0.21:8000/'})
+      add('companion','Companion','ok','Companion antwortet mit dem Verbindungsstatus.','Companion öffnen und die betroffene Verbindung kontrollieren.',{href:'https://192.168.0.230:8000/'})
       for(const x of connections.filter(x=>x.enabled && !/youtube|monarch/.test(x.moduleId || ''))) {
         const status=x.status?.category==='good'?'ok':x.status?.category==='error'?'error':'unknown'
         add('connection:'+x.id,x.label || x.moduleId,status,status==='ok'?'Companion-Modul meldet betriebsbereit. Gerätefunktion vor Ort prüfen.':'Companion-Modul meldet keine betriebsbereite Verbindung.',

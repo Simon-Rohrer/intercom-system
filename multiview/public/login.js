@@ -68,7 +68,7 @@ const postJson = async (path, body) => {
 }
 
 // --- Abgleich mit der zentralen Adresse ----------------------------------------
-// Jeder Name (192.168.0.21, intercom.local, jmscontrol.local …) hat im Browser ein eigenes Cookie.
+// Jeder Name (192.168.0.230, intercom.local, jmscontrol.local …) hat im Browser ein eigenes Cookie.
 // Ist man hier nicht angemeldet, holt die Seite die Anmeldung von der zentralen Adresse (eine
 // kurze Weiterleitung); nach dem Anmelden hier bringt sie sie dorthin.
 

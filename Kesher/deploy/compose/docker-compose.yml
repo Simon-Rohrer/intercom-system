@@ -20,7 +20,7 @@ services:
       TELEGRAM_MODE: ${TELEGRAM_MODE:-polling}
       # Zentrale Anmeldung (Multiview): gleicher Wert wie in multiview/.env
       JMS_AUTH_SECRET: ${JMS_AUTH_SECRET:-}
-      JMS_AUTH_URL: "https://192.168.0.21:8090"
+      JMS_AUTH_URL: "https://192.168.0.230:8090"
       JMS_AUTH_CA_FILE: "/app/certs/caddy-root.crt"
       UDP_AUDIO_ADDR: ""
     volumes:

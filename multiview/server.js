@@ -89,7 +89,7 @@ function defaultChat() {
   }
 }
 
-/** "192.168.0.21:8080" → "http://192.168.0.21:8080" */
+/** "192.168.0.230:8080" → "http://192.168.0.230:8080" */
 function withScheme(url) {
   return /^https?:\/\//i.test(url) ? url : `http://${url}`
 }
@@ -1957,7 +1957,7 @@ app.delete('/api/me/avatar', requireUser, (req, res) => {
   res.json({ ok: true, avatar: null })
 })
 
-// Stamm-Zertifikat von Caddys lokaler Zertifizierungsstelle (HTTPS auf 192.168.0.21:<port>).
+// Stamm-Zertifikat von Caddys lokaler Zertifizierungsstelle (HTTPS auf 192.168.0.230:<port>).
 // iPhone/iPad brauchen es als vertrautes Profil – sonst lädt die Seite nach der Warnung zwar,
 // aber die Live-Verbindung (WebSocket) wird abgelehnt und es steht „Server nicht erreichbar“.
 // Öffentlich, es ist nur das Zertifikat (kein Schlüssel); Caddy gibt es über seine Admin-API auf dem Server heraus.
@@ -2532,7 +2532,7 @@ app.post('/.jms-auth/logout', (req, res) => {
 // Abgleich der Anmeldung zwischen den Adressen. Unter der IP teilen sich alle Dienste ein Cookie
 // (Cookies kennen keine Ports), intercom.local, jmscontrol.local usw. haben aber je ein eigenes.
 // Die Anmeldeseite holt die Anmeldung darum per Weiterleitung von der zentralen Adresse
-// (JMS_SSO_ORIGIN, z. B. https://192.168.0.21:8090) ab und bringt sie nach dem Anmelden dorthin.
+// (JMS_SSO_ORIGIN, z. B. https://192.168.0.230:8090) ab und bringt sie nach dem Anmelden dorthin.
 // Abmelden beendet die Anmeldung unter allen Adressen (gleiche ID, siehe access.js).
 // ---------------------------------------------------------------------------
 

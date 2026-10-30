@@ -1,8 +1,8 @@
-# Caddy auf dem JMS-Server (192.168.0.21) – Vorlage für die einheitliche HTTPS-Umstellung.
+# Caddy auf dem JMS-Server (192.168.0.230) – Vorlage für die einheitliche HTTPS-Umstellung.
 # Grundlage ist die aktive /etc/caddy/Caddyfile vom 12.10.2026: alle bisherigen Namens-
 # Adressen (*.jms.de, *.local) bleiben erhalten. Neu:
-#   - jede Weboberfläche zusätzlich als https://192.168.0.21:<gewohnter Port>
-#   - http://192.168.0.21:<port> wird auf demselben Port auf https umgeleitet
+#   - jede Weboberfläche zusätzlich als https://192.168.0.230:<gewohnter Port>
+#   - http://192.168.0.230:<port> wird auf demselben Port auf https umgeleitet
 #   - Multiview (JMS Control) auch als multiview.jms.de / jmscontrol.local (multiview.local seit 15.10.2026 entfernt)
 #   - zentrale Anmeldung vor allen Diensten außer dem Multiview (Baustein jms_auth)
 # Die Dienste lauschen danach nur noch auf 127.0.0.1 (Caddy nur auf der LAN-Adresse),
@@ -19,7 +19,7 @@
 #   sudo systemctl reload caddy
 
 {
-	default_sni 192.168.0.21
+	default_sni 192.168.0.230
 	order request_header before forward_auth
 	# Kein HTTP/3 für die Namens-Adressen (443): Safari hängt bei Caddys interner CA im QUIC-Aufbau
 	# (weißer Bildschirm bei intercom.local, bis man neu lädt) – dann bleibt es bei h1/h2.
@@ -29,7 +29,25 @@
 
 	# Klartext-Anfragen auf den HTTPS-Ports auf https umleiten (Caddy ≥ 2.6).
 	# Nur für die Port-Adressen, nicht für Port 80 (setup.local) und 443.
+	servers 192.168.0.230:8443 {
+		strict_sni_host insecure_off
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
+		protocols h1 h2
+	}
 	servers 192.168.0.21:8443 {
+		strict_sni_host insecure_off
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
+		protocols h1 h2
+	}
+	servers 192.168.0.230:8090 {
 		strict_sni_host insecure_off
 		listener_wrappers {
 			http_redirect
@@ -47,7 +65,25 @@
 		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
 		protocols h1 h2
 	}
+	servers 192.168.0.230:8000 {
+		strict_sni_host insecure_off
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
+		protocols h1 h2
+	}
 	servers 192.168.0.21:8000 {
+		strict_sni_host insecure_off
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
+		protocols h1 h2
+	}
+	servers 192.168.0.230:3000 {
 		strict_sni_host insecure_off
 		listener_wrappers {
 			http_redirect
@@ -65,7 +101,25 @@
 		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
 		protocols h1 h2
 	}
+	servers 192.168.0.230:61208 {
+		strict_sni_host insecure_off
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
+		protocols h1 h2
+	}
 	servers 192.168.0.21:61208 {
+		strict_sni_host insecure_off
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
+		protocols h1 h2
+	}
+	servers 192.168.0.230:9443 {
 		strict_sni_host insecure_off
 		listener_wrappers {
 			http_redirect
@@ -83,6 +137,10 @@
 		# kein HTTP/3: belegt sonst UDP auf demselben Port (8000 braucht MediaMTX im Multiview)
 		protocols h1 h2
 	}
+	servers 192.168.0.230:8250 {
+		strict_sni_host insecure_off
+		protocols h1 h2
+	}
 	servers 192.168.0.21:8250 {
 		strict_sni_host insecure_off
 		protocols h1 h2
@@ -90,7 +148,7 @@
 }
 
 (lan_port) {
-	bind 192.168.0.21
+	bind 192.168.0.230 192.168.0.21
 	import jms_tls
 }
 
@@ -241,7 +299,7 @@
 
 # Kesher (Container auf 127.0.0.1:8080)
 https://:8090, https://:8443, https://:8000, https://:3000, https://:61208, https://:9443, https://:8250 {
-	bind 192.168.0.21
+	bind 192.168.0.230 192.168.0.21
 	tls internal {
 		client_auth {
 			mode verify_if_given
@@ -251,21 +309,13 @@ https://:8090, https://:8443, https://:8000, https://:3000, https://:61208, http
 	respond 404
 }
 
-https://192.168.0.21:8443 {
-	import lan_port
-	import kesher_web
-}
-
-# Kesher-Kacheln in JMS Control: Kesher auf Port 8443 unter demselben Namen wie JMS Control.
-# Gleicher Name = der Browser schickt die Anmeldung von JMS Control mit (Cookies gelten für alle
-# Ports eines Namens). Unter intercom.internal wäre die Kachel eine fremde Seite ohne Anmeldung.
-https://jmscontrol.internal:8443, https://multiview.internal:8443, https://multiview.jms.de:8443, https://jmscontrol.local:8443 {
+https://192.168.0.230:8443, https://192.168.0.21:8443 {
 	import lan_port
 	import kesher_web
 }
 
 # Multiview (Container mit HOST=127.0.0.1)
-https://192.168.0.21:8090 {
+https://192.168.0.230:8090, https://192.168.0.21:8090 {
 	import lan_port
 	reverse_proxy 127.0.0.1:8090 {
 		import jms_node
@@ -273,7 +323,7 @@ https://192.168.0.21:8090 {
 }
 
 # Bitfocus Companion – vorher die Admin-Oberfläche auf 127.0.0.1:8000 umstellen
-https://192.168.0.21:8000 {
+https://192.168.0.230:8000, https://192.168.0.21:8000 {
 	import lan_port
 	import jms_auth companion
 	import jms_watch companion
@@ -283,7 +333,7 @@ https://192.168.0.21:8000 {
 }
 
 # Dashboard (Homepage) – Compose-Port vorher auf "127.0.0.1:3000:3000"
-https://192.168.0.21:3000 {
+https://192.168.0.230:3000, https://192.168.0.21:3000 {
 	import lan_port
 	import jms_auth dashboard
 	import dashboard_no_cache
@@ -293,7 +343,7 @@ https://192.168.0.21:3000 {
 }
 
 # Glances – vorher nur auf 127.0.0.1 lauschen lassen
-https://192.168.0.21:61208 {
+https://192.168.0.230:61208, https://192.168.0.21:61208 {
 	import lan_port
 	import jms_auth glances
 	import jms_watch glances
@@ -303,7 +353,7 @@ https://192.168.0.21:61208 {
 }
 
 # Portainer – Compose-Port vorher auf "127.0.0.1:9443:9443" (Portainer hat eigenes HTTPS)
-https://192.168.0.21:9443 {
+https://192.168.0.230:9443, https://192.168.0.21:9443 {
 	import lan_port
 	import jms_auth portainer
 	import jms_watch portainer
@@ -316,7 +366,7 @@ https://192.168.0.21:9443 {
 }
 
 # Router (Speedport) – nur Admin, automatische Anmeldung (siehe jms_router)
-https://192.168.0.21:8250 {
+https://192.168.0.230:8250, https://192.168.0.21:8250 {
 	import lan_port
 	import jms_auth router
 	import jms_router
@@ -408,3 +458,12 @@ https://192.168.178.185 {
 	import jms_tls
 	import kesher_web
 }
+
+# Kesher-Kacheln in JMS Control: Kesher unter demselben Namen auf 8443
+https://jmscontrol.internal:8443, https://multiview.internal:8443, https://multiview.jms.de:8443, https://jmscontrol.local:8443 {
+	import lan_port
+	import kesher_web
+}
+
+# Isolated master_me test desktop
+import /etc/caddy/master-me-test.caddy

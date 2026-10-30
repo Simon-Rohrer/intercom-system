@@ -27,7 +27,7 @@ function normalizeIp(v) {
   return m && m.slice(1).every((n) => Number(n) <= 255) ? m.slice(1).map(Number).join('.') : ''
 }
 
-/** "192.168.0.21:8443" → "https://192.168.0.21:8443", leer bleibt leer (dann gilt die Datei auf dem Pi). */
+/** "192.168.0.230:8443" → "https://192.168.0.230:8443", leer bleibt leer (dann gilt die Datei auf dem Pi). */
 function normalizeServerUrl(v) {
   const url = text(v).replace(/\/+$/, '')
   if (!url) return ''
