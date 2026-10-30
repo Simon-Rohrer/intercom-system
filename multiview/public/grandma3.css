@@ -1,0 +1,116 @@
+/* Kachel „Licht“ (grandMA3) – gleiche Gestaltung wie die Kacheln „Upload / Stream“ und Ablauf */
+
+.grandma3 {
+  --ma-bg: #000000;
+  --ma-line: #2c2c2e;
+  --ma-ink: #eceff3;
+  --ma-ink-2: #a9b2be;
+  --ma-ink-3: #6c7581;
+  --ma-accent: #ffd60a;
+  --ma-bad: #ff5a4f;
+
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ma-bg);
+  color: var(--ma-ink);
+  font-family: "Barlow", "Segoe UI", system-ui, sans-serif;
+  font-size: calc(clamp(10px, min(2.6cqw, 5cqh), 34px) * var(--ma-scale, 1));
+  overflow: hidden;
+  text-align: left;
+}
+
+.ma-header {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  padding: 0.55em 1.1em;
+  background: #0a0a0a;
+  border-bottom: 1px solid var(--ma-line);
+  min-width: 0;
+  flex: none;
+}
+.ma-title {
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 1.25em;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ma-pill {
+  margin-left: auto;
+  padding: 0.2em 0.7em;
+  border: 1px solid var(--ma-line);
+  border-radius: 999px;
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 600;
+  font-size: 0.7em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ma-ink-2);
+  white-space: nowrap;
+}
+.ma-pill.bad { border-color: var(--ma-bad); color: var(--ma-bad); }
+
+.ma-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.2em;
+  padding: 0.5em 1.1em;
+}
+.ma-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+  min-width: 0;
+  padding: 0.25em 0;
+  border-bottom: 1px solid var(--ma-line);
+}
+.ma-row:last-child { border-bottom: none; }
+.ma-name {
+  flex: none;
+  max-width: 45%;
+  color: var(--ma-ink-2);
+  font-weight: 600;
+  font-size: 1.05em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ma-name::after { content: ":"; }
+.ma-cue {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--ma-accent);
+  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+  font-weight: 700;
+  font-size: 1.5em;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ma-row.empty .ma-cue { color: var(--ma-ink-3); font-weight: 500; }
+.ma-fader {
+  flex: none;
+  color: var(--ma-ink-3);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9em;
+}
+
+.ma-note {
+  flex: none;
+  padding: 0.3em 1.1em 0.5em;
+  color: var(--ma-ink-3);
+  font-size: 0.8em;
+}
+.ma-note:empty { display: none; }

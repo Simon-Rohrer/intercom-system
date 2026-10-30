@@ -2,6 +2,8 @@ import { isPortrait, layoutSize, isStandardLayout, setPreviewSize, LAYOUT_MIN_PX
 import { createMeter, createMeterBank, setLevels, meterOptions, bankOptions } from './meters.js'
 import { createChatView, chatOptions } from './chat.js'
 import { createUplinkView, mergeUplink, uplinkOptions } from './uplink.js'
+import { createAvantisView, avantisOptions, avantisStateText } from './avantis.js'
+import { createGrandma3View, grandma3Options, grandma3StateText, cueText } from './grandma3.js'
 import { createYouTubeView, youtubeOptions } from './youtube.js'
 import { createSlideshowView, ppSlides, slideshowOptions } from './slideshow.js'
 import { createAgendaView, agendaOptions, AGENDA_ACCENTS, AGENDA_CCLI_COLORS } from './agenda.js'
@@ -27,7 +29,7 @@ const CLIENT_ID = uid('c')
 const PAGES = ['uebersicht', 'multiviews', 'layouts', 'einstellungen', 'services']
 const ADMIN_PAGES = ['einstellungen', 'services']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
-const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'youtube', 'dropbox', 'eingaenge', 'raspberry', 'companion', 'bildschirme', 'diashow', 'geraete', 'zugang']
+const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'youtube', 'avantis', 'grandma3', 'dropbox', 'eingaenge', 'raspberry', 'companion', 'bildschirme', 'diashow', 'geraete', 'zugang']
 // Unterseiten von Benutzer & Rechte: #/einstellungen/zugang/rollen …
 const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste', 'zugangsdaten', 'nachrichten']
 const SOURCE_TYPES = {
@@ -94,6 +96,10 @@ let churchtools = { state: 'connecting', events: [] }
 const agendaViews = new Set()
 const uplinkViews = new Set()
 let uplink = null
+const avantisViews = new Set()
+let avantis = null
+const grandma3Views = new Set()
+let grandma3 = null
 const youtubeViews = new Set()
 let youtube = null
 const slideshowViews = new Set()
@@ -134,6 +140,22 @@ function onMessage(msg) {
     }
     const hint = inspector.querySelector('[data-uplink-state]')
     if (hint) hint.textContent = uplinkStateText()
+  } else if (msg.type === 'avantis') {
+    avantis = msg
+    for (const view of avantisViews) {
+      if (view.el.isConnected) view.update(avantis)
+      else avantisViews.delete(view)
+    }
+    renderAvantisSettings()
+    renderStatusStrip()
+  } else if (msg.type === 'grandma3') {
+    grandma3 = msg
+    for (const view of grandma3Views) {
+      if (view.el.isConnected) view.update(grandma3)
+      else grandma3Views.delete(view)
+    }
+    renderGrandma3Settings()
+    renderStatusStrip()
   } else if (msg.type === 'slideshow') {
     slideshowData = msg
     for (const view of slideshowViews) {
@@ -533,6 +555,8 @@ function renderAll() {
   renderChat()
   renderChurchTools()
   renderProPresenter()
+  renderAvantisSettings()
+  renderGrandma3Settings()
   renderRaspberry()
   renderCompanion()
   renderAtemPill()
@@ -1800,6 +1824,10 @@ function syncTileMedia(el, tile) {
       ? JSON.stringify(['chat', tile.chatRole ?? '', chatOptions(tile.chat)])
       : tile.kind === 'uplink'
         ? JSON.stringify(['uplink', uplinkOptions(tile.uplink)])
+      : tile.kind === 'avantis'
+        ? JSON.stringify(['avantis', avantisOptions(tile.avantis)])
+      : tile.kind === 'grandma3'
+        ? JSON.stringify(['grandma3', grandma3Options(tile.grandma3)])
       : tile.kind === 'youtube'
         ? JSON.stringify(['youtube', youtubeOptions(tile.youtube)])
       : tile.kind === 'slideshow'
@@ -1815,7 +1843,7 @@ function syncTileMedia(el, tile) {
   el.dataset.mediaKey = key
   el.querySelector('.etile-media')?.remove()
   el.classList.toggle('live', Boolean(key))
-  el.classList.toggle('chat-tile', ['chat', 'churchtools', 'uplink', 'youtube', 'slideshow'].includes(tile.kind))
+  el.classList.toggle('chat-tile', ['chat', 'churchtools', 'uplink', 'avantis', 'grandma3', 'youtube', 'slideshow'].includes(tile.kind))
   if (!key) return
   const media = document.createElement('div')
   media.className = 'etile-media'
@@ -1834,6 +1862,16 @@ function syncTileMedia(el, tile) {
     const view = createUplinkView(tile.uplink)
     view.update(uplink)
     uplinkViews.add(view)
+    media.append(view.el)
+  } else if (tile.kind === 'avantis') {
+    const view = createAvantisView(tile.avantis)
+    view.update(avantis)
+    avantisViews.add(view)
+    media.append(view.el)
+  } else if (tile.kind === 'grandma3') {
+    const view = createGrandma3View(tile.grandma3)
+    view.update(grandma3)
+    grandma3Views.add(view)
     media.append(view.el)
   } else if (tile.kind === 'youtube') {
     const view = createYouTubeView(tile.youtube)
@@ -1908,6 +1946,8 @@ function describeTile(tile) {
     return { title: 'ChurchTools-Ablauf', sub: [day, tile.ctFilter].filter(Boolean).join(' · ') }
   }
   if (tile.kind === 'uplink') return { title: 'Upload / Stream', sub: 'Internet-Upload (FRITZ!Box)' }
+  if (tile.kind === 'avantis') return { title: 'Mischpult', sub: `Avantis · ${(config.avantis?.channels || []).length} Kanäle, Szene` }
+  if (tile.kind === 'grandma3') return { title: 'Licht', sub: `grandMA3 · ${(config.grandma3?.sequences || []).length} Sequenz(en)` }
   if (tile.kind === 'slideshow') {
     const o = slideshowOptions(tile.slideshow)
     const parts = [o.images && 'Bilder', o.pp && 'ProPresenter', o.events && 'Veranstaltungen'].filter(Boolean)
@@ -2507,6 +2547,34 @@ function uplinkStateText() {
   return uplink.state === 'off' ? 'Abfrage ausgeschaltet' : `Fehler: ${uplink.error || 'keine Antwort'}`
 }
 
+/** Mischpult-Kachel (Avantis): Titel, Größe, Spalten, was gezeigt wird – Kanäle unter Einstellungen */
+function avantisSection(tile) {
+  const o = avantisOptions(tile.avantis)
+  const critical = (config.avantis?.channels || []).filter((c) => c.critical).map((c) => c.name || `${c.type} ${c.number}`)
+  return `
+    <label class="field"><span>Titel</span><input type="text" data-av="title" value="${esc(o.title)}" maxlength="40"></label>
+    <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+      <input type="range" min="0.5" max="2.5" step="0.1" data-av="size" value="${o.size}"></label>
+    <label class="field"><span>Spalten <output>${o.columns}</output></span>
+      <input type="range" min="1" max="3" step="1" data-av="columns" value="${o.columns}"></label>
+    <label class="check"><input type="checkbox" data-av="open" ${o.open ? 'checked' : ''}> Auch offene Kanäle auflisten (sonst nur stumme)</label>
+    <label class="check"><input type="checkbox" data-av="scene" ${o.scene ? 'checked' : ''}> Aktuelle Szene zeigen</label>
+    <p class="muted small">Die Kachel zeigt nur an und steuert nichts. ${critical.length ? `Rote Warnung, sobald stumm: <b>${esc(critical.join(', '))}</b>.` : 'Noch kein Kanal als „kritisch“ markiert.'} Kanäle, Pult-Adresse und Szenennamen unter <a href="#/einstellungen/avantis">Einstellungen → Avantis</a>. Stand: ${esc(avantisStateText(avantis))}.</p>`
+}
+
+/** Licht-Kachel (grandMA3): Titel, Größe, Cue-Nummer, Fader – Sequenzen unter Einstellungen */
+function grandma3Section(tile) {
+  const o = grandma3Options(tile.grandma3)
+  return `
+    <label class="field"><span>Titel</span><input type="text" data-ma="title" value="${esc(o.title)}" maxlength="40"></label>
+    <label class="field"><span>Schriftgröße <output>${Math.round(o.size * 100)} %</output></span>
+      <input type="range" min="0.5" max="2.5" step="0.1" data-ma="size" value="${o.size}"></label>
+    <label class="check"><input type="checkbox" data-ma="header" ${o.header ? 'checked' : ''}> Kopfzeile mit Titel zeigen</label>
+    <label class="check"><input type="checkbox" data-ma="number" ${o.number ? 'checked' : ''}> Cue-Nummer zeigen</label>
+    <label class="check"><input type="checkbox" data-ma="fader" ${o.fader ? 'checked' : ''}> Faderstand der Sequenz zeigen</label>
+    <p class="muted small">Je eingetragener Sequenz eine Zeile, z. B. „Licht: Lobpreis (Cue 12)“. Sequenzen, Port und Prefix unter <a href="#/einstellungen/grandma3">Einstellungen → grandMA3</a>. Stand: ${esc(grandma3StateText(grandma3))}.</p>`
+}
+
 /** Upload-Kachel: Titel, Kurve, Warnung und (nur Admin) die Adresse der FRITZ!Box */
 function uplinkSection(tile) {
   const o = uplinkOptions(tile.uplink)
@@ -2886,6 +2954,10 @@ const TILE_KIND_GROUPS = [
     ['clock', 'Uhr', 'Aktuelle Uhrzeit', 'gray', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
     ['text', 'Text', 'Eigene Beschriftung', 'gray', '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>'],
   ]],
+  ['Ton & Licht', [
+    ['avantis', 'Mischpult', 'Avantis: Mutes, Szene', 'teal', '<path d="M6 4v16M12 4v16M18 4v16"/><rect x="4" y="9" width="4" height="3" rx="1"/><rect x="10" y="13" width="4" height="3" rx="1"/><rect x="16" y="7" width="4" height="3" rx="1"/>'],
+    ['grandma3', 'Licht', 'grandMA3: laufender Cue', 'orange', '<path d="M12 3a6 6 0 0 0-3.5 10.9V17h7v-3.1A6 6 0 0 0 12 3z"/><path d="M9.5 20h5"/>'],
+  ]],
 ]
 const TILE_KINDS = TILE_KIND_GROUPS.flatMap(([, kinds]) => kinds)
 
@@ -2996,6 +3068,8 @@ function tileInspector(tile, layout) {
         : ''
     }
     ${kind === 'uplink' ? uplinkSection(tile) : ''}
+    ${kind === 'avantis' ? avantisSection(tile) : ''}
+    ${kind === 'grandma3' ? grandma3Section(tile) : ''}
     ${kind === 'youtube' ? youtubeSection(tile) : ''}
     ${kind === 'slideshow' ? slideshowSection(tile) : ''}
     ${kind === 'chat' ? chatSection(tile) : ''}
@@ -3118,6 +3192,21 @@ function onInspectorField(e) {
   if (el.dataset.uplink) {
     const key = el.dataset.uplink
     config.uplink = { enabled: true, host: '192.168.178.1', ...config.uplink, [key]: el.type === 'checkbox' ? el.checked : el.value.trim() }
+    changed()
+    return
+  }
+
+  if (el.dataset.av || el.dataset.ma) {
+    const tile = layout.tiles.find((t) => t.id === selectedTileId)
+    if (!tile) return
+    const isAv = Boolean(el.dataset.av)
+    const key = el.dataset.av || el.dataset.ma
+    const value = el.type === 'checkbox' ? el.checked : key === 'title' ? el.value : Number(el.value)
+    if (isAv) tile.avantis = { ...avantisOptions(tile.avantis), [key]: value }
+    else tile.grandma3 = { ...grandma3Options(tile.grandma3), [key]: value }
+    const out = el.closest('label').querySelector('output')
+    if (out) out.textContent = key === 'size' ? `${Math.round(value * 100)} %` : String(value)
+    renderCanvas()
     changed()
     return
   }
@@ -4152,6 +4241,230 @@ for (const id of ['#pp-host', '#pp-port']) {
 }
 
 // ---------------------------------------------------------------------------
+// Einstellungen: Allen & Heath Avantis (Mischpult, nur mitlesen)
+// ---------------------------------------------------------------------------
+
+/** Kanalarten wie in avantis.js auf dem Server: Bezeichnung und Anzahl am Pult */
+const AVANTIS_TYPES = [
+  ['input', 'Input', 64],
+  ['dca', 'DCA', 16],
+  ['monoGroup', 'Gruppe (mono)', 40],
+  ['stereoGroup', 'Gruppe (stereo)', 20],
+  ['monoAux', 'Aux (mono)', 40],
+  ['stereoAux', 'Aux (stereo)', 20],
+  ['monoMatrix', 'Matrix (mono)', 40],
+  ['stereoMatrix', 'Matrix (stereo)', 20],
+  ['monoFxSend', 'FX-Send (mono)', 12],
+  ['stereoFxSend', 'FX-Send (stereo)', 12],
+  ['fxReturn', 'FX-Return', 12],
+  ['main', 'Main', 3],
+  ['muteGroup', 'Mute-Gruppe', 8],
+]
+const AVANTIS_DEFAULTS = { enabled: true, host: '', port: 51325, midiBase: 1, channels: [], scenes: [] }
+
+function avantisConfig() {
+  config.avantis = { ...AVANTIS_DEFAULTS, ...config.avantis }
+  config.avantis.channels = Array.isArray(config.avantis.channels) ? config.avantis.channels : []
+  config.avantis.scenes = Array.isArray(config.avantis.scenes) ? config.avantis.scenes : []
+  return config.avantis
+}
+
+function renderAvantisSettings() {
+  if (!config || !$('#set-avantis')) return
+  const a = avantisConfig()
+  const set = (id, value) => {
+    const input = $(id)
+    if (document.activeElement !== input) input.value = value
+  }
+  set('#av-host', a.host)
+  set('#av-port', a.port)
+  const base = $('#av-midibase')
+  if (!base.options.length) base.innerHTML = Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('')
+  base.value = String(a.midiBase)
+  $('#av-enabled').checked = a.enabled !== false
+  const d = avantis
+  $('#av-status').innerHTML = !a.host
+    ? '<span class="muted">Keine Adresse eingetragen.</span>'
+    : d?.state === 'ok'
+      ? `<span style="color:var(--green)">●</span> ${esc(avantisStateText(d))}` +
+        (d.scene ? ` · Szene <b>${d.scene.number}${d.scene.name ? ` ${esc(d.scene.name)}` : ''}</b>` : ' · seit der Verbindung keine Szene abgerufen') +
+        (d.alarm?.length ? ` · <b style="color:var(--red)">stumm: ${esc(d.alarm.join(', '))}</b>` : '')
+      : `<span style="color:var(--${d?.state === 'off' ? 'muted' : 'red'})">●</span> ${esc(avantisStateText(d))}`
+  // Kanäle: Tabelle nicht neu zeichnen, solange jemand darin tippt
+  const rows = $('#av-channel-rows')
+  if (!(rows.contains(document.activeElement) && document.activeElement.type === 'text')) {
+    const live = new Map((d?.channels || []).map((c) => [c.key, c]))
+    rows.innerHTML =
+      a.channels
+        .map((c, i) => {
+          const options = AVANTIS_TYPES.map(([k, v]) => `<option value="${k}" ${c.type === k ? 'selected' : ''}>${v}</option>`).join('')
+          const max = AVANTIS_TYPES.find(([k]) => k === c.type)?.[2] ?? 64
+          const l = live.get(`${c.type}:${c.number}`)
+          const state = !l || d?.state !== 'ok' ? '<span class="muted">–</span>' : l.muted === true ? '<b style="color:var(--red)">stumm</b>' : l.muted === false ? '<span style="color:var(--green)">offen</span>' : '<span class="muted">unbekannt</span>'
+          return `<tr data-index="${i}">
+            <td class="w-type"><select data-avch="type">${options}</select></td>
+            <td style="width:90px"><input type="number" min="1" max="${max}" data-avch="number" value="${esc(c.number)}"></td>
+            <td><input type="text" data-avch="name" value="${esc(c.name ?? '')}" placeholder="${esc(l?.consoleName || 'z. B. Pastor-Mikro')}" maxlength="40"></td>
+            <td class="center"><input type="checkbox" data-avch="critical" ${c.critical ? 'checked' : ''} title="Rote Warnung, wenn stumm"></td>
+            <td>${state}</td>
+            <td class="center"><button class="btn small danger" type="button" data-action="av-del-channel" title="Kanal entfernen">✕</button></td>
+          </tr>`
+        })
+        .join('') || '<tr><td colspan="6" class="muted">Noch keine Kanäle – z. B. Input des Pastor-Mikros und die DCAs.</td></tr>'
+  }
+  const scenes = $('#av-scene-rows')
+  if (!(scenes.contains(document.activeElement) && document.activeElement.type === 'text')) {
+    scenes.innerHTML =
+      a.scenes
+        .map(
+          (s, i) => `<tr data-index="${i}">
+            <td style="width:110px"><input type="number" min="1" max="500" data-avsc="number" value="${esc(s.number)}"></td>
+            <td><input type="text" data-avsc="name" value="${esc(s.name ?? '')}" placeholder="z. B. Gottesdienst" maxlength="60"></td>
+            <td class="center"><button class="btn small danger" type="button" data-action="av-del-scene" title="Eintrag entfernen">✕</button></td>
+          </tr>`,
+        )
+        .join('') || '<tr><td colspan="3" class="muted">Keine Szenennamen eingetragen.</td></tr>'
+  }
+}
+
+for (const id of ['#av-host', '#av-port', '#av-midibase', '#av-enabled']) {
+  $(id).addEventListener('change', () => {
+    const a = avantisConfig()
+    a.host = $('#av-host').value.trim()
+    a.port = Number($('#av-port').value) || 51325
+    a.midiBase = Number($('#av-midibase').value) || 1
+    a.enabled = $('#av-enabled').checked
+    renderAvantisSettings()
+    changed(0)
+  })
+}
+
+function onAvantisRow(e) {
+  const el = e.target
+  const key = el.dataset.avch || el.dataset.avsc
+  if (!key) return
+  if ((e.type === 'input') !== (el.type === 'text')) return
+  const a = avantisConfig()
+  const list = el.dataset.avch ? a.channels : a.scenes
+  const entry = list[Number(el.closest('tr').dataset.index)]
+  if (!entry) return
+  if (key === 'critical') entry.critical = el.checked
+  else if (key === 'number') entry.number = Number(el.value) || 1
+  else entry[key] = el.value
+  if (key === 'type') {
+    const max = AVANTIS_TYPES.find(([k]) => k === entry.type)?.[2] ?? 64
+    if (entry.number > max) entry.number = max
+    renderAvantisSettings()
+  }
+  renderCanvas()
+  changed()
+}
+$('#set-avantis').addEventListener('input', onAvantisRow)
+$('#set-avantis').addEventListener('change', onAvantisRow)
+$('#set-avantis').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-action]')
+  if (!btn) return
+  const a = avantisConfig()
+  const index = Number(btn.closest('tr')?.dataset.index)
+  if (btn.dataset.action === 'av-add-channel') a.channels.push({ type: 'input', number: 1, name: '', critical: false })
+  else if (btn.dataset.action === 'av-add-scene') a.scenes.push({ number: (a.scenes.at(-1)?.number ?? 0) + 1, name: '' })
+  else if (btn.dataset.action === 'av-del-channel') a.channels.splice(index, 1)
+  else if (btn.dataset.action === 'av-del-scene') a.scenes.splice(index, 1)
+  else return
+  renderAvantisSettings()
+  renderCanvas()
+  changed(0)
+})
+
+// ---------------------------------------------------------------------------
+// Einstellungen: grandMA3 (Lichtpult, OSC nur empfangen)
+// ---------------------------------------------------------------------------
+
+const GRANDMA3_DEFAULTS = { enabled: true, host: '', port: 8001, prefix: '', seqPath: '', sequences: [] }
+
+function grandma3Config() {
+  config.grandma3 = { ...GRANDMA3_DEFAULTS, ...config.grandma3 }
+  config.grandma3.sequences = Array.isArray(config.grandma3.sequences) ? config.grandma3.sequences : []
+  return config.grandma3
+}
+
+function renderGrandma3Settings() {
+  if (!config || !$('#set-grandma3')) return
+  const g = grandma3Config()
+  const set = (id, value) => {
+    const input = $(id)
+    if (document.activeElement !== input) input.value = value
+  }
+  set('#ma-host', g.host)
+  set('#ma-port', g.port)
+  set('#ma-prefix', g.prefix)
+  set('#ma-seqpath', g.seqPath)
+  $('#ma-enabled').checked = g.enabled !== false
+  const d = grandma3
+  const color = d?.state === 'ok' ? 'green' : d?.state === 'listening' ? 'orange' : d?.state === 'off' ? 'muted' : 'red'
+  $('#ma-status').innerHTML = `<span style="color:var(--${color})">●</span> ${esc(grandma3StateText(d))}` +
+    (d?.lastAt ? ` · zuletzt ${new Date(d.lastAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : '')
+  const rows = $('#ma-seq-rows')
+  if (!(rows.contains(document.activeElement) && document.activeElement.type === 'text')) {
+    const live = new Map((d?.sequences || []).map((s) => [s.number, s]))
+    rows.innerHTML =
+      g.sequences
+        .map((s, i) => {
+          const l = live.get(Number(s.number))
+          return `<tr data-index="${i}">
+            <td style="width:110px"><input type="number" min="1" max="99999" data-maseq="number" value="${esc(s.number)}"></td>
+            <td><input type="text" data-maseq="name" value="${esc(s.name ?? '')}" placeholder="${esc(l?.consoleName || 'z. B. Licht')}" maxlength="40"></td>
+            <td>${l?.cue ? `<b>${esc(cueText(l))}</b>` : '<span class="muted">noch nichts empfangen</span>'}</td>
+            <td class="center"><button class="btn small danger" type="button" data-action="ma-del-seq" title="Sequenz entfernen">✕</button></td>
+          </tr>`
+        })
+        .join('') || '<tr><td colspan="4" class="muted">Noch keine Sequenz – meist Sequenz 1 (Hauptsequenz).</td></tr>'
+  }
+  const seen = (d?.seen || []).filter((n) => !g.sequences.some((s) => Number(s.number) === n))
+  $('#ma-seen').textContent = seen.length ? `Im OSC-Verkehr gesehen, aber nicht eingetragen: Sequenz ${seen.join(', ')}` : ''
+}
+
+for (const id of ['#ma-host', '#ma-port', '#ma-prefix', '#ma-seqpath', '#ma-enabled']) {
+  $(id).addEventListener('change', () => {
+    const g = grandma3Config()
+    g.host = $('#ma-host').value.trim()
+    g.port = Number($('#ma-port').value) || 8001
+    g.prefix = $('#ma-prefix').value.trim().replace(/^\/+|\/+$/g, '')
+    g.seqPath = $('#ma-seqpath').value.trim()
+    g.enabled = $('#ma-enabled').checked
+    renderGrandma3Settings()
+    changed(0)
+  })
+}
+
+function onGrandma3Row(e) {
+  const el = e.target
+  const key = el.dataset.maseq
+  if (!key) return
+  if ((e.type === 'input') !== (el.type === 'text')) return
+  const g = grandma3Config()
+  const entry = g.sequences[Number(el.closest('tr').dataset.index)]
+  if (!entry) return
+  if (key === 'number') entry.number = Number(el.value) || 1
+  else entry[key] = el.value
+  renderCanvas()
+  changed()
+}
+$('#set-grandma3').addEventListener('input', onGrandma3Row)
+$('#set-grandma3').addEventListener('change', onGrandma3Row)
+$('#set-grandma3').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-action]')
+  if (!btn) return
+  const g = grandma3Config()
+  if (btn.dataset.action === 'ma-add-seq') g.sequences.push({ number: (g.sequences.at(-1)?.number ?? 0) + 1, name: '' })
+  else if (btn.dataset.action === 'ma-del-seq') g.sequences.splice(Number(btn.closest('tr').dataset.index), 1)
+  else return
+  renderGrandma3Settings()
+  renderCanvas()
+  changed(0)
+})
+
+// ---------------------------------------------------------------------------
 // Einstellungen: Raspberry Pis (die Launcher auf den Pis holen sich das über /api/raspberry-pis/config)
 // ---------------------------------------------------------------------------
 
@@ -4852,6 +5165,8 @@ const SEARCH_ENTRIES = [
   { label: 'ProPresenter', href: '#/einstellungen/propresenter', admin: true, words: 'einstellungen folien stage display beamer nachricht' },
   { label: 'Kesher-Chat', href: '#/einstellungen/kesher', admin: true, words: 'einstellungen intercom chat rolle' },
   { label: 'YouTube (Live-Stream)', href: '#/einstellungen/youtube', admin: true, words: 'youtube stream zuschauer live chat api schlüssel' },
+  { label: 'Avantis (Mischpult)', href: '#/einstellungen/avantis', admin: true, words: 'einstellungen allen heath mischpult ton mute stumm szene midi tcp pastor mikro' },
+  { label: 'grandMA3 (Licht)', href: '#/einstellungen/grandma3', admin: true, words: 'einstellungen ma lighting lichtpult licht cue sequenz osc' },
   { label: 'Dropbox (Ordner für die Diashow)', href: '#/einstellungen/dropbox', admin: true, words: 'dropbox ordner bilder fotos diashow cloud' },
   { label: 'ChurchTools', href: '#/einstellungen/churchtools', admin: true, words: 'einstellungen ablauf agenda gottesdienst' },
   { label: 'Raspberry Pis', href: '#/einstellungen/raspberry', admin: true, words: 'einstellungen raspberry pi station kiosk intercom rolle mac fernsteuern' },
@@ -5160,6 +5475,8 @@ function renderStatusStrip() {
     kesher: chat.state === 'connected' ? 'ok' : 'bad',
     churchtools: ct.state === 'unconfigured' ? 'off' : ct.state === 'connected' ? 'ok' : 'bad',
     youtube: !youtube || youtube.state === 'unconfigured' ? 'off' : youtube.state === 'error' ? 'bad' : 'ok',
+    avantis: !avantis || ['unconfigured', 'off'].includes(avantis.state) ? 'off' : avantis.state === 'ok' ? 'ok' : 'bad',
+    grandma3: !grandma3 || grandma3.state === 'off' ? 'off' : grandma3.state === 'error' ? 'bad' : 'ok',
     dropbox: dropboxNavState(),
     raspberry: pis.state,
   }
@@ -5175,6 +5492,10 @@ function renderStatusStrip() {
           ? pis.text
           : section === 'youtube' && youtube?.video?.status === 'live'
             ? 'Live'
+            : section === 'grandma3' && grandma3?.state === 'listening'
+              ? 'Wartet auf OSC'
+            : section === 'avantis' && avantis?.alarm?.length
+              ? `${avantis.alarm.length} stumm!`
             : section === 'dropbox' && slideshowData?.dropbox?.state === 'nofolder'
               ? 'Ordner fehlt'
               : stateText[state]
