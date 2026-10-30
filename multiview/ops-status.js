@@ -72,6 +72,25 @@ function summarizeOps(diag, at = Date.now()) {
   }
 }
 
+/**
+ * Kurzform der Ampel für GET /api/state (Companion-Modul „JMS Control“): Gesamtzustand,
+ * Anzahl der Probleme (Prüfungen mit gelber oder roter Ampel) und das wichtigste davon.
+ */
+function opsSummary(msg) {
+  const items = Array.isArray(msg?.items) ? msg.items : []
+  const problems = items.filter((item) => item.level === 'error' || item.level === 'warn')
+  return {
+    state: msg?.state || 'connecting',
+    overall: ['ok', 'warn', 'error'].includes(msg?.overall) ? msg.overall : 'unknown',
+    problems: problems.length,
+    errors: problems.filter((item) => item.level === 'error').length,
+    first: problems[0]?.short || '',
+    event: String(msg?.event || ''),
+    error: String(msg?.error || ''),
+    at: Number(msg?.at) || null,
+  }
+}
+
 function createOpsStatus({ getDiagnostics, wanted = () => true, onUpdate = () => {}, log = () => {}, now = Date.now }) {
   let last = null
   let lastKey = ''
@@ -138,4 +157,4 @@ function createOpsStatus({ getDiagnostics, wanted = () => true, onUpdate = () =>
   }
 }
 
-module.exports = { createOpsStatus, summarizeOps, shortText, levelOf }
+module.exports = { createOpsStatus, summarizeOps, opsSummary, shortText, levelOf }

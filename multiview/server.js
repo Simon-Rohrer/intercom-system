@@ -16,9 +16,10 @@ const { normalizeRaspberry, parsePiRequest, createPiRegistry, piScreenId, answer
 const { createChurchTools } = require('./churchtools')
 const { createEventOps, eventOpsRouter } = require('./event-ops')
 const { createOpsChecks } = require('./event-ops-checks')
-const { createOpsStatus } = require('./ops-status')
+const { createOpsStatus, opsSummary } = require('./ops-status')
 const { createUplink, normalizeUplink } = require('./uplink')
 const { createAgendaPosition } = require('./agenda-position')
+const { agendaSummary, currentAgendaEvent } = require('./agenda-status')
 const { createYouTube } = require('./youtube')
 const { createMonarch } = require('./monarch')
 const { createAvantis, normalizeAvantis } = require('./avantis')
@@ -1864,10 +1865,15 @@ const eventOps = createEventOps({ dataDir: DATA_DIR, churchTools, getRoles: logi
 app.use(['/api/ops', '/.jms-auth/api/ops'], eventOpsRouter(eventOps, requireUser, requireAdmin))
 
 // Ampel „Event-Ops“ für die gleichnamige Kachel: dieselben Prüfungen wie der Startcheck, nur
-// solange ein Layout so eine Kachel hat; geht als Nachricht „ops“ an alle Anzeigen
+// solange ein Layout so eine Kachel hat; geht als Nachricht „ops“ an alle Anzeigen.
+// Fragt jemand GET /api/state ab (Companion-Modul „JMS Control“: Taste „Event-Ops“), wird
+// auch ohne Kachel geprüft – bis zwei Minuten nach der letzten Abfrage.
+const OPS_DEMAND_MS = 2 * 60 * 1000
+let opsDemandAt = 0
 const opsStatus = createOpsStatus({
   getDiagnostics: () => eventOps.diagnostics({ admin: true, name: 'Server' }),
-  wanted: () => (config.layouts || []).some((layout) => (layout.tiles || []).some((tile) => tile.kind === 'ops')),
+  wanted: () => Date.now() - opsDemandAt < OPS_DEMAND_MS ||
+    (config.layouts || []).some((layout) => (layout.tiles || []).some((tile) => tile.kind === 'ops')),
   onUpdate: broadcast,
   log: console.log,
 })
@@ -3114,7 +3120,9 @@ app.post('/api/churchtools/refresh', requireAdmin, async (req, res) => {
 
 // Laufender Punkt im Ablauf von Hand setzen (Rechte wie bei der Folien-Steuerung: Admin,
 // Technikstation oder Rolle mit „Folien steuern“). Body: { eventId, itemIndex } – itemIndex null
-// = wieder nach Uhrzeit – oder { eventId, action: 'next' | 'previous' | 'auto' } für Companion.
+// = wieder nach Uhrzeit – oder { eventId, action: 'next' | 'previous' | 'auto' } für Companion
+// (eventId 'current' = Event der Ablauf-Kachel). Feste Geräte mit Recht „control“ dürfen das
+// über requireOperator, wie bei den Steuerrouten /api/output/…
 app.get('/api/churchtools/agenda/position', requireTrusted, requireDisplayReader, (req, res, next) => {
   // Ohne eventId nur lesen; mit eventId ist es ein Steuerbefehl einer Station (GET wie bei Companion)
   if (req.query.eventId == null) return res.json(agendaPosition.snapshot())
@@ -3123,9 +3131,12 @@ app.get('/api/churchtools/agenda/position', requireTrusted, requireDisplayReader
 app.all('/api/churchtools/agenda/position', requireTrusted, requireMutation, requireSlideOperator, (req, res) => {
   const body = req.method === 'GET' ? req.query : req.body || {}
   try {
+    // eventId 'current' = das Event, das die Ablauf-Kachel gerade zeigt (Companion-Tasten)
+    const eventId = body.eventId === 'current' ? currentAgendaEvent(churchTools.snapshot(), config).event?.id : body.eventId
+    if (body.eventId === 'current' && eventId == null) return res.status(404).json({ ok: false, error: 'Kein aktuelles Event mit Ablauf' })
     const itemIndex = body.itemIndex === null || body.itemIndex === 'null' ? null : body.itemIndex === undefined ? undefined : Number(body.itemIndex)
-    const snap = agendaPosition.set({ eventId: body.eventId, itemIndex, action: body.action }, req.user?.name || 'Station')
-    res.json({ ok: true, position: snap.positions[String(body.eventId)] || null })
+    const snap = agendaPosition.set({ eventId, itemIndex, action: body.action }, req.user?.name || 'Station')
+    res.json({ ok: true, eventId: String(eventId), position: snap.positions[String(eventId)] || null })
   } catch (err) {
     res.status(err.status || 400).json({ ok: false, error: err.message })
   }
@@ -3207,6 +3218,9 @@ app.delete('/api/templates/:id', requireUser, (req, res) => {
 
 app.get('/api/state', requireTrusted, requireDisplayReader, (req, res) => {
   const visible = configForRequest(req)
+  const opsIdle = Date.now() - opsDemandAt >= OPS_DEMAND_MS
+  opsDemandAt = Date.now()
+  if (opsIdle) opsStatus.layoutsChanged() // gleich prüfen statt erst im nächsten Takt
   res.json({
     atem: atemState,
     propresenter: ppState,
@@ -3227,6 +3241,9 @@ app.get('/api/state', requireTrusted, requireDisplayReader, (req, res) => {
       output: config.outputs.find((o) => o.id === s.outputId)?.name ?? null,
       outputId: s.outputId ?? null,
     })),
+    // Ablauf der Ablauf-Kachel (laufender Punkt, Restzeit, Abweichung) und Event-Ops-Ampel für Companion
+    agenda: agendaSummary({ ct: churchTools.snapshot(), positions: agendaPosition.snapshot().positions, config }),
+    ops: opsSummary(opsStatus.snapshot()),
   })
 })
 
