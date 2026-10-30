@@ -103,6 +103,8 @@
     }
     const ago = (s) => (s < 60 ? `vor ${s} s` : s < 3600 ? `vor ${Math.round(s / 60)} min` : `vor ${Math.round(s / 3600)} h`)
     const render = (data) => {
+      piStations = data && data.ok ? data.stations : null
+      markPiErrors()
       if (!data || !data.ok) {
         grid.innerHTML = `<p class="jms-pis-empty">${esc((data && data.error) || 'Keine Verbindung zu Kesher')}</p>`
         return
@@ -131,6 +133,26 @@
         })
         .join('')
     }
+    // Glances-Messwerte der Pis: Ist ein Pi aus (Ruhemodus mit Strom weg, kein WLAN), kann Glances nicht
+    // antworten und Homepage zeigt „API Error“. Stattdessen sagen, warum: Pi aus – oder nur Glances weg.
+    let piStations = null
+    const markPiErrors = () => {
+      const piGroup = [...document.querySelectorAll('.services-group')].find((g) => /raspberry/i.test((g.querySelector('.service-group-name') || {}).textContent || ''))
+      if (!piGroup) return
+      for (const sub of piGroup.querySelectorAll('.services-group')) {
+        const name = ((sub.querySelector('.service-group-name') || {}).textContent || '').trim()
+        const station = (piStations || []).find((p) => [p.name, p.deviceId].some((v) => v && String(v).trim().toLowerCase() === name.toLowerCase()))
+        const text = !station ? 'Nicht erreichbar' : station.online ? 'Glances antwortet nicht' : 'Pi ist aus oder nicht im WLAN'
+        for (const el of sub.querySelectorAll('div, span')) {
+          if (el.children.length || !/^(API Error|API-Fehler)/i.test(el.textContent.trim())) continue
+          if (el.textContent !== text) el.textContent = text
+          const box = el.closest('button, .service-block, div[class*="rose"], div[class*="error"]') || el.parentElement
+          if (box) box.title = station && !station.online ? 'Kesher meldet den Pi als offline – Glances-Werte gibt es erst, wenn er wieder an ist.' : 'Glances auf dem Pi (Port 61208) antwortet nicht.'
+        }
+      }
+    }
+    new MutationObserver(markPiErrors).observe(document.body, { childList: true, subtree: true, characterData: true })
+
     let loading = false
     const load = async () => {
       if (loading || document.visibilityState === 'hidden' || !section.isConnected) return
