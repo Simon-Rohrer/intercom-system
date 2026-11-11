@@ -8,16 +8,23 @@
   color: #f5f5f7;
   font-family: "Barlow", "Segoe UI", system-ui, sans-serif;
 }
+/* Jede Folie ist genau eine Ebene: Überblendet wird nur opacity (Compositor, kein Neuzeichnen).
+   Deckender Hintergrund: Der Browser weiß so, dass darunter nichts gezeichnet werden muss.
+   contain: Aufbau einer Folie stößt kein Layout der übrigen Kacheln an. */
 .ss-slide {
   position: absolute;
   inset: 0;
   opacity: 0;
   transition: opacity 1s ease;
   will-change: opacity;
+  contain: strict;
+  background: #000;
   display: grid;
   place-items: center;
 }
 .ss-slide.on { opacity: 1; }
+/* Übergang „Ohne“: harter Schnitt – keine Animation, keine eigene Ebene */
+.slideshow[data-transition="none"] .ss-slide { transition: none; will-change: auto; }
 .ss-slide img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .slideshow[data-fit="cover"] .ss-slide img { object-fit: cover; }
 
@@ -75,8 +82,8 @@
    immer gleichen Rahmen, darunter bei Bedarf die Beschriftung im immer gleichen Stil */
 .ss-card { place-items: stretch; font-size: clamp(10px, min(2.3cqw, 4cqh), 52px); }
 /* Hintergrund: winziges Abbild (32 × 18), weich hochskaliert – wirkt unscharf ohne CSS-Filter,
-   der auf einem Pi 3 jede Überblendung ruckeln ließ */
-.ss-back {
+   der auf einem Pi 3 jede Überblendung ruckeln ließ (<img>, nur ausnahmsweise <canvas>) */
+.ss-slide .ss-back {
   position: absolute;
   inset: 0;
   width: 100%;
