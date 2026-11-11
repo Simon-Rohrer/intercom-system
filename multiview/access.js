@@ -103,6 +103,7 @@ const SERVICE_LEVELS = {
   glances: 'admin',
   dns: 'admin',
   router: 'admin',
+  ledvnc: 'admin', // Bildschirm der LED-Wand-Steuerung (noVNC)
 }
 
 /** Datum (JJJJ-MM-TT) und Stunde in deutscher Zeit. */

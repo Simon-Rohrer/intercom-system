@@ -422,6 +422,13 @@ Wird direkt auf dem Server gearbeitet, ohne zu committen, sichert der Timer `jms
 - Probelauf: `bash /usr/local/lib/jms-server-stand/jms-server-stand.sh --dry-run`
 - Sofort sichern: `sudo systemctl start jms-server-stand.service`
 
+## LED-Wand-Steuerung im Browser (11.11.2026)
+
+Dashboard → Admin → Verwaltung → **LED-Wand Steuerung** (bzw. `https://192.168.0.230:8270`) zeigt den Bildschirm des LED-Wand-Steuerungslaptops (jms-licht-control, 192.168.0.233) im Browser – darüber ist per Remmina auch der VPU-Rechner erreichbar. Technik: Container `led-vnc` (noVNC + websockify, `scripts/led-vnc`, nur 127.0.0.1:6080) → VNC am Laptop (`LED_VNC_TARGET`, Standard `192.168.0.233:5900`). Zugang nur als **Admin** über die zentrale Anmeldung (Dienst `ledvnc`); die Bildschirmverbindung läuft über JMS Control und endet beim Abmelden. Das VNC-Passwort des Laptops fragt noVNC im Browser ab, es ist nirgends auf dem Server gespeichert.
+
+- Einrichten/Aktualisieren: `cd scripts/led-vnc && docker compose up -d --build`
+- Anderer VNC-Port am Laptop: `LED_VNC_TARGET=192.168.0.233:5901 docker compose up -d`
+
 ## Wichtig im Fehlerfall
 
 1. Läuft der Container?

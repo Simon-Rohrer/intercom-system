@@ -2342,6 +2342,8 @@ const WEBSOCKET_SERVICES = {
   kesher: process.env.KESHER_URL || 'http://127.0.0.1:8080',
   dashboard: process.env.DASHBOARD_URL || 'http://127.0.0.1:3000',
   glances: process.env.GLANCES_URL || 'http://127.0.0.1:61208',
+  // Bildschirm der LED-Wand-Steuerung im Browser (noVNC/websockify, scripts/led-vnc) – nur Admin
+  ledvnc: process.env.LED_VNC_URL || 'http://127.0.0.1:6080',
 }
 
 /** Dienste, deren Seiten die Sitzung des Dienstes brauchen (Cookie des Browsers wird mitgeschickt). */

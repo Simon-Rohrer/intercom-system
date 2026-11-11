@@ -72,6 +72,12 @@
         href: https://192.168.0.230:8250
         description: Speedport, WLAN „JMS Interkom“ (Admin wird automatisch angemeldet)
         icon: mdi-router-wireless
+    - LED-Wand Steuerung:
+        href: https://192.168.0.230:8270
+        description: Bildschirm des LED-Wand-Steuerungslaptops im Browser (darüber per Remmina auch der VPU)
+        icon: mdi-monitor-screenshot
+        server: local-docker
+        container: led-vnc
 
 - Server:
     - Prozessor:
@@ -141,58 +147,58 @@
               icon: mdi-cpu-64-bit
               widget:
                 type: glances
-                url: http://192.168.0.161:61208
+                url: http://192.168.0.234:61208
                 version: 4
                 metric: cpu
-                refreshInterval: 15000
+                refreshInterval: 5000
           - Arbeitsspeicher:
               icon: mdi-memory
               widget:
                 type: glances
-                url: http://192.168.0.161:61208
+                url: http://192.168.0.234:61208
                 version: 4
                 metric: memory
-                refreshInterval: 15000
+                refreshInterval: 5000
           - Temperatur:
               icon: mdi-thermometer
               widget:
                 type: glances
-                url: http://192.168.0.161:61208
+                url: http://192.168.0.234:61208
                 version: 4
                 metric: sensor:cpu_thermal 0
-                refreshInterval: 15000
+                refreshInterval: 5000
           - Speicherkarte:
               icon: mdi-micro-sd
               widget:
                 type: glances
-                url: http://192.168.0.161:61208
+                url: http://192.168.0.234:61208
                 version: 4
                 metric: fs:/
-                refreshInterval: 30000
+                refreshInterval: 5000
           - Speicherkarte lesen/schreiben:
               icon: mdi-swap-vertical
               widget:
                 type: glances
-                url: http://192.168.0.161:61208
+                url: http://192.168.0.234:61208
                 version: 4
                 metric: disk:mmcblk0
-                refreshInterval: 15000
-          - WLAN:
-              icon: mdi-wifi
+                refreshInterval: 5000
+          - Netzwerk:
+              icon: mdi-ethernet
               widget:
                 type: glances
-                url: http://192.168.0.161:61208
+                url: http://192.168.0.234:61208
                 version: 4
-                metric: network:wlan0
-                refreshInterval: 15000
+                metric: network:eth0
+                refreshInterval: 5000
           - Prozesse:
               icon: mdi-format-list-bulleted
               widget:
                 type: glances
-                url: http://192.168.0.161:61208
+                url: http://192.168.0.234:61208
                 version: 4
                 metric: process
-                refreshInterval: 15000
+                refreshInterval: 5000
 
 - Container:
     - Kesher:
