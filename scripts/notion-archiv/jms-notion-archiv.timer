@@ -1,0 +1,10 @@
+[Unit]
+Description=JMS: Notion-ToDos alle 5 Minuten aufräumen
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
