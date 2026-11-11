@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import {
-  ALL_EVENTS, CURRENT_EVENT, EMPTY_AGENDA, EMPTY_OPS, PP_LAYERS, ppLayerVisible, agendaLevelIs, apiPath, eventChoices, fmtDeviation, fmtRemaining, layoutActive,
-  listSignature, opsLevelIs, parseState, screenShows, scrollEventChoices, statusVariables, SCREEN_OFF,
+  ALL_EVENTS, CURRENT_EVENT, EMPTY_AGENDA, EMPTY_OPS, EMPTY_STANDARD_BACKGROUND, PP_LAYERS, ppLayerVisible, agendaLevelIs, apiPath, eventChoices, fmtDeviation, fmtRemaining, layoutActive,
+  listSignature, opsLevelIs, parseState, screenShows, scrollEventChoices, standardBackgroundActive, standardBackgroundName, statusVariables, SCREEN_OFF,
 } from "../dist/state.js";
 import { request, trustedBase } from "../dist/transport.js";
 
@@ -29,7 +29,7 @@ test("Bildschirm-Zuordnung inklusive „aus“", () => {
 });
 
 test("kaputte Antworten führen nicht zum Absturz", () => {
-  assert.deepEqual(parseState(null), { layouts: [], outputs: [], screens: [], agenda: EMPTY_AGENDA, ops: EMPTY_OPS, pp: null });
+  assert.deepEqual(parseState(null), { layouts: [], outputs: [], screens: [], agenda: EMPTY_AGENDA, ops: EMPTY_OPS, pp: null, standardBackground: EMPTY_STANDARD_BACKGROUND });
   assert.deepEqual(parseState({ outputs: "x", layouts: [null, { id: 3 }] }).layouts, []);
   // Ältere Server ohne agenda/ops und kaputte Felder
   const broken = parseState({ agenda: { current: "x", next: 3, level: "lila", events: [null, { id: "" }, { name: "ohne id" }] }, ops: { overall: "grün", problems: "viele" } });
@@ -177,4 +177,38 @@ test("ProPresenter-Ebenen: sichtbar je Ebene, „Alles“ wenn irgendeine sichtb
   assert.equal(ppLayerVisible(parseState({ propresenter: { layers: { slide: false } } }), "all"), false);
   assert.equal(ppLayerVisible(parseState({}), "slide"), false); // ProPresenter unbekannt
   assert.deepEqual(PP_LAYERS.map((l) => l.id), ["all", "slide", "media", "audio", "messages", "props", "announcements", "video_input"]);
+});
+
+test("ProPresenter: Standard-Hintergrund läuft nur, wenn festgelegt und auf der Media-Ebene", () => {
+  const on = parseState({ standardBackground: { configured: true, name: "color-waves-blue-hd", playlist: "FAVORITEN Lichttechnik", active: true } });
+  assert.deepEqual(on.standardBackground, { configured: true, name: "color-waves-blue-hd", playlist: "FAVORITEN Lichttechnik", active: true });
+  assert.equal(standardBackgroundActive(on), true);
+  assert.equal(standardBackgroundName(on), "color-waves-blue-hd");
+  const off = parseState({ standardBackground: { configured: true, name: "color-waves-blue-hd", active: false } });
+  assert.equal(standardBackgroundActive(off), false);
+  // Ältere Server ohne das Feld, kaputte Werte, nicht festgelegt
+  for (const value of [undefined, "ja", { active: true }, { configured: "true", active: true }]) {
+    const state = parseState({ standardBackground: value });
+    assert.equal(standardBackgroundActive(state), false);
+    assert.equal(standardBackgroundName(state), "nicht festgelegt");
+  }
+});
+
+test("Standard-Hintergrund-Taste: POST ohne Body an den Server, Fehler (nicht festgelegt) kommt an", async () => {
+  const seen = [];
+  const server = createServer((req, res) => {
+    seen.push({ method: req.method, url: req.url, type: req.headers["content-type"] });
+    res.statusCode = 409;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ ok: false, error: "Kein Standard-Hintergrund festgelegt (Einstellungen → ProPresenter)" }));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  try {
+    const base = trustedBase("127.0.0.1", server.address().port);
+    await assert.rejects(request(base, "k".repeat(43), "POST", "/api/propresenter/standard-background"), /^Error: 409 Kein Standard-Hintergrund festgelegt/);
+    assert.deepEqual(seen, [{ method: "POST", url: "/api/propresenter/standard-background", type: undefined }]);
+  } finally {
+    server.close();
+  }
 });

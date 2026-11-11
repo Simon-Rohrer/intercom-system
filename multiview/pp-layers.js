@@ -206,7 +206,28 @@ function createPpLayers({ get, send, slideTarget, backgroundAt, load = () => ({}
     return { layer, visible: true }
   }
 
-  return { toggle, observe, held }
+  /**
+   * Festes Medium aus einer Media-Playlist auf die Media-Ebene legen (Standard-Hintergrund).
+   * Danach gilt es als das, was auf der Media-Ebene läuft: Aus/Ein per Taste – auch nach „Clear“
+   * direkt in ProPresenter – bringt dieses Medium zurück, nicht den Hintergrund von vorher.
+   */
+  async function startMedia({ playlistUuid, itemUuid, name }) {
+    try {
+      await send(`/v1/media/playlist/${enc(playlistUuid)}/${enc(itemUuid)}/trigger`)
+    } catch (err) {
+      if (err.name === 'TimeoutError') throw err
+      // In ProPresenter in eine andere Playlist verschoben oder neu importiert: per ID, sonst per Name suchen
+      const path = await findInPlaylists('/v1/media/playlists', '/v1/media/playlist', itemUuid, name)
+      if (!path) throw Object.assign(new Error(`„${name || 'Standard-Hintergrund'}“ nicht mehr in den Media-Playlists – bitte unter Einstellungen → ProPresenter neu wählen`), { status: 409 })
+      await send(path)
+    }
+    const snap = { uuid: itemUuid, name: name || '', bg: null }
+    seen.media = snap
+    remember('media', snap)
+    return snap
+  }
+
+  return { toggle, observe, startMedia, held, seen }
 }
 
 module.exports = { createPpLayers, sameMedia, LAYERS }

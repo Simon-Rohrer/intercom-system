@@ -3989,6 +3989,7 @@ function renderProPresenter() {
   const port = $('#pp-port')
   if (document.activeElement !== host) host.value = config.propresenter?.host ?? ''
   if (document.activeElement !== port) port.value = config.propresenter?.port ?? 1025
+  renderStandardBackground()
   const p = propresenter
   $('#pp-status').innerHTML = !config.propresenter?.host
     ? '<span class="muted">Keine Adresse eingetragen.</span>'
@@ -4664,11 +4665,114 @@ for (const key of ['url', 'username', 'roleId']) {
 
 for (const id of ['#pp-host', '#pp-port']) {
   $(id).addEventListener('change', () => {
-    config.propresenter = { host: $('#pp-host').value.trim(), port: Number($('#pp-port').value) || 1025 }
+    // Standard-Hintergrund und Weiteres behalten, nur Adresse und Port ändern
+    config.propresenter = { ...config.propresenter, host: $('#pp-host').value.trim(), port: Number($('#pp-port').value) || 1025 }
     renderProPresenter()
     changed(0)
   })
 }
+
+// Standard-Hintergrund: ein Medium aus den Media-Playlists von ProPresenter (Stream-Deck-Taste)
+let ppMediaChoices = null // { loading, error, playlists: [{ uuid, name, path, items: [{ uuid, name, type }] }] }
+const STD_LIST_MAX = 300 // höchstens so viele Einträge zeigen (alle Playlists zusammen haben schnell über 1000)
+
+function renderStandardBackground() {
+  const std = config?.propresenter?.standardBackground
+  $('#pp-std-current').innerHTML = std
+    ? `<span style="color:var(--green)">●</span> <b>${esc(std.name || 'Ohne Namen')}</b>${std.playlistName ? ` <span class="muted">· ${esc(std.playlistName)}</span>` : ''}`
+    : '<span class="muted">Kein Standard-Hintergrund festgelegt – die Taste meldet dann einen Fehler.</span>'
+  $('#pp-std-test').hidden = !std
+  $('#pp-std-remove').hidden = !std
+  if (!std) $('#pp-std-result').textContent = ''
+}
+
+async function loadPpMedia() {
+  if (ppMediaChoices?.loading) return
+  ppMediaChoices = { loading: true, error: '', playlists: ppMediaChoices?.playlists || [] }
+  renderPpMediaList()
+  const data = await fetch('/api/propresenter/media-playlists', { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : { ok: false, error: 'Media-Playlists konnten nicht geladen werden', playlists: [] }))
+    .catch(() => ({ ok: false, error: 'Nicht erreichbar', playlists: [] }))
+  ppMediaChoices = {
+    loading: false,
+    error: data.ok ? '' : data.error || 'Media-Playlists konnten nicht geladen werden',
+    playlists: data.ok && Array.isArray(data.playlists) ? data.playlists : ppMediaChoices.playlists,
+  }
+  renderPpMediaList()
+}
+
+/** Nach Playlists gruppiert; mit Suchbegriff nur die passenden Einträge (Playlists dann aufgeklappt). */
+function renderPpMediaList() {
+  if (!ppMediaChoices) return
+  const std = config?.propresenter?.standardBackground
+  const words = $('#pp-std-search').value.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  const match = (item, pl) => words.every((w) => `${item.name} ${pl.path || pl.name}`.toLowerCase().includes(w))
+  let shown = 0
+  const groups = []
+  for (const pl of ppMediaChoices.playlists) {
+    const items = pl.items.filter((item) => !words.length || match(item, pl))
+    if (!items.length || shown >= STD_LIST_MAX) continue
+    const rows = items.slice(0, STD_LIST_MAX - shown)
+    shown += rows.length
+    const open = words.length || std?.playlistUuid === pl.uuid
+    groups.push(`<details class="pp-std-group" ${open ? 'open' : ''}>
+      <summary>${esc(pl.path || pl.name || 'Ohne Namen')} <span class="muted">(${pl.items.length})</span></summary>
+      ${rows.map((item) => `<button type="button" class="pp-std-item${std?.playlistUuid === pl.uuid && std?.itemUuid === item.uuid ? ' selected' : ''}"
+        data-playlist="${esc(pl.uuid)}" data-item="${esc(item.uuid)}">${esc(item.name || 'Ohne Namen')}${item.type && item.type !== 'video' ? ` <span class="muted">· ${esc(item.type)}</span>` : ''}</button>`).join('')}
+    </details>`)
+  }
+  $('#pp-std-info').textContent = ppMediaChoices.loading
+    ? 'Media-Playlists werden von ProPresenter geladen …'
+    : ppMediaChoices.error
+      ? ppMediaChoices.error
+      : !groups.length
+        ? (words.length ? 'Nichts gefunden.' : 'Keine Media-Playlists in ProPresenter.')
+        : shown >= STD_LIST_MAX ? `Die ersten ${STD_LIST_MAX} Treffer – Suche eingrenzen.` : 'Eintrag antippen, um ihn als Standard-Hintergrund festzulegen.'
+  $('#pp-std-list').innerHTML = groups.join('')
+}
+
+$('#pp-std-choose').addEventListener('click', () => {
+  const picker = $('#pp-std-picker')
+  picker.hidden = !picker.hidden
+  if (picker.hidden) return
+  void loadPpMedia()
+  $('#pp-std-search').focus()
+})
+$('#pp-std-search').addEventListener('input', () => renderPpMediaList())
+$('#pp-std-list').addEventListener('click', (e) => {
+  const btn = e.target.closest('.pp-std-item')
+  const pl = btn && ppMediaChoices?.playlists.find((p) => p.uuid === btn.dataset.playlist)
+  const item = pl?.items.find((i) => i.uuid === btn.dataset.item)
+  if (!item) return
+  config.propresenter = {
+    ...config.propresenter,
+    standardBackground: { playlistUuid: pl.uuid, itemUuid: item.uuid, name: item.name, playlistName: pl.path || pl.name },
+  }
+  $('#pp-std-result').textContent = ''
+  renderStandardBackground()
+  renderPpMediaList()
+  changed(0)
+})
+$('#pp-std-remove').addEventListener('click', () => {
+  config.propresenter = { ...config.propresenter, standardBackground: null }
+  renderStandardBackground()
+  renderPpMediaList()
+  changed(0)
+})
+// Zum Ausprobieren: löst den gespeicherten Standard-Hintergrund in ProPresenter aus – wie die Taste
+$('#pp-std-test').addEventListener('click', async () => {
+  const btn = $('#pp-std-test')
+  btn.disabled = true
+  try {
+    const res = await fetch('/api/propresenter/standard-background', { method: 'POST' }).catch(() => null)
+    const data = res ? await res.json().catch(() => ({})) : { error: 'JMS Control nicht erreichbar' }
+    const result = $('#pp-std-result')
+    result.style.color = res?.ok && data.ok ? '' : 'var(--red)'
+    result.textContent = res?.ok && data.ok ? 'Eingeschaltet.' : data.error || 'ProPresenter hat nicht reagiert'
+  } finally {
+    btn.disabled = false
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Einstellungen: Allen & Heath Avantis (Mischpult, nur mitlesen)
@@ -5493,6 +5597,7 @@ function renderCompanion() {
     ['Kachel 1 in Layout 1 auf Quelle 2', `${base}/api/layout/1/tile/1/source/2`],
     ['ProPresenter: Bühnennachricht senden', `${base}/api/propresenter/stage-message?text=Noch%205%20Minuten`],
     ['ProPresenter: Bühnennachricht löschen', `${base}/api/propresenter/stage-message/clear`],
+    ['ProPresenter: Standard-Hintergrund einschalten', `${base}/api/propresenter/standard-background`],
     ['Status abfragen (JSON)', `${base}/api/state`],
   ]
   $('#companion-help').innerHTML = `<div class="table-wrap"><table class="table companion-table">${lines

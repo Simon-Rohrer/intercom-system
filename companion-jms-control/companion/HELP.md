@@ -1,6 +1,6 @@
 # JMS Control
 
-Schaltet die Multiviews von JMS Control (Multiview-Server) per Stream Deck um und zeigt Ablauf und Event-Ops.
+Schaltet die Multiviews von JMS Control (Multiview-Server) per Stream Deck um, zeigt Ablauf und Event-Ops und schaltet in ProPresenter den Standard-Hintergrund ein.
 
 ## Multiview
 
@@ -44,6 +44,15 @@ Schaltet die Multiviews von JMS Control (Multiview-Server) per Stream Deck um un
   Audio-Playlist an derselben Stelle; Meldungen/Props = die vorher aktiven. Das Video beginnt dabei von vorn.
 - **Rückmeldung „ProPresenter: Ebene ist sichtbar“**, Variablen `$(jms-control:pp_slide)` usw. (ein/aus).
 - **Presets** unter „ProPresenter Ein/Aus“: je Ebene eine Taste (grün = sichtbar, dunkelrot = aus).
+
+## ProPresenter
+
+- **Aktion „ProPresenter: Standard-Hintergrund“**: legt den Standard-Hintergrund (z. B. den blauen) auf die
+  Media-Ebene; der Text darüber bleibt. Welches Medium, legt der Admin in JMS Control unter
+  *Einstellungen → ProPresenter → Standard-Hintergrund* fest. Ohne Einstellung meldet die Taste einen Fehler im Log.
+- **Rückmeldung „ProPresenter: Standard-Hintergrund läuft“**: leuchtet blau, solange er auf der Media-Ebene sichtbar ist.
+- **Variable** `$(jms-control:pp_standard_background)`: Name des Mediums.
+- **Preset** unter „ProPresenter“: „Standard-Hintergrund“.
 
 Die Verbindung meldet sich mit dem Geräteschlüssel `jms-device.key` neben dem Modul an
 (festes Gerät „Companion-JMS-Control“, Steuerrechte nur für den Multiview).
