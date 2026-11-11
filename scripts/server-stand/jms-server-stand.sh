@@ -39,7 +39,10 @@ TMP_INDEX="$(mktemp "$STATE_DIR/index.XXXXXX")"
 trap 'rm -f "$TMP_INDEX" "$STATE_DIR/blob"' EXIT
 export GIT_INDEX_FILE="$TMP_INDEX"
 git read-tree HEAD
-git add -A
+# Dateien, die master nicht lesen darf (z. B. von root angelegte Sicherungskopien), überspringen statt abzubrechen
+if ! git add -A --ignore-errors 2>"$STATE_DIR/add.err"; then
+  log "Übersprungen (nicht lesbar): $(grep -oE "open\(\"[^\"]+\"\)" "$STATE_DIR/add.err" | sed -E 's/open\("(.*)"\)/\1/' | tr '\n' ' ')"
+fi
 TREE="$(git write-tree)"
 unset GIT_INDEX_FILE
 
