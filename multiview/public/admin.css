@@ -762,7 +762,7 @@ a.status-tile:hover { border-color: var(--accent-line); }
 .ghost { position: absolute; background: color-mix(in srgb, var(--accent) 25%, transparent); border: 2px dashed var(--accent); pointer-events: none; }
 .hint { color: var(--muted); font-size: 12.5px; margin-top: 12px; line-height: 1.9; }
 
-.inspector { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 76px; max-height: calc(100vh - 96px); overflow-y: auto; }
+.inspector { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 76px; max-height: var(--inspector-height, calc(100vh - 96px)); overflow-y: auto; }
 .inspector > h3:first-child, .inspector .panel-head h3 { font-size: 15px; }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .row4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }

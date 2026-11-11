@@ -1,0 +1,16 @@
+[Unit]
+Description=Keep Pi dashboard metrics aligned with Kesher heartbeat addresses
+After=docker.service network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/jms-pi-dashboard/sync.py
+StateDirectory=jms-pi-dashboard
+StateDirectoryMode=0700
+UMask=0077
+TimeoutStartSec=25
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/homelab/config/homepage
+Nice=15

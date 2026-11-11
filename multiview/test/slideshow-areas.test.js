@@ -44,3 +44,12 @@ test('Diashow: Bilder aus der Dropbox nur, wenn in der Kachel eingeschaltet', as
   assert.equal(o.dropboxNow, true)
   assert.deepEqual(buildSlides(data, o, now).filter((s) => s.key.startsWith('dbx:')).map((s) => s.url), ['/diashow/dropbox/a.jpg'])
 })
+
+test('16:9-Bild auf 16:9-Kachel füllt randlos, andere Formate bekommen den Rahmen', async () => {
+  const { sameShape } = await view
+  assert.equal(sameShape(1920, 1080, 1280, 720), true)
+  assert.equal(sameShape(1920, 1088, 1920, 1080), true) // Rundung beim Export
+  assert.equal(sameShape(5472, 3648, 1920, 1080), false) // 3:2 aus der Kamera
+  assert.equal(sameShape(1080, 1920, 1920, 1080), false) // Hochformat
+  assert.equal(sameShape(1920, 1080, 0, 0), false) // Kachel noch ohne Größe
+})

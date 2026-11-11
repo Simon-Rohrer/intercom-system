@@ -17,6 +17,7 @@ const { createChurchTools } = require('./churchtools')
 const { createEventOps, eventOpsRouter } = require('./event-ops')
 const { createOpsChecks } = require('./event-ops-checks')
 const { createOpsStatus, opsSummary } = require('./ops-status')
+const { createPpLayers, LAYERS: PP_LAYERS } = require('./pp-layers')
 const { createUplink, normalizeUplink } = require('./uplink')
 const { createAgendaPosition } = require('./agenda-position')
 const { agendaSummary, currentAgendaEvent } = require('./agenda-status')
@@ -366,6 +367,9 @@ function emptyProPresenterState() {
   }
 }
 
+// Wird gesetzt, sobald pp-layers bereitsteht (die Abfrage kann schon vorher laufen)
+let ppObserve = () => {}
+
 function ppBase() {
   const { host, port } = config.propresenter
   return host ? `http://${host}:${port}` : ''
@@ -536,7 +540,8 @@ async function pollProPresenterOnce(target) {
       ppGet('/v1/status/layers').catch(() => null),
     ])
     next.connected = true
-    next.layers = layers ? { slide: Boolean(layers.slide), media: Boolean(layers.media) } : null
+    next.layers = layers ? Object.fromEntries(PP_LAYERS.map((l) => [l, Boolean(layers[l])])) : null
+    ppObserve(next.layers)
     next.current = slide?.current?.uuid || slide?.current?.text ? slide.current : null
     next.next = slide?.next?.uuid || slide?.next?.text ? slide.next : null
 
@@ -1207,6 +1212,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     kesherChat.stop()
     churchTools.stop()
     access.flush()
+    eventOps.notion.stop()
     // kurz warten, damit die Abmeldung bei Kesher die Rolle freigibt
     setTimeout(() => process.exit(0), 500)
   })
@@ -1862,6 +1868,7 @@ function requireAdmin(req, res, next) {
 // Veranstaltungsbetrieb: getrennte Datendatei, dieselbe Anmeldung auf JMS und Dashboard.
 const eventOps = createEventOps({ dataDir: DATA_DIR, churchTools, getRoles: loginRoles,
   getChecks: createOpsChecks({ getConfig: () => config, getAtem: () => atemState, getPp: () => ppState, churchTools, kesherChat }) })
+eventOps.notion.start()
 app.use(['/api/ops', '/.jms-auth/api/ops'], eventOpsRouter(eventOps, requireUser, requireAdmin))
 
 // Ampel „Event-Ops“ für die gleichnamige Kachel: dieselben Prüfungen wie der Startcheck, nur
@@ -2827,13 +2834,55 @@ function restoreTarget() {
   return t?.presentation && t.index != null ? t : null
 }
 
-// ProPresenter steuern – NUR diese Befehle (Weiter, Zurück, Ausblenden, Einblenden, Folie wählen).
+// Ebenen aus- und mit derselben Taste wieder einblenden (Companion) – siehe pp-layers.js
+const ppLayers = createPpLayers({
+  get: ppGet,
+  send: async (path, { method = 'GET', body } = {}) => {
+    const r = await fetch(`${ppBase()}${path}`, {
+      method,
+      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(3000),
+    })
+    if (!r.ok) throw new Error(`ProPresenter antwortet mit HTTP ${r.status}`)
+  },
+  slideTarget: restoreTarget,
+  backgroundAt: async (t) => backgroundAt(t.presentation.uuid, await ppPresentation(t.presentation.uuid), t.index),
+  load: () => {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'pp-layers.json'), 'utf8'))
+    } catch {
+      return {}
+    }
+  },
+  save: (held) => {
+    try {
+      fs.writeFileSync(path.join(DATA_DIR, 'pp-layers.json'), JSON.stringify(held))
+    } catch (err) {
+      console.log(`ProPresenter: Ebenen nicht gespeichert (${err.message})`)
+    }
+  },
+})
+ppObserve = (layers) => void ppLayers.observe(layers).catch(() => {})
+
+// ProPresenter steuern – NUR diese Befehle (Weiter, Zurück, Ausblenden, Einblenden, Folie wählen,
+// eine Ebene aus-/einblenden).
 // Alles andere der Schnittstelle bleibt gesperrt.
 app.post('/api/propresenter/control', requireTrusted, requireSlideOperator, async (req, res) => {
   const base = ppBase()
   if (!base) return res.status(503).json({ ok: false, error: 'ProPresenter nicht eingerichtet' })
-  const { action, presentation, index } = req.body || {}
+  const { action, presentation, index, layer } = req.body || {}
   const cue = Number(index)
+  if (action === 'toggle') {
+    try {
+      const result = await ppLayers.toggle(String(layer || ''))
+      console.log(`ProPresenter: Ebene ${result.layer} ${result.visible ? 'eingeblendet' : 'ausgeblendet'} (von ${req.ip})`)
+      requestProPresenterPoll()
+      return res.json({ ok: true, ...result })
+    } catch (err) {
+      return res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
+    }
+  }
   const paths = {
     next: ['/v1/trigger/next'],
     previous: ['/v1/trigger/previous'],

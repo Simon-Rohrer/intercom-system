@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh Raspberry Pi dashboard addresses every 30 seconds
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=30s
+AccuracySec=2s
+Unit=jms-pi-dashboard.service
+[Install]
+WantedBy=timers.target

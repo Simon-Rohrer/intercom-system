@@ -22,8 +22,8 @@
   <link rel="stylesheet" href="slideshow.css">
   <link rel="stylesheet" href="propresenter.css">
   <link rel="stylesheet" href="stage.css">
-  <link rel="stylesheet" href="/event-ops.css?v=20261030-agenda-manual">
-  <script defer src="/event-ops.js?v=20261030-agenda-manual"></script>
+  <link rel="stylesheet" href="/event-ops.css?v=20261102-not-implemented">
+  <script defer src="/event-ops.js?v=20261102-not-implemented"></script>
 </head>
 <body class="booting">
   <div class="app">
@@ -233,6 +233,7 @@
                 <a href="#/einstellungen/avantis" data-section-link="avantis"><span class="app-icon teal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4v16M12 4v16M18 4v16"/><rect x="4" y="9" width="4" height="3" rx="1"/><rect x="10" y="13" width="4" height="3" rx="1"/><rect x="16" y="7" width="4" height="3" rx="1"/></svg></span><span class="settings-nav-label">Avantis (Mischpult)</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 <a href="#/einstellungen/grandma3" data-section-link="grandma3"><span class="app-icon orange"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0-3.5 10.9V17h7v-3.1A6 6 0 0 0 12 3z"/><path d="M9.5 20h5"/></svg></span><span class="settings-nav-label">grandMA3 (Licht)</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 <a href="#/einstellungen/dropbox" data-section-link="dropbox"><span class="app-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4 2.5 7 7 10l5-3zM17 4l-5 3 5 3 4.5-3zM2.5 13 7 16l5-3-5-3zM17 10l-5 3 5 3 4.5-3zM7.5 17.5 12 20.5l4.5-3"/></svg></span><span class="settings-nav-label">Dropbox</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text"></span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+                <a href="#/einstellungen/notion" data-section-link="notion"><span class="app-icon gray"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 16V8l8 8V8"/></svg></span><span class="settings-nav-label">Notion</span><span class="settings-nav-state"><span class="status-dot"></span><span class="settings-nav-state-text">Wird geladen</span></span><svg class="settings-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
               </div>
               <div class="settings-nav-group">
                 <h2 class="settings-nav-title">Geräte &amp; Steuerung</h2>
@@ -725,6 +726,28 @@
               </div>
             </div>
 
+            <div class="card" id="set-notion" data-section="notion">
+              <div class="card-head"><div><h2>Notion</h2>
+                <p class="muted">Technik-Mängel aus dem Dashboard werden auf <a href="https://www.notion.so/3f2e70784cde811a8868de9dbfb3d318" target="_blank" rel="noopener">JMS Server ↗</a> unter „Technik-Mängel“ als To-dos eingetragen. Der Erledigt-Haken wird etwa alle 30 Sekunden in beide Richtungen abgeglichen.</p>
+              </div></div>
+              <p class="muted" id="notion-state" role="status" aria-live="polite">Verbindung wird geladen …</p>
+              <form id="notion-connect-form" class="ss-pp-form" autocomplete="off">
+                <label class="field"><span>Notion-Integrationsschlüssel</span><input type="password" id="notion-token" autocomplete="new-password" spellcheck="false" maxlength="512" placeholder="Notion-Schlüssel eintragen"></label>
+                <div class="btn-row"><button class="btn small" type="button" id="notion-token-eye" aria-label="Integrationsschlüssel anzeigen" aria-pressed="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span>Schlüssel anzeigen</span></button></div>
+                <p class="muted small">Der gespeicherte Schlüssel bleibt erhalten, wenn du das Feld leer lässt. JMS Control und Dashboard verwenden dieselbe Verbindung.</p>
+                <label class="switch"><input type="checkbox" id="notion-enabled"><span class="switch-track" aria-hidden="true"></span><span>Automatisch nach Notion übertragen</span></label>
+                <div class="btn-row"><button class="btn primary" type="submit" id="notion-save" disabled>Speichern</button><button class="btn" type="button" id="notion-refresh">Status aktualisieren</button></div>
+                <p class="form-error" id="notion-error" role="alert"></p>
+                <p class="muted small" id="notion-result" role="status" aria-live="polite"></p>
+              </form>
+              <div class="btn-row"><button class="btn small" type="button" id="notion-import" disabled>Vorhandene Mängel nach Notion übertragen</button></div>
+              <p class="muted small">Bereits vorgemerkte oder übertragene Mängel werden übersprungen. Während einer Pause oder bei Verbindungsproblemen bleiben neue Meldungen gespeichert und werden später übertragen.</p>
+              <details class="disclosure inner"><summary>Notion-Verbindung einrichten und Statusabgleich</summary>
+                <ol class="muted"><li>Eine <a href="https://www.notion.so/profile/integrations" target="_blank" rel="noopener">interne Notion-Verbindung</a> für euren Workspace anlegen und Lesen, Einfügen sowie Aktualisieren erlauben.</li><li>Auf der Notion-Seite „JMS Server“ diese Verbindung hinzufügen.</li><li>Den Schlüssel hier eintragen, automatische Übertragung einschalten und speichern.</li></ol>
+                <p class="muted small">Der Schlüssel wird nur auf dem Server gespeichert. Beim aktivierten Speichern wird der Zugriff auf die Zielseite geprüft. Beim Entfernen eines Hakens wird ein Mangel wieder geöffnet bzw. sein vorheriger Status wiederhergestellt. Ausstehende Dashboard-Statusänderungen haben bei gleichzeitigen Änderungen Vorrang. „Nicht umgesetzt“ bleibt ohne Erledigt-Haken; der Grund wird im Dashboard geführt. Texte werden nicht synchronisiert, Fotos bleiben im geschützten Dashboard.</p>
+              </details>
+            </div>
+
             <div class="card" id="set-raspberry" data-section="raspberry">
               <div class="card-head">
                 <div>
@@ -914,7 +937,7 @@
   <datalist id="atem-input-list"></datalist>
   <div id="toast" class="toast" hidden></div>
 
-  <script type="module" src="admin.js?v=20261030-tally-bildschirm"></script>
+  <script type="module" src="admin.js?v=20261102-notion-settings"></script>
   <script>
     // Menü (☰) auf schmalen Bildschirmen. Bewusst einfaches Skript ohne Modul: so geht das Menü
     // auch, wenn admin.js auf einem alten Gerät nicht (vollständig) läuft.

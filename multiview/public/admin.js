@@ -33,7 +33,7 @@ const CLIENT_ID = uid('c')
 const PAGES = ['uebersicht', 'multiviews', 'layouts', 'einstellungen', 'services']
 const ADMIN_PAGES = ['einstellungen', 'services']
 // Unterseiten der Einstellungen: #/einstellungen/atem …
-const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'youtube', 'avantis', 'grandma3', 'dropbox', 'eingaenge', 'raspberry', 'companion', 'bildschirme', 'diashow', 'geraete', 'zugang']
+const SETTINGS_SECTIONS = ['atem', 'propresenter', 'kesher', 'churchtools', 'youtube', 'avantis', 'grandma3', 'dropbox', 'notion', 'eingaenge', 'raspberry', 'companion', 'bildschirme', 'diashow', 'geraete', 'zugang']
 // Unterseiten von Benutzer & Rechte: #/einstellungen/zugang/rollen …
 const ZUGANG_SECTIONS = ['rollen', 'anmeldung', 'dienste', 'zugangsdaten', 'nachrichten']
 const SOURCE_TYPES = {
@@ -80,6 +80,7 @@ let config = null
 let atem = { connected: false, program: [], preview: [], inputs: {} }
 let page = 'uebersicht'
 let settingsSection = ''
+let notionSettings = null, notionFormDirty = false, notionBusy = false, notionLoading = false, notionLoadVersion = 0
 let accessSection = ''
 let serverDevices = []
 let detectedScreens = [] // Anschlüsse der Grafikkarte am Server { id, connected, mode }
@@ -290,13 +291,19 @@ function writePref(key, value) {
 // Speichern
 // ---------------------------------------------------------------------------
 
-function changed(delay = 350) {
+// Meldungen, die nach dem nächsten Speichern erscheinen ({ ok, fail }), z. B. „Layout gelöscht“
+let saveNotes = []
+
+function changed(delay = 350, note = null) {
+  if (note) saveNotes.push(note)
   setSaveState('pending')
   clearTimeout(saveTimer)
   saveTimer = setTimeout(save, delay)
 }
 
 async function save() {
+  const notes = saveNotes
+  saveNotes = []
   try {
     const res = await fetch('/api/config', {
       method: 'PUT',
@@ -306,8 +313,10 @@ async function save() {
     if (res.status === 401) return goToLogin()
     if (!res.ok) throw new Error(res.status === 403 ? 'keine Berechtigung' : `HTTP ${res.status}`)
     setSaveState('saved')
+    if (notes.length) toast(notes.map((n) => n.ok).join(' '))
   } catch (err) {
     setSaveState('error', `Speichern fehlgeschlagen: ${err.message}`)
+    if (notes.length) toast(`${notes.map((n) => n.fail).join(' ')} (${err.message})`)
   } finally {
     saveTimer = null
   }
@@ -407,7 +416,7 @@ function showPage() {
     loadPermanentDevices()
   }
   // Auch für den Status-Punkt der Raspberry Pis in der Leiste, nicht nur auf ihrer Unterseite
-  if (page === 'einstellungen') loadRaspberryStatus()
+  if (page === 'einstellungen') { loadRaspberryStatus(); loadNotionSettings() }
   if (page === 'einstellungen' && settingsSection === 'zugang') loadGateway()
   if (page === 'einstellungen' && settingsSection === 'youtube') loadYouTubeSettings()
   if (page === 'einstellungen' && settingsSection === 'dropbox') loadDropboxSettings()
@@ -421,23 +430,27 @@ window.addEventListener('hashchange', showPage)
 
 // The navigation starts below the settings heading before it becomes sticky.
 // Size it from its actual viewport position so the last row always stays reachable.
+// Dasselbe für die Layout-Einstellungen rechts neben der Leinwand: Sie beginnen unter der
+// Leinwand-Kopfzeile, ihr unteres Ende soll trotzdem ohne Mitscrollen der Seite erreichbar sein.
 let settingsNavFrame = 0
+function fitToViewport(el, prop, active) {
+  if (!el) return
+  if (!active || !el.getClientRects().length) {
+    el.style.removeProperty(prop)
+    return
+  }
+  const viewport = window.visualViewport
+  const bottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight
+  const height = Math.max(0, Math.floor(bottom - Math.max(0, el.getBoundingClientRect().top) - 16)) + 'px'
+  if (el.style.getPropertyValue(prop) !== height) el.style.setProperty(prop, height)
+}
 function scheduleSettingsNavHeight() {
   if (settingsNavFrame) return
   settingsNavFrame = requestAnimationFrame(() => {
     settingsNavFrame = 0
-    const nav = document.querySelector('#page-einstellungen .settings-nav')
-    if (!nav) return
-    if (window.matchMedia('(max-width: 760px)').matches) {
-      nav.style.removeProperty('--settings-nav-height')
-      return
-    }
-    if (!nav.getClientRects().length) return
-    const viewport = window.visualViewport
-    const bottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight
-    const height = Math.max(0, Math.floor(bottom - Math.max(0, nav.getBoundingClientRect().top) - 16)) + 'px'
-    if (nav.style.getPropertyValue('--settings-nav-height') !== height)
-      nav.style.setProperty('--settings-nav-height', height)
+    fitToViewport(document.querySelector('#page-einstellungen .settings-nav'), '--settings-nav-height', !window.matchMedia('(max-width: 760px)').matches)
+    const inspector = document.querySelector('#inspector')
+    fitToViewport(inspector, '--inspector-height', inspector && getComputedStyle(inspector).position === 'sticky')
   })
 }
 window.addEventListener('scroll', scheduleSettingsNavHeight, { passive: true })
@@ -446,7 +459,7 @@ window.visualViewport?.addEventListener('resize', scheduleSettingsNavHeight, { p
 window.visualViewport?.addEventListener('scroll', scheduleSettingsNavHeight, { passive: true })
 if (typeof ResizeObserver !== 'undefined') {
   const observer = new ResizeObserver(scheduleSettingsNavHeight)
-  for (const el of document.querySelectorAll('#page-einstellungen > .page-head, #page-einstellungen .settings-layout')) observer.observe(el)
+  for (const el of document.querySelectorAll('#page-einstellungen > .page-head, #page-einstellungen .settings-layout, #page-layouts')) observer.observe(el)
 }
 document.fonts?.ready.then(scheduleSettingsNavHeight)
 scheduleSettingsNavHeight()
@@ -940,7 +953,8 @@ function onOutputField(e) {
   renderLayoutList()
   renderScreens()
   renderCompanion()
-  changed()
+  // Nur beim Tippen kurz warten; ein anderes Layout wird sofort gespeichert und umgeschaltet
+  changed(el.type === 'text' ? 350 : 0)
 }
 $('#output-panel').addEventListener('input', onOutputField)
 $('#output-panel').addEventListener('change', onOutputField)
@@ -3830,7 +3844,7 @@ inspector.addEventListener('click', (e) => {
       config.layouts.push(copy)
       layoutId = copy.id
       renderAll()
-      changed(0)
+      changed(0, { ok: `Layout „${copy.name}“ angelegt ✓`, fail: `Layout „${layout.name}“ konnte nicht dupliziert werden` })
       break
     }
     case 'delete-layout': {
@@ -3840,7 +3854,7 @@ inspector.addEventListener('click', (e) => {
       config.layouts = config.layouts.filter((l) => l !== layout)
       users.forEach((o) => (o.layoutId = myLayouts()[0]?.id ?? null))
       renderAll()
-      changed(0)
+      changed(0, { ok: `Layout „${layout.name}“ gelöscht ✓`, fail: `Layout „${layout.name}“ konnte nicht gelöscht werden` })
       break
     }
     case 'front':
@@ -4068,6 +4082,63 @@ function renderSlideshowSettings() {
 }
 
 // --- Dropbox-Ordner für die Diashow ------------------------------------------------------------
+
+// --- Notion: same admin API and persistent connection as Dashboard -------------
+async function notionRequest(path='',body) {
+  const response=await fetch('/api/ops/notion'+path,{method:body?'POST':'GET',cache:'no-store',credentials:'same-origin',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined})
+  if(response.status===401){goToLogin();throw Error('Bitte erneut anmelden.')}
+  const data=await response.json()
+  if(!response.ok)throw Error(data.error || 'Die Notion-Verbindung konnte nicht geladen werden.')
+  return data
+}
+function renderNotionSettings() {
+  const n=notionSettings;if(!n)return
+  const link=document.querySelector('[data-section-link="notion"]')
+  if(link){link.dataset.state=n.error?'bad':n.enabled?'ok':'off';link.querySelector('.settings-nav-state-text').textContent=n.error?'Prüfen':n.enabled?'Aktiv':n.configured?'Pausiert':'Nicht eingerichtet'}
+  $('#notion-state').textContent=`${n.enabled?'Automatische Übertragung aktiv':n.configured?'Übertragung pausiert':'Noch nicht eingerichtet'} · ${n.pending} Meldungen ausstehend · ${n.sent} übertragen · ${n.statusPending || 0} Statusänderungen ausstehend${n.lastCheckedAt?' · Letzter Abgleich '+new Date(n.lastCheckedAt).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):''}`
+  $('#notion-token').placeholder=n.configured?'Gespeichert · leer lassen zum Beibehalten':'Notion-Schlüssel eintragen'
+  if(!notionFormDirty)$('#notion-enabled').checked=n.enabled
+  $('#notion-save').disabled=notionBusy
+  $('#notion-import').disabled=notionBusy || !n.enabled
+  $('#notion-refresh').disabled=notionBusy
+  for(const id of ['notion-token','notion-enabled','notion-token-eye'])$('#'+id).disabled=notionBusy
+  $('#notion-error').textContent=n.error || ''
+}
+async function loadNotionSettings() {
+  if(!isAdmin() || notionBusy || notionLoading)return
+  const version=notionLoadVersion;notionLoading=true
+  try {const data=await notionRequest();if(version!==notionLoadVersion)return;notionSettings=data;renderNotionSettings()}
+  catch(e){if(version===notionLoadVersion)$('#notion-error').textContent=e.message}
+  finally{notionLoading=false}
+}
+$('#notion-connect-form').addEventListener('input',()=>{notionFormDirty=true})
+$('#notion-connect-form').addEventListener('change',()=>{notionFormDirty=true})
+$('#notion-token-eye').addEventListener('click',()=>{
+  const input=$('#notion-token'),button=$('#notion-token-eye'),show=input.type==='password'
+  input.type=show?'text':'password';button.setAttribute('aria-pressed',String(show));button.setAttribute('aria-label',show?'Integrationsschlüssel verbergen':'Integrationsschlüssel anzeigen');button.querySelector('span').textContent=show?'Schlüssel verbergen':'Schlüssel anzeigen'
+})
+$('#notion-connect-form').addEventListener('submit',async e=>{
+  e.preventDefault();if(notionBusy || !isAdmin())return
+  notionBusy=true;notionLoadVersion++;renderNotionSettings();$('#notion-result').textContent=''
+  try{
+    notionSettings=await notionRequest('',{token:$('#notion-token').value,enabled:$('#notion-enabled').checked})
+    notionFormDirty=false;$('#notion-token').value='';$('#notion-token').type='password'
+    $('#notion-token-eye').setAttribute('aria-pressed','false');$('#notion-token-eye').setAttribute('aria-label','Integrationsschlüssel anzeigen');$('#notion-token-eye span').textContent='Schlüssel anzeigen'
+    $('#notion-result').textContent='Gespeichert. Die Einstellung gilt auch im Dashboard.'
+  }catch(err){$('#notion-error').textContent=err.message;return}
+  finally{notionBusy=false;for(const id of ['notion-token','notion-enabled','notion-token-eye'])$('#'+id).disabled=false;$('#notion-save').disabled=false;$('#notion-refresh').disabled=false;$('#notion-import').disabled=!notionSettings?.enabled}
+  renderNotionSettings()
+})
+$('#notion-import').addEventListener('click',async()=>{
+  if(notionBusy || !isAdmin())return
+  notionBusy=true;notionLoadVersion++;renderNotionSettings();$('#notion-result').textContent=''
+  try{const data=await notionRequest('/import',{});notionSettings=data;$('#notion-result').textContent=data.queued?`${data.queued} Mängel zur Übertragung vorgemerkt.`:'Alle vorhandenen Mängel sind bereits vorgemerkt oder übertragen.'}
+  catch(err){$('#notion-error').textContent=err.message;return}
+  finally{notionBusy=false;for(const id of ['notion-token','notion-enabled','notion-token-eye'])$('#'+id).disabled=false;$('#notion-save').disabled=false;$('#notion-refresh').disabled=false;$('#notion-import').disabled=!notionSettings?.enabled}
+  renderNotionSettings()
+})
+$('#notion-refresh').addEventListener('click',()=>loadNotionSettings())
+setInterval(()=>{if(!document.hidden && page==='einstellungen')loadNotionSettings()},30000)
 
 let dropboxSettings = null
 
@@ -5519,6 +5590,7 @@ const SEARCH_ENTRIES = [
   { label: 'Avantis (Mischpult)', href: '#/einstellungen/avantis', admin: true, words: 'einstellungen allen heath mischpult ton mute stumm szene midi tcp pastor mikro' },
   { label: 'grandMA3 (Licht)', href: '#/einstellungen/grandma3', admin: true, words: 'einstellungen ma lighting lichtpult licht cue sequenz osc' },
   { label: 'Dropbox (Ordner für die Diashow)', href: '#/einstellungen/dropbox', admin: true, words: 'dropbox ordner bilder fotos diashow cloud' },
+  { label: 'Notion', href: '#/einstellungen/notion', admin: true, words: 'einstellungen verbindung mängel todo erledigt synchronisierung api schlüssel' },
   { label: 'ChurchTools', href: '#/einstellungen/churchtools', admin: true, words: 'einstellungen ablauf agenda gottesdienst' },
   { label: 'Raspberry Pis', href: '#/einstellungen/raspberry', admin: true, words: 'einstellungen raspberry pi station kiosk intercom rolle mac fernsteuern' },
   { label: 'Companion', href: '#/einstellungen/companion', admin: true, words: 'einstellungen stream deck tasten' },

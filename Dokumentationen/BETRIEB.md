@@ -626,3 +626,101 @@ Geprüft: Rechte, konkurrierende Aktionen, Persistenz, Eventwechsel, Rücknahme/
 Zentrale Quelle: /etc/chromium/policies/managed/jms-device.json und kesher-chat-kiosk.json. /usr/local/lib/jms-kiosk-policies/sync.py validiert beide Dateien und kopiert sie atomar in alle installierten numerischen Chromium-Snap-Revisionsverzeichnisse. Die aktuelle Revision wird über /var/snap/chromium/current ermittelt; keine feste Versionsnummer. Es werden nur diese beiden Policy-Dateien bearbeitet, keine Browserprofile, privaten Schlüssel oder Zertifikatsdatenbanken.
 Auslöser: jms-kiosk-policies.path bei Versions-/Policy-Verzeichnisänderungen; jms-kiosk-policies.timer als 60-Sekunden-Fallback; zusätzlicher ExecStartPre vor jedem Start von kesher-chat-kiosk. Der Sync startet Browser oder Dienste niemals neu. Ungültige Quelldateien werden nicht ausgerollt. Nur geänderte Dateien werden ersetzt, vorherige Versionen unter /var/lib/jms-kiosk-policies/backups gesichert. Status: /var/lib/jms-kiosk-policies/status.json.
 Quellkopie und Tests: /home/master/intercom-system/scripts/kiosk-policies/. Fünf Tests decken Versionswechsel, Rückwechsel, zentrale Änderungen, Idempotenz, ungültige Regeln und externe Symlink-Ziele ab. Pfad-Auslöser auf dem Server geprüft; kein tatsächliches Chromium-Update zum Test durchgeführt. Rollback deaktiviert nur den neuen Abgleich und entfernt dessen Kiosk-Startschritt: /home/master/kiosk-policy-sync-20261030/rollback.sh. Laufende HDMI-Anzeigen bleiben dabei bestehen.
+
+
+## Pi-Dashboard: automatische Adressen (2026-11-02)
+
+Die Glances-Kacheln übernehmen alle 30 Sekunden die frische IP aus Keshers Statusmeldungen anhand der festen Geräte-ID. Dienst: jms-pi-dashboard.service / .timer. Zuordnung: /etc/jms-pi-dashboard.json. Details, Tests und Rollback: ../scripts/pi-dashboard/README.md. Der Pi ist aktuell per LAN verbunden; die Netzwerkkachel verwendet eth0.
+
+
+## Pi-3-Performance und Messwerte (2026-11-02)
+
+Launcher 19 erfasst Hardwarewerte nur ungefähr alle 15 Sekunden; der Online-/Intercom-Heartbeat bleibt bei vier Sekunden. Glances sammelt gemeinsam alle 15 Sekunden und serialisiert parallele REST-Abfragen. Homepage ruft die zwischengespeicherten Werte alle fünf Sekunden ab. Zeitformatierung und leere Pegelanimationsschleifen im Multiview optimiert, keine Auflösungs-/Funktionsreduktion. Quelle und Installationsskript im Repository aktualisiert; Pi-Overrides außerhalb der Chromium-/Glances-Pakete. Vollständiger Änderungsnachweis, Messungen, Tests und Rollback auf dem Server: /home/master/pi-performance-20261102/README.md.
+
+### 2026-11-02: Technik-Mängel nach Notion
+Neue Dashboard-Mängel erhalten eine dauerhafte Export-Warteschlange. Ziel ist JMS Server,
+Abschnitt Technik-Mängel. Admin-Einrichtung unter Technik-Mängelliste → Notion-Anbindung;
+interne Notion-Verbindung (Lesen/Einfügen, Seitenfreigabe) und Schlüssel erforderlich.
+Bei Installation noch nicht aktiviert: kein Server-Schlüssel vorhanden. Bestehende Mängel
+werden nicht importiert; spätere Änderungen/Erledigungen werden nicht synchronisiert.
+Fotos bleiben im geschützten Dashboard. Schlüssel nur serverseitig in /data/ops-notion.json
+(0600), Jobs atomar mit /data/event-ops.json. Worker alle 30s, Backoff und Kennungsabgleich.
+19 Tests bestanden, Dienst healthy, Oberfläche in Safari geprüft; echter Notion-Export erst
+nach Aktivierung verifizierbar. Quelle und Dockerfile angepasst; Pi-Optimierungen erhalten.
+Details/Sicherung/Rollback: /home/master/notion-issues-20261102/README.md und rollback.sh.
+
+### 2026-11-02: Sichtbarer Notion-Haken und Aktivierung
+Homepage-Formularreset setzt appearance:none; generische .ops-input-Hintergründe verdeckten
+anschließend den Checked-Haken. Technisch toggelte die Checkbox, optisch blieb sie leer.
+Scoped Checkbox-Stile mit explizitem Checked-Hintergrund/Icon, Null-Padding und Fokusrahmen
+in public/event-ops.css korrigieren alle ops-checkbox-Felder. CSS-Cacheversion in index.html
+und Homepage custom.js erhöht. Beide Zustände in Safari visuell bestätigt. Kein Neustart nötig.
+Quellcode, laufender Container und Image jms-multiview:notion-checkbox-20261102 / latest
+enthalten Fix. Backup: /home/master/notion-checkbox-20261102/before; vorheriges Image:
+jms-multiview:before-notion-checkbox-20261102. Rücknahme nur dieser CSS/index/Homepage-Dateien
+und des Image-Tags, keine Daten- oder Schlüsseldatei zurücksetzen.
+Mit vorhandenem, unverändertem Schlüssel die Checkbox aktiviert und gespeichert. Die
+Zielseiten-Zugriffsprüfung war erfolgreich; Dashboard zeigt Notion aktiv, 0 ausstehend,
+0 übertragen. Noch kein tatsächlicher Mangel übertragen; keine synthetische Meldung erzeugt.
+
+### 2026-11-02: Vorhandene Mängel erfolgreich nach Notion nachgetragen
+Auf ausdrücklichen Nutzerwunsch den Toggle Technik-Mängel auf JMS Server direkt unter
+ToDos Simon (nach ToDos Lasse) verschoben. Andere Notion-Inhalte unverändert.
+Admin-Route POST /api/ops/notion/import und /.jms-auth/api/ops/notion/import ergänzt,
+mit Schaltfläche im Notion-Dialog. Übernimmt nur fehlende Jobs, erhält vorhandene pending/sent
+Jobs und aktuelle Mängeldaten; wiederholbarer Import ohne doppelte Jobs. Snapshot zum Import.
+21 Tests bestanden; anonymer Import HTTP 401. Quellcode event-ops.js, public/event-ops.js,
+public/index.html, Homepage custom.js, test/notion-backfill.test.js aktualisiert.
+Image jms-multiview:notion-backfill-20261102 / latest inklusive vorherigem Checkbox-Fix.
+Drei Bestandsmeldungen bei kurz gestopptem JMS-Dienst über dieselbe importNotionIssues-Funktion
+in die persistente Queue übernommen; Hintergrunddienst danach regulär gestartet.
+Echter Server-zu-Notion-Export verifiziert: 3 gesendet, 0 ausstehend, keine Fehler. In Notion
+alle drei IDs genau einmal als unchecked To-do unter Technik-Mängel vorhanden:
+Event-OPS: Verbesserungsvorschlag; Stream: Verbesserungsvorschlag;
+Multiview: Kamerafeed wird nicht angezeigt. Metadaten/Beschreibungen als Unterpunkte.
+Backup vor Änderung und vor Import: /home/master/notion-backfill-20261102/before (0700).
+Code-Rollback: /home/master/notion-backfill-20261102/rollback.sh; vorher auf spätere Änderungen
+prüfen. Keine alten event-ops-Daten zurückspielen: gespeicherte Export-IDs bleiben erhalten.
+
+### 2026-11-02: Erledigt-Status beidseitig mit Notion
+Server-Worker gleicht ca. alle 30s die Checkboxen der verknüpften Notion-To-dos ab.
+Notion checked -> Dashboard resolved; unchecked -> open oder vorheriges working.
+Dashboard resolved -> checked; open/working -> unchecked. Nur Haken, keine Textüberschreibung.
+Persistente lokale Statusversionen und bestätigter Basisstand verhindern Rückkopplungen
+und verlorene Änderungen bei Ausfall/Neustart. Ausstehende lokale Änderungen gewinnen bei
+Konflikten. Fehler/ausstehende Statusänderungen im Admin-Dialog sichtbar; API-Rate begrenzt.
+Notion-Schlüssel unverändert, Aktualisierungsrecht erfolgreich geprüft. 29 Tests bestanden.
+Live: temporäres Abhaken des Event-OPS-Vorschlags übernahm der laufende Worker ins Dashboard;
+Wiederöffnen über changeIssue wurde danach regulär nach Notion übertragen. Originalzustand
+open/unchecked wiederhergestellt; keine ausstehenden Statusänderungen/Fehler. Backend-
+Rückweg geprüft, keine abgeschlossene UI-Bearbeitung behauptet (Browser vom Nutzer verwendet).
+Image jms-multiview:notion-status-20261102 / latest; Quelle und Assetversion angepasst.
+Details/Sicherung/Rollback: /home/master/notion-status-20261102/{README.md,before,rollback.sh}.
+
+### 2026-11-02: Nicht umgesetzt + Notion in JMS-Control-Einstellungen
+Mängelstatus not_implemented („Nicht umgesetzt“) ergänzt. Bei Auswahl erscheint das
+Pflichtfeld nonImplementationReason (max. 2000 Zeichen); Backend lehnt leere Gründe ab.
+Begründung bleibt nach Neustart und beim Wiederöffnen erhalten; eigene aufklappbare Gruppe
+„Nicht umgesetzt“ zeigt Gründe, diese Einträge zählen nicht zu offenen oder erledigten.
+Bestehende Eigentums-/Adminrechte und previous-Konfliktprüfung unverändert.
+Notion-Haken bleibt aus. Explizites Abhaken in Notion setzt weiterhin resolved; anschließendes
+Entfernen stellt not_implemented mit vorhandenem Grund wieder her. Grund nur im Dashboard.
+33 Tests bestanden; live in Safari Statusauswahl/Begründungsfeld und „Feld ausfüllen“ geprüft,
+danach ohne Speichern abgebrochen. Keine produktiven Mängel umklassifiziert.
+Source/Runtime/Image issue-not-implemented-20261102 aktualisiert; Backup und Rollback unter
+/home/master/issue-not-implemented-20261102/{before,rollback.sh}.
+
+Unter Einstellungen → Verbindungen → Notion sowie in der Suche neue Unterseite hinzugefügt:
+#/einstellungen/notion. Verwendet identische /api/ops/notion und /notion/import Admin-Routen
+und denselben gespeicherten Schlüssel wie Dashboard. Aktivierung, Schlüssel mit Sichtschalter,
+Übertragungsstatus, manuelle Aktualisierung und Bestandsimport enthalten. Unsaved Eingaben
+werden bei Statusabfrage nicht überschrieben; Formular während Änderungen gesperrt.
+Statusabfrage alle 30s nur bei sichtbaren Einstellungen; Schlüssel wird nie aus API geladen.
+Kein Backendwechsel, keine erneute Schlüsselkonfiguration. ESM-Syntaxcheck erfolgreich.
+Live in Safari: Unterseite zeigt gespeicherten Schlüssel, Aktivierung an, 3 übertragene
+Meldungen, 0 ausstehende Meldungen/Statusänderungen. Neuer Speichern-Button nicht abschließend
+per UI geprüft, da Browser parallel verwendet wurde; Backend-Speicherpfad unverändert.
+Source admin.js/index.html, laufender Container und Image jms-multiview:notion-settings-20261102
+/latest angepasst, Cacheversion admin.js?v=20261102-notion-settings. Kein Neustart für diese UI.
+Sicherung und gezielter Code-Rollback: /home/master/notion-settings-20261102/{before,rollback.sh}.
+Vor Rollback auf zwischenzeitliche Änderungen prüfen; keine Daten/Schlüssel zurücksetzen.

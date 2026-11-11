@@ -346,6 +346,7 @@ export function createAgendaView(tile) {
   let rows = [] // { li, item, bar, index }
   let live = false // nur beim heutigen Tag: laufenden Punkt markieren
   let shownId = null // gezeigtes Event, um beim Weiterrücken neu zu zeichnen
+  let pickedId = null // angeklickter Punkt (z. B. ein Lied) – nur hier hervorgehoben, nicht für alle
   let manualUntil = 0 // bis dahin kein automatisches Mitscrollen
   let toastTimer = null
 
@@ -394,6 +395,13 @@ export function createAgendaView(tile) {
 
   // openItems merkt die Abweichung vom Standard (zu bzw. bei „immer aufgeklappt“ offen)
   const isOpen = (id) => look.openAll !== openItems.has(id)
+
+  /** Angeklickten Punkt hervorheben; ein zweiter Klick auf denselben nimmt es wieder weg */
+  function pick(row) {
+    pickedId = pickedId === row.item.id ? null : row.item.id
+    for (const r of rows) r.li.classList.toggle('picked', pickedId != null && r.item.id === pickedId)
+    pauseFollow()
+  }
 
   function toggle(row) {
     if (openItems.has(row.item.id)) openItems.delete(row.item.id)
@@ -573,20 +581,27 @@ export function createAgendaView(tile) {
       list.append(li)
       const row = { li, item, bar, index }
       rows.push(row)
+      li.classList.add('pickable')
+      li.classList.toggle('picked', item.id != null && item.id === pickedId)
+      li.tabIndex = 0
+      li.setAttribute('role', 'button')
       if (lines.length) {
         li.classList.add('has-sub')
-        li.tabIndex = 0
-        li.setAttribute('role', 'button')
         const open = isOpen(item.id)
         li.classList.toggle('open', open)
         li.setAttribute('aria-expanded', String(open))
-        li.addEventListener('click', () => toggle(row))
-        li.addEventListener('keydown', (e) => {
-          if (e.key !== 'Enter' && e.key !== ' ') return
-          e.preventDefault()
-          toggle(row)
-        })
       }
+      // Klick: Punkt hervorheben (und bei Details auf-/zuklappen)
+      const activate = () => {
+        pick(row)
+        if (lines.length) toggle(row)
+      }
+      li.addEventListener('click', activate)
+      li.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return
+        e.preventDefault()
+        activate()
+      })
     }
     // Eigenes Scrollen (Rad, Wischen) hält das Mitscrollen kurz an
     list.addEventListener('wheel', pauseFollow, { passive: true })

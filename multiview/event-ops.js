@@ -3,9 +3,10 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const express = require('express')
+const {createNotionSync} = require('./ops-notion')
 
 const STATES = ['preparing', 'ready', 'help']
-const ISSUE_STATES = ['open', 'working', 'resolved']
+const ISSUE_STATES = ['open', 'working', 'resolved', 'not_implemented']
 const text = (x, max = 500) => String(x ?? '').trim().slice(0, max)
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }) }
 const stamp = () => new Date().toISOString()
@@ -20,7 +21,7 @@ function technicalTeam(event, services, groups) {
       assigned: Boolean(p || s.personId || s.name), accepted: s.isAccepted === true, sort: def.sortKey ?? 0 }
   }).sort((a,b) => a.sort - b.sort || (a.slot || 0) - (b.slot || 0))
 }
-function createEventOps({ dataDir, churchTools, getRoles, getChecks = async () => [], now = Date.now }) {
+function createEventOps({ dataDir, churchTools, getRoles, getChecks = async () => [], now = Date.now, notionFetch = globalThis.fetch }) {
   const file = path.join(dataDir, 'event-ops.json')
   let state
   try { state = JSON.parse(fs.readFileSync(file, 'utf8')); if (state.version !== 1 || !state.events || !Array.isArray(state.issues)) throw new Error('Invalid operations state') }
@@ -29,6 +30,29 @@ function createEventOps({ dataDir, churchTools, getRoles, getChecks = async () =
   let teamCache = {id:'', at:0, rows:[], error:''}
   const agendaCache = new Map(), agendaFlights = new Map()
   let checksCache = {at:0, rows:[]}, checksFlight
+  const notion = createNotionSync({dataDir,fetchImpl:notionFetch,
+    getJobs:()=>state.notionJobs || {},
+    getIssue:id=>state.issues.find(x=>x.id===id),
+    applyRemoteChecked:(id,checked,version,patch)=>{
+      const job=state.notionJobs?.[id],issue=state.issues.find(x=>x.id===id)
+      if(!job || !issue || (job.localStatusVersion||0)!==version)return false
+      const status=checked?'resolved':job.reopenStatus==='not_implemented' && issue.nonImplementationReason?'not_implemented':job.reopenStatus==='working'?'working':'open'
+      save(s=>{
+        const current=s.issues.find(x=>x.id===id),j=s.notionJobs[id]
+        if(checked && current.status!=='resolved')j.reopenStatus=current.status
+        current.status=status;current.updatedBy='Notion';current.updatedAt=changedAt(current.updatedAt)
+        Object.assign(j,patch)
+      },{name:'Notion'},`Mangel ${checked?'erledigt':'wieder geöffnet'}: ${issue.title}`)
+      return true
+    },
+    updateJob:(id,patch)=>{
+      const next=structuredClone(state)
+      if(!next.notionJobs?.[id])return
+      Object.assign(next.notionJobs[id],patch)
+      fs.writeFileSync(file+'.tmp',JSON.stringify(next),{mode:0o600})
+      fs.renameSync(file+'.tmp',file);state=next
+    }
+  })
   function save(change, actor, description) {
     const next = structuredClone(state)
     change(next)
@@ -193,7 +217,7 @@ function createEventOps({ dataDir, churchTools, getRoles, getChecks = async () =
     if(!['ok','error','unknown'].includes(body.status) || !(await checks()).some(c=>c.id===body.checkId && c.manual))fail('Ungültige Geräteprüfung')
     save(s=>{(eventData(s,id).manual ||= {})[body.checkId]={status:body.status,by:text(user.name,100),at:stamp()}},user,'Sichtprüfung eines Geräts aktualisiert')
   }
-  function issues(user) { return {ok:true, admin:!!user.admin,issues:state.issues.map(x=>({...x,canEdit:!!user.admin || x.owner===user.roleId})),event:selected()} }
+  function issues(user) { return {ok:true, admin:!!user.admin,notion:user.admin?notion.status():undefined,issues:state.issues.map(x=>({...x,canEdit:!!user.admin || x.owner===user.roleId})),event:selected()} }
   function photoData(value) {
     if(!value)return null
     const m=/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(value)
@@ -214,17 +238,40 @@ function createEventOps({ dataDir, churchTools, getRoles, getChecks = async () =
     if(!title || !device)fail('Bitte Gerät und Kurzbeschreibung eintragen.')
     if(!ISSUE_STATES.includes(body.status || 'open'))fail('Ungültiger Bearbeitungsstatus')
     if(!['normal','urgent'].includes(body.priority || 'normal'))fail('Ungültige Dringlichkeit')
+    const nonImplementationReason=body.nonImplementationReason===undefined?old?.nonImplementationReason || '':text(body.nonImplementationReason,2000)
+    if(body.status==='not_implemented' && !nonImplementationReason)fail('Bitte einen Grund für „Nicht umgesetzt“ eintragen.')
     const id=old?.id || crypto.randomUUID(), photo=photoData(body.photo), at=changedAt(old?.updatedAt)
     let photoName=old?.photo || ''
     if(photo){fs.mkdirSync(path.join(dataDir,'ops-photos'),{recursive:true});photoName=crypto.randomUUID()+'.'+photo.ext;fs.writeFileSync(path.join(dataDir,'ops-photos',photoName),photo.bytes,{mode:0o600})}
-    const item={id,title,device,description,assignee,priority:body.priority || 'normal',status:body.status || 'open',photo:photoName,
+    const item={id,title,device,description,assignee,priority:body.priority || 'normal',status:body.status || 'open',nonImplementationReason,photo:photoName,
       owner:old?.owner || user.roleId,createdBy:old?.createdBy || text(user.name,100),createdAt:old?.createdAt || at,updatedBy:text(user.name,100),updatedAt:at,
       eventId:old?.eventId || selected()?.id || '',eventName:old?.eventName || selected()?.name || ''}
-    save(s=>{if(old)s.issues[s.issues.findIndex(x=>x.id===id)]=item;else s.issues.unshift(item)},user,`Mangel ${old?'aktualisiert':'erfasst'}: ${title}`)
+    save(s=>{
+      if(old){
+        s.issues[s.issues.findIndex(x=>x.id===id)]=item
+        const job=s.notionJobs?.[id]
+        if(job && old.status!==item.status){
+          job.localStatusVersion=(job.localStatusVersion||0)+1
+          job.reopenStatus=item.status==='resolved'?old.status:item.status
+          job.nextAt=0
+        }
+      }else {s.issues.unshift(item);(s.notionJobs ||= {})[id]={issue:structuredClone(item),attempts:0,nextAt:0,reopenStatus:['working','not_implemented'].includes(item.status)?item.status:'open'}}
+    },user,`Mangel ${old?'aktualisiert':'erfasst'}: ${title}`)
     return {ok:true,id}
   }
+  function importNotionIssues(user) {
+    if(!user.admin)fail('Nur der Admin darf vorhandene Mängel übertragen.',403)
+    const status=notion.status()
+    if(!status.enabled || !status.configured)fail('Bitte zuerst die Notion-Anbindung aktivieren.')
+    const missing=state.issues.filter(x=>!state.notionJobs?.[x.id])
+    if(missing.length)save(s=>{
+      s.notionJobs ||= {}
+      for(const issue of missing)s.notionJobs[issue.id]={issue:structuredClone(issue),attempts:0,nextAt:0,reopenStatus:['working','not_implemented'].includes(issue.status)?issue.status:'open'}
+    },user,`${missing.length} vorhandene Mängel zur Notion-Übertragung vorgemerkt`)
+    return {ok:true,queued:missing.length,...notion.status()}
+  }
   const photoFile=name=>/^[a-f0-9-]{36}\.(jpeg|png|webp)$/.test(name)?path.join(dataDir,'ops-photos',name):null
-  return {overview,mutateEvent,playback,ready,diagnostics,requirements,manual,issues,changeIssue,photoFile}
+  return {notion,importNotionIssues,overview,mutateEvent,playback,ready,diagnostics,requirements,manual,issues,changeIssue,photoFile}
 }
 function eventOpsRouter(ops, requireUser, requireAdmin) {
   const r=express.Router()
@@ -237,6 +284,9 @@ function eventOpsRouter(ops, requireUser, requireAdmin) {
   r.get('/diagnostics',requireAdmin,run(async(req,res)=>res.json(await ops.diagnostics(req.user))))
   r.post('/requirements',requireAdmin,run(async(req,res)=>{await ops.requirements(req.user,req.body);res.json({ok:true})}))
   r.post('/manual',requireAdmin,run(async(req,res)=>{await ops.manual(req.user,req.body);res.json({ok:true})}))
+  r.post('/notion/import',requireAdmin,run((req,res)=>res.json(ops.importNotionIssues(req.user))))
+  r.get('/notion',requireAdmin,run((req,res)=>res.json({ok:true,...ops.notion.status()})))
+  r.post('/notion',requireAdmin,run(async(req,res)=>res.json(await ops.notion.configure(req.body))))
   r.get('/issues',run((req,res)=>res.json(ops.issues(req.user))))
   r.post('/issues',run((req,res)=>res.json(ops.changeIssue(req.user,req.body))))
   r.get('/photos/:name',run((req,res)=>{const file=ops.photoFile(req.params.name);if(!file || !fs.existsSync(file))return res.status(404).end();res.sendFile(file)}))

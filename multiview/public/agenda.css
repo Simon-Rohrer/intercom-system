@@ -145,8 +145,20 @@
 body.can-copy .agenda-copy { display: inline-block; }
 
 /* Aufklappbare Punkte: Programmspalten und ausgeblendete Angaben */
-.agenda-item.has-sub { cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.agenda-item.has-sub:focus-visible { outline: 2px solid var(--k-accent); outline-offset: -2px; }
+.agenda-item.pickable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.agenda-item.pickable:focus-visible { outline: 2px solid var(--k-accent); outline-offset: -2px; }
+@media (hover: hover) {
+  .agenda-item.pickable:hover { background: var(--k-face-hi); }
+}
+/* Angeklickter Punkt (z. B. ein Lied): deutlich hervorgehoben, auch wenn er nicht läuft */
+.agenda-item.picked,
+.agenda-item.picked.done {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.12); /* ältere iPads ohne color-mix */
+  background: color-mix(in srgb, var(--k-accent) 22%, transparent);
+  box-shadow: inset 0 0 0 2px var(--k-accent);
+}
+.agenda-item.picked .agenda-item-title { color: var(--k-ink); }
 .agenda-item.has-sub .agenda-item-title::after {
   content: "";
   width: 0.45em;

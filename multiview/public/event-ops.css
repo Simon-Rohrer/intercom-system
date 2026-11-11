@@ -1,6 +1,8 @@
 /* Veranstaltungsbetrieb – gemeinsame Glaskarten für JMS Control und Dashboard. */
 .ops { --ops-text:var(--text,#f5f5f7); --ops-muted:var(--muted,rgba(235,235,245,.68)); --ops-line:var(--line,rgba(255,255,255,.12)); --ops-glass:var(--surface,var(--jms-glass,rgba(36,36,38,.65))); color:var(--ops-text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; min-width:0; margin:24px 0; }
 .ops *, .ops *::before, .ops *::after { box-sizing:border-box; }
+/* Dashboard „Admin“: zwischen den Gruppen (unter „Verwaltung“) über die ganze Breite */
+.ops.ops-in-groups { flex-basis:100%; width:100%; padding:0 4px; margin:12px 0 24px; }
 .ops [hidden] { display:none!important; }
 .ops h2,.ops h3,.ops p { margin:0; }
 .ops h2 { font-size:22px; font-weight:700; letter-spacing:-.025em; }
@@ -100,3 +102,21 @@
 .ops .ops-agenda-now.is-overrun { border-color:rgba(233,173,69,.6); background:rgba(233,173,69,.1); }
 .ops .ops-agenda-end { margin-top:12px; }
 @media(max-width:520px){.ops .ops-playback-start label { flex-basis:100%; }}
+
+/* Keep checkbox states visible despite Homepage's form reset and generic input styles. */
+.ops .ops-checkbox { cursor:pointer; min-height:44px; }
+.ops .ops-checkbox input[type="checkbox"] {
+  appearance:none; -webkit-appearance:none; padding:0; margin:0;
+  width:22px; height:22px; min-height:22px; border-radius:6px;
+  border:1px solid rgba(235,235,245,.45); background:rgba(128,128,140,.1);
+  cursor:pointer; box-shadow:none;
+}
+.ops .ops-checkbox input[type="checkbox"]:checked {
+  border-color:#7875ee; background-color:#6865db;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='m4 10 4 4 8-8' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position:center; background-size:18px 18px; background-repeat:no-repeat;
+}
+.ops .ops-checkbox input[type="checkbox"]:focus-visible { outline:2px solid #aaa7ff; outline-offset:3px; }
+@media(forced-colors:active) { .ops .ops-checkbox input[type="checkbox"] { appearance:auto; -webkit-appearance:checkbox; } }
+
+.ops .ops-pill.not_implemented { color:#e9ad45; background:rgba(233,173,69,.1); }

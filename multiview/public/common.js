@@ -33,11 +33,13 @@ function showCertHint() {
 export const TIME_ZONE = 'Europe/Berlin'
 
 /** Bestandteile einer Uhrzeit in deutscher Zeit (für Timecode u. Ä.). */
+// Testbilder und Uhren fragen häufig ab: ICU-Formatter einmal anlegen statt pro Bild.
+const berlinTimeFormatter = new Intl.DateTimeFormat('de-DE', {
+  timeZone: TIME_ZONE, hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
+})
 export function berlinParts(date = new Date()) {
   const parts = {}
-  for (const p of new Intl.DateTimeFormat('de-DE', {
-    timeZone: TIME_ZONE, hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
-  }).formatToParts(date)) parts[p.type] = p.value
+  for (const p of berlinTimeFormatter.formatToParts(date)) parts[p.type] = p.value
   return { hour: parts.hour === '24' ? '00' : parts.hour, minute: parts.minute, second: parts.second }
 }
 

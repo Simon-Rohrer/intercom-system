@@ -21,11 +21,13 @@ from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from urllib.request import HTTPSHandler, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 
-LAUNCHER_VERSION = "17"
+LAUNCHER_VERSION = "19"
 DEVICE_CERTIFICATE = Path("/etc/jms-device/client.crt")
 DEVICE_PRIVATE_KEY = Path("/etc/jms-device/client.key")
 SERVER_CA_CERTIFICATE = Path("/etc/jms-device/server-ca.crt")
 HEARTBEAT_INTERVAL_SECONDS = 4
+# Online/Intercom bleibt schnell; Hardwaremessung darf den Pi nicht ausbremsen.
+METRICS_INTERVAL_SECONDS = 15
 AUDIO_RUNTIME_WAIT_SECONDS = 3
 DISPLAY_RUNTIME_WAIT_SECONDS = 15
 DISPLAY_RUNTIME_SETTLE_SECONDS = 8
@@ -952,43 +954,67 @@ def parse_drm_engine_time_ns(raw_value: str) -> Optional[int]:
     return int(value * multiplier)
 
 
+def drm_fdinfo_paths():
+    """Enumerate only GPU descriptors; scandir avoids thousands of Path/stat/read calls."""
+    try:
+        with os.scandir("/proc") as processes:
+            for process in processes:
+                if not process.name.isdigit():
+                    continue
+                try:
+                    with os.scandir(process.path + "/fd") as descriptors:
+                        for descriptor in descriptors:
+                            try:
+                                target = os.readlink(descriptor.path)
+                                if not target.startswith("/dev/dri/"):
+                                    continue
+                            except OSError:
+                                pass  # Preserve fdinfo fallback when only the link cannot be read.
+                            yield Path(process.path) / "fdinfo" / descriptor.name
+                except OSError:
+                    # Keep the original behavior on systems with different proc permissions.
+                    yield from safe_glob(Path(process.path) / "fdinfo", "*")
+    except OSError:
+        return
+
+
 def read_gpu_engine_times() -> dict[str, int]:
     engine_times: dict[str, int] = {}
-    for process_dir in safe_glob(Path("/proc"), "[0-9]*"):
-        fdinfo_dir = process_dir / "fdinfo"
-        for fdinfo_path in safe_glob(fdinfo_dir, "*"):
-            try:
-                lines = fdinfo_path.read_text(encoding="utf-8").splitlines()
-            except (OSError, UnicodeDecodeError):
+    for fdinfo_path in drm_fdinfo_paths():
+        process_dir = fdinfo_path.parent.parent
+        try:
+            lines = fdinfo_path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        client_id = ""
+        parsed_engines: dict[str, int] = {}
+        for line in lines:
+            key, separator, value = line.partition(":")
+            if separator == "":
                 continue
-            client_id = ""
-            parsed_engines: dict[str, int] = {}
-            for line in lines:
-                key, separator, value = line.partition(":")
-                if separator == "":
-                    continue
-                key = key.strip()
-                value = value.strip()
-                if key == "drm-client-id":
-                    client_id = value
-                    continue
-                if not key.startswith("drm-engine-"):
-                    continue
-                time_ns = parse_drm_engine_time_ns(value)
-                if time_ns is not None:
-                    parsed_engines[key.removeprefix("drm-engine-")] = time_ns
-            if not parsed_engines:
+            key = key.strip()
+            value = value.strip()
+            if key == "drm-client-id":
+                client_id = value
                 continue
-            fd_key = fdinfo_path.name
-            client_key = client_id or fd_key
-            process_key = process_dir.name
-            for engine_name, time_ns in parsed_engines.items():
-                engine_times[f"{process_key}:{client_key}:{engine_name}"] = time_ns
+            if not key.startswith("drm-engine-"):
+                continue
+            time_ns = parse_drm_engine_time_ns(value)
+            if time_ns is not None:
+                parsed_engines[key.removeprefix("drm-engine-")] = time_ns
+        if not parsed_engines:
+            continue
+        fd_key = fdinfo_path.name
+        client_key = client_id or fd_key
+        process_key = process_dir.name
+        for engine_name, time_ns in parsed_engines.items():
+            engine_times[f"{process_key}:{client_key}:{engine_name}"] = time_ns
     return engine_times
-
 
 class SystemMetricsSampler:
     def __init__(self) -> None:
+        self._last_sample_at: Optional[float] = None
+        self._cached_metrics: dict[str, float] = {}
         self._previous_cpu_times = read_cpu_times()
         self._previous_gpu_engine_times = read_gpu_engine_times()
         self._previous_gpu_monotonic = time.monotonic()
@@ -1037,6 +1063,9 @@ class SystemMetricsSampler:
         return max(0.0, min(100.0, (busy_delta / elapsed_ns) * 100.0))
 
     def sample(self) -> dict[str, float]:
+        now = time.monotonic()
+        if self._last_sample_at is not None and now - self._last_sample_at < METRICS_INTERVAL_SECONDS:
+            return dict(self._cached_metrics)
         metrics: dict[str, float] = {}
         cpu = self.cpu_percent()
         gpu = self.gpu_percent()
@@ -1050,6 +1079,8 @@ class SystemMetricsSampler:
             metrics["memoryPercent"] = round(memory, 1)
         if temperature is not None:
             metrics["temperatureC"] = round(temperature, 1)
+        self._cached_metrics = dict(metrics)
+        self._last_sample_at = now
         return metrics
 
 

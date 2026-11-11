@@ -15,6 +15,12 @@ export const METER_DEFAULTS = { position: 'left', size: 1, length: 62, style: 'b
 export const BANK_DEFAULTS = { orientation: 'vertical', size: 1, style: 'bar', scale: true, fill: false, gap: 1, labels: true }
 
 const meters = new Set()
+let framePending = false
+function scheduleFrame() {
+  if (framePending || !meters.size) return
+  framePending = true
+  requestAnimationFrame(frame)
+}
 let levels = { inputs: {}, master: null }
 let receivedAt = 0
 
@@ -97,6 +103,7 @@ export function createMeter(key, options = {}, { bank = false, scaleBefore = fal
     peakAt: [0, 0],
     last: performance.now(),
   })
+  scheduleFrame()
   return el
 }
 
@@ -141,6 +148,7 @@ export function createMeterBank(channels, options) {
 }
 
 function frame(now) {
+  framePending = false;
   for (const m of meters) {
     if (!m.el.isConnected) {
       // noch nicht eingehängt oder schon entfernt – entfernte Anzeigen vergessen
@@ -170,6 +178,5 @@ function frame(now) {
       m.peaks[c].style.opacity = m.peak[c] > FLOOR ? '1' : '0'
     }
   }
-  requestAnimationFrame(frame)
+  scheduleFrame()
 }
-requestAnimationFrame(frame)

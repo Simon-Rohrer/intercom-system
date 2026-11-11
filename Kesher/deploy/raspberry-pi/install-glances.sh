@@ -59,6 +59,13 @@ fi
 # Das Paket bringt eigene Dienste mit (Server-Modus), die braucht es hier nicht
 systemctl disable --now glances.service 2>/dev/null || true
 
+# Package-independent lock keeps concurrent dashboard cards from collecting in parallel.
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+install -d -m 755 /usr/local/lib/jms-glances
+install -m 644 "${SCRIPT_DIR}/glances-serial.py" /usr/local/lib/jms-glances/glances-serial.py
+# Superseded by this service definition; preserve unrelated overrides.
+rm -f /etc/systemd/system/kesher-glances.service.d/performance.conf
+
 cat > /etc/systemd/system/kesher-glances.service <<UNIT
 [Unit]
 Description=Glances-Messwerte fuer das JMS-Dashboard
@@ -66,7 +73,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/bin/glances -w --disable-webui --disable-check-update -B 0.0.0.0 -p ${PORT}
+ExecStart=/usr/bin/python3 /usr/local/lib/jms-glances/glances-serial.py -w --disable-webui --disable-check-update --cached-time 15 -B 0.0.0.0 -p ${PORT}
 Restart=on-failure
 RestartSec=10
 # Nur der Server darf fragen (Homepage kommt über ihn); alle anderen werden abgewiesen

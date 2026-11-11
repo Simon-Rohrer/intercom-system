@@ -1,4 +1,4 @@
-import { layoutSize, isStandardLayout, TIME_ZONE, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder, watchLogin, loginKey, kesherTileUrl, kesherMissing, qrOrigin } from './common.js'
+import { layoutSize, isStandardLayout, TIME_ZONE, berlinParts, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder, watchLogin, loginKey, kesherTileUrl, kesherMissing, qrOrigin } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions } from './meters.js'
 import { createChatView } from './chat.js'
 import { chatFor, chatRoleFor } from './rights.js'
@@ -578,7 +578,9 @@ function updateOverlays() {
 }
 
 function tick() {
-  const text = new Date().toLocaleTimeString('de-DE', { timeZone: TIME_ZONE })
+  if (!clocks.size) return
+  const { hour, minute, second } = berlinParts()
+  const text = `${hour}:${minute}:${second}`
   for (const c of clocks) if (c.textContent !== text) c.textContent = text
 }
 setInterval(tick, 200)

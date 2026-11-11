@@ -13,6 +13,7 @@
   inset: 0;
   opacity: 0;
   transition: opacity 1s ease;
+  will-change: opacity;
   display: grid;
   place-items: center;
 }
@@ -73,11 +74,15 @@
 /* Einheitliche Bild-Folie (alle Quellen): unscharfer Hintergrund, Bild ganz und mittig im
    immer gleichen Rahmen, darunter bei Bedarf die Beschriftung im immer gleichen Stil */
 .ss-card { place-items: stretch; font-size: clamp(10px, min(2.3cqw, 4cqh), 52px); }
+/* Hintergrund: winziges Abbild (32 × 18), weich hochskaliert – wirkt unscharf ohne CSS-Filter,
+   der auf einem Pi 3 jede Überblendung ruckeln ließ */
 .ss-back {
   position: absolute;
-  inset: -6%;
-  background: #0b0d10 center / cover no-repeat;
-  filter: blur(30px) brightness(0.4) saturate(1.15);
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #0b0d10;
+  object-fit: cover;
 }
 .ss-frame {
   position: absolute;
@@ -88,7 +93,8 @@
   container-type: size;
 }
 .ss-card.has-caption .ss-frame { bottom: 20%; }
-.ss-card .ss-frame img {
+.ss-card .ss-frame img,
+.ss-card .ss-frame canvas {
   display: block;
   width: auto;
   height: auto;
@@ -141,8 +147,14 @@
 .ss-caption:not(:has(.ss-cap-when)) .ss-cap-title { font-size: 1.35em; }
 .ss-cap-meta { font-size: 0.85em; color: #c3c9d1; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Bild im Seitenverhältnis der Kachel (16:9 auf 16:9): randlos über die ganze Kachel */
+.ss-card.ss-full .ss-frame { inset: 0; }
+.ss-card.ss-full .ss-frame img,
+.ss-card.ss-full .ss-frame canvas { width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; border-radius: 0; box-shadow: none; }
+
 /* „Füllen“: Bild füllt die ganze Kachel (wird beschnitten), Beschriftung liegt unten darüber */
 .slideshow[data-fit="cover"] .ss-frame { inset: 0; }
-.slideshow[data-fit="cover"] .ss-card .ss-frame img { width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; border-radius: 0; box-shadow: none; }
+.slideshow[data-fit="cover"] .ss-card .ss-frame img,
+.slideshow[data-fit="cover"] .ss-card .ss-frame canvas { width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; border-radius: 0; box-shadow: none; }
 .slideshow[data-fit="cover"] .ss-blank { width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; }
 .slideshow[data-fit="cover"] .ss-caption { left: 0; right: 0; bottom: 0; height: 22%; padding: 0 4%; background: linear-gradient(to top, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0)); }

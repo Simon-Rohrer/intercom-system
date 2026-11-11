@@ -147,6 +147,63 @@ function loadImage(url) {
   )
 }
 
+/** Größe, in der ein Bild in die Kachel passt (Bildschirmpixel, höchstens 1920 breit) */
+function fitSize(w, h, box) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2)
+  const bw = Math.min((box.clientWidth || 1920) * dpr, 1920)
+  const bh = Math.min((box.clientHeight || 1080) * dpr, 1920)
+  const scale = Math.min(1, bw / w, bh / h)
+  return { width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)) }
+}
+
+/**
+ * Bild für die Folie: zu große Bilder (z. B. 5472 × 3648 aus der Kamera) werden einmal auf
+ * Bildschirmgröße verkleinert dekodiert. Ein Pi 3 kann Texturen über 2048 Pixel nicht direkt
+ * darstellen – die Überblendung ruckelte sonst. Ergebnis: <img> oder <canvas> mit
+ * naturalWidth/naturalHeight.
+ */
+async function loadPicture(url, box) {
+  const img = await loadImage(url)
+  const w = img.naturalWidth
+  const h = img.naturalHeight
+  if (!w || !h || typeof createImageBitmap !== 'function') return img
+  const size = fitSize(w, h, box)
+  if (w <= size.width * 1.25 && h <= size.height * 1.25) return img
+  try {
+    const bitmap = await createImageBitmap(img, { resizeWidth: size.width, resizeHeight: size.height, resizeQuality: 'high' })
+    const canvas = document.createElement('canvas')
+    canvas.width = size.width
+    canvas.height = size.height
+    canvas.getContext('2d').drawImage(bitmap, 0, 0)
+    bitmap.close?.()
+    canvas.naturalWidth = w
+    canvas.naturalHeight = h
+    return canvas
+  } catch {
+    return img
+  }
+}
+
+/** Unscharfer Hintergrund: winziges Abbild, das der Browser weich hochskaliert – ohne teuren CSS-Filter */
+function blurredBack(picture) {
+  const canvas = document.createElement('canvas')
+  canvas.width = 32
+  canvas.height = 18
+  const ctx = canvas.getContext('2d')
+  try {
+    ctx.drawImage(picture, 0, 0, canvas.width, canvas.height)
+  } catch {}
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  return canvas
+}
+
+/** Bild hat (fast) dasselbe Seitenverhältnis wie die Kachel, z. B. 16:9 auf 16:9 */
+export function sameShape(w, h, bw, bh) {
+  if (!w || !h || !bw || !bh) return false
+  return Math.abs(w / h / (bw / bh) - 1) < 0.04
+}
+
 function eventsSlide(events, o) {
   const box = el('div', 'ss-events')
   box.append(el('h2', 'ss-events-title', o.eventTitle))
@@ -195,14 +252,22 @@ export function createSlideshowView(options) {
    */
   async function cardSlide(url, caption) {
     const node = el('div', `ss-slide ss-card${caption ? ' has-caption' : ''}`)
-    const back = el('div', 'ss-back')
     const frame = el('div', 'ss-frame')
     if (url) {
-      const img = await loadImage(url)
-      back.style.backgroundImage = `url("${url.replace(/"/g, '%22')}")`
-      frame.append(img)
-    } else frame.append(el('div', 'ss-blank'))
-    node.append(back, frame)
+      const picture = await loadPicture(url, root)
+      // Passt das Bild genau in die Kachel (16:9 auf 16:9): ganz ausfüllen, ohne Rahmen und Hintergrund
+      if (!caption && sameShape(picture.naturalWidth, picture.naturalHeight, root.clientWidth, root.clientHeight)) node.classList.add('ss-full')
+      else {
+        const back = blurredBack(picture)
+        back.className = 'ss-back'
+        node.append(back)
+      }
+      frame.append(picture)
+    } else {
+      node.append(el('div', 'ss-back'))
+      frame.append(el('div', 'ss-blank'))
+    }
+    node.append(frame)
     if (caption) {
       const cap = el('div', 'ss-caption')
       if (caption.when) cap.append(el('div', 'ss-cap-when', caption.when))
