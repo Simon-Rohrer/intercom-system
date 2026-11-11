@@ -398,6 +398,13 @@ sudo ./install-chat-kiosk.sh --display-url screens
 
 Statt `cage` läuft dann `sway`, weil `cage` nur einen Monitor ansteuern kann. Es läuft ein einziger Chromium mit einem Vollbildfenster pro angeschlossenem Monitor, so können sich mehrere Monitore dieselbe Capture-Karte teilen. Wird ein Monitor ein- oder ausgesteckt, startet die Anzeige nach wenigen Sekunden neu. Kurz nach dem Start schaltet sie jeden Ausgang einmal aus und wieder ein, weil der VGA-Ausgang sonst trotz Signal schwarz bleiben kann. Eine feste Auflösung pro Anschluss steht in `/etc/kesher/chat-kiosk.env`, z. B. `KIOSK_OUTPUT_MODES="DP-2=1920x1080@60Hz"` (danach `sudo systemctl restart kesher-chat-kiosk`). Zurück zu einem einzelnen Monitor: `--display-url "http://127.0.0.1:8090/output.html?id=1"`.
 
+### Kesher-Kachel: Kanalgröße und Wiederanmeldung (11.11.2026)
+
+- **Kanal-Kacheln Klein / Normal / Groß:** in Kesher unter Einstellungen → Layout (pro Gerät), für eine Kesher-Kachel im Multiview im Editor unter „Kanal-Kacheln“ (geht als `?tileSize=small|large` an Kesher und hat dann Vorrang). In kleinen Kacheln bleibt der Kanalname immer sichtbar und bricht um; zuerst verschwinden Lautstärke und „Sprechen“, bei sehr kleinen Tasten auch Hören/Rufen. Unter der Mindestgröße (Klein 44 px, Normal 64 px, Groß 110 px Tastenhöhe) scrollen die Party Lines, statt weiter zu schrumpfen.
+- **Abgemeldete Kachel meldet sich selbst wieder an:** Eine Kesher-Kachel mit fester Rolle (Spiegel) bleibt nicht mehr auf dem Anmeldebildschirm stehen, sondern meldet sich nach 2 s, 5 s, 10 s, 20 s, 30 s, dann jede Minute neu an – mit derselben Rolle, als Zweitgerät (belegt die Rolle nie, verdrängt kein Gerät). Hilft das nicht oder meldet die Kachel sich gar nicht mehr, lädt JMS Control sie auf registrierten Anzeige-Geräten (Kiosk, Pi mit Recht `display`) nach 90 s neu (danach 3, 6, 12, 15 Minuten). Kacheln „angemeldeter Nutzer“ nur mit der noch gültigen eigenen Anmeldung, nie als jemand anderes.
+- **Kein Neuverbinden mehr bei einzelnen 401:** Kesher prüft jede Anfrage einer Station bei JMS Control (Zeitlimit 750 ms). Ein einzelnes abgelehntes Status-Abfragen führt nicht mehr sofort zu einer neuen Sitzung (früher: Close 1005 im Kesher-Log, „Verbinde …“ in der Kachel), erst wenn die Sitzung zweimal hintereinander abgelehnt wird.
+- Einspielen: Kesher neu bauen (Weboberfläche steckt im Kesher-Image) und Multiview-Container neu bauen.
+
 ### ChurchTools-Ablauf im Multiview
 
 Kacheln mit dem Inhalt **ChurchTools-Ablauf** zeigen den Ablauf des heutigen Events (laufender Punkt hervorgehoben). Der Multiview-Server ist dafür mit einem eigenen ChurchTools-Konto per REST-API verbunden.

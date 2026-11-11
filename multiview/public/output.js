@@ -1,4 +1,4 @@
-import { layoutSize, isStandardLayout, TIME_ZONE, berlinParts, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder, watchLogin, loginKey, kesherTileUrl, kesherMissing, qrOrigin } from './common.js'
+import { layoutSize, isStandardLayout, TIME_ZONE, berlinParts, connect, findByRef, sourceLabel, channelName, meterKeyFor, tileChannels, tallyOf, applyBox, keepTouchScrollInside, applyLayoutBorder, watchLogin, loginKey, kesherTileUrl, kesherMissing, kesherAutoRenew, kesherRenewDelayMs, qrOrigin } from './common.js'
 import { createMeter, createMeterBank, setLevels, meterOptions } from './meters.js'
 import { createChatView } from './chat.js'
 import { chatFor, chatRoleFor } from './rights.js'
@@ -60,11 +60,14 @@ let viewer = null
 let viewerReady = false
 // Ohne eigene Anmeldung (Kiosk am HDMI-Ausgang): wer gerade für diesen Multiview angemeldet ist
 let stationUser = null
+// Registriertes Anzeige-Gerät (Kiosk am Server, Pi): abgemeldete Kesher-Kacheln selbst neu laden
+let displayStation = false
 let currentOutputId = null
 fetch('/api/me', { cache: 'no-store' })
   .then((r) => r.json())
   .then((me) => {
     viewer = me?.user && !me.user.open ? me.user : null
+    displayStation = me?.device?.display === true
     // In einem anderen Tab (oder Dienst) an- oder abgemeldet: neu laden, damit Chat und
     // Intercom-Kacheln gleich für die neue Anmeldung gelten
     if (me?.access?.enabled) watchLogin(loginKey(me.user))
@@ -99,7 +102,7 @@ const healthViews = new Set() // Kacheln „Stream-Gesundheit“
 const slideshowViews = new Set() // Kacheln „Diashow“
 let slideshow = null
 let churchtools = { state: 'connecting', events: [] }
-const frames = new Map() // Kesher-Intercom: tile.id → { wrap, url }
+const frames = new Map() // Kesher-Intercom: tile.id → { wrap, iframe, url, tile, … }
 
 const ws = connect(
   (msg) => {
@@ -509,9 +512,10 @@ function syncFrames(layout) {
       iframe.src = url
       wrap.append(iframe)
       frameLayer.append(wrap)
-      frame = { wrap, url }
+      frame = { wrap, iframe, url, reported: false, lastReport: 0, signedOutSince: null, renewAttempt: 0 }
       frames.set(tile.id, frame)
     }
+    frame.tile = tile
     applyBox(frame.wrap, tile, layout)
     keep.add(tile.id)
   }
@@ -522,12 +526,53 @@ function syncFrames(layout) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Kesher-Kachel abgemeldet: Kesher meldet sich zuerst selbst wieder an (mit wachsendem
+// Abstand). Bleibt die Kachel trotzdem abgemeldet – oder meldet sie sich gar nicht mehr,
+// z. B. weil im Fenster die Anmeldeseite steht –, lädt JMS Control sie neu (neues
+// Spiegel-Ticket bzw. neue Geräteanmeldung). Nur für Kesher-Stände, die ihren Zustand melden
+// ("kesher:session"), sonst würde eine ältere Kesher-Version ständig neu geladen.
+// ---------------------------------------------------------------------------
+const KESHER_SILENT_MS = 150_000 // Kesher meldet sich alle 30 s
+
+function handleKesherMessage(event) {
+  const data = event?.data
+  if (!data || data.type !== 'kesher:session') return
+  for (const frame of frames.values()) {
+    if (!frame.iframe || frame.iframe.contentWindow !== event.source) continue
+    const now = Date.now()
+    frame.reported = true
+    frame.lastReport = now
+    if (data.signedIn === true) {
+      frame.signedOutSince = null
+      frame.renewAttempt = 0
+    } else if (frame.signedOutSince === null) frame.signedOutSince = now
+  }
+}
+
+function checkKesherFrames(now = Date.now()) {
+  for (const frame of frames.values()) {
+    if (!frame.reported || !kesherAutoRenew(frame.tile, { viewer, display: displayStation })) continue
+    const wait = kesherRenewDelayMs(frame.renewAttempt)
+    const signedOutTooLong = frame.signedOutSince !== null && now - frame.signedOutSince >= wait
+    const silent = now - frame.lastReport >= Math.max(wait, KESHER_SILENT_MS)
+    if (!signedOutTooLong && !silent) continue
+    frame.renewAttempt += 1
+    frame.signedOutSince = null
+    frame.lastReport = now // ab jetzt zählt die Stille neu
+    frame.iframe.src = frame.url // gleiche Adresse: lädt neu
+  }
+}
+setInterval(() => checkKesherFrames(), 15_000)
+
 function placeholder(text) {
   const p = document.createElement('div')
   p.className = 'placeholder'
   p.textContent = text
   return p
 }
+// Zustand der Kesher-Kacheln (siehe handleKesherMessage)
+window.addEventListener('message', handleKesherMessage)
 
 function attachSource(media, source, usedStreams) {
   const key = mediaKey(source)

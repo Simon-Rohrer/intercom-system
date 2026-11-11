@@ -1177,6 +1177,8 @@ function createAccess({
       // braucht): Wechselt man zu einer Rolle, braucht das Gerät die Freigabe doch
       grantable: gatewayActive() && !machine && !grant,
       generation: grant?.gen ?? null, expiresAt: grant?.expiresAt ?? (session?.admin ? session.expiresAt : machine?.expiresAt ?? null),
+      // Registrierte Anzeige-Station (Kiosk, Pi): darf ihre Kesher-Kacheln selbst wieder anmelden
+      display: Boolean(machine?.mode === 'station' && machine.capabilities?.includes('display')),
     }
   }
 

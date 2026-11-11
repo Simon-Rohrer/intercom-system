@@ -151,3 +151,96 @@ test('Kesher liegt auf derselben Adresse wie JMS Control (Port 8443), damit die 
   context.location.hostname = 'multiview.jms.de'
   assert.equal(new URL(context.kesherUrl({ ...tile, kesherRoleId: 'licht-multiview' })).origin, 'https://multiview.jms.de:8443')
 })
+
+test('Kachelgröße der Kanäle geht als tileSize an Kesher', () => {
+  const { url } = setup({ embedded: false })
+  const fixed = { ...tile, kesherRoleId: 'licht-1', kesherUser: 'Test' }
+  assert.equal(url({ ...fixed, kesherTileSize: 'large' }).searchParams.get('tileSize'), 'large')
+  assert.equal(url({ ...fixed, kesherTileSize: 'small' }).searchParams.get('tileSize'), 'small')
+  assert.equal(url(fixed).searchParams.has('tileSize'), false)
+  assert.equal(url({ ...fixed, kesherTileSize: 'riesig' }).searchParams.has('tileSize'), false)
+})
+
+function watchdog({ viewer = null, display = true, kesherRoleId = 'licht-1' } = {}) {
+  const env = setup({ viewer, embedded: false })
+  env.context.displayStation = display
+  const fixed = { ...tile, kesherRoleId, kesherUser: 'Multiview' }
+  env.context.syncFrames({ ...layout, tiles: [fixed] })
+  const frame = env.context.frames.get(fixed.id)
+  const win = {}
+  frame.iframe.contentWindow = win
+  frame.iframe.src = 'about:blank#unverändert'
+  const report = (signedIn) => env.context.handleKesherMessage({ source: win, data: { type: 'kesher:session', signedIn, connection: 'offline' } })
+  const reloaded = () => frame.iframe.src === frame.url
+  return { ...env, frame, report, reloaded }
+}
+
+test('Abgemeldete Kachel auf einem Anzeige-Gerät lädt nach einer Wartezeit neu (mit Backoff)', () => {
+  const { context, frame, report, reloaded } = watchdog()
+  report(false)
+  context.checkKesherFrames(Date.now() + 60_000) // Kesher versucht es zuerst selbst
+  assert.equal(reloaded(), false)
+  context.checkKesherFrames(Date.now() + 91_000)
+  assert.equal(reloaded(), true)
+  assert.equal(frame.renewAttempt, 1)
+  // wieder abgemeldet: jetzt erst nach 3 Minuten
+  frame.iframe.src = 'about:blank#unverändert'
+  report(false)
+  context.checkKesherFrames(Date.now() + 120_000)
+  assert.equal(reloaded(), false)
+  context.checkKesherFrames(Date.now() + 181_000)
+  assert.equal(reloaded(), true)
+  // angemeldet: Backoff zurückgesetzt
+  report(true)
+  assert.equal(frame.renewAttempt, 0)
+  assert.equal(frame.signedOutSince, null)
+})
+
+test('Angemeldete Kachel wird nicht neu geladen, eine stumme schon', () => {
+  const { context, frame, report, reloaded } = watchdog()
+  report(true)
+  context.checkKesherFrames(Date.now() + 100_000)
+  assert.equal(reloaded(), false)
+  // meldet sich nicht mehr (z. B. Anmeldeseite im Fenster)
+  context.checkKesherFrames(Date.now() + 151_000)
+  assert.equal(reloaded(), true)
+  assert.equal(frame.renewAttempt, 1)
+})
+
+test('Ohne Zustandsmeldung (ältere Kesher-Version) lädt JMS Control nie neu', () => {
+  const { context, reloaded } = watchdog()
+  context.checkKesherFrames(Date.now() + 60 * 60_000)
+  assert.equal(reloaded(), false)
+})
+
+test('„Angemeldeter Nutzer“ und Browser ohne Anmeldung melden nie als jemand anderes an', () => {
+  // Anzeige-Gerät ohne Anmeldung, Kachel „angemeldeter Nutzer“ (Stationsnutzer): nicht neu laden
+  const station = setup({ viewer: null, embedded: false, stationUser: { name: 'Test Licht', roleId: 'licht-2' } })
+  station.context.displayStation = true
+  station.context.syncFrames(layout)
+  const userFrame = station.context.frames.get(tile.id)
+  userFrame.iframe.contentWindow = {}
+  userFrame.iframe.src = 'about:blank#unverändert'
+  station.context.handleKesherMessage({ source: userFrame.iframe.contentWindow, data: { type: 'kesher:session', signedIn: false } })
+  station.context.checkKesherFrames(Date.now() + 60 * 60_000)
+  assert.equal(userFrame.iframe.src, 'about:blank#unverändert')
+  // kein Anzeige-Gerät, niemand angemeldet: nicht neu laden
+  const plain = watchdog({ display: false })
+  plain.report(false)
+  plain.context.checkKesherFrames(Date.now() + 60 * 60_000)
+  assert.equal(plain.reloaded(), false)
+  // angemeldet: die eigene zentrale Anmeldung darf erneut genutzt werden
+  const own = watchdog({ viewer: user, display: false })
+  own.report(false)
+  own.context.checkKesherFrames(Date.now() + 91_000)
+  assert.equal(own.reloaded(), true)
+})
+
+test('Nachrichten fremder Fenster werden ignoriert', () => {
+  const { context, frame, reloaded } = watchdog()
+  context.handleKesherMessage({ source: {}, data: { type: 'kesher:session', signedIn: false } })
+  context.handleKesherMessage({ source: frame.iframe.contentWindow, data: { type: 'anderes' } })
+  context.checkKesherFrames(Date.now() + 60 * 60_000)
+  assert.equal(reloaded(), false)
+  assert.equal(frame.reported, false)
+})

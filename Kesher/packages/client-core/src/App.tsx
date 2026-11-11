@@ -67,8 +67,16 @@ import {
 } from "./lib/streamDeckHardwareFeedback";
 import { withResolvedStreamDeckButtonLabel } from "./lib/streamDeckLabels";
 import { sortDirectUsersByRoleAndUsername } from "./lib/users";
-import { centralMirrorFor, resolveAutoLoginConfiguration, urlRequestsMirror } from "./lib/autoLogin";
+import {
+  centralMirrorFor,
+  confirmSessionRejected,
+  mirrorReloginDelayMs,
+  postEmbedSessionState,
+  resolveAutoLoginConfiguration,
+  urlRequestsMirror,
+} from "./lib/autoLogin";
 import { watchForNewVersion } from "./lib/versionWatch";
+import { resolveChannelTileSizeOverride } from "./lib/channelTileSize";
 import {
   centralSessionLogin,
   centralIdentityKey,
@@ -525,6 +533,36 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     };
   }, [centralChecked]);
   const sessionRecoveryInFlightRef = useRef(false);
+  // Kesher-Kachel in JMS Control (Spiegel einer Rolle, ?autoLogin=1&secondary=1&roleId=…):
+  // abgemeldet (Sitzung abgelaufen, Kesher neu gestartet, JMS Control kurz nicht erreichbar,
+  // vom Admin beendet) meldet sie sich selbst wieder an – mit derselben Rolle und demselben
+  // Namen aus der Adresse bzw. der noch gültigen zentralen Anmeldung des Betrachters. Ein
+  // Spiegel belegt die Rolle nie und übernimmt nichts, verdrängt also kein anderes Gerät.
+  const mirrorTile = useMemo(() => urlRequestsMirror(window.location.search), []);
+  const mirrorReloginRef = useRef<{ attempt: number; timer: number | null }>({
+    attempt: 0,
+    timer: null,
+  });
+  const scheduleMirrorRelogin = useCallback(() => {
+    if (!mirrorTile) return;
+    const retry = mirrorReloginRef.current;
+    if (retry.timer !== null) return;
+    const delay = mirrorReloginDelayMs(retry.attempt);
+    retry.attempt += 1;
+    console.info(`[App] Kesher-Kachel abgemeldet – neue Anmeldung in ${Math.round(delay / 1000)} s`);
+    retry.timer = window.setTimeout(() => {
+      retry.timer = null;
+      setAutoLoginAttempted(false);
+    }, delay);
+  }, [mirrorTile]);
+  useEffect(
+    () => () => {
+      const retry = mirrorReloginRef.current;
+      if (retry.timer !== null) window.clearTimeout(retry.timer);
+      retry.timer = null;
+    },
+    [],
+  );
   const sessionRecoveryRetryRef = useRef<number | null>(null);
   const isUserSettingsOpenRef = useRef(isUserSettingsOpen);
   useEffect(() => {
@@ -577,6 +615,19 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   // ── Settings & preferences ──
   const settings = useSettings();
 
+  // Größe der Kanal-Kacheln: Vorgabe der Kachel in JMS Control (?tileSize=…), sonst die des Geräts
+  const channelTileSizeOverride = useMemo(
+    () => resolveChannelTileSizeOverride(window.location.search),
+    [],
+  );
+  const channelTileSize = channelTileSizeOverride ?? settings.channelTileSize;
+  useEffect(() => {
+    document.documentElement.dataset.kesherTileSize = channelTileSize;
+    return () => {
+      delete document.documentElement.dataset.kesherTileSize;
+    };
+  }, [channelTileSize]);
+
   // ── Native desktop audio (Tauri only; noop in browser) ──
   const nativeAudio = useNativeAudio();
 
@@ -621,8 +672,11 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
     void (async () => {
       try {
-        // Signed out centrally (e.g. on another service): back to the central login page
-        if (centralIdentityRef.current && !(await fetchCentralIdentity())) {
+        // Signed out centrally (e.g. on another service): back to the central login page.
+        // Nicht in einer Kesher-Kachel: Dort zeigte das iframe sonst die Anmeldeseite von JMS
+        // Control (auch wenn JMS Control nur kurz nicht antwortete). Endet die zentrale Anmeldung
+        // wirklich, lädt die Prüfung alle 5 s die Kachel neu bzw. JMS Control die ganze Seite.
+        if (centralIdentityRef.current && !mirrorTile && !(await fetchCentralIdentity())) {
           window.location.assign(centralLoginUrl(window.location.pathname));
           return;
         }
@@ -701,7 +755,28 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         sessionRecoveryInFlightRef.current = false;
       }
     })();
-  }, [clearSessionRecoveryRetry]);
+  }, [clearSessionRecoveryRetry, mirrorTile]);
+
+  // Ein einzelnes 401 beim regelmäßigen Abfragen (Status alle 2 s, Pis alle 5 s) heißt noch
+  // nicht, dass die Sitzung vorbei ist (siehe confirmSessionRejected). Erst nachprüfen –
+  // sonst entstand bei jedem kurzen Aussetzer von JMS Control eine neue Sitzung, die
+  // Echtzeitverbindung wurde geschlossen (Close 1005) und die Kachel zeigte „Verbinde …“.
+  // Ist die Sitzung wirklich beendet, kommt ohnehin session_revoked über die Verbindung.
+  const currentTokenRef = useRef(token);
+  currentTokenRef.current = token;
+  const rejectedSessionCheckRef = useRef(false);
+  const recoverAfterRejectedPoll = useCallback(() => {
+    const current = currentTokenRef.current;
+    if (!current || rejectedSessionCheckRef.current) return;
+    rejectedSessionCheckRef.current = true;
+    void confirmSessionRejected(() => bootstrap(current), isUnauthorizedError)
+      .then((rejected) => {
+        if (rejected && currentTokenRef.current === current) recoverOperatorSession();
+      })
+      .finally(() => {
+        rejectedSessionCheckRef.current = false;
+      });
+  }, [recoverOperatorSession]);
 
   useEffect(
     () => () => {
@@ -825,10 +900,32 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       localStorage.removeItem(tokenStorageKey);
       setToken(null);
       setAppData(null);
+      // Kesher-Kachel: nicht auf dem Anmeldebildschirm stehen bleiben
+      scheduleMirrorRelogin();
     },
     onStreamDeckHardwareCommand: handleStreamDeckHardwareCommand,
     nativeAudio,
   });
+
+  // Kesher-Kachel in JMS Control: dem Fenster darüber melden, ob sie angemeldet ist
+  // (bei Änderung und alle 30 s). Bleibt sie trotz eigener Wiederanmeldung abgemeldet
+  // oder meldet sich gar nicht mehr, lädt JMS Control sie auf Anzeige-Geräten neu.
+  const embeddedInFrame = useMemo(() => {
+    try {
+      return window.parent !== window;
+    } catch {
+      return true;
+    }
+  }, []);
+  const embedSignedIn = Boolean(token && appData);
+  useEffect(() => {
+    if (!mirrorTile || !embeddedInFrame) return;
+    const report = () =>
+      postEmbedSessionState(window.parent, embedSignedIn, session.connectionState);
+    report();
+    const timer = window.setInterval(report, 30_000);
+    return () => window.clearInterval(timer);
+  }, [mirrorTile, embeddedInFrame, embedSignedIn, session.connectionState]);
 
   // ── Computed values ──
   const selectedInputGain = useMemo(
@@ -1525,6 +1622,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
                   ? roleOccupiedMessage(res)
                   : "Automatische Anmeldung fehlgeschlagen: Die Rolle ist schon angemeldet.",
               );
+              scheduleMirrorRelogin();
               return;
             }
             res = await loginTakeover(paramUsername, targetRoleId);
@@ -1537,12 +1635,15 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           setOperatorLoginError(
             e instanceof Error ? e.message : "Automatische Anmeldung fehlgeschlagen.",
           );
+          // Kesher-Kachel: später noch einmal (z. B. JMS Control oder Kesher startet gerade neu)
+          scheduleMirrorRelogin();
         } finally {
           autoLoginInFlightRef.current = false;
         }
       })();
     } else {
       setAutoLoginAttempted(true);
+      scheduleMirrorRelogin();
       // A centrally chosen role that Kesher no longer has: just the normal login form
       if (autoLoginConfig.requestedRole && !targetRoleId && !autoLoginConfig.central) {
         setOperatorLoginError(
@@ -1558,6 +1659,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     centralIdentity,
     settings.setUsername,
     settings.setRoleID,
+    scheduleMirrorRelogin,
   ]);
 
   // ── Central admin: Kesher admin without the PIN (signed ticket) ──
@@ -1605,6 +1707,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
           settings.setRoleID(data.self.roleId);
         }
         session.applyBootstrapData(data, true);
+        // Wieder angemeldet: die nächste Abmeldung beginnt wieder mit kurzer Wartezeit
+        mirrorReloginRef.current.attempt = 0;
       })
       .catch((error) => {
         if (authMode === "operator" && isUnauthorizedError(error)) {
@@ -1613,6 +1717,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         }
         sessionStorage.removeItem(tokenStorageKey);
         setToken(null);
+        scheduleMirrorRelogin();
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
@@ -1637,7 +1742,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       .catch((err) => {
         if (!cancelled) {
           if (authMode === "operator" && isUnauthorizedError(err)) {
-            recoverOperatorSession();
+            recoverAfterRejectedPoll();
             return;
           }
           setStreamDeckSettings(localDefaultStreamDeckSettings());
@@ -1656,7 +1761,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     return () => {
       cancelled = true;
     };
-  }, [authMode, token]);
+  }, [authMode, token, recoverAfterRejectedPoll]);
 
   // ── Status polling ──
   useEffect(() => {
@@ -1683,7 +1788,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       } catch (error) {
         if (cancelled) return;
         if (authMode === "operator" && isUnauthorizedError(error)) {
-          recoverOperatorSession();
+          recoverAfterRejectedPoll();
           return;
         }
         console.warn("Failed to load status", error);
@@ -1705,7 +1810,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       activeController?.abort();
       window.clearInterval(intervalId);
     };
-  }, [token, authMode, recoverOperatorSession]);
+  }, [token, authMode, recoverAfterRejectedPoll]);
 
   // ── Raspberry Pi monitoring polling ──
   useEffect(() => {
@@ -1748,7 +1853,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       } catch (error) {
         if (cancelled) return;
         if (authMode === "operator" && isUnauthorizedError(error)) {
-          recoverOperatorSession();
+          recoverAfterRejectedPoll();
           return;
         }
         setRaspberryPiStationsError(
@@ -1774,7 +1879,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
       activeController?.abort();
       window.clearInterval(intervalId);
     };
-  }, [token, authMode, recoverOperatorSession]);
+  }, [token, authMode, recoverAfterRejectedPoll]);
 
   useEffect(() => {
     if (!token || authMode !== "operator") return;
@@ -3007,6 +3112,9 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         onKeepScreenAwakeChange={settings.setKeepScreenAwake}
         showVolumeControls={settings.showVolumeControls}
         onShowVolumeControlsChange={settings.setShowVolumeControls}
+        channelTileSize={channelTileSize}
+        channelTileSizeLocked={channelTileSizeOverride !== null}
+        onChannelTileSizeChange={settings.setChannelTileSize}
         mediaSessionSupported={false}
         wakeLockSupported={false}
         wakeLockActive={false}
@@ -3512,6 +3620,9 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
         onKeepScreenAwakeChange={settings.setKeepScreenAwake}
         showVolumeControls={settings.showVolumeControls}
         onShowVolumeControlsChange={settings.setShowVolumeControls}
+        channelTileSize={channelTileSize}
+        channelTileSizeLocked={channelTileSizeOverride !== null}
+        onChannelTileSizeChange={settings.setChannelTileSize}
         mediaSessionSupported={session.mediaSessionSupported}
         wakeLockSupported={session.wakeLockSupported}
         wakeLockActive={session.wakeLockActive}

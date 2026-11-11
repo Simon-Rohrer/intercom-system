@@ -353,6 +353,38 @@ describe("StationIntercomView", () => {
     expect(onSwapPttAndReplyButtonsChange).toHaveBeenCalledWith(true);
   });
 
+  it("chooses the channel tile size in the layout settings", async () => {
+    const user = userEvent.setup();
+    const onChannelTileSizeChange = vi.fn();
+
+    const { rerender } = render(
+      <StationIntercomView
+        {...baseProps}
+        isUserSettingsOpen
+        channelTileSize="normal"
+        onChannelTileSizeChange={onChannelTileSizeChange}
+      />,
+    );
+
+    const group = screen.getByRole("radiogroup", { name: "Kanal-Kacheln" });
+    expect(within(group).getByRole("radio", { name: "Normal" })).toHaveAttribute("aria-checked", "true");
+    await user.click(within(group).getByRole("radio", { name: "Groß" }));
+    expect(onChannelTileSizeChange).toHaveBeenCalledWith("large");
+
+    // Vorgabe der Kachel in JMS Control (?tileSize=…): hier nicht änderbar
+    rerender(
+      <StationIntercomView
+        {...baseProps}
+        isUserSettingsOpen
+        channelTileSize="small"
+        channelTileSizeLocked
+        onChannelTileSizeChange={onChannelTileSizeChange}
+      />,
+    );
+    expect(screen.getByRole("radio", { name: "Klein" })).toBeDisabled();
+    expect(screen.getByText("Von der Kachel in JMS Control vorgegeben.")).toBeInTheDocument();
+  });
+
   it("renders chat content in a dedicated secondary column when provided", () => {
     const { container } = render(
       <StationIntercomView

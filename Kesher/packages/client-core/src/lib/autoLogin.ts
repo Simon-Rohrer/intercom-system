@@ -98,3 +98,66 @@ export function urlRequestsMirror(search: string): boolean {
   const on = (key: string) => params.get(key) === "1" || params.get(key) === "true";
   return on("autoLogin") && on("secondary") && Boolean((params.get("roleId") || params.get("roleName") || "").trim());
 }
+
+/**
+ * Wartezeit vor dem nächsten automatischen Anmeldeversuch einer Kesher-Kachel
+ * (Spiegel), die abgemeldet wurde: 2 s, 5 s, 10 s, 20 s, 30 s, danach jede Minute.
+ */
+export function mirrorReloginDelayMs(attempt: number): number {
+  const steps = [2_000, 5_000, 10_000, 20_000, 30_000];
+  if (!Number.isFinite(attempt) || attempt < 0) return steps[0];
+  return steps[Math.floor(attempt)] ?? 60_000;
+}
+
+/**
+ * Lehnt der Server eine Anfrage einmal mit 401 ab, ist die Sitzung nicht unbedingt
+ * vorbei: Kesher prüft jede Anfrage eines festen Geräts bei JMS Control nach, und
+ * antwortet JMS Control kurz zu langsam (Zeitlimit 750 ms), kommt ein einzelnes 401.
+ * Früher meldete sich die Kachel dann sofort neu an – neue Sitzung, Verbindung zu,
+ * „Verbinden …“. Erst wenn die Sitzung bei jedem weiteren Versuch abgelehnt wird,
+ * gilt sie als beendet (true). Antwortet der Server gar nicht, bleibt sie (false).
+ */
+export async function confirmSessionRejected(
+  check: () => Promise<unknown>,
+  isUnauthorized: (error: unknown) => boolean,
+  options: { attempts?: number; delayMs?: number; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<boolean> {
+  const attempts = Math.max(1, options.attempts ?? 2);
+  const delayMs = options.delayMs ?? 1500;
+  const sleep =
+    options.sleep ??
+    ((ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms)));
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    await sleep(delayMs * (attempt + 1));
+    try {
+      await check();
+      return false;
+    } catch (error) {
+      if (!isUnauthorized(error)) return false;
+    }
+  }
+  return true;
+}
+
+/** Nachricht einer eingebetteten Kesher-Kachel an JMS Control (Fenster darüber). */
+export type EmbedSessionMessage = {
+  type: "kesher:session";
+  signedIn: boolean;
+  connection: string;
+};
+
+/** Meldet JMS Control, ob die Kachel angemeldet ist – nur in einem eingebetteten Fenster. */
+export function postEmbedSessionState(
+  target: Pick<Window, "postMessage"> | null,
+  signedIn: boolean,
+  connection: string,
+): void {
+  if (!target) return;
+  const message: EmbedSessionMessage = { type: "kesher:session", signedIn, connection };
+  try {
+    // Nur ein Ja/Nein ohne Namen oder Token – JMS Control läuft auf einem anderen Port
+    target.postMessage(message, "*");
+  } catch {
+    // Fenster darüber schon geschlossen
+  }
+}
