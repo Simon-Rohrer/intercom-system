@@ -1,0 +1,10 @@
+# sudo docker compose -f scripts/led-vnc/docker-compose.yml up -d --build
+# Ziel anpassen: LED_VNC_TARGET=192.168.0.233:5900 (Standard)
+services:
+  led-vnc:
+    build: .
+    image: jms-led-vnc:latest
+    container_name: led-vnc
+    network_mode: host
+    restart: unless-stopped
+    command: ["127.0.0.1:6080", "${LED_VNC_TARGET:-192.168.0.233:5900}"]

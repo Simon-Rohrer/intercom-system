@@ -1,0 +1,10 @@
+[Unit]
+Description=JMS: abgehakte ToDos auf der Notion-Seite „JMS Server“ ins Archiv verschieben
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# root: der Notion-Schlüssel liegt im Datenordner von JMS Control (nur für root lesbar)
+ExecStart=/usr/bin/python3 /usr/local/lib/jms-notion-archiv/notion-archiv.py
+Nice=10

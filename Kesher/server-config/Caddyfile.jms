@@ -87,6 +87,14 @@
 		strict_sni_host insecure_off
 		protocols h1 h2
 	}
+	servers 192.168.0.230:8270 {
+		strict_sni_host insecure_off
+		listener_wrappers {
+			http_redirect
+			tls
+		}
+		protocols h1 h2
+	}
 }
 
 (lan_port) {
@@ -240,7 +248,7 @@
 # ---------------------------------------------------------------------------
 
 # Kesher (Container auf 127.0.0.1:8080)
-https://:8090, https://:8443, https://:8000, https://:3000, https://:61208, https://:9443, https://:8250 {
+https://:8090, https://:8443, https://:8000, https://:3000, https://:61208, https://:9443, https://:8250, https://:8270 {
 	bind 192.168.0.230
 	tls internal {
 		client_auth {
@@ -312,6 +320,17 @@ https://192.168.0.230:8250 {
 	import lan_port
 	import jms_auth router
 	import jms_router
+}
+
+# Bildschirm der LED-Wand-Steuerung im Browser (noVNC, Container led-vnc auf 127.0.0.1:6080) – nur Admin
+https://192.168.0.230:8270 {
+	import lan_port
+	import jms_auth ledvnc
+	@start path /
+	redir @start /vnc.html?autoconnect=1&resize=scale&reconnect=1 302
+	reverse_proxy 127.0.0.1:6080 {
+		import jms_clean
+	}
 }
 
 # ---------------------------------------------------------------------------
