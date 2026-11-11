@@ -242,6 +242,7 @@ Seit 24.10.2026 gibt es neben dem Kesher-Modul ein eigenes Companion-Modul **JMS
 - Presets: unter *Multiview <Name>* je Layout eine fertige Taste plus ◀/▶, unter *Bildschirm <Name>* je Multiview eine Taste.
 - Ab Version 1.1.0 – **Ablauf (ChurchTools)**: Aktionen **Ablauf: nächster Punkt**, **vorheriger Punkt**, **wieder nach Uhr** (wie die Bedienung der Ablauf-Kachel; Event „aktuell“ = das Event der Ablauf-Kachel, Kachel mit Bedienung zuerst, oder fest). Variablen `agenda_current`, `agenda_remaining` (m:ss), `agenda_deviation` („+4 min“), `agenda_next`, `agenda_next_responsible`; Rückmeldung grün/gelb/rot nach den Schwellen der Kachel. Presets unter *Ablauf*.
 - **Event-Ops**: Variablen `ops_overall`, `ops_problems`, `ops_first`, Rückmeldung grün/gelb/rot. Presets unter *Event-Ops*. Solange Companion den Zustand abfragt, laufen die Event-Ops-Prüfungen auch ohne Ops-Kachel (alle 30 s).
+- Ab Version 1.2.0 – **ProPresenter: Standard-Hintergrund**: Aktion legt den festgelegten Standard-Hintergrund auf die Media-Ebene, Rückmeldung „Standard-Hintergrund läuft“ (blau), Variable `pp_standard_background`. Preset unter *ProPresenter*. Details im Abschnitt *ProPresenter: Standard-Hintergrund*.
 - Die Diashow hat keine Server-Schnittstelle zum Weiterschalten (jede Kachel blättert selbst), darum keine Diashow-Tasten.
 
 Einrichten in Companion: *Connections* → **JMS Control** hinzufügen, Adresse `127.0.0.1` und Port `8090` stehen lassen (Companion läuft auf dem Server). Das Modul fragt den Zustand jede Sekunde über `GET /api/state` ab (enthält auch `agenda` und `ops`, vom Server gerechnet) und schaltet über die bekannten Companion-Endpunkte (`POST /api/output/<Multiview>/layout/<Layout>` usw., für den Ablauf `POST /api/churchtools/agenda/position` mit `{ eventId: 'current', action: 'next' }`).
@@ -261,6 +262,17 @@ Wird die Zielseite selbst gelöscht, erhält der Verweis den ungültigen Wert `d
 Status: `sudo cat /var/lib/jms-companion-page-links/status.json`; Protokoll: `journalctl -u companion`. `state: ready` bezeichnet einen geprüften Programmstand, `state: fallback` ein zurückgehaltenes Update. Die Quellen, Sperrdatei für die Parser-Abhängigkeit und Tests liegen in `scripts/companion-page-links/`. Wartung am Schutz selbst: diese Dateien nach `/usr/local/lib/jms-companion-page-links/` übernehmen und Companion neu starten. Rückweg zur vorherigen Einrichtung ist im Installationsbackup dokumentiert; zum vollständigen Abschalten den eigenen Systemd-Drop-in entfernen, ein gesichertes Original-Bundle einsetzen und nach `systemctl daemon-reload` Companion neu starten.
 
 Gezielte Tests: `selftest.cjs` prüft die echten Klassen des jeweiligen Bundles in Isolation; `test-update-guard.py` simuliert den bisherigen Patch, wiederholte Starts, das vollständige Ersetzen des Programmordners mit neu gepacktem Code und ein inkompatibles Update einschließlich vollständiger Programmwiederherstellung. Der ursprüngliche Seitenverweis-Patch wurde zusätzlich im laufenden Companion mit temporären Testseiten geprüft; alle Testseiten wurden entfernt.
+
+## ProPresenter: Standard-Hintergrund (11.11.2026)
+
+Eine Stream-Deck-Taste legt in ProPresenter einen festen Hintergrund (z. B. den blauen `color-waves-blue-hd` aus *FAVORITEN Lichttechnik*) auf die Media-Ebene. Der Text auf der Folien-Ebene bleibt, wie er ist.
+
+- **Festlegen (Admin):** *Einstellungen → ProPresenter → Standard-Hintergrund → Medium auswählen …*. JMS Control lädt dazu alle Media-Playlists aus ProPresenter (nur lesend: `GET /v1/media/playlists` und `/v1/media/playlist/<uuid>`), nach Playlist gruppiert, mit Suchfeld. Gespeichert wird `config.propresenter.standardBackground = { playlistUuid, itemUuid, name, playlistName }`. *Jetzt einschalten* probiert es sofort aus, *Entfernen* hebt die Festlegung auf.
+- **Taste:** Companion-Modul *JMS Control* ab 1.2.0, Preset *ProPresenter → Standard-Hintergrund* (Aktion „ProPresenter: Standard-Hintergrund“, leuchtet blau, solange er läuft). Alternativ Generic HTTP: `POST /api/propresenter/standard-background` (für feste Geräte auch GET).
+- **Rechte:** wie die Foliensteuerung – Admin, Rolle mit *Folien steuern* oder festes Gerät mit Recht *Steuern* (z. B. *Companion-JMS-Control*).
+- **Auslösen:** `GET /v1/media/playlist/<playlist>/<medium>/trigger`. Wurde das Medium in ProPresenter in eine andere Playlist verschoben oder neu importiert, sucht JMS Control es über die ID bzw. den Namen in allen Media-Playlists; ist es gar nicht mehr da, meldet die Taste „… bitte unter Einstellungen → ProPresenter neu wählen“ (im Companion-Log).
+- **Mit den Ebenen-Tasten (pp-layers):** Nach dem Einschalten gilt der Standard-Hintergrund als das, was auf der Media-Ebene läuft. Media aus/ein bringt ihn zurück – auch nach „Clear“ direkt in ProPresenter – und nicht den Lied-Hintergrund von vorher.
+- **Rückmeldung:** `GET /api/state` enthält `standardBackground: { configured, name, playlist, active }`. `active` = Media-Ebene sichtbar und dort läuft dieses Medium (gleiche ID oder gleicher Name ohne Endung; der laufende Hintergrund wird höchstens alle 3 s abgefragt).
 
 ## YouTube Live
 

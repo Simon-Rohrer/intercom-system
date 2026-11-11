@@ -2494,3 +2494,15 @@ details.ss-areas > summary { min-height: 32px; line-height: 32px; }
   .profile-shortcuts-divider { width: calc(100% - 24px); }
   .profile-multiviews { padding-top: 16px; }
 }
+
+/* Einstellungen → ProPresenter: Standard-Hintergrund aus den Media-Playlists wählen */
+.pp-std-current { font-size: 14px; }
+.pp-std-picker { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.pp-std-list { max-height: 360px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.pp-std-list:empty { display: none; }
+.pp-std-group + .pp-std-group { border-top: 1px solid var(--line); }
+.pp-std-group > summary { padding: 9px 12px; font-size: 13px; font-weight: 600; color: var(--text-2); cursor: pointer; background: var(--surface-2); }
+.pp-std-item { display: block; width: 100%; padding: 8px 12px 8px 26px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.pp-std-item:hover { background: var(--accent-soft); }
+.pp-std-item.selected { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.pp-std-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

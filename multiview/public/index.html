@@ -7,7 +7,7 @@
   <title>JMS - Control</title>
   <link rel="icon" type="image/svg+xml" href="jms-logo.svg">
   <script src="theme-boot.js"></script>
-  <link rel="stylesheet" href="admin.css?v=20261030-avantis-grandma3">
+  <link rel="stylesheet" href="admin.css?v=20261111-standard-hintergrund">
   <link rel="stylesheet" href="meters.css">
   <link rel="stylesheet" href="chat.css">
   <link rel="stylesheet" href="agenda.css">
@@ -456,7 +456,23 @@
                 </label>
                 <div id="pp-status" class="atem-status"></div>
               </div>
-              <div class="callout">
+              <h3 class="insp-label" style="margin-top:18px">Standard-Hintergrund</h3>
+              <p class="muted small">Medium aus einer Media-Playlist, das die Stream-Deck-Taste <b>ProPresenter: Standard-Hintergrund</b> (Companion-Modul „JMS Control“) auf die Media-Ebene legt – z. B. der blaue Hintergrund. Der Text darüber bleibt, wie er ist.</p>
+              <div id="pp-std-current" class="pp-std-current"></div>
+              <div class="btn-row" style="margin-top:8px">
+                <button class="btn small" type="button" id="pp-std-choose">Medium auswählen …</button>
+                <button class="btn small" type="button" id="pp-std-test" hidden>Jetzt einschalten</button>
+                <button class="btn small link danger" type="button" id="pp-std-remove" hidden>Entfernen</button>
+                <span id="pp-std-result" class="muted small" style="align-self:center" aria-live="polite"></span>
+              </div>
+              <div id="pp-std-picker" class="pp-std-picker" hidden>
+                <label class="field"><span>Suchen</span>
+                  <input id="pp-std-search" type="search" placeholder="z. B. blue" spellcheck="false" autocomplete="off">
+                </label>
+                <p id="pp-std-info" class="muted small" style="margin:0"></p>
+                <div id="pp-std-list" class="pp-std-list"></div>
+              </div>
+              <div class="callout" style="margin-top:14px">
                 <b>Prediger-Seite fürs iPad/iPhone:</b> alle Folien antippen, Weiter/Zurück/Ausblenden – ohne Layout.
                 Im Safari öffnen und über <i>Teilen → „Zum Home-Bildschirm“</i> als App ablegen.
                 Clicker und Pfeiltasten schalten weiter, „B“ blendet aus.<br>
@@ -937,7 +953,7 @@
   <datalist id="atem-input-list"></datalist>
   <div id="toast" class="toast" hidden></div>
 
-  <script type="module" src="admin.js?v=20261102-notion-settings"></script>
+  <script type="module" src="admin.js?v=20261111-standard-hintergrund"></script>
   <script>
     // Menü (☰) auf schmalen Bildschirmen. Bewusst einfaches Skript ohne Modul: so geht das Menü
     // auch, wenn admin.js auf einem alten Gerät nicht (vollständig) läuft.

@@ -18,6 +18,7 @@ const { createEventOps, eventOpsRouter } = require('./event-ops')
 const { createOpsChecks } = require('./event-ops-checks')
 const { createOpsStatus, opsSummary } = require('./ops-status')
 const { createPpLayers, LAYERS: PP_LAYERS } = require('./pp-layers')
+const { normalizeStandardBackground, listMediaPlaylists, standardBackgroundState } = require('./pp-standard-background')
 const { createUplink, normalizeUplink } = require('./uplink')
 const { createAgendaPosition } = require('./agenda-position')
 const { agendaSummary, currentAgendaEvent } = require('./agenda-status')
@@ -122,6 +123,8 @@ function normalizeConfig(c) {
     propresenter: {
       host: String(c?.propresenter?.host ?? '').trim(),
       port: Number.isInteger(ppPort) && ppPort > 0 && ppPort < 65536 ? ppPort : 1025,
+      // Medium aus einer Media-Playlist für die Taste „Standard-Hintergrund“ (null = nicht festgelegt)
+      standardBackground: normalizeStandardBackground(c?.propresenter?.standardBackground),
     },
     sources: Array.isArray(c?.sources) ? c.sources : base.sources,
     layouts: Array.isArray(c?.layouts) ? c.layouts : base.layouts,
@@ -2834,18 +2837,21 @@ function restoreTarget() {
   return t?.presentation && t.index != null ? t : null
 }
 
+/** Befehl an ProPresenter (löst etwas aus) – nur für die Steuer-Routen unten. */
+async function ppSend(path, { method = 'GET', body } = {}) {
+  const r = await fetch(`${ppBase()}${path}`, {
+    method,
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(3000),
+  })
+  if (!r.ok) throw new Error(`ProPresenter antwortet mit HTTP ${r.status}`)
+}
+
 // Ebenen aus- und mit derselben Taste wieder einblenden (Companion) – siehe pp-layers.js
 const ppLayers = createPpLayers({
   get: ppGet,
-  send: async (path, { method = 'GET', body } = {}) => {
-    const r = await fetch(`${ppBase()}${path}`, {
-      method,
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(3000),
-    })
-    if (!r.ok) throw new Error(`ProPresenter antwortet mit HTTP ${r.status}`)
-  },
+  send: ppSend,
   slideTarget: restoreTarget,
   backgroundAt: async (t) => backgroundAt(t.presentation.uuid, await ppPresentation(t.presentation.uuid), t.index),
   load: () => {
@@ -2908,6 +2914,23 @@ app.post('/api/propresenter/control', requireTrusted, requireSlideOperator, asyn
     res.json({ ok: true })
   } catch (err) {
     res.status(502).json({ ok: false, error: err.message })
+  }
+})
+
+// Standard-Hintergrund (Einstellungen → ProPresenter) auf die Media-Ebene legen – Stream-Deck-Taste
+// im Companion-Modul „JMS Control“ (POST), Generic HTTP von Companion auch per GET.
+// Rechte wie die Foliensteuerung: Admin, Rolle mit „Folien steuern“ oder Gerät mit Recht „Steuern“.
+app.all('/api/propresenter/standard-background', requireTrusted, requireMutation, requireSlideOperator, async (req, res) => {
+  if (!ppBase()) return res.status(503).json({ ok: false, error: 'ProPresenter nicht eingerichtet' })
+  const std = config.propresenter.standardBackground
+  if (!std) return res.status(409).json({ ok: false, error: 'Kein Standard-Hintergrund festgelegt (Einstellungen → ProPresenter)' })
+  try {
+    await ppLayers.startMedia(std)
+    console.log(`ProPresenter: Standard-Hintergrund „${std.name}“ eingeschaltet (von ${req.ip})`)
+    requestProPresenterPoll()
+    res.json({ ok: true, name: std.name })
+  } catch (err) {
+    res.status(err.status || 502).json({ ok: false, error: err.name === 'TimeoutError' ? 'ProPresenter antwortet nicht' : err.message })
   }
 })
 
@@ -3123,6 +3146,16 @@ app.get('/api/propresenter/playlists', requireUser, async (req, res) => {
   }
 })
 
+// Media-Playlists mit ihren Einträgen für die Auswahl „Standard-Hintergrund“ (nur lesend)
+app.get('/api/propresenter/media-playlists', requireAdmin, async (req, res) => {
+  if (!ppBase()) return res.json({ ok: false, error: 'ProPresenter ist nicht eingerichtet', playlists: [] })
+  try {
+    res.json({ ok: true, playlists: await listMediaPlaylists(ppGet) })
+  } catch (err) {
+    res.json({ ok: false, error: `ProPresenter nicht erreichbar (${err.message})`, playlists: [] })
+  }
+})
+
 app.get('/api/propresenter/thumb/:uuid/:index', requireTrusted, requireDisplayReader, async (req, res) => {
   const base = ppBase()
   if (!base) return res.status(503).end()
@@ -3293,6 +3326,8 @@ app.get('/api/state', requireTrusted, requireDisplayReader, (req, res) => {
     // Ablauf der Ablauf-Kachel (laufender Punkt, Restzeit, Abweichung) und Event-Ops-Ampel für Companion
     agenda: agendaSummary({ ct: churchTools.snapshot(), positions: agendaPosition.snapshot().positions, config }),
     ops: opsSummary(opsStatus.snapshot()),
+    // Standard-Hintergrund: festgelegt? läuft er gerade auf der Media-Ebene? (Companion-Rückmeldung)
+    standardBackground: standardBackgroundState(config.propresenter.standardBackground, ppState, ppLayers.seen.media),
   })
 })
 

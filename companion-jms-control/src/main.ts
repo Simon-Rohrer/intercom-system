@@ -14,6 +14,7 @@ import {
   CURRENT_EVENT,
   EMPTY_AGENDA,
   EMPTY_OPS,
+  EMPTY_STANDARD_BACKGROUND,
   SCREEN_OFF,
   agendaLevelIs,
   apiPath,
@@ -26,6 +27,8 @@ import {
   parseState,
   screenChoices,
   screenShows,
+  standardBackgroundActive,
+  standardBackgroundName,
   statusVariables,
   variableId,
   type JmsState,
@@ -52,7 +55,9 @@ const AGENDA_STEPS = {
   agenda_previous: { action: "previous", name: "Ablauf: vorheriger Punkt" },
   agenda_auto: { action: "auto", name: "Ablauf: wieder nach Uhr" },
 } as const;
-const EMPTY: JmsState = { layouts: [], outputs: [], screens: [], agenda: EMPTY_AGENDA, ops: EMPTY_OPS };
+// ProPresenter: Standard-Hintergrund läuft (blau – meist ist der blaue Hintergrund gemeint)
+const STANDARD_BG_STYLE = { bgcolor: combineRgb(0, 90, 200), color: combineRgb(255, 255, 255) };
+const EMPTY: JmsState = { layouts: [], outputs: [], screens: [], agenda: EMPTY_AGENDA, ops: EMPTY_OPS, standardBackground: EMPTY_STANDARD_BACKGROUND };
 
 class JmsControlInstance extends InstanceBase<ModuleConfig> {
   private config: ModuleConfig = { host: "127.0.0.1", port: 8090, pollMs: 1000 };
@@ -131,11 +136,15 @@ class JmsControlInstance extends InstanceBase<ModuleConfig> {
       this.signature = signature;
       this.defineAll();
     }
-    const values: Record<string, string | number | boolean> = { connected: true, ...statusVariables(state) };
+    const values: Record<string, string | number | boolean> = {
+      connected: true,
+      ...statusVariables(state),
+      pp_standard_background: standardBackgroundName(state),
+    };
     for (const o of state.outputs) values[variableId("multiview", o.nr)] = o.layout ?? "";
     for (const s of state.screens) values[variableId("bildschirm", s.nr)] = s.output ?? "aus";
     this.setVariableValues(values);
-    this.checkFeedbacks("layout_active", "screen_output", "agenda_level", "agenda_manual", "ops_level");
+    this.checkFeedbacks("layout_active", "screen_output", "agenda_level", "agenda_manual", "ops_level", "pp_standard_background_active");
   }
 
   private async run(path: string, body?: unknown): Promise<void> {
@@ -183,6 +192,15 @@ class JmsControlInstance extends InstanceBase<ModuleConfig> {
         ],
         callback: async (event) => {
           await this.run(apiPath("screen", String(event.options.screen), "output", String(event.options.output)));
+        },
+      },
+      // Welches Medium, legt der Admin in JMS Control fest (Einstellungen → ProPresenter → Standard-Hintergrund)
+      pp_standard_background: {
+        name: "ProPresenter: Standard-Hintergrund",
+        description: "Legt den in JMS Control festgelegten Standard-Hintergrund auf die Media-Ebene; der Text darüber bleibt.",
+        options: [],
+        callback: async () => {
+          await this.run("/api/propresenter/standard-background");
         },
       },
     };
@@ -242,6 +260,14 @@ class JmsControlInstance extends InstanceBase<ModuleConfig> {
         options: [{ type: "dropdown", id: "level", label: "Farbe", choices: OPS_LEVELS, default: "error" }],
         callback: (feedback) => opsLevelIs(this.state, String(feedback.options.level)),
       },
+      pp_standard_background_active: {
+        type: "boolean",
+        name: "ProPresenter: Standard-Hintergrund läuft",
+        description: "Leuchtet, solange der Standard-Hintergrund auf der Media-Ebene sichtbar ist",
+        defaultStyle: STANDARD_BG_STYLE,
+        options: [],
+        callback: () => standardBackgroundActive(this.state),
+      },
     };
 
     const variables: CompanionVariableDefinition[] = [{ variableId: "connected", name: "Mit JMS Control verbunden" }];
@@ -260,6 +286,7 @@ class JmsControlInstance extends InstanceBase<ModuleConfig> {
       { variableId: "ops_level", name: "Event-Ops: Ampel (ok / warn / error / unknown)" },
       { variableId: "ops_problems", name: "Event-Ops: Anzahl Probleme" },
       { variableId: "ops_first", name: "Event-Ops: wichtigstes Problem" },
+      { variableId: "pp_standard_background", name: "ProPresenter: Standard-Hintergrund (Name des Mediums)" },
     );
 
     const presets: CompanionPresetDefinitions = {};
@@ -365,6 +392,16 @@ class JmsControlInstance extends InstanceBase<ModuleConfig> {
         { feedbackId: "ops_level", options: { level: "warn" }, style: LEVEL_STYLES.warn },
         { feedbackId: "ops_level", options: { level: "error" }, style: LEVEL_STYLES.bad },
       ],
+    };
+
+    // ProPresenter: Standard-Hintergrund einschalten, leuchtet blau, solange er läuft
+    presets.pp_standard_background = {
+      type: "button",
+      category: "ProPresenter",
+      name: "ProPresenter: Standard-Hintergrund einschalten",
+      style: { text: "Standard-\\nHintergrund", size: "auto", color: white, bgcolor: dark },
+      steps: [{ down: [{ actionId: "pp_standard_background", options: {} }], up: [] }],
+      feedbacks: [{ feedbackId: "pp_standard_background_active", options: {}, style: STANDARD_BG_STYLE }],
     };
 
     this.setActionDefinitions(actions);

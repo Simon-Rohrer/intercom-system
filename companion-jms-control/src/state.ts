@@ -58,12 +58,22 @@ export interface OpsState {
   first: string;
 }
 
+/** Standard-Hintergrund von ProPresenter (Einstellungen → ProPresenter in JMS Control) */
+export interface StandardBackgroundState {
+  configured: boolean;
+  name: string;
+  playlist: string;
+  /** läuft gerade auf der Media-Ebene */
+  active: boolean;
+}
+
 export interface JmsState {
   layouts: StateLayout[];
   outputs: StateOutput[];
   screens: StateScreen[];
   agenda: AgendaState;
   ops: OpsState;
+  standardBackground: StandardBackgroundState;
 }
 
 export interface Choice {
@@ -80,6 +90,7 @@ export const EMPTY_AGENDA: AgendaState = {
   level: null, manual: false, next: null, events: [],
 };
 export const EMPTY_OPS: OpsState = { state: "connecting", overall: "unknown", problems: 0, errors: 0, first: "" };
+export const EMPTY_STANDARD_BACKGROUND: StandardBackgroundState = { configured: false, name: "", playlist: "", active: false };
 
 const text = (value: unknown): string => (typeof value === "string" ? value : "");
 const number = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) ? value : null);
@@ -122,6 +133,13 @@ function parseOps(value: unknown): OpsState {
   };
 }
 
+function parseStandardBackground(value: unknown): StandardBackgroundState {
+  const s = record(value);
+  if (!s) return EMPTY_STANDARD_BACKGROUND;
+  const configured = s.configured === true;
+  return { configured, name: text(s.name), playlist: text(s.playlist), active: configured && s.active === true };
+}
+
 export function parseState(body: unknown): JmsState {
   const data = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
   const list = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
@@ -135,6 +153,7 @@ export function parseState(body: unknown): JmsState {
       .map((s) => ({ ...s, outputId: s.outputId ?? null })),
     agenda: parseAgenda(data.agenda),
     ops: parseOps(data.ops),
+    standardBackground: parseStandardBackground(data.standardBackground),
   };
 }
 
@@ -226,6 +245,16 @@ export function statusVariables(state: JmsState): Record<string, string | number
     ops_problems: o.problems,
     ops_first: o.first,
   };
+}
+
+/** Rückmeldung „Standard-Hintergrund läuft“: festgelegt und gerade auf der Media-Ebene von ProPresenter */
+export function standardBackgroundActive(state: JmsState): boolean {
+  return state.standardBackground.configured && state.standardBackground.active;
+}
+
+/** Variable pp_standard_background: Name des Mediums, „nicht festgelegt“ ohne Einstellung */
+export function standardBackgroundName(state: JmsState): string {
+  return state.standardBackground.configured ? state.standardBackground.name || "ohne Namen" : "nicht festgelegt";
 }
 
 export function agendaLevelIs(state: JmsState, level: string): boolean {
