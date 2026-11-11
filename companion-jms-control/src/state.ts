@@ -64,6 +64,27 @@ export interface JmsState {
   screens: StateScreen[];
   agenda: AgendaState;
   ops: OpsState;
+  /** ProPresenter: was gerade sichtbar ist (Ebene → true); null = ProPresenter unbekannt */
+  pp: Record<string, boolean> | null;
+}
+
+/** ProPresenter-Ebenen zum Aus- und Einblenden (wie „Clear“ in ProPresenter, aber umschaltbar) */
+export const PP_LAYERS = [
+  { id: "all", label: "Alles", short: "ALLES" },
+  { id: "slide", label: "Folie (Text)", short: "TEXT" },
+  { id: "media", label: "Media (Hintergrund)", short: "HINTER-\\nGRUND" },
+  { id: "audio", label: "Audio", short: "AUDIO" },
+  { id: "messages", label: "Meldungen", short: "MELDUNG" },
+  { id: "props", label: "Props", short: "PROPS" },
+  { id: "announcements", label: "Ankündigungen", short: "ANKÜN-\\nDIGUNG" },
+  { id: "video_input", label: "Video-Eingang", short: "VIDEO-\\nEINGANG" },
+] as const;
+
+/** Ist die Ebene sichtbar? „Alles“: irgendeine Ebene sichtbar */
+export function ppLayerVisible(state: JmsState, layer: string): boolean {
+  if (!state.pp) return false;
+  if (layer === "all") return Object.values(state.pp).some(Boolean);
+  return state.pp[layer] === true;
 }
 
 export interface Choice {
@@ -135,7 +156,14 @@ export function parseState(body: unknown): JmsState {
       .map((s) => ({ ...s, outputId: s.outputId ?? null })),
     agenda: parseAgenda(data.agenda),
     ops: parseOps(data.ops),
+    pp: parsePpLayers(data.propresenter),
   };
+}
+
+function parsePpLayers(value: unknown): Record<string, boolean> | null {
+  const layers = (value as { layers?: unknown } | null)?.layers;
+  if (!layers || typeof layers !== "object") return null;
+  return Object.fromEntries(Object.entries(layers as Record<string, unknown>).map(([k, v]) => [k, v === true]));
 }
 
 export function layoutChoices(state: JmsState): Choice[] {

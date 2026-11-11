@@ -29,5 +29,16 @@ Schaltet die Multiviews von JMS Control (Multiview-Server) per Stream Deck um un
 - **Rückmeldung „Event-Ops: Ampel zeigt“** (grün/gelb/rot/unbekannt).
 - **Presets** unter „Event-Ops“: Ampel mit Anzahl, wichtigstes Problem.
 
+## ProPresenter Ein/Aus
+
+- **Aktion „ProPresenter: Ebene aus/ein (umschalten)“**: Ist die Ebene sichtbar, wird sie ausgeblendet
+  (wie „Clear“). Ist sie aus, blendet dieselbe Taste wieder ein, was vorher lief. Ebenen: Alles, Folie
+  (Text), Media (Hintergrund), Audio, Meldungen, Props, Ankündigungen, Video-Eingang.
+- Wiedereinblenden: Text = zuletzt gezeigte Folie; Hintergrund = die Folie, die ihn gestartet hat (der
+  Text kommt danach wieder darüber), sonst das Medium aus seiner Media-Playlist; Audio = aus seiner
+  Audio-Playlist an derselben Stelle; Meldungen/Props = die vorher aktiven. Das Video beginnt dabei von vorn.
+- **Rückmeldung „ProPresenter: Ebene ist sichtbar“**, Variablen `$(jms-control:pp_slide)` usw. (ein/aus).
+- **Presets** unter „ProPresenter Ein/Aus“: je Ebene eine Taste (grün = sichtbar, dunkelrot = aus).
+
 Die Verbindung meldet sich mit dem Geräteschlüssel `jms-device.key` neben dem Modul an
 (festes Gerät „Companion-JMS-Control“, Steuerrechte nur für den Multiview).

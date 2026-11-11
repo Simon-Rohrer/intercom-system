@@ -14,6 +14,7 @@ import {
   CURRENT_EVENT,
   EMPTY_AGENDA,
   EMPTY_OPS,
+  PP_LAYERS,
   SCREEN_OFF,
   agendaLevelIs,
   apiPath,
@@ -24,6 +25,7 @@ import {
   opsLevelIs,
   outputChoices,
   parseState,
+  ppLayerVisible,
   screenChoices,
   screenShows,
   statusVariables,
@@ -52,7 +54,11 @@ const AGENDA_STEPS = {
   agenda_previous: { action: "previous", name: "Ablauf: vorheriger Punkt" },
   agenda_auto: { action: "auto", name: "Ablauf: wieder nach Uhr" },
 } as const;
-const EMPTY: JmsState = { layouts: [], outputs: [], screens: [], agenda: EMPTY_AGENDA, ops: EMPTY_OPS };
+const EMPTY: JmsState = { layouts: [], outputs: [], screens: [], agenda: EMPTY_AGENDA, ops: EMPTY_OPS, pp: null };
+// ProPresenter-Ebene: sichtbar = grün, ausgeblendet = dunkelrot (wie die Clear-Tasten)
+const PP_VISIBLE_STYLE = { bgcolor: combineRgb(0, 150, 60), color: combineRgb(255, 255, 255) };
+const PP_HIDDEN_STYLE = { bgcolor: combineRgb(90, 10, 10), color: combineRgb(255, 255, 255) };
+const PP_LAYER_CHOICES = PP_LAYERS.map((l) => ({ id: l.id, label: l.label }));
 
 class JmsControlInstance extends InstanceBase<ModuleConfig> {
   private config: ModuleConfig = { host: "127.0.0.1", port: 8090, pollMs: 1000 };
@@ -134,8 +140,9 @@ class JmsControlInstance extends InstanceBase<ModuleConfig> {
     const values: Record<string, string | number | boolean> = { connected: true, ...statusVariables(state) };
     for (const o of state.outputs) values[variableId("multiview", o.nr)] = o.layout ?? "";
     for (const s of state.screens) values[variableId("bildschirm", s.nr)] = s.output ?? "aus";
+    for (const l of PP_LAYERS) values[`pp_${l.id}`] = state.pp ? (ppLayerVisible(state, l.id) ? "ein" : "aus") : "?";
     this.setVariableValues(values);
-    this.checkFeedbacks("layout_active", "screen_output", "agenda_level", "agenda_manual", "ops_level");
+    this.checkFeedbacks("layout_active", "screen_output", "agenda_level", "agenda_manual", "ops_level", "pp_layer_visible");
   }
 
   private async run(path: string, body?: unknown): Promise<void> {
@@ -199,6 +206,16 @@ class JmsControlInstance extends InstanceBase<ModuleConfig> {
       };
     }
 
+    // ProPresenter: Ebene aus- und mit derselben Taste wieder einblenden
+    actions.pp_layer_toggle = {
+      name: "ProPresenter: Ebene aus/ein (umschalten)",
+      description: "Sichtbar → ausblenden (wie Clear). Ausgeblendet → das Gemerkte wieder einblenden.",
+      options: [{ type: "dropdown", id: "layer", label: "Ebene", choices: PP_LAYER_CHOICES, default: "slide" }],
+      callback: async (event) => {
+        await this.run("/api/propresenter/control", { action: "toggle", layer: String(event.options.layer) });
+      },
+    };
+
     const feedbacks: CompanionFeedbackDefinitions = {
       layout_active: {
         type: "boolean",
@@ -235,6 +252,14 @@ class JmsControlInstance extends InstanceBase<ModuleConfig> {
         options: [],
         callback: () => this.state.agenda.manual,
       },
+      pp_layer_visible: {
+        type: "boolean",
+        name: "ProPresenter: Ebene ist sichtbar",
+        description: "„Alles“: irgendeine Ebene ist sichtbar",
+        defaultStyle: PP_VISIBLE_STYLE,
+        options: [{ type: "dropdown", id: "layer", label: "Ebene", choices: PP_LAYER_CHOICES, default: "slide" }],
+        callback: (feedback) => ppLayerVisible(this.state, String(feedback.options.layer)),
+      },
       ops_level: {
         type: "boolean",
         name: "Event-Ops: Ampel zeigt",
@@ -260,6 +285,7 @@ class JmsControlInstance extends InstanceBase<ModuleConfig> {
       { variableId: "ops_level", name: "Event-Ops: Ampel (ok / warn / error / unknown)" },
       { variableId: "ops_problems", name: "Event-Ops: Anzahl Probleme" },
       { variableId: "ops_first", name: "Event-Ops: wichtigstes Problem" },
+      ...PP_LAYERS.map((l) => ({ variableId: `pp_${l.id}`, name: `ProPresenter: ${l.label} (ein / aus)` })),
     );
 
     const presets: CompanionPresetDefinitions = {};
@@ -366,6 +392,18 @@ class JmsControlInstance extends InstanceBase<ModuleConfig> {
         { feedbackId: "ops_level", options: { level: "error" }, style: LEVEL_STYLES.bad },
       ],
     };
+
+    // ProPresenter: je Ebene eine Umschalttaste (grün = sichtbar, dunkelrot = ausgeblendet)
+    for (const l of PP_LAYERS) {
+      presets[`pp_toggle_${l.id}`] = {
+        type: "button",
+        category: "ProPresenter Ein/Aus",
+        name: `ProPresenter: ${l.label} aus/ein`,
+        style: { text: `${l.short}\\n$(jms-control:pp_${l.id})`, size: "auto", ...PP_HIDDEN_STYLE },
+        steps: [{ down: [{ actionId: "pp_layer_toggle", options: { layer: l.id } }], up: [] }],
+        feedbacks: [{ feedbackId: "pp_layer_visible", options: { layer: l.id }, style: PP_VISIBLE_STYLE }],
+      };
+    }
 
     this.setActionDefinitions(actions);
     this.setFeedbackDefinitions(feedbacks);

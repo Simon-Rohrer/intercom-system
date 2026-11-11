@@ -98,3 +98,16 @@ export function urlRequestsMirror(search: string): boolean {
   const on = (key: string) => params.get(key) === "1" || params.get(key) === "true";
   return on("autoLogin") && on("secondary") && Boolean((params.get("roleId") || params.get("roleName") || "").trim());
 }
+
+/**
+ * Pause before the URL auto-login is tried again after the session was lost or the
+ * attempt failed – only for an extra device (Multiview tile, secondary=1). Stations
+ * that may take over a role and the central login never retry on their own; null = no retry.
+ */
+export function autoLoginRetryDelay(
+  config: AutoLoginConfiguration,
+  attempt: number,
+): number | null {
+  if (!config.enabled || config.central || !config.secondary) return null;
+  return Math.min(60_000, 5_000 * 2 ** Math.min(Math.max(attempt, 0), 4));
+}

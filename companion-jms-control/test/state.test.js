@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import {
-  CURRENT_EVENT, EMPTY_AGENDA, EMPTY_OPS, agendaLevelIs, apiPath, eventChoices, fmtDeviation, fmtRemaining, layoutActive,
+  CURRENT_EVENT, EMPTY_AGENDA, EMPTY_OPS, PP_LAYERS, ppLayerVisible, agendaLevelIs, apiPath, eventChoices, fmtDeviation, fmtRemaining, layoutActive,
   listSignature, opsLevelIs, parseState, screenShows, statusVariables, SCREEN_OFF,
 } from "../dist/state.js";
 import { request, trustedBase } from "../dist/transport.js";
@@ -29,7 +29,7 @@ test("Bildschirm-Zuordnung inklusive „aus“", () => {
 });
 
 test("kaputte Antworten führen nicht zum Absturz", () => {
-  assert.deepEqual(parseState(null), { layouts: [], outputs: [], screens: [], agenda: EMPTY_AGENDA, ops: EMPTY_OPS });
+  assert.deepEqual(parseState(null), { layouts: [], outputs: [], screens: [], agenda: EMPTY_AGENDA, ops: EMPTY_OPS, pp: null });
   assert.deepEqual(parseState({ outputs: "x", layouts: [null, { id: 3 }] }).layouts, []);
   // Ältere Server ohne agenda/ops und kaputte Felder
   const broken = parseState({ agenda: { current: "x", next: 3, level: "lila", events: [null, { id: "" }, { name: "ohne id" }] }, ops: { overall: "grün", problems: "viele" } });
@@ -163,4 +163,15 @@ test("Ablauf-Tasten schicken JSON mit Geräteschlüssel, Fehlermeldung des Serve
   } finally {
     server.close();
   }
+});
+
+test("ProPresenter-Ebenen: sichtbar je Ebene, „Alles“ wenn irgendeine sichtbar ist", () => {
+  const state = parseState({ propresenter: { layers: { slide: false, media: true, audio: false } } });
+  assert.deepEqual(state.pp, { slide: false, media: true, audio: false });
+  assert.equal(ppLayerVisible(state, "media"), true);
+  assert.equal(ppLayerVisible(state, "slide"), false);
+  assert.equal(ppLayerVisible(state, "all"), true);
+  assert.equal(ppLayerVisible(parseState({ propresenter: { layers: { slide: false } } }), "all"), false);
+  assert.equal(ppLayerVisible(parseState({}), "slide"), false); // ProPresenter unbekannt
+  assert.deepEqual(PP_LAYERS.map((l) => l.id), ["all", "slide", "media", "audio", "messages", "props", "announcements", "video_input"]);
 });

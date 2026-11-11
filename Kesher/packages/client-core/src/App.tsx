@@ -67,7 +67,7 @@ import {
 } from "./lib/streamDeckHardwareFeedback";
 import { withResolvedStreamDeckButtonLabel } from "./lib/streamDeckLabels";
 import { sortDirectUsersByRoleAndUsername } from "./lib/users";
-import { centralMirrorFor, resolveAutoLoginConfiguration, urlRequestsMirror } from "./lib/autoLogin";
+import { autoLoginRetryDelay, centralMirrorFor, resolveAutoLoginConfiguration, urlRequestsMirror } from "./lib/autoLogin";
 import { watchForNewVersion } from "./lib/versionWatch";
 import {
   centralSessionLogin,
@@ -432,6 +432,8 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
   const [streamDeckWebHidBusy, setStreamDeckWebHidBusy] = useState(false);
   const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
   const autoLoginInFlightRef = useRef(false);
+  const autoLoginRetryRef = useRef(0);
+  const manualLogoutRef = useRef(false);
   // Central login of the JMS server (Multiview): checked once before any auto-login
   const [centralIdentity, setCentralIdentity] = useState<CentralIdentity | null>(null);
   const [centralChecked, setCentralChecked] = useState(() => !centralLoginAvailable());
@@ -1560,6 +1562,38 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
     settings.setRoleID,
   ]);
 
+  // ── Auto login via URL: try again on an extra device ──
+  // The Multiview tile (secondary=1) signs in once from its URL. If that session is lost
+  // later (expired, revoked, server or network outage) or the first attempt failed, the
+  // tile would stay on the login screen until someone reloads the page. Try again with a
+  // growing pause instead. Not for stations that take over a role, not after a manual logout.
+  const publicDataRef = useRef(publicData);
+  publicDataRef.current = publicData;
+  useEffect(() => {
+    if (token) {
+      autoLoginRetryRef.current = 0;
+      manualLogoutRef.current = false;
+      return;
+    }
+    const roles = publicDataRef.current?.roles;
+    if (!autoLoginAttempted || autoLoginInFlightRef.current || manualLogoutRef.current || !roles) {
+      return;
+    }
+    const config = resolveAutoLoginConfiguration(
+      window.location.search,
+      roles,
+      centralIdentityRef.current,
+    );
+    const delay = autoLoginRetryDelay(config, autoLoginRetryRef.current);
+    if (delay === null) return;
+    const timer = window.setTimeout(() => {
+      autoLoginRetryRef.current += 1;
+      setOperatorLoginError("");
+      setAutoLoginAttempted(false);
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [token, autoLoginAttempted, operatorLoginError]);
+
   // ── Central admin: Kesher admin without the PIN (signed ticket) ──
   useEffect(() => {
     if (
@@ -2019,6 +2053,7 @@ export function App({ onRequestNetworkSettings }: AppProps = {}) {
 
   async function doLogout() {
     if (!token) return;
+    manualLogoutRef.current = true;
     await logout(token);
     sessionStorage.removeItem(tokenStorageKey);
     localStorage.removeItem(tokenStorageKey);
