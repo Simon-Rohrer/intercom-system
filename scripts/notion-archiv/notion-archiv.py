@@ -55,6 +55,8 @@ class Notion:
                 if error.code == 429 and attempt < 3:
                     time.sleep(float(error.headers.get("Retry-After") or 2))
                     continue
+                # Grund von Notion mitgeben (steht sonst nirgends)
+                error.msg = f"{error.msg}: {error.read()[:400].decode('utf-8', 'replace')}"
                 raise
 
     def children(self, block_id):
@@ -110,7 +112,8 @@ def copy_block(notion, block):
     kind = block["type"]
     if kind not in COPYABLE:
         return None
-    content = {k: v for k, v in block.get(kind, {}).items() if k in WRITABLE_KEYS}
+    # Leere Felder (z. B. icon: null) lehnt Notion beim Anlegen ab – weglassen
+    content = {k: v for k, v in block.get(kind, {}).items() if k in WRITABLE_KEYS and v is not None}
     for key in ("rich_text", "caption"):
         if key in content:
             content[key] = clean_rich_text(content[key])
