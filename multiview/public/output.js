@@ -84,6 +84,7 @@ let bootId = null
 const agendaViews = new Set() // ChurchTools-Kacheln (Ablauf)
 const rosterViews = new Set() // ChurchTools-Kacheln (Dienstplan)
 let ctPosition = { type: 'ctposition', positions: {} } // von Hand gesetzte Ablauf-Punkte
+let ctHighlight = { type: 'cthighlight', highlights: {} } // hervorgehobene Ablauf-Punkte (Klick)
 const uplinkViews = new Set() // Upload-Kacheln (FRITZ!Box)
 let uplink = null
 const avantisViews = new Set() // Kacheln „Mischpult“ (Avantis)
@@ -132,6 +133,12 @@ const ws = connect(
     } else if (msg.type === 'ctposition') {
       ctPosition = msg
       for (const view of agendaViews) view.updatePosition(ctPosition)
+    } else if (msg.type === 'cthighlight') {
+      ctHighlight = msg
+      for (const view of agendaViews) view.updateHighlight(ctHighlight)
+    } else if (msg.type === 'ctscroll') {
+      // Fern-Scrollen (Companion): Monitore ohne Maus scrollen den Ablauf
+      for (const view of agendaViews) view.scroll(msg)
     } else if (msg.type === 'slideshow') {
       slideshow = msg
       for (const view of slideshowViews) view.update({ slideshow })
@@ -374,6 +381,7 @@ function buildTile(tile, layout, usedStreams) {
   } else if (tile.kind === 'churchtools') {
     const view = createAgendaView(tile)
     view.updatePosition(ctPosition)
+    view.updateHighlight(ctHighlight)
     view.update(churchtools)
     agendaViews.add(view)
     media.classList.add('chat')

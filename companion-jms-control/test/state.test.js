@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import {
-  CURRENT_EVENT, EMPTY_AGENDA, EMPTY_OPS, PP_LAYERS, ppLayerVisible, agendaLevelIs, apiPath, eventChoices, fmtDeviation, fmtRemaining, layoutActive,
-  listSignature, opsLevelIs, parseState, screenShows, statusVariables, SCREEN_OFF,
+  ALL_EVENTS, CURRENT_EVENT, EMPTY_AGENDA, EMPTY_OPS, PP_LAYERS, ppLayerVisible, agendaLevelIs, apiPath, eventChoices, fmtDeviation, fmtRemaining, layoutActive,
+  listSignature, opsLevelIs, parseState, screenShows, scrollEventChoices, statusVariables, SCREEN_OFF,
 } from "../dist/state.js";
 import { request, trustedBase } from "../dist/transport.js";
 
@@ -115,6 +115,9 @@ test("Event-Auswahl: zuerst „aktuelles Event“, neue Events legen die Listen 
   assert.deepEqual(choices.slice(1).map((c) => c.id), ["42", "43"]);
   assert.match(choices[1].label, /^Gottesdienst · So\., 01\.11\., 10:00$/);
   assert.equal(choices[2].label, "Jugend");
+  // Scroll-Tasten: zuerst „alle Ablauf-Kacheln“, dann dieselbe Auswahl
+  const scroll = scrollEventChoices(state);
+  assert.deepEqual(scroll.map((c) => c.id), [ALL_EVENTS, CURRENT_EVENT, "42", "43"]);
   // Restzeit/Punkt ändern die Signatur nicht, ein neues Event schon
   const ticked = parseState({ ...agendaBody, agenda: { ...agendaBody.agenda, remainingSec: 10, current: { index: 4, title: "Abendmahl" } } });
   assert.equal(listSignature(state), listSignature(ticked));

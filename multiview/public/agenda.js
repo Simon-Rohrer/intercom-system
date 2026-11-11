@@ -6,8 +6,10 @@
 const views = new Set()
 // Aufgeklappte Punkte (ChurchTools-IDs), bleiben beim Neuzeichnen offen
 const openItems = new Set()
-// Nach Klick oder eigenem Scrollen so lange nicht automatisch mitscrollen
+// Nach Klick, eigenem Scrollen oder Fern-Scrollen so lange nicht automatisch mitscrollen
 const MANUAL_MS = 30 * 1000
+// So lange bleibt ein hervorgehobener Punkt stehen (wie HIGHLIGHT_MAX_AGE_MS in agenda-highlight.js)
+const HIGHLIGHT_MAX_AGE_MS = 10 * 60 * 1000
 
 function el(tag, className, text) {
   const node = document.createElement(tag)
@@ -161,6 +163,21 @@ export function resolvePosition(items, position, now = Date.now()) {
 }
 
 /**
+ * Hervorgehobenen Punkt (Server-Nachricht „cthighlight“) auf den Ablauf abbilden: Index oder -1,
+ * wenn er nicht (mehr) passt oder älter als 10 Minuten ist. Wie bei resolvePosition findet die
+ * ChurchTools-ID den Punkt wieder, wenn sich der Ablauf verschoben hat.
+ */
+export function resolveHighlight(items, highlight, now = Date.now()) {
+  if (!highlight || !Number.isInteger(highlight.itemIndex)) return -1
+  const at = Date.parse(highlight.at)
+  if (!Number.isFinite(at) || now - at >= HIGHLIGHT_MAX_AGE_MS) return -1
+  const list = items || []
+  const fits = (i) => list[i] && list[i].type !== 'header' && (highlight.itemId == null || list[i].id === highlight.itemId)
+  if (fits(highlight.itemIndex)) return highlight.itemIndex
+  return highlight.itemId != null ? list.findIndex((item) => item.type !== 'header' && item.id === highlight.itemId) : -1
+}
+
+/**
  * Lage im Ablauf für die Statuszeile: laufender Punkt (nach Uhr oder von Hand gesetzt),
  * Restzeit in Sekunden, Abweichung vom Plan in Minuten (+ = hinter Plan) mit Stufe
  * (ok/warn/bad nach den Schwellen) und der nächste Punkt.
@@ -223,12 +240,12 @@ export function fmtDeviation(minutes) {
   return `${minutes > 0 ? '+' : minutes < 0 ? '−' : '±'}${Math.abs(minutes)} min`
 }
 
-/** Laufenden Punkt am Server setzen (itemIndex null = wieder nach Uhrzeit). Wirft mit Meldung. */
-export async function postPosition(eventId, itemIndex) {
-  const res = await fetch('/api/churchtools/agenda/position', {
+/** POST an eine Ablauf-Route; wirft mit Meldung und err.status. */
+async function postAgenda(path, body) {
+  const res = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ eventId, itemIndex }),
+    body: JSON.stringify(body),
   })
   let data = null
   try {
@@ -236,8 +253,21 @@ export async function postPosition(eventId, itemIndex) {
   } catch {
     data = null
   }
-  if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`)
+  if (!res.ok || data?.ok === false) throw Object.assign(new Error(data?.error || `HTTP ${res.status}`), { status: res.status })
   return data
+}
+
+/** Laufenden Punkt am Server setzen (itemIndex null = wieder nach Uhrzeit). Wirft mit Meldung. */
+export function postPosition(eventId, itemIndex) {
+  return postAgenda('/api/churchtools/agenda/position', { eventId, itemIndex })
+}
+
+/**
+ * Punkt für alle Kacheln des Events hervorheben (toggle: ein zweiter Klick auf denselben Punkt hebt
+ * auf; itemIndex null = aufheben). Die Antwort enthält alle Hervorhebungen. Wirft mit Meldung.
+ */
+export function postHighlight(eventId, itemIndex, toggle = false) {
+  return postAgenda('/api/churchtools/agenda/highlight', { eventId, itemIndex, toggle })
 }
 
 export const AGENDA_ACCENTS = ACCENTS
@@ -340,14 +370,35 @@ export function createAgendaView(tile) {
   const toast = el('div', 'agenda-toast')
   toast.hidden = true
   root.append(toast)
+  // Kleine Knöpfe unten rechts in der Liste – nur, wenn die Kachel bedienbar ist
+  const tools = el('div', 'agenda-tools')
+  const liveBtn = el('button', 'agenda-tool agenda-follow', 'Zum laufenden Punkt')
+  liveBtn.type = 'button'
+  liveBtn.title = 'Wieder automatisch zum laufenden Punkt mitscrollen'
+  liveBtn.hidden = true
+  const clearBtn = el('button', 'agenda-tool agenda-unpick', 'Hervorhebung aufheben')
+  clearBtn.type = 'button'
+  clearBtn.title = 'Hervorhebung auf allen Ablauf-Kacheln aufheben'
+  clearBtn.hidden = true
+  tools.append(liveBtn, clearBtn)
 
   let data = null
   let positions = {} // Event-ID → von Hand gesetzter Punkt (Server-Nachricht „ctposition“)
   let rows = [] // { li, item, bar, index }
   let live = false // nur beim heutigen Tag: laufenden Punkt markieren
   let shownId = null // gezeigtes Event, um beim Weiterrücken neu zu zeichnen
-  let pickedId = null // angeklickter Punkt (z. B. ein Lied) – nur hier hervorgehoben, nicht für alle
+  let shownItems = [] // Ablaufpunkte des gezeigten Events
+  let highlights = {} // Event-ID → hervorgehobener Punkt (Server-Nachricht „cthighlight“)
+  // Nur hier hervorgehoben, wenn das Gerät nicht für alle hervorheben darf ({ eventId, itemIndex, itemId, at })
+  let localPick = null
+  let shareHighlight = true // false, sobald der Server das Hervorheben ablehnt (keine Rechte)
+  let pickedIndex = -1 // gerade hervorgehobener Punkt (Index im Ablauf)
   let manualUntil = 0 // bis dahin kein automatisches Mitscrollen
+  let pauseTimer = null
+  // Bedienbar: Bedienung eingeschaltet oder an diesem Gerät geklickt/gescrollt (Maus, Touch)
+  let touched = false
+  let scrollTarget = 0 // Ziel des laufenden Fern-Scrollens (mehrere Tastendrücke kurz hintereinander)
+  let scrollUntil = 0
   let toastTimer = null
 
   function showToast(text) {
@@ -372,8 +423,80 @@ export function createAgendaView(tile) {
       if (shownId != null) setPosition(shownId, null)
     })
 
-  function pauseFollow() {
+  /** Mitscrollen anhalten; local = an diesem Gerät bedient (nicht per Fern-Scrollen) */
+  function pauseFollow(local = true) {
+    if (local) touched = true
     manualUntil = Date.now() + MANUAL_MS
+    clearTimeout(pauseTimer)
+    pauseTimer = setTimeout(() => {
+      // Pause vorbei: gleich wieder zum laufenden Punkt, nicht erst beim nächsten Takt
+      manualUntil = 0
+      updateTools()
+      if (root.isConnected) tick()
+    }, MANUAL_MS + 50)
+    updateTools()
+  }
+
+  /** Pause beenden und sofort zum laufenden Punkt scrollen */
+  function followLive() {
+    clearTimeout(pauseTimer)
+    manualUntil = 0
+    scrollUntil = 0
+    updateTools()
+    tick()
+  }
+
+  const listEl = () => body.querySelector('.agenda-list')
+  const operable = () => look.control || touched
+
+  function updateTools() {
+    liveBtn.hidden = !(operable() && live && rows.length > 0 && Date.now() < manualUntil)
+    clearBtn.hidden = !(operable() && pickedIndex >= 0)
+  }
+
+  liveBtn.addEventListener('click', (e) => {
+    e.stopPropagation()
+    followLive()
+  })
+  clearBtn.addEventListener('click', (e) => {
+    e.stopPropagation()
+    if (localPick && localPick.eventId === shownId) {
+      localPick = null
+      applyHighlight()
+    } else if (shownId != null && highlights[String(shownId)]) unpick(shownId)
+  })
+  for (const btn of [liveBtn, clearBtn]) btn.addEventListener('keydown', (e) => e.stopPropagation())
+
+  /** Hervorhebung am Server aufheben */
+  async function unpick(eventId) {
+    try {
+      const data = await postHighlight(eventId, null)
+      highlights = data.highlights || {}
+      applyHighlight()
+    } catch (err) {
+      showToast(`Hervorhebung nicht aufgehoben: ${err.message}`)
+    }
+  }
+
+  /** Hervorgehobenen Punkt markieren (Stand vom Server, sonst der nur hier angeklickte Punkt) */
+  function applyHighlight() {
+    const local = localPick && localPick.eventId === shownId ? resolveHighlight(shownItems, localPick) : -1
+    if (local < 0) localPick = null
+    pickedIndex = local >= 0 ? local : shownId == null ? -1 : resolveHighlight(shownItems, highlights[String(shownId)])
+    for (const r of rows) r.li.classList.toggle('picked', r.index === pickedIndex)
+    updateTools()
+  }
+
+  /** Hervorgehobenen Punkt ins Bild holen, falls er außerhalb des sichtbaren Bereichs liegt */
+  function revealPicked() {
+    const list = listEl()
+    const row = rows.find((r) => r.index === pickedIndex)
+    if (!list || !row || row.li.offsetParent === null) return
+    const top = row.li.offsetTop - list.offsetTop
+    const bottom = top + row.li.offsetHeight
+    if (top >= list.scrollTop && bottom <= list.scrollTop + list.clientHeight) return
+    pauseFollow(false)
+    list.scrollTo({ top: Math.max(0, top - Math.max(0, list.clientHeight - row.li.offsetHeight) / 2), behavior: 'smooth' })
   }
 
   /** Was beim Aufklappen erscheint: Programmspalten und ausgeblendete Angaben */
@@ -396,11 +519,30 @@ export function createAgendaView(tile) {
   // openItems merkt die Abweichung vom Standard (zu bzw. bei „immer aufgeklappt“ offen)
   const isOpen = (id) => look.openAll !== openItems.has(id)
 
-  /** Angeklickten Punkt hervorheben; ein zweiter Klick auf denselben nimmt es wieder weg */
-  function pick(row) {
-    pickedId = pickedId === row.item.id ? null : row.item.id
-    for (const r of rows) r.li.classList.toggle('picked', pickedId != null && r.item.id === pickedId)
+  /**
+   * Angeklickten Punkt auf allen Ablauf-Kacheln des Events hervorheben; ein zweiter Klick auf
+   * denselben nimmt es wieder weg. Darf das Gerät das nicht, nur hier hervorheben (wie früher).
+   */
+  async function pick(row) {
     pauseFollow()
+    const eventId = shownId
+    if (eventId == null) return
+    const pickLocally = () => {
+      const same = localPick && localPick.eventId === eventId && localPick.itemIndex === row.index
+      localPick = same ? null : { eventId, itemIndex: row.index, itemId: row.item.id ?? null, at: new Date().toISOString() }
+      applyHighlight()
+    }
+    if (!shareHighlight) return pickLocally()
+    try {
+      const data = await postHighlight(eventId, row.index, true)
+      localPick = null
+      highlights = data.highlights || {}
+      applyHighlight()
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) shareHighlight = false
+      pickLocally()
+      if (pickedIndex === row.index) showToast(`Nur hier hervorgehoben: ${err.message}`)
+    }
   }
 
   function toggle(row) {
@@ -414,8 +556,11 @@ export function createAgendaView(tile) {
 
   function message(text) {
     rows = []
+    shownItems = []
+    pickedIndex = -1
     body.replaceChildren(el('p', 'agenda-empty', text))
     renderStatus(null)
+    updateTools()
   }
 
   const view = {
@@ -432,6 +577,32 @@ export function createAgendaView(tile) {
     updatePosition(msg) {
       positions = msg?.positions || {}
       if (rows.length) tick()
+    },
+    /** Hervorgehobene Punkte aller Events (Server-Nachricht „cthighlight“) */
+    updateHighlight(msg) {
+      const before = pickedIndex
+      highlights = msg?.highlights || {}
+      if (!rows.length) return
+      applyHighlight()
+      // Woanders hervorgehoben: Punkt ins Bild holen (das Mitscrollen pausiert dann kurz)
+      if (pickedIndex >= 0 && pickedIndex !== before) revealPicked()
+    },
+    /** Fern-Scrollen (Server-Nachricht „ctscroll“): up/down um eine halbe Kachel, live = zum laufenden Punkt */
+    scroll(msg) {
+      if (!msg || (msg.eventId != null && String(msg.eventId) !== String(shownId))) return
+      const list = listEl()
+      if (!list || !rows.length) return
+      if (msg.action === 'live') return followLive()
+      const dir = msg.action === 'down' ? 1 : msg.action === 'up' ? -1 : 0
+      if (!dir) return
+      pauseFollow(false)
+      const now = Date.now()
+      // Mehrere Tastendrücke kurz hintereinander addieren sich (scrollTop hängt beim weichen Scrollen nach)
+      const from = now < scrollUntil ? scrollTarget : list.scrollTop
+      const step = Math.max(40, Math.round(list.clientHeight / 2))
+      scrollTarget = Math.max(0, Math.min(list.scrollHeight - list.clientHeight, from + dir * step))
+      scrollUntil = now + 700
+      list.scrollTo({ top: scrollTarget, behavior: 'smooth' })
     },
     tick,
     tickStatus,
@@ -530,6 +701,7 @@ export function createAgendaView(tile) {
 
     const list = el('ol', 'agenda-list')
     rows = []
+    shownItems = event.agenda.items
     for (const item of event.agenda.items) {
       if (item.type === 'header' && !look.sections) continue
       if (item.beforeEvent && !look.before) continue
@@ -582,7 +754,6 @@ export function createAgendaView(tile) {
       const row = { li, item, bar, index }
       rows.push(row)
       li.classList.add('pickable')
-      li.classList.toggle('picked', item.id != null && item.id === pickedId)
       li.tabIndex = 0
       li.setAttribute('role', 'button')
       if (lines.length) {
@@ -591,7 +762,8 @@ export function createAgendaView(tile) {
         li.classList.toggle('open', open)
         li.setAttribute('aria-expanded', String(open))
       }
-      // Klick: Punkt hervorheben (und bei Details auf-/zuklappen)
+      // Klick: Punkt auf allen Kacheln des Events hervorheben (und bei Details auf-/zuklappen);
+      // der Knopf ▶ setzt dagegen den laufenden Punkt (stopPropagation, kein Hervorheben)
       const activate = () => {
         pick(row)
         if (lines.length) toggle(row)
@@ -604,10 +776,11 @@ export function createAgendaView(tile) {
       })
     }
     // Eigenes Scrollen (Rad, Wischen) hält das Mitscrollen kurz an
-    list.addEventListener('wheel', pauseFollow, { passive: true })
-    list.addEventListener('touchstart', pauseFollow, { passive: true })
+    list.addEventListener('wheel', () => pauseFollow(), { passive: true })
+    list.addEventListener('touchstart', () => pauseFollow(), { passive: true })
     const keepScroll = body.querySelector('.agenda-list')?.scrollTop
-    body.replaceChildren(list)
+    body.replaceChildren(list, tools)
+    applyHighlight()
     if (keepScroll != null && Date.now() < manualUntil) {
       list.scrollTop = keepScroll
       tick()
@@ -618,6 +791,8 @@ export function createAgendaView(tile) {
   function tick(force = false) {
     // Laufendes Event vorbei oder nächstes begonnen: anderes Event zeigen
     if (data && (currentEvent()?.id ?? null) !== shownId) return render()
+    // Hervorhebung verfällt nach 10 Minuten (auch ohne Nachricht vom Server)
+    if (rows.length && pickedIndex >= 0) applyHighlight()
     if (!rows.length || !live) return
     const now = Date.now()
     const st = currentStatus(currentEvent())

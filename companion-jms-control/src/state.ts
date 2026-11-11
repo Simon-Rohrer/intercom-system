@@ -95,6 +95,8 @@ export interface Choice {
 export const SCREEN_OFF = "aus";
 /** Auswahl „aktuelles Event“: der Server nimmt das Event, das die Ablauf-Kachel gerade zeigt. */
 export const CURRENT_EVENT = "current";
+/** Auswahl „alle Ablauf-Kacheln“ beim Fern-Scrollen (egal, welches Event sie zeigen). */
+export const ALL_EVENTS = "all";
 
 export const EMPTY_AGENDA: AgendaState = {
   state: "unconfigured", eventId: null, event: "", hasAgenda: false, current: null, remainingSec: null, deviationMin: null,
@@ -190,6 +192,11 @@ export function eventChoices(state: JmsState): Choice[] {
     { id: CURRENT_EVENT, label: "Aktuelles Event (wie die Ablauf-Kachel)" },
     ...state.agenda.events.map((e) => ({ id: e.id, label: [e.name || e.id, day(e.start)].filter(Boolean).join(" · ") })),
   ];
+}
+
+/** Auswahl für die Scroll-Tasten: alle Ablauf-Kacheln (Standard), das aktuelle Event oder ein festes. */
+export function scrollEventChoices(state: JmsState): Choice[] {
+  return [{ id: ALL_EVENTS, label: "Alle Ablauf-Kacheln" }, ...eventChoices(state)];
 }
 
 /** Signatur der Auswahllisten: ändert sie sich, werden Aktionen, Rückmeldungen und Presets neu angelegt. */

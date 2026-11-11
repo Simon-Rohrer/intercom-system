@@ -15,12 +15,17 @@ Schaltet die Multiviews von JMS Control (Multiview-Server) per Stream Deck um un
 - **Aktionen „Ablauf: nächster Punkt“, „Ablauf: vorheriger Punkt“, „Ablauf: wieder nach Uhr“**: setzen den laufenden
   Punkt wie die Bedienung der Ablauf-Kachel. Event: „Aktuelles Event“ = das Event, das die Ablauf-Kachel zeigt
   (Kachel mit Bedienung zuerst, dann eine sichtbare Kachel), oder ein festes Event aus der Liste.
+- **Aktionen „Ablauf: hochscrollen“, „Ablauf: runterscrollen“, „Ablauf: zurück zum laufenden Punkt“**: scrollen
+  die Ablauf-Kacheln auf allen Monitoren (auch ohne Maus) um eine halbe Kachel; das automatische Mitscrollen
+  pausiert dann 30 s wie beim Mausrad, „zurück zum laufenden Punkt“ beendet die Pause sofort. Auswahl:
+  „Alle Ablauf-Kacheln“ (Standard), „Aktuelles Event“ oder ein festes Event.
 - **Variablen**: `$(jms-control:agenda_current)` (laufender Punkt), `agenda_remaining` (Restzeit m:ss),
   `agenda_deviation` („+4 min“, nach Uhr „nach Plan“), `agenda_next`, `agenda_next_responsible`, `agenda_event`,
   `agenda_level` (ok/warn/bad), `agenda_manual`. Sie zeigen immer das aktuelle Event.
 - **Rückmeldungen**: „Ablauf: Abweichung vom Plan in Stufe“ (grün/gelb/rot, Schwellen der Ablauf-Kachel),
   „Ablauf: Punkt von Hand gesetzt“.
-- **Presets** unter „Ablauf“: Status (Punkt, Restzeit, Abweichung in Ampelfarbe), ◀ / ▶, „Nach Uhr“, „Dann“.
+- **Presets** unter „Ablauf“: Status (Punkt, Restzeit, Abweichung in Ampelfarbe), ◀ / ▶, „Nach Uhr“, „Dann“,
+  ▲ hoch / ▼ runter / „zum laufenden Punkt“ (Scrollen).
 
 ## Event-Ops
 

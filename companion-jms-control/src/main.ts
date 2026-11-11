@@ -11,6 +11,7 @@ import {
 } from "@companion-module/base";
 import { readDeviceKey, request, trustedBase } from "./transport.js";
 import {
+  ALL_EVENTS,
   CURRENT_EVENT,
   EMPTY_AGENDA,
   EMPTY_OPS,
@@ -28,6 +29,7 @@ import {
   ppLayerVisible,
   screenChoices,
   screenShows,
+  scrollEventChoices,
   statusVariables,
   variableId,
   type JmsState,
@@ -53,6 +55,12 @@ const AGENDA_STEPS = {
   agenda_next: { action: "next", name: "Ablauf: nächster Punkt" },
   agenda_previous: { action: "previous", name: "Ablauf: vorheriger Punkt" },
   agenda_auto: { action: "auto", name: "Ablauf: wieder nach Uhr" },
+} as const;
+// Ablauf-Kacheln fernscrollen (Monitore ohne Maus): halbe Kachel hoch/runter, zurück zum laufenden Punkt
+const AGENDA_SCROLLS = {
+  agenda_scroll_up: { action: "up", name: "Ablauf: hochscrollen", text: "▲\\nAblauf\\nhoch" },
+  agenda_scroll_down: { action: "down", name: "Ablauf: runterscrollen", text: "▼\\nAblauf\\nrunter" },
+  agenda_scroll_live: { action: "live", name: "Ablauf: zurück zum laufenden Punkt", text: "Ablauf\\nzum laufenden\\nPunkt" },
 } as const;
 const EMPTY: JmsState = { layouts: [], outputs: [], screens: [], agenda: EMPTY_AGENDA, ops: EMPTY_OPS, pp: null };
 // ProPresenter-Ebene: sichtbar = grün, ausgeblendet = dunkelrot (wie die Clear-Tasten)
@@ -202,6 +210,19 @@ class JmsControlInstance extends InstanceBase<ModuleConfig> {
         ],
         callback: async (event) => {
           await this.run("/api/churchtools/agenda/position", { eventId: String(event.options.event || CURRENT_EVENT), action: step.action });
+        },
+      };
+    }
+    // Ablauf-Kacheln auf allen Monitoren scrollen (pausiert das Mitscrollen wie das Mausrad)
+    const scrollEvents = scrollEventChoices(this.state);
+    for (const [id, scroll] of Object.entries(AGENDA_SCROLLS)) {
+      actions[id] = {
+        name: scroll.name,
+        options: [
+          { type: "dropdown", id: "event", label: "Ablauf-Kacheln", choices: scrollEvents, default: ALL_EVENTS, allowCustom: true },
+        ],
+        callback: async (event) => {
+          await this.run("/api/churchtools/agenda/scroll", { eventId: String(event.options.event || ALL_EVENTS), action: scroll.action });
         },
       };
     }
@@ -360,6 +381,16 @@ class JmsControlInstance extends InstanceBase<ModuleConfig> {
       steps: [{ down: [{ actionId: "agenda_auto", options: { event: CURRENT_EVENT } }], up: [] }],
       feedbacks: [{ feedbackId: "agenda_manual", options: {}, style: MANUAL_STYLE }],
     };
+    for (const [id, scroll] of Object.entries(AGENDA_SCROLLS)) {
+      presets[id] = {
+        type: "button",
+        category: "Ablauf",
+        name: scroll.name,
+        style: { text: scroll.text, size: "auto", color: white, bgcolor: combineRgb(0, 0, 0) },
+        steps: [{ down: [{ actionId: id, options: { event: ALL_EVENTS } }], up: [] }],
+        feedbacks: [],
+      };
+    }
     presets.agenda_upcoming = {
       type: "button",
       category: "Ablauf",
