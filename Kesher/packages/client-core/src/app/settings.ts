@@ -1,3 +1,9 @@
+import {
+  type ChannelTileSize,
+  defaultChannelTileSize,
+  normalizeChannelTileSize,
+} from "../lib/channelTileSize";
+
 export const tokenStorageKey = "intercom-token";
 export const sessionSettingsStorageKey = "intercom-session-settings";
 export const globalSettingsStorageKey = "intercom-global-settings";
@@ -84,6 +90,8 @@ export type GlobalSettings = {
   enableBackgroundAudioRecovery: boolean;
   keepScreenAwake: boolean;
   showVolumeControls: boolean;
+  /** Größe der Kanal-Kacheln auf diesem Gerät (Einstellungen → Layout). */
+  channelTileSize: ChannelTileSize;
   audioGateEnabled: boolean;
   audioGateThresholdDb: number;
   inputChannelByDeviceId: Record<string, InputChannelSelection>;
@@ -240,6 +248,7 @@ export function loadGlobalSettings(): GlobalSettings {
         enableBackgroundAudioRecovery: true,
         keepScreenAwake: false,
         showVolumeControls: true,
+        channelTileSize: defaultChannelTileSize,
         audioGateEnabled: defaultAudioGateEnabled,
         audioGateThresholdDb: defaultAudioGateThresholdDb,
         inputChannelByDeviceId: {},
@@ -283,6 +292,8 @@ export function loadGlobalSettings(): GlobalSettings {
         typeof parsed.showVolumeControls === "boolean"
           ? parsed.showVolumeControls
           : true,
+      channelTileSize:
+        normalizeChannelTileSize(parsed.channelTileSize) ?? defaultChannelTileSize,
       audioGateEnabled:
         typeof parsed.audioGateEnabled === "boolean"
           ? parsed.audioGateEnabled
@@ -316,6 +327,7 @@ export function loadGlobalSettings(): GlobalSettings {
       enableBackgroundAudioRecovery: true,
       keepScreenAwake: false,
       showVolumeControls: true,
+      channelTileSize: defaultChannelTileSize,
       audioGateEnabled: defaultAudioGateEnabled,
       audioGateThresholdDb: defaultAudioGateThresholdDb,
       inputChannelByDeviceId: {},

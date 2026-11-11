@@ -3,7 +3,39 @@ export type KeyGridFit = {
   rows: number;
   keyWidth: number;
   keyHeight: number;
+  /** Tasten wären kleiner als die Mindestgröße: feste Höhe, das Raster scrollt. */
+  scroll?: boolean;
 };
+
+/**
+ * Wie fitKeyGrid, aber nie kleiner als `minKeyHeight` × `minKeyWidth`: Passen
+ * die Tasten so nicht ins Fenster, bekommen sie die Mindesthöhe, so viele
+ * Spalten wie mit Mindestbreite nebeneinander passen, und das Raster scrollt.
+ * So bleiben die Kanalnamen in kleinen Kacheln lesbar.
+ */
+export function fitKeyGridWithMinimum(
+  count: number,
+  width: number,
+  height: number,
+  gap: number,
+  minKeyHeight: number,
+  minKeyWidth: number,
+  aspect = 1.6,
+): KeyGridFit {
+  const fit = fitKeyGrid(count, width, height, gap, aspect);
+  if (count <= 0 || width <= 0 || height <= 0) return fit;
+  if (fit.keyHeight >= minKeyHeight && fit.keyWidth >= minKeyWidth) return fit;
+  const cols = Math.max(
+    1,
+    Math.min(count, Math.floor((width + gap) / (minKeyWidth + gap))),
+  );
+  const rows = Math.ceil(count / cols);
+  const keyWidth = Math.max(0, (width - gap * (cols - 1)) / cols);
+  // Höhe: was ins Fenster passt, aber mindestens die Mindesthöhe
+  const fitted = (height - gap * (rows - 1)) / rows;
+  const keyHeight = Math.max(minKeyHeight, fitted);
+  return { cols, rows, keyWidth, keyHeight, scroll: fitted < minKeyHeight };
+}
 
 /**
  * Columns and rows so that `count` keys fill a `width` × `height` box as

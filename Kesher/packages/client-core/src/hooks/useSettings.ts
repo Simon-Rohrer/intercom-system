@@ -18,6 +18,7 @@ import {
   loadKeyboardShortcuts,
   loadSessionSettings,
 } from "../app/settings";
+import type { ChannelTileSize } from "../lib/channelTileSize";
 
 const defaultInputGainDeviceKey = "__default__";
 
@@ -52,6 +53,8 @@ export type UseSettingsResult = {
   setKeepScreenAwake: (v: boolean) => void;
   showVolumeControls: boolean;
   setShowVolumeControls: (v: boolean) => void;
+  channelTileSize: ChannelTileSize;
+  setChannelTileSize: (v: ChannelTileSize) => void;
   audioGateEnabled: boolean;
   setAudioGateEnabled: (v: boolean) => void;
   audioGateThresholdDb: number;
@@ -142,6 +145,9 @@ export function useSettings(): UseSettingsResult {
   const [showVolumeControls, setShowVolumeControls] = useState(
     initialGlobalSettings.showVolumeControls,
   );
+  const [channelTileSize, setChannelTileSize] = useState<ChannelTileSize>(
+    initialGlobalSettings.channelTileSize,
+  );
   const [audioGateEnabled, setAudioGateEnabled] = useState(
     initialGlobalSettings.audioGateEnabled,
   );
@@ -227,6 +233,7 @@ export function useSettings(): UseSettingsResult {
         enableBackgroundAudioRecovery,
         keepScreenAwake,
         showVolumeControls,
+        channelTileSize,
         audioGateEnabled,
         audioGateThresholdDb,
         inputChannelByDeviceId,
@@ -245,6 +252,7 @@ export function useSettings(): UseSettingsResult {
     enableBackgroundAudioRecovery,
     keepScreenAwake,
     showVolumeControls,
+    channelTileSize,
     audioGateEnabled,
     audioGateThresholdDb,
     inputChannelByDeviceId,
@@ -355,6 +363,8 @@ export function useSettings(): UseSettingsResult {
     setKeepScreenAwake,
     showVolumeControls,
     setShowVolumeControls,
+    channelTileSize,
+    setChannelTileSize,
     audioGateEnabled,
     setAudioGateEnabled,
     audioGateThresholdDb,

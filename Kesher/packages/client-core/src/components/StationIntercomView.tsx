@@ -29,7 +29,15 @@ import { createHoldButtonProps } from "../lib/holdButton";
 import { resolveInputDeviceChannelCount } from "../lib/audioDeviceChannels";
 import { withResolvedStreamDeckButtonLabel } from "../lib/streamDeckLabels";
 import { roleAllowed } from "../lib/intercom";
-import { fitKeyGrid, type KeyGridFit } from "../lib/keyGridFit";
+import { fitKeyGridWithMinimum, type KeyGridFit } from "../lib/keyGridFit";
+import {
+  type ChannelTileSize,
+  channelTileSizeLabels,
+  channelTileSizes,
+  embedKeyGridClasses,
+  embedKeyScale,
+  embedTileMetrics,
+} from "../lib/channelTileSize";
 import { resolveEmbedMode, resolveHideTalkControls } from "../lib/runtimeMode";
 import { sortDirectUsersByRoleAndUsername } from "../lib/users";
 import { BrandLogo } from "./BrandLogo";
@@ -1130,18 +1138,61 @@ const EMBED_KEY_GAP = 8;
 /**
  * Key size in the embedded layout as CSS variables: `--key-scale` scales the
  * text and buttons of a key (1 = the size of a normal key, ~140px high).
+ * Below the minimum size of the chosen tile size the keys keep a fixed
+ * height (`--fit-key-height`) and the grid scrolls.
  */
 function embedKeyGridStyle(fit: KeyGridFit | null): React.CSSProperties | undefined {
   if (!fit) return undefined;
-  const scale = Math.min(
-    1.8,
-    Math.max(0.5, Math.min(fit.keyHeight / 140, fit.keyWidth / 190)),
-  );
+  const scale = embedKeyScale(fit);
   return {
     "--fit-cols": fit.cols,
     "--fit-rows": fit.rows,
     "--key-scale": scale.toFixed(3),
+    ...(fit.scroll ? { "--fit-key-height": `${Math.floor(fit.keyHeight)}px` } : {}),
   } as React.CSSProperties;
+}
+
+/** Auswahl mit wenigen festen Werten (z. B. Größe der Kanal-Kacheln). */
+function SettingsChoice<T extends string>({
+  label,
+  description,
+  value,
+  options,
+  labels,
+  disabled = false,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  value: T;
+  options: T[];
+  labels: Record<T, string>;
+  disabled?: boolean;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className={`station-setting station-setting-choice ${disabled ? "disabled" : ""}`}>
+      <span className="station-setting-copy">
+        <span className="station-setting-label">{label}</span>
+        <small>{description}</small>
+      </span>
+      <span className="station-setting-choice-options" role="radiogroup" aria-label={label}>
+        {options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            role="radio"
+            aria-checked={value === option}
+            className={value === option ? "active" : ""}
+            disabled={disabled}
+            onClick={() => onChange(option)}
+          >
+            {labels[option]}
+          </button>
+        ))}
+      </span>
+    </div>
+  );
 }
 
 type StationIntercomViewProps = {
@@ -1199,6 +1250,11 @@ type StationIntercomViewProps = {
   onKeepScreenAwakeChange: (enabled: boolean) => void;
   showVolumeControls: boolean;
   onShowVolumeControlsChange: (enabled: boolean) => void;
+  /** Größe der Kanal-Kacheln (Party Lines, Direkt, Durchsage). */
+  channelTileSize?: ChannelTileSize;
+  /** Von der Kachel in JMS Control vorgegeben (?tileSize=…): hier nicht änderbar. */
+  channelTileSizeLocked?: boolean;
+  onChannelTileSizeChange?: (size: ChannelTileSize) => void;
   mediaSessionSupported: boolean;
   wakeLockSupported: boolean;
   wakeLockActive: boolean;
@@ -1351,6 +1407,9 @@ export function StationIntercomView({
   onKeepScreenAwakeChange,
   showVolumeControls,
   onShowVolumeControlsChange,
+  channelTileSize = "normal",
+  channelTileSizeLocked = false,
+  onChannelTileSizeChange,
   mediaSessionSupported,
   wakeLockSupported,
   wakeLockActive,
@@ -1819,17 +1878,21 @@ export function StationIntercomView({
   useLayoutEffect(() => {
     const grid = talkGridRef.current;
     if (!embedMode || !grid) return;
+    const metrics = embedTileMetrics[channelTileSize];
     const measure = () => {
-      const next = fitKeyGrid(
+      const next = fitKeyGridWithMinimum(
         visibleRooms.length,
         grid.clientWidth,
         grid.clientHeight,
         EMBED_KEY_GAP,
+        metrics.minKeyHeight,
+        metrics.minKeyWidth,
       );
       setTalkFit((prev) =>
         prev &&
         prev.cols === next.cols &&
         prev.rows === next.rows &&
+        Boolean(prev.scroll) === Boolean(next.scroll) &&
         Math.abs(prev.keyHeight - next.keyHeight) < 1 &&
         Math.abs(prev.keyWidth - next.keyWidth) < 1
           ? prev
@@ -1845,7 +1908,7 @@ export function StationIntercomView({
       window.removeEventListener("resize", measure);
       observer?.disconnect();
     };
-  }, [embedMode, visibleRooms.length, hideTalkControls]);
+  }, [embedMode, visibleRooms.length, hideTalkControls, channelTileSize]);
 
   // Helper: get max priority for a user based on their active talk rooms and broadcasts
   const getMaxUserChannelPriority = (user: Presence): number | null => {
@@ -2999,9 +3062,7 @@ export function StationIntercomView({
             ) : null}
             <div
               className={`station-talk-grid ${
-                embedMode && talkFit && talkFit.keyHeight < 112 ? "station-keys-tight" : ""
-              } ${
-                embedMode && talkFit && talkFit.keyHeight < 72 ? "station-keys-tiny" : ""
+                embedMode ? embedKeyGridClasses(talkFit, channelTileSize) : ""
               }`.trim()}
               ref={talkGridRef}
               style={embedMode ? embedKeyGridStyle(talkFit) : undefined}
@@ -3484,6 +3545,21 @@ export function StationIntercomView({
                       checked={showVolumeControls}
                       onChange={onShowVolumeControlsChange}
                     />
+                    {onChannelTileSizeChange ? (
+                      <SettingsChoice
+                        label="Kanal-Kacheln"
+                        description={
+                          channelTileSizeLocked
+                            ? "Von der Kachel in JMS Control vorgegeben."
+                            : "Größe der Party Lines, Personen und Durchsagen auf diesem Gerät."
+                        }
+                        value={channelTileSize}
+                        options={channelTileSizes}
+                        labels={channelTileSizeLabels}
+                        disabled={channelTileSizeLocked}
+                        onChange={onChannelTileSizeChange}
+                      />
+                    ) : null}
                   </div>
                 </section>
                 ) : null}

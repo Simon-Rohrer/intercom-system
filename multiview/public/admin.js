@@ -3222,7 +3222,14 @@ function kesherSection(tile) {
         </select>
       </label>
       <label class="check"><input type="checkbox" data-t="kesherHideControls" ${tile.kesherHideControls ? 'checked' : ''}> Sprechtasten ausblenden (Hold to talk, Reply, Always on)</label>
-      <p class="muted">Die Kanäle passen sich immer der Kachelgröße an.</p>
+      <label class="field"><span>Kanal-Kacheln</span>
+        <select data-t="kesherTileSize">
+          <option value="" ${tile.kesherTileSize ? '' : 'selected'}>Normal</option>
+          <option value="small" ${tile.kesherTileSize === 'small' ? 'selected' : ''}>Klein (mehr Kanäle nebeneinander)</option>
+          <option value="large" ${tile.kesherTileSize === 'large' ? 'selected' : ''}>Groß (große Namen, scrollt bei Bedarf)</option>
+        </select>
+      </label>
+      <p class="muted">Die Kanäle passen sich der Kachelgröße an. Ist die Kachel zu klein, werden die Kanäle nicht weiter verkleinert, sondern lassen sich scrollen – der Kanalname bleibt lesbar.</p>
       <label class="field"><span>Name in Kesher (wie die Kachel dort erscheint)</span><input type="text" data-t="kesherUser" value="${esc(tile.kesherUser ?? 'Multiview')}" placeholder="Multiview"></label>
       <label class="field"><span>Kesher-Adresse (leer = automatisch)</span><input type="text" data-t="kesherUrl" value="${esc(tile.kesherUrl)}" placeholder="automatisch"></label>
       <p class="muted">Im Editor ist die Kachel mit <b>Live-Bilder</b> echt zu sehen (hier nicht bedienbar), sonst als Platzhalter.</p>`

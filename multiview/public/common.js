@@ -407,12 +407,34 @@ export function kesherTileUrl(tile, config, person) {
   // embed: Kesher passt sich dem Kachelfenster an (alle Kanäle sichtbar, nichts scrollt)
   const params = new URLSearchParams({ viewMode: tile.kesherView || 'station', embed: '1' })
   if (tile.kesherHideControls) params.set('controls', '0')
+  // Größe der Kanal-Kacheln in Kesher (Klein / Normal / Groß)
+  if (['small', 'large'].includes(tile.kesherTileSize)) params.set('tileSize', tile.kesherTileSize)
   params.set('autoLogin', '1')
   // Kesher erlaubt keine Leerzeichen im Namen – geschütztes Leerzeichen sieht gleich aus
   params.set('username', username.replace(/\s+/g, '\u00a0'))
   params.set('roleId', roleId)
   params.set('secondary', '1')
   return `${kesherBase(tile, config)}/?${params}`
+}
+
+/**
+ * Darf JMS Control eine abgemeldete Kesher-Kachel selbst neu laden (neues Spiegel-Ticket bzw.
+ * neue Geräteanmeldung)? Ein Spiegel belegt die Rolle nie, verdrängt also kein anderes Gerät.
+ * - Mit Anmeldung auf dieser Seite (viewer): ja – Kesher nutzt dann die eigene, noch gültige
+ *   zentrale Anmeldung (endet sie, lädt watchLogin ohnehin die ganze Seite neu).
+ * - Ohne Anmeldung nur auf einem registrierten Anzeige-Gerät (display) und nur für Kacheln
+ *   mit fester Rolle – „angemeldeter Nutzer“ nie als jemand anderes.
+ */
+export function kesherAutoRenew(tile, { viewer = null, display = false } = {}) {
+  if (!tile || tile.kind !== 'kesher' || !tile.kesherRoleId) return false
+  if (viewer) return true
+  return Boolean(display && tile.kesherRoleId !== '@user')
+}
+
+/** Wartezeit, bis eine abgemeldete Kachel neu geladen wird: 90 s, 3, 6, 12, dann alle 15 Minuten. */
+export function kesherRenewDelayMs(attempt) {
+  const n = Number.isFinite(attempt) && attempt > 0 ? Math.floor(attempt) : 0
+  return Math.min(15 * 60_000, 90_000 * 2 ** Math.min(n, 4))
 }
 
 /** Warum eine Kesher-Kachel nichts zeigt. */

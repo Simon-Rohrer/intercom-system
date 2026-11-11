@@ -388,6 +388,44 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
+/* Auswahl mit festen Werten (z. B. Kanal-Kacheln: Klein / Normal / Groß) */
+.station-setting.station-setting-choice {
+  flex-wrap: wrap;
+  cursor: default;
+}
+.station-setting-choice-options {
+  order: 2;
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--k-line-strong);
+}
+.station-settings-shell .station-setting-choice-options button {
+  min-width: 64px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--k-ink-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.station-settings-shell .station-setting-choice-options button.active {
+  background: var(--k-face);
+  color: var(--k-ink);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.station-settings-shell .station-setting-choice-options button:focus-visible {
+  outline: 2px solid var(--k-accent);
+  outline-offset: 2px;
+}
+.station-setting-choice.disabled .station-setting-choice-options button {
+  cursor: not-allowed;
+}
 .station-modal-hint {
   margin: 0;
   padding: 0 4px;

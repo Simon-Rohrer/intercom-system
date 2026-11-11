@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { autoLoginRetryDelay, centralMirrorFor, resolveAutoLoginConfiguration, urlRequestsMirror } from "./autoLogin";
+import {
+  centralMirrorFor,
+  confirmSessionRejected,
+  mirrorReloginDelayMs,
+  postEmbedSessionState,
+  resolveAutoLoginConfiguration,
+  urlRequestsMirror,
+} from "./autoLogin";
 
 // Sitzungsdaten der zentralen Anmeldung – für diese Tests ohne Bedeutung
 const SESSION = { sessionId: "s1", version: "v1", expiresAt: Number.MAX_SAFE_INTEGER };
@@ -127,18 +134,66 @@ describe("mirror tiles with the central login", () => {
   });
 });
 
-describe("autoLoginRetryDelay", () => {
-  const tile = resolveAutoLoginConfiguration("?autoLogin=1&username=Multiview&roleId=audio&secondary=1", roles);
+describe("Wiederanmeldung der Kesher-Kachel", () => {
+  const unauthorized = Object.assign(new Error("401"), { status: 401 });
+  const isUnauthorized = (error: unknown) =>
+    (error as { status?: number } | null)?.status === 401;
+  const noWait = async () => undefined;
 
-  it("signs the Multiview tile in again with a growing pause", () => {
-    expect([0, 1, 2, 3, 4, 5, 9].map((n) => autoLoginRetryDelay(tile, n))).toEqual([
-      5_000, 10_000, 20_000, 40_000, 60_000, 60_000, 60_000,
+  it("wartet mit wachsendem Abstand, höchstens eine Minute", () => {
+    expect([0, 1, 2, 3, 4, 5, 20].map(mirrorReloginDelayMs)).toEqual([
+      2_000, 5_000, 10_000, 20_000, 30_000, 60_000, 60_000,
     ]);
+    expect(mirrorReloginDelayMs(-1)).toBe(2_000);
   });
 
-  it("never retries for stations, the central login or without auto-login", () => {
-    expect(autoLoginRetryDelay(resolveAutoLoginConfiguration("?autoLogin=1&username=Pi&roleId=audio&autoTakeover=1", roles), 0)).toBeNull();
-    expect(autoLoginRetryDelay(resolveAutoLoginConfiguration("", roles, { name: "Tim", roleId: "audio", admin: false, ...SESSION }), 0)).toBeNull();
-    expect(autoLoginRetryDelay(resolveAutoLoginConfiguration("", roles), 0)).toBeNull();
+  it("behält die Sitzung, wenn nur eine einzelne Anfrage abgelehnt wurde", async () => {
+    let calls = 0;
+    const rejected = await confirmSessionRejected(
+      async () => {
+        calls += 1;
+        return { ok: true };
+      },
+      isUnauthorized,
+      { sleep: noWait },
+    );
+    expect(rejected).toBe(false);
+    expect(calls).toBe(1);
+  });
+
+  it("meldet neu an, wenn die Sitzung bei jedem Versuch abgelehnt wird", async () => {
+    const delays: number[] = [];
+    const rejected = await confirmSessionRejected(
+      async () => {
+        throw unauthorized;
+      },
+      isUnauthorized,
+      { sleep: async (ms) => void delays.push(ms) },
+    );
+    expect(rejected).toBe(true);
+    expect(delays).toEqual([1500, 3000]);
+  });
+
+  it("wertet einen nicht erreichbaren Server nicht als Abmeldung", async () => {
+    const rejected = await confirmSessionRejected(
+      async () => {
+        throw new TypeError("Failed to fetch");
+      },
+      isUnauthorized,
+      { sleep: noWait },
+    );
+    expect(rejected).toBe(false);
+  });
+
+  it("meldet JMS Control nur angemeldet ja/nein, ohne Namen oder Token", () => {
+    const sent: unknown[] = [];
+    postEmbedSessionState({ postMessage: (message: unknown) => void sent.push(message) } as Window, false, "offline");
+    expect(sent).toEqual([{ type: "kesher:session", signedIn: false, connection: "offline" }]);
+    expect(() => postEmbedSessionState(null, true, "connected")).not.toThrow();
+  });
+
+  it("erkennt die Kachel als Spiegel (nur dann automatische Wiederanmeldung)", () => {
+    expect(urlRequestsMirror("?autoLogin=1&secondary=1&roleId=lighting&username=Multiview")).toBe(true);
+    expect(urlRequestsMirror("?autoLogin=1&roleId=lighting&username=Licht")).toBe(false);
   });
 });

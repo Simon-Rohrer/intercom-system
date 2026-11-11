@@ -296,3 +296,15 @@ test('Anzeige-Station spiegelt nur die Rollen ihrer Kesher-Kacheln, ohne Kesher-
   assert.deepEqual(access.machineStatus(plain.id, plain.version).mirrorRoles, [])
   assert.equal(access.machineServes(access.machineStatus(plain.id, plain.version), 'kesher'), false)
 })
+
+test('Nur eine Anzeige-Station meldet sich als solche (Kesher-Kacheln selbst wieder anmelden)', async () => {
+  const { access } = await setup({ getMirrorRoles: () => ['light'] })
+  const display = fingerprint()
+  createStation(access, { fingerprint: display, services: ['multiview'], capabilities: ['display'] })
+  assert.equal(access.deviceStatus(ip, certificate(display)).display, true)
+  const other = fingerprint()
+  createStation(access, { fingerprint: other, services: ['multiview'], capabilities: ['pi-config'] })
+  assert.equal(access.deviceStatus(ip, certificate(other)).display, false)
+  // Ohne Gerätenachweis (normaler Browser) nie
+  assert.equal(access.deviceStatus(ip, request()).display, false)
+})

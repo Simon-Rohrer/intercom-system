@@ -478,16 +478,31 @@
   font-size: 14px;
 }
 
+/* Größe der Kanal-Kacheln (Einstellungen → Layout, Kachel in JMS Control: ?tileSize=):
+   Mindestbreite einer Kachel und Faktor für den Kanalnamen */
+:root {
+  --k-tile-min: 200px;
+  --k-tile-name: 1;
+}
+:root[data-kesher-tile-size="small"] {
+  --k-tile-min: 150px;
+  --k-tile-name: 0.88;
+}
+:root[data-kesher-tile-size="large"] {
+  --k-tile-min: 280px;
+  --k-tile-name: 1.35;
+}
+
 .station-talk-grid,
 .station-direct-grid,
 .station-broadcast-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--k-tile-min), 100%), 1fr));
   gap: 12px;
 }
 .station-direct-grid,
 .station-broadcast-grid {
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(calc(var(--k-tile-min) - 10px), 100%), 1fr));
 }
 
 /* direct tabs */
@@ -638,7 +653,7 @@
 .station-card-head strong,
 .station-broadcast-button strong {
   grid-area: name;
-  font-size: 18px;
+  font-size: calc(18px * var(--k-tile-name, 1));
   font-weight: 700;
   line-height: 1.2;
   overflow-wrap: anywhere;
@@ -840,7 +855,7 @@
   color: var(--k-ink-3);
 }
 .station-direct-card .station-card-head strong {
-  font-size: 17px;
+  font-size: calc(17px * var(--k-tile-name, 1));
 }
 .station-direct-card .station-card-head em {
   grid-column: 2;
@@ -1313,7 +1328,7 @@ body.panel-resizing-row {
   }
   .station-card-head strong,
   .station-broadcast-button strong {
-    font-size: 16px;
+    font-size: calc(16px * var(--k-tile-name, 1));
   }
   .station-shell .station-card-actions button {
     height: 34px;
@@ -1666,14 +1681,16 @@ body.panel-resizing-row {
   height: max(3px, calc(6px * var(--s)));
 }
 /* The head is a column whose lines never shrink: when the key is low, the
-   head clips at the bottom (listener count first) instead of squeezing the
-   channel name to zero height. */
+   head clips at the bottom (listener count first). It never gets lower than
+   one line of the channel name – before, the Listen/Call row squeezed it to
+   zero height in small tiles and only the buttons stayed visible. */
 .root.station-shell.station-embed .station-card-head {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
-  min-height: 0;
+  flex: 1 0 auto;
+  min-height: calc(max(11px, 18px * var(--s) * var(--k-tile-name, 1)) * 1.2 + 16px * var(--s));
   overflow: hidden;
   gap: calc(4px * var(--s));
   padding: calc(10px * var(--s)) calc(12px * var(--s)) calc(6px * var(--s));
@@ -1686,7 +1703,7 @@ body.panel-resizing-row {
   font-size: max(9px, calc(12px * var(--s)));
 }
 .root.station-shell.station-embed .station-card-head strong {
-  font-size: max(11px, calc(18px * var(--s)));
+  font-size: max(11px, calc(18px * var(--s) * var(--k-tile-name, 1)));
   max-height: 2.4em; /* two lines at line-height 1.2 */
   overflow: hidden;
 }
@@ -1706,16 +1723,24 @@ body.panel-resizing-row {
   height: clamp(20px, calc(32px * var(--s)), 48px);
   font-size: max(10px, calc(13px * var(--s)));
 }
-/* small keys: room for the name and Listen/Call, not for the volume */
-.root.station-shell.station-embed .station-keys-tight .station-gain-control {
+/* small keys (and always at "large"): room for the name and Listen/Call,
+   not for the volume or the "Talk" label – the key colour shows the state */
+.root.station-shell.station-embed .station-keys-tight .station-gain-control,
+.root.station-shell.station-embed .station-keys-tight .station-card-head small {
   display: none;
 }
-/* tiny keys: the channel name only, no "Talk" label above it */
-.root.station-shell.station-embed .station-keys-tiny .station-card-head small {
+/* tiny keys: the channel name only (tap = talk), no Listen/Call row */
+.root.station-shell.station-embed .station-keys-tiny .station-card-actions {
   display: none;
 }
 .root.station-shell.station-embed .station-keys-tiny .station-card-head {
   padding-top: calc(6px * var(--s) + 4px);
+}
+/* below the minimum key size: fixed key height, the party lines scroll */
+.root.station-shell.station-embed .station-talk-grid.station-keys-scroll {
+  grid-template-rows: repeat(var(--fit-rows, 1), var(--fit-key-height, 64px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* talk strip at the bottom, in the window instead of over it */
