@@ -101,6 +101,7 @@ let churchtools = { state: 'connecting', events: [] }
 const agendaViews = new Set()
 const rosterViews = new Set() // Kacheln „Dienstplan“
 let ctPosition = { type: 'ctposition', positions: {} } // von Hand gesetzte Ablauf-Punkte
+let ctHighlight = { type: 'cthighlight', highlights: {} } // hervorgehobene Ablauf-Punkte (Klick)
 const uplinkViews = new Set()
 let uplink = null
 const avantisViews = new Set()
@@ -226,6 +227,11 @@ function onMessage(msg) {
   } else if (msg.type === 'ctposition') {
     ctPosition = msg
     for (const view of agendaViews) if (view.el.isConnected) view.updatePosition(ctPosition)
+  } else if (msg.type === 'cthighlight') {
+    ctHighlight = msg
+    for (const view of agendaViews) if (view.el.isConnected) view.updateHighlight(ctHighlight)
+  } else if (msg.type === 'ctscroll') {
+    for (const view of agendaViews) if (view.el.isConnected) view.scroll(msg)
   } else if (msg.type === 'chat') {
     chat = msg
     renderChatStatus()
@@ -1942,6 +1948,7 @@ function syncTileMedia(el, tile) {
   } else if (tile.kind === 'churchtools') {
     const view = createAgendaView(tile)
     view.updatePosition(ctPosition)
+    view.updateHighlight(ctHighlight)
     view.update(churchtools)
     agendaViews.add(view)
     media.append(view.el)
@@ -3104,6 +3111,7 @@ function agendaLookSection(tile) {
       </div>
       ${check('control', 'Laufenden Punkt per Klick setzen (Knopf ▶ je Punkt, „Nach Uhr“ zurück)')}
       <p class="muted small">Der laufende Punkt ergibt sich aus der Uhrzeit. Setzt ein Operator ihn von Hand (Knopf ▶ auf einem Monitor, Companion oder <code>POST /api/churchtools/agenda/position</code>), folgen alle Kacheln; die Abweichung ist dann die tatsächliche Startzeit minus Plan („+4 min“ = hinter Plan). Setzen dürfen Admin, Technikstationen und Rollen mit „Folien steuern“.</p>
+      <p class="muted small">Ein Klick auf einen Punkt (z. B. ein Lied) hebt ihn gelb auf allen Ablauf-Kacheln desselben Events hervor, ohne den laufenden Punkt zu ändern; ein zweiter Klick oder „Hervorhebung aufheben“ nimmt das weg, nach 10 Minuten verfällt es. Monitore ohne Maus lassen sich per Companion scrollen („Ablauf: hochscrollen / runterscrollen / zurück zum laufenden Punkt“, <code>POST /api/churchtools/agenda/scroll</code>).</p>
     </div>`
 }
 

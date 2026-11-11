@@ -20,6 +20,8 @@ const { createOpsStatus, opsSummary } = require('./ops-status')
 const { createPpLayers, LAYERS: PP_LAYERS } = require('./pp-layers')
 const { createUplink, normalizeUplink } = require('./uplink')
 const { createAgendaPosition } = require('./agenda-position')
+const { createAgendaHighlight } = require('./agenda-highlight')
+const { scrollMessage } = require('./agenda-scroll')
 const { agendaSummary, currentAgendaEvent } = require('./agenda-status')
 const { createYouTube } = require('./youtube')
 const { createMonarch } = require('./monarch')
@@ -1292,6 +1294,14 @@ const agendaPosition = createAgendaPosition({
   log: console.log,
 })
 
+// Hervorgehobener Punkt im Ablauf (Klick auf einen Punkt) – auf allen Kacheln des Events, verfällt nach 10 min
+const agendaHighlight = createAgendaHighlight({
+  dataDir: DATA_DIR,
+  getEvents: () => churchTools.loadedEvents(),
+  onUpdate: broadcast,
+  log: console.log,
+})
+
 // Upload der Internetleitung (FRITZ!Box) für die Kachel „Upload / Stream“
 const uplink = createUplink({ getConfig: () => config.uplink, onUpdate: broadcast, log: console.log })
 let uplinkKey = ''
@@ -1519,6 +1529,7 @@ wss.on('connection', (ws, req) => {
   send(ws, kesherChat.snapshot())
   send(ws, churchTools.snapshot())
   send(ws, agendaPosition.snapshot())
+  send(ws, agendaHighlight.snapshot())
   send(ws, uplink.snapshot())
   send(ws, avantis.snapshot())
   send(ws, grandma3.snapshot())
@@ -3186,6 +3197,39 @@ app.all('/api/churchtools/agenda/position', requireTrusted, requireMutation, req
     const itemIndex = body.itemIndex === null || body.itemIndex === 'null' ? null : body.itemIndex === undefined ? undefined : Number(body.itemIndex)
     const snap = agendaPosition.set({ eventId, itemIndex, action: body.action }, req.user?.name || 'Station')
     res.json({ ok: true, eventId: String(eventId), position: snap.positions[String(eventId)] || null })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
+})
+
+// Ablauf-Kacheln fernscrollen (Pi-/Kiosk-Monitore haben keine Maus). Body: { action: 'up' | 'down' |
+// 'live', eventId? } – ohne eventId (oder 'all') alle Ablauf-Kacheln, 'current' = Event der
+// Ablauf-Kachel. Rechte wie beim laufenden Punkt (Companion mit Recht „control“ darf).
+app.all('/api/churchtools/agenda/scroll', requireTrusted, requireMutation, requireSlideOperator, (req, res) => {
+  const body = req.method === 'GET' ? req.query : req.body || {}
+  try {
+    const msg = scrollMessage(body, () => currentAgendaEvent(churchTools.snapshot(), config).event?.id ?? null)
+    broadcast(msg)
+    res.json({ ok: true, action: msg.action, eventId: msg.eventId })
+  } catch (err) {
+    res.status(err.status || 400).json({ ok: false, error: err.message })
+  }
+})
+
+// Punkt im Ablauf hervorheben (Klick auf einen Punkt), ohne den laufenden Punkt zu ändern.
+// Body: { eventId, itemIndex, toggle? } – toggle: zweiter Klick auf denselben Punkt hebt auf –,
+// { eventId, itemIndex: null } oder { eventId, action: 'clear' } zum Aufheben.
+app.get('/api/churchtools/agenda/highlight', requireTrusted, requireDisplayReader, (req, res) => {
+  res.json(agendaHighlight.snapshot())
+})
+app.post('/api/churchtools/agenda/highlight', requireTrusted, requireMutation, requireSlideOperator, (req, res) => {
+  const body = req.body || {}
+  try {
+    const eventId = body.eventId === 'current' ? currentAgendaEvent(churchTools.snapshot(), config).event?.id : body.eventId
+    if (body.eventId === 'current' && eventId == null) return res.status(404).json({ ok: false, error: 'Kein aktuelles Event mit Ablauf' })
+    const itemIndex = body.itemIndex === null ? null : body.itemIndex === undefined ? undefined : Number(body.itemIndex)
+    const snap = agendaHighlight.set({ eventId, itemIndex, toggle: body.toggle, action: body.action }, req.user?.name || 'Station')
+    res.json({ ok: true, eventId: String(eventId), highlight: snap.highlights[String(eventId)] || null, highlights: snap.highlights })
   } catch (err) {
     res.status(err.status || 400).json({ ok: false, error: err.message })
   }

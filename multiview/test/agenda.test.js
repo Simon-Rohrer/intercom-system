@@ -113,6 +113,7 @@ test('Leerer ChurchTools-Platzhalter zeigt verständlichen Leerzustand beim rich
   const original = global.document
   const element = () => ({
     children: [], textContent: '', classList: { toggle() {}, add() {} }, style: { setProperty() {} }, dataset: {},
+    addEventListener() {},
     append(...children) { this.children.push(...children) },
     replaceChildren(...children) { this.children = children },
   })

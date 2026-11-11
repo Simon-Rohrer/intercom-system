@@ -124,6 +124,25 @@ for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`rea
       assert.match(answer.data.error, new RegExp(error))
     }
     for (const machine of [display, heartbeat, chatOnly]) assert.equal((await step(machine, 'current')).status, 403)
+    // Fern-Scrollen der Ablauf-Kacheln (Companion-Tasten): Recht „control“, sonst 403
+    const scroll = (machine, body) => request('/api/churchtools/agenda/scroll', { method: 'POST', body, extra: machineHeaders(machine) })
+    for (const action of ['up', 'down', 'live']) {
+      const answer = await scroll(control, { action })
+      assert.equal(answer.status, 200, JSON.stringify(answer.data))
+      assert.deepEqual(answer.data, { ok: true, action, eventId: null })
+    }
+    assert.equal((await scroll(control, { action: 'up', eventId: '4711' })).data.eventId, '4711')
+    assert.equal((await scroll(control, { action: 'down', eventId: 'current' })).status, 404)
+    assert.equal((await scroll(control, { action: 'sideways' })).status, 400)
+    for (const machine of [display, heartbeat, chatOnly]) assert.equal((await scroll(machine, { action: 'down' })).status, 403)
+    // Hervorheben: gleiche Rechte; ohne geladenes Event 404, Lesen mit Anzeigerecht
+    const highlight = (machine, body) => request('/api/churchtools/agenda/highlight', { method: 'POST', body, extra: machineHeaders(machine) })
+    assert.equal((await highlight(control, { eventId: '4711', itemIndex: 1, toggle: true })).status, 404)
+    assert.equal((await highlight(control, { eventId: 'current', itemIndex: 1 })).status, 404)
+    assert.deepEqual((await highlight(control, { eventId: '4711', itemIndex: null })).data.highlights, {})
+    for (const machine of [display, heartbeat, chatOnly]) assert.equal((await highlight(machine, { eventId: '4711', itemIndex: 1 })).status, 403)
+    assert.deepEqual((await request('/api/churchtools/agenda/highlight', { extra: machineHeaders(display) })).data, { type: 'cthighlight', highlights: {} })
+    assert.equal((await request('/api/churchtools/agenda/highlight', { extra: machineHeaders(heartbeat) })).status, 403)
     assert.equal((await request('/api/chat', { extra: machineHeaders(chatOnly) })).status, 200)
     assert.equal((await request('/api/state', { extra: machineHeaders(chatOnly) })).status, 403)
     assert.equal((await request('/api/config', { extra: machineHeaders(foreignService) })).status, 401)
@@ -162,6 +181,8 @@ for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`rea
     activeSockets.push(techWs)
     techWs.on('message', raw => techFeed.push(JSON.parse(raw)))
     await once(techWs, 'open')
+    // Fern-Scrollen erreicht reine Chat-Sitzungen nicht
+    assert.equal((await request('/api/churchtools/agenda/scroll', { method: 'POST', body: { action: 'up' }, extra: machineHeaders(control) })).status, 200)
     await wait(120)
     assert.ok(techFeed.some(message => message.type === 'chat'))
     assert.ok(techFeed.every(message => ['chat', 'chatFlash', 'server', 'config'].includes(message.type)), JSON.stringify(techFeed))
@@ -268,7 +289,15 @@ for (const serviceHost of ['jmscontrol.local', 'jmscontrol.internal']) test(`rea
         'X-Forwarded-For': '203.0.113.90', ...machineHeaders(display) },
     })
     activeSockets.push(deviceSocket)
+    const deviceFeed = []
+    deviceSocket.on('message', (raw) => deviceFeed.push(JSON.parse(raw)))
     await once(deviceSocket, 'open')
+    // Monitor bekommt beim Verbinden den Stand der Hervorhebungen und danach Fern-Scroll-Befehle
+    await wait(120)
+    assert.deepEqual(deviceFeed.find((message) => message.type === 'cthighlight'), { type: 'cthighlight', highlights: {} })
+    assert.equal((await request('/api/churchtools/agenda/scroll', { method: 'POST', body: { action: 'down' }, extra: machineHeaders(control) })).status, 200)
+    await wait(120)
+    assert.equal(deviceFeed.filter((message) => message.type === 'ctscroll').at(-1)?.action, 'down')
     const deviceClosed = once(deviceSocket, 'close')
     assert.equal((await request('/api/access/machines/' + display.id, { method: 'DELETE', jar: adminJar })).status, 200)
     const [deviceCloseCode] = await Promise.race([deviceClosed, wait(2500).then(() => { throw new Error('WebSocket survived device revocation') })])

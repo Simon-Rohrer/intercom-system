@@ -62,7 +62,7 @@ test('Chat and broadcast filtering enforces role audience instead of frontend-on
 
 test('Restricted stations receive neither presentation state nor configuration or chat without read capabilities', () => {
   const heartbeat = { roleId: 'light', capabilities: ['heartbeat'] }
-  for (const type of ['config', 'atem', 'propresenter', 'ppstage', 'churchtools', 'ctposition', 'chat', 'chatFlash', 'devices', 'screens', 'server', 'sessions_changed'])
+  for (const type of ['config', 'atem', 'propresenter', 'ppstage', 'churchtools', 'ctposition', 'cthighlight', 'ctscroll', 'chat', 'chatFlash', 'devices', 'screens', 'server', 'sessions_changed'])
     assert.equal(filterMessage({ type, config: config(), messages: [], rooms: [] }, config(), null, heartbeat), null, type)
   const chatOnly = { roleId: 'light', capabilities: ['chat-monitor'] }
   assert.equal(filterMessage({ type: 'config', config: config() }, config(), null, chatOnly), null)
@@ -72,6 +72,13 @@ test('Restricted stations receive neither presentation state nor configuration o
   assert.deepEqual(chat.messages.map((entry) => entry.id), ['own'])
   assert.deepEqual(filterMessage({ type: 'propresenter', state: 'visible' }, config(), null, { capabilities: ['display'] }),
     { type: 'propresenter', state: 'visible' })
+  // Ablauf: Hervorhebung und Fern-Scrollen erreichen Monitore (display) und Technikstationen (control)
+  for (const capabilities of [['display'], ['control']]) {
+    const scroll = { type: 'ctscroll', action: 'down', eventId: null, at: '2026-11-11T10:00:00.000Z' }
+    assert.deepEqual(filterMessage(scroll, config(), null, { roleId: 'light', capabilities }), scroll)
+    const highlight = { type: 'cthighlight', highlights: { 42: { itemIndex: 3, itemId: 7, at: '2026-11-11T10:00:00.000Z', by: 'Laptop' } } }
+    assert.deepEqual(filterMessage(highlight, config(), null, { roleId: 'light', capabilities }), highlight)
+  }
   const ordinary = filterMessage({ type: 'config', config: config() }, config(), { roleId: 'light' }, { capabilities: ['display'] })
   assert.deepEqual(ordinary.config.outputs.map((output) => output.id), ['one'])
 })
@@ -97,7 +104,7 @@ test('chat-only configuration and websocket feed exclude every other system', ()
   assert.deepEqual(visible.outputs, [])
   assert.deepEqual(visible.layouts, [])
   assert.equal(visible.access.roles.tech.editLayouts, false)
-  for (const type of ['atem', 'ppstage', 'propresenter', 'levels', 'churchtools', 'ctposition', 'uplink', 'avantis', 'grandma3', 'youtube', 'ops', 'slideshow', 'devices', 'screens', 'templates_changed'])
+  for (const type of ['atem', 'ppstage', 'propresenter', 'levels', 'churchtools', 'ctposition', 'cthighlight', 'ctscroll', 'uplink', 'avantis', 'grandma3', 'youtube', 'ops', 'slideshow', 'devices', 'screens', 'templates_changed'])
     assert.equal(filterMessage({ type, private: 'secret' }, original, user), null, type)
   const chat = filterMessage({ type: 'chat', rooms: [], messages: [{ id: 'global' }, { id: 'private', audience: ['light'] }] }, original, user)
   assert.deepEqual(chat.messages.map(m => m.id), ['global'])
