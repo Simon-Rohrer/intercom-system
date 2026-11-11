@@ -3,9 +3,16 @@
 // ProPresenter aus ist), die Slider-Bilder der Webseite, die Termine aus den öffentlichen
 // ChurchTools-Kalendern (je Termin eine Folie mit seinem Bild), die Bilder aus einem Dropbox-Ordner
 // (neue erscheinen sofort) und eine Folie „Nächste Veranstaltungen“.
-// Die Folien blenden weich ineinander über.
+// Die Folien blenden weich ineinander über (oder wechseln hart, Einstellung „Übergang“).
+//
+// Damit die Überblendung auch auf einem Raspberry Pi 3 und alten iPads flüssig läuft:
+// - Bilder kommen vom Server auf Kachelgröße verkleinert (?w=…&h=…, höchstens 1920 px),
+// - die nächste Folie wird schon geladen und dekodiert, während die aktuelle steht,
+// - jede Folie ist genau eine Ebene (<img>, kein <canvas>), animiert wird nur opacity,
+// - es läuft immer nur ein Wechsel; was währenddessen dran kommt, wartet.
 
 const TIME_ZONE = 'Europe/Berlin'
+const FADE_MS = 1000 // Dauer der Überblendung (wie transition in slideshow.css)
 
 /** Einstellungen der Kachel (tile.slideshow) mit Standardwerten */
 export function slideshowOptions(o = {}) {
@@ -35,6 +42,7 @@ export function slideshowOptions(o = {}) {
     ctImageOnly: o.ctImageOnly !== false, // nur Termine mit Bild
     dropbox: o.dropbox === true, // Bilder aus dem Dropbox-Ordner (Einstellungen → Diashow)
     dropboxNow: o.dropboxNow !== false, // ein neu hineingezogenes Bild sofort zeigen
+    transition: o.transition === 'none' ? 'none' : 'fade', // Überblenden oder harter Schnitt (schwache Geräte)
   }
 }
 
@@ -136,15 +144,39 @@ function fittedImage(url, ratio, box) {
   return `${url}?w=${w}&h=${h}`
 }
 
+// Kantenlängen, in denen der Server verkleinerte Fassungen liefert (slideshow-images.js)
+const SIZE_STEPS = [360, 540, 720, 1080, 1440, 1920]
+const sizeStep = (px) => SIZE_STEPS.find((s) => s >= px) || SIZE_STEPS[SIZE_STEPS.length - 1]
+
+/**
+ * Adresse einer Fassung, die in die Kachel passt (Bildschirmpixel, höchstens 1920): eigene Bilder
+ * (/diashow/bild|pp|dropbox/…) mit ?w=…&h=…, Bilder der Webseite über den Server (/diashow/web).
+ * Bei „Füllen“ muss das Bild die Kachel ganz bedecken (&fit=cover). Andere Adressen bleiben.
+ */
+export function scaledUrl(url, width, height, dpr = 1, cover = false) {
+  const ratio = Math.min(Math.max(Number(dpr) || 1, 1), 2)
+  const size = `w=${sizeStep((width || 1920) * ratio)}&h=${sizeStep((height || 1080) * ratio)}${cover ? '&fit=cover' : ''}`
+  if (/^\/diashow\/(?:bild|pp|dropbox)\/[^?#/]+$/.test(url)) return `${url}?${size}`
+  if (/^https?:\/\//i.test(url)) return `/diashow/web?u=${encodeURIComponent(url)}&${size}`
+  return url
+}
+
+/** Bild laden und dekodieren – erst danach kommt es ins Bild (Safari 12 kennt decode() evtl. nicht) */
 function loadImage(url) {
-  const img = new Image()
-  img.alt = ''
-  img.decoding = 'async'
-  img.src = url
-  return img.decode().then(
-    () => img,
-    () => img,
-  )
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.alt = ''
+    img.decoding = 'async'
+    const done = () => resolve(img)
+    img.onload = () => (typeof img.decode === 'function' ? img.decode().then(done, done) : done())
+    img.onerror = done
+    img.src = url
+  })
+}
+
+/** Bilder einer vorab gebauten Folie nochmals dekodieren (der Browser kann sie inzwischen verworfen haben) */
+function decoded(node) {
+  return Promise.all([...node.querySelectorAll('img')].map((img) => (typeof img.decode === 'function' ? img.decode().catch(() => {}) : null)))
 }
 
 /** Größe, in der ein Bild in die Kachel passt (Bildschirmpixel, höchstens 1920 breit) */
@@ -157,10 +189,11 @@ function fitSize(w, h, box) {
 }
 
 /**
- * Bild für die Folie: zu große Bilder (z. B. 5472 × 3648 aus der Kamera) werden einmal auf
- * Bildschirmgröße verkleinert dekodiert. Ein Pi 3 kann Texturen über 2048 Pixel nicht direkt
- * darstellen – die Überblendung ruckelte sonst. Ergebnis: <img> oder <canvas> mit
- * naturalWidth/naturalHeight.
+ * Bild für die Folie. Normalerweise hat der Server schon verkleinert. Kam doch ein viel zu großes
+ * Bild (z. B. 5472 × 3648 aus der Kamera, Server ohne sharp), wird es hier einmal auf
+ * Bildschirmgröße verkleinert – ein Pi 3 kann Texturen über 2048 Pixel nicht direkt darstellen.
+ * Ergebnis ist immer ein <img>: Ein <canvas> würde eine eigene Ebene mit eigenem Grafikspeicher,
+ * die beim Überblenden jedes Mal mitgezeichnet werden muss.
  */
 async function loadPicture(url, box) {
   const img = await loadImage(url)
@@ -176,26 +209,50 @@ async function loadPicture(url, box) {
     canvas.height = size.height
     canvas.getContext('2d').drawImage(bitmap, 0, 0)
     bitmap.close?.()
-    canvas.naturalWidth = w
-    canvas.naturalHeight = h
-    return canvas
+    // Bild einer fremden Seite ohne CORS: toBlob() geht nicht (SecurityError) – dann das Original
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, /\.png(?:[?#]|$)/i.test(url) ? 'image/png' : 'image/jpeg', 0.9))
+    if (!blob) return img
+    const small = await loadImage(URL.createObjectURL(blob))
+    small.dataset.blob = '1' // freigeben, wenn die Folie wieder geht (release)
+    return small.naturalWidth ? small : img
   } catch {
     return img
   }
 }
 
-/** Unscharfer Hintergrund: winziges Abbild, das der Browser weich hochskaliert – ohne teuren CSS-Filter */
-function blurredBack(picture) {
+/**
+ * Unscharfer Hintergrund: winziges Abbild (32 × 18), das der Browser weich hochskaliert – ohne
+ * teuren CSS-Filter. Als <img> (data:-Adresse), damit es mit der Folie eine Ebene bleibt; nur bei
+ * Bildern fremder Seiten ohne CORS bleibt es ein <canvas>.
+ */
+async function blurredBack(picture) {
   const canvas = document.createElement('canvas')
   canvas.width = 32
   canvas.height = 18
   const ctx = canvas.getContext('2d')
   try {
-    ctx.drawImage(picture, 0, 0, canvas.width, canvas.height)
+    // Verkleinern im Hintergrund (createImageBitmap) statt drawImage des großen Bildes im Hauptthread
+    let source = picture
+    try {
+      if (typeof createImageBitmap === 'function') source = await createImageBitmap(picture, { resizeWidth: canvas.width, resizeHeight: canvas.height, resizeQuality: 'medium' })
+    } catch {}
+    ctx.drawImage(source, 0, 0, canvas.width, canvas.height)
+    if (source !== picture) source.close?.()
   } catch {}
   ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
-  return canvas
+  let back = canvas
+  try {
+    back = await loadImage(canvas.toDataURL('image/png'))
+  } catch {}
+  back.className = 'ss-back'
+  return back
+}
+
+/** Folie entfernen und vorab verkleinerte Bilder freigeben */
+function release(node) {
+  for (const img of node.querySelectorAll('img[data-blob]')) URL.revokeObjectURL(img.src)
+  node.remove()
 }
 
 /** Bild hat (fast) dasselbe Seitenverhältnis wie die Kachel, z. B. 16:9 auf 16:9 */
@@ -234,6 +291,7 @@ export function createSlideshowView(options) {
   const o = slideshowOptions(options)
   const root = el('div', 'slideshow')
   root.dataset.fit = o.fit
+  root.dataset.transition = o.transition
   const empty = el('div', 'ss-empty', 'Keine Folien – Bilder unter Einstellungen → Diashow hochladen')
   root.append(empty)
 
@@ -243,7 +301,10 @@ export function createSlideshowView(options) {
   let shownAt = 0
   let dropboxKnown = null // Dropbox-Bilder, die schon da waren – ein neues wird sofort gezeigt
   let current = null
-  let changing = false
+  let busy = false // ein Wechsel läuft (Laden + Überblenden)
+  let queued = null // Folie, die während eines Wechsels dran kam
+  let prepared = null // nächste Folie, schon geladen: { key, at, node }
+  let prepareTimer = 0
 
   /**
    * Einheitliche Bild-Folie für alle Quellen: dasselbe Bild unscharf als Hintergrund, davor das
@@ -253,17 +314,14 @@ export function createSlideshowView(options) {
   async function cardSlide(url, caption) {
     const node = el('div', `ss-slide ss-card${caption ? ' has-caption' : ''}`)
     const frame = el('div', 'ss-frame')
-    if (url) {
-      const picture = await loadPicture(url, root)
+    const picture = url ? await loadPicture(url, root) : null
+    if (picture && picture.naturalWidth) {
       // Passt das Bild genau in die Kachel (16:9 auf 16:9): ganz ausfüllen, ohne Rahmen und Hintergrund
       if (!caption && sameShape(picture.naturalWidth, picture.naturalHeight, root.clientWidth, root.clientHeight)) node.classList.add('ss-full')
-      else {
-        const back = blurredBack(picture)
-        back.className = 'ss-back'
-        node.append(back)
-      }
+      else node.append(await blurredBack(picture))
       frame.append(picture)
     } else {
+      // Kein Bild oder nicht ladbar: leerer Rahmen statt Symbol für ein kaputtes Bild
       node.append(el('div', 'ss-back'))
       frame.append(el('div', 'ss-blank'))
     }
@@ -278,8 +336,13 @@ export function createSlideshowView(options) {
     return node
   }
 
+  /** Adresse in Kachelgröße (Bildschirmpixel) */
+  const sized = (url) => scaledUrl(url, root.clientWidth, root.clientHeight, window.devicePixelRatio, o.fit === 'cover')
+
   async function render(slide) {
-    if (slide.kind === 'web') return cardSlide(slide.url, slide.text ? { title: slide.text } : null)
+    // Erst messen, wenn die Kachel im Bild ist (beim Aufbau kommt die erste Folie, bevor sie eingehängt ist)
+    await null
+    if (slide.kind === 'web') return cardSlide(sized(slide.url), slide.text ? { title: slide.text } : null)
     if (slide.kind === 'post') {
       const { post, image } = slide
       return cardSlide(fittedImage(image.url, image.ratio, root), o.postCaption ? { title: post.title } : null)
@@ -293,34 +356,99 @@ export function createSlideshowView(options) {
         meta: [a.subtitle, a.place].filter(Boolean).join(' · '),
       })
     }
-    if (slide.kind === 'image') return cardSlide(slide.url, null)
+    if (slide.kind === 'image') return cardSlide(sized(slide.url), null)
     const node = el('div', 'ss-slide ss-slide-events')
     node.append(eventsSlide(slide.events, o))
     return node
   }
 
+  /** Nächste Folie schon bauen (Bild laden, dekodieren, ggf. verkleinern), solange die aktuelle steht */
+  function prepare(slide) {
+    if (!slide || prepared?.key === slide.key) return
+    if (prepared) drop(prepared)
+    prepared = { key: slide.key, at: Date.now(), node: render(slide).catch(() => null) }
+  }
+
+  function drop(entry) {
+    entry.node.then((node) => node && release(node))
+  }
+
+  /** Vorab gebaute Folie nehmen (höchstens 5 Minuten alt), sonst jetzt bauen */
+  async function take(slide) {
+    const entry = prepared
+    prepared = null
+    if (entry && entry.key === slide.key && Date.now() - entry.at < 5 * 60e3) {
+      const node = await entry.node
+      if (node) return node
+    } else if (entry) drop(entry)
+    return render(slide)
+  }
+
+  /**
+   * Neue Folie einblenden – nur opacity, das macht der Compositor ohne Neuzeichnen. Zwei
+   * Bildaufbauten abwarten, damit die neue Ebene fertig gezeichnet ist, bevor die Überblendung
+   * beginnt. Fertig nach transitionend (oder spätestens nach der Dauer + Reserve).
+   */
+  function fadeIn(node) {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          node.classList.add('on')
+          if (o.transition === 'none') return requestAnimationFrame(() => resolve())
+          let timer = 0
+          const finish = () => {
+            clearTimeout(timer)
+            node.removeEventListener('transitionend', onEnd)
+            resolve()
+          }
+          const onEnd = (e) => e.target === node && finish()
+          node.addEventListener('transitionend', onEnd)
+          timer = setTimeout(finish, FADE_MS + 300)
+        }),
+      )
+    })
+  }
+
   async function show(slide) {
-    if (changing) return
-    changing = true
+    // Nie zwei Wechsel zugleich (zwei Überblendungen übereinander überfordern einen Pi)
+    if (busy) {
+      queued = slide
+      return
+    }
+    busy = true
     try {
-      const node = await render(slide)
-      root.append(node)
-      // Einen Bildaufbau abwarten, dann einblenden; das alte Bild blendet danach aus
-      requestAnimationFrame(() => requestAnimationFrame(() => node.classList.add('on')))
+      const node = await take(slide)
+      await decoded(node)
       const old = current
       current = node
       currentKey = slide.key
       shownAt = Date.now()
-      if (old) setTimeout(() => old.remove(), 1200)
+      root.append(node)
+      await fadeIn(node)
+      // Alte Folie erst weg, wenn die neue ganz deckt
+      if (old) release(old)
+    } catch {
     } finally {
-      changing = false
+      busy = false
     }
+    const next = queued
+    queued = null
+    if (next && next.key !== currentKey && slides.some((s) => s.key === next.key)) return show(next)
+    // Die nächste Folie schon laden, solange diese steht – beim Wechsel ist dann nichts mehr zu tun.
+    // Kurz warten: Der Browser soll erst die gerade gezeigte Folie fertig zeichnen.
+    clearTimeout(prepareTimer)
+    prepareTimer = setTimeout(() => {
+      const index = slides.findIndex((s) => s.key === currentKey)
+      if (root.isConnected && !busy && slides.length > 1 && index !== -1) prepare(slides[(index + 1) % slides.length])
+    }, 500)
   }
 
   function step(force = false) {
     empty.hidden = slides.length > 0
     if (!slides.length) {
-      current?.remove()
+      if (current) release(current)
+      if (prepared) drop(prepared)
+      prepared = null
       current = null
       currentKey = ''
       return

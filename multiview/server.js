@@ -27,6 +27,7 @@ const { createAvantis, normalizeAvantis } = require('./avantis')
 const { createGrandma3, normalizeGrandma3 } = require('./grandma3')
 const { createDropbox } = require('./dropbox')
 const { createSlideshow } = require('./slideshow')
+const { createImageScaler, wantedSize } = require('./slideshow-images')
 const { createMessageLinks } = require('./message-links')
 const QRCode = require('qrcode')
 const { normalizeDayQr, normalizeOutputDayQr } = require('./day-qr')
@@ -1335,6 +1336,10 @@ const youtube = createYouTube({
 // Dropbox-Ordner für die Diashow: neue Bilder dort erscheinen sofort (Longpoll von Dropbox)
 const dropbox = createDropbox({ dataDir: DATA_DIR, onUpdate: () => broadcast(slideshow.snapshot()), log: console.log })
 
+// Verkleinerte Fassungen der Diashow-Bilder (Zwischenspeicher im Datenordner)
+const imageScaler = createImageScaler({ cacheDir: path.join(DATA_DIR, 'diashow', 'klein'), log: console.log })
+imageScaler.warnMissing()
+
 // Diashow (Kachel „Diashow“): hochgeladene Bilder und zwischengespeicherte ProPresenter-Folien
 const slideshow = createSlideshow({
   dataDir: DATA_DIR,
@@ -2409,19 +2414,41 @@ function writeServiceCredentials(data) {
   fs.renameSync(tmp, SERVICE_CREDENTIALS_FILE)
 }
 
-// Diashow: Bilder für Monitore und Editor (feste Namen aus der Liste, nie ein Pfad vom Browser)
+// Diashow: Bilder für Monitore und Editor (feste Namen aus der Liste, nie ein Pfad vom Browser).
+// Mit ?w=…&h=… (Kachelgröße) kommt eine verkleinerte Fassung – große Bilder ließen die
+// Überblendung auf Pi und iPad ruckeln (slideshow-images.js).
+async function sendSlideshowImage(req, res, file) {
+  let scaled = null
+  try {
+    scaled = await imageScaler.scaled(file, wantedSize(req.query))
+  } catch {}
+  // Name ändert sich mit dem Inhalt – darf lange im Browser bleiben
+  res.sendFile(scaled || file, { maxAge: '7d', immutable: true })
+}
 for (const [route, kind] of [['/diashow/bild/:file', 'bild'], ['/diashow/pp/:file', 'pp']]) {
   app.get(route, requireTrusted, requireDisplayReader, (req, res) => {
     const file = slideshow.filePath(kind, req.params.file)
     if (!file) return res.status(404).end()
-    // Name ändert sich mit dem Inhalt – darf lange im Browser bleiben
-    res.sendFile(file, { maxAge: '7d', immutable: true })
+    sendSlideshowImage(req, res, file)
   })
 }
 app.get('/diashow/dropbox/:file', requireTrusted, requireDisplayReader, (req, res) => {
   const file = dropbox.filePath(req.params.file)
   if (!file) return res.status(404).end()
-  res.sendFile(file, { maxAge: '7d', immutable: true })
+  sendSlideshowImage(req, res, file)
+})
+// Slider der Webseite (bis 3840 px breit): einmal holen, verkleinert ausliefern. Nur Adressen, die
+// gerade im Slider stehen; klappt etwas nicht, holt der Browser das Bild selbst von der Webseite.
+app.get('/diashow/web', requireTrusted, requireDisplayReader, async (req, res) => {
+  const url = typeof req.query.u === 'string' ? req.query.u : ''
+  if (!url || !slideshow.isWebsiteImage(url)) return res.status(404).end()
+  const file = await imageScaler.webFile(url).catch(() => null)
+  if (!file) return res.redirect(302, url)
+  let scaled = null
+  try {
+    scaled = await imageScaler.scaled(file, wantedSize(req.query))
+  } catch {}
+  res.sendFile(scaled || file, { maxAge: '1d' })
 })
 
 // Dropbox (nur Admin): verbinden mit Code, Ordner wählen. Das Token bleibt auf dem Server.

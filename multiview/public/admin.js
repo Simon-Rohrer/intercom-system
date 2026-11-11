@@ -2915,6 +2915,8 @@ function slideshowSection(tile) {
       <input type="range" min="3" max="60" step="1" data-ss="seconds" value="${o.seconds}"></label>
     <label class="field"><span>Bilder einpassen</span>
       <select data-ss="fit"><option value="contain" ${o.fit === 'contain' ? 'selected' : ''}>Ganz zeigen (schwarze Ränder möglich)</option><option value="cover" ${o.fit === 'cover' ? 'selected' : ''}>Füllen (Ränder werden abgeschnitten)</option></select></label>
+    <label class="field"><span>Übergang</span>
+      <select data-ss="transition"><option value="fade" ${o.transition === 'fade' ? 'selected' : ''}>Überblenden</option><option value="none" ${o.transition === 'none' ? 'selected' : ''}>Ohne (harter Schnitt – für sehr schwache Geräte)</option></select></label>
     <label class="field"><span>Diashow zeigt</span>
       <select data-ss-source>${[
         ...(SLIDESHOW_SOURCES.filter(([key]) => o[key]).length > 1 ? [['', 'Mehrere Quellen (bisherige Einstellung)']] : []),

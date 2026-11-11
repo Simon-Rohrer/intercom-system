@@ -542,6 +542,8 @@ function createSlideshow({ dataDir, getPpBase = () => '', getPlaylists = null, g
     removeImage,
     reorder,
     filePath,
+    /** Bild aus dem Slider der Webseite? (nur diese holt der Server zum Verkleinern selbst) */
+    isWebsiteImage: (url) => Boolean(websiteUrl) && website.slides.some((slide) => slide.url === url),
     setPpPlaylist,
     playlistsChanged,
     refreshPp,
